@@ -19,10 +19,19 @@ class TestCLIHelp:
         assert result.exit_code == 0
         assert "Offensive security platform" in result.output
 
-    def test_help_shows_server_options(self) -> None:
-        result = runner.invoke(app, ["--help"])
-        assert "--port" in result.output
-        assert "--no-browser" in result.output
+    @patch("q_ai.cli._run_server")
+    def test_port_option_accepted(self, mock_run: MagicMock) -> None:
+        """--port is accepted and passed through to the server."""
+        result = runner.invoke(app, ["--port", "9000"])
+        assert result.exit_code == 0
+        assert mock_run.call_args.kwargs["port"] == 9000
+
+    @patch("q_ai.cli._run_server")
+    def test_no_browser_option_accepted(self, mock_run: MagicMock) -> None:
+        """--no-browser is accepted and passed through to the server."""
+        result = runner.invoke(app, ["--no-browser"])
+        assert result.exit_code == 0
+        assert mock_run.call_args.kwargs["no_browser"] is True
 
 
 class TestCLIVersion:
