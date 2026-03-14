@@ -1,15 +1,15 @@
 """Database connection manager and CRUD helpers for q-ai."""
+
 from __future__ import annotations
 
 import datetime
 import sqlite3
 import uuid
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator
 
 from q_ai.core.models import (
-    Evidence,
     Finding,
     Run,
     RunStatus,
@@ -242,9 +242,7 @@ def get_target(
     Returns:
         A Target instance or None if not found.
     """
-    row = conn.execute(
-        "SELECT * FROM targets WHERE id = ?", (target_id,)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM targets WHERE id = ?", (target_id,)).fetchone()
     if row is None:
         return None
     return Target.from_row(dict(row))
@@ -259,9 +257,7 @@ def list_targets(conn: sqlite3.Connection) -> list[Target]:
     Returns:
         List of Target objects.
     """
-    rows = conn.execute(
-        "SELECT * FROM targets ORDER BY created_at DESC"
-    ).fetchall()
+    rows = conn.execute("SELECT * FROM targets ORDER BY created_at DESC").fetchall()
     return [Target.from_row(dict(row)) for row in rows]
 
 
@@ -346,10 +342,7 @@ def list_findings(
     """
     needs_join = target_id is not None
     if needs_join:
-        query = (
-            "SELECT f.* FROM findings f"
-            " JOIN runs r ON f.run_id = r.id"
-        )
+        query = "SELECT f.* FROM findings f JOIN runs r ON f.run_id = r.id"
     else:
         query = "SELECT * FROM findings"
 
@@ -375,10 +368,7 @@ def list_findings(
 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
-    query += (
-        f" ORDER BY {prefix}severity DESC,"
-        f" {prefix}created_at DESC"
-    )
+    query += f" ORDER BY {prefix}severity DESC, {prefix}created_at DESC"
 
     rows = conn.execute(query, params).fetchall()
     return [Finding.from_row(dict(row)) for row in rows]
@@ -460,12 +450,11 @@ def get_setting(
     Returns:
         The setting value, or default if not found.
     """
-    row = conn.execute(
-        "SELECT value FROM settings WHERE key = ?", (key,)
-    ).fetchone()
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     if row is None:
         return default
-    return row[0]
+    result: str = row[0]
+    return result
 
 
 def set_setting(

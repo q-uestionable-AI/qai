@@ -1,4 +1,5 @@
 """Tests for q-ai configuration management."""
+
 from __future__ import annotations
 
 import sys
@@ -19,14 +20,16 @@ class TestLoadConfig:
     """Tests for load_config()."""
 
     def test_returns_empty_dict_when_no_file(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Missing file returns empty dict."""
         config = load_config(tmp_path / "nonexistent.yaml")
         assert config == {}
 
     def test_loads_existing_config(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Existing YAML is parsed correctly."""
         config_path = tmp_path / "config.yaml"
@@ -39,7 +42,8 @@ class TestCredentials:
     """Tests for get_credential() and set_credential()."""
 
     def test_set_and_get_credential(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Round-trip: set then get returns same value."""
         config_path = tmp_path / "config.yaml"
@@ -48,14 +52,16 @@ class TestCredentials:
         assert result == "sk-test-123"
 
     def test_get_credential_missing_provider(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Missing provider returns None."""
         config_path = tmp_path / "config.yaml"
         assert get_credential("nonexistent", config_path) is None
 
     def test_set_credential_creates_file(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """set_credential creates parent dirs and file."""
         config_path = tmp_path / "sub" / "config.yaml"
@@ -63,7 +69,8 @@ class TestCredentials:
         assert config_path.exists()
 
     def test_set_credential_preserves_existing(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Adding a second provider keeps the first."""
         config_path = tmp_path / "config.yaml"
@@ -77,7 +84,8 @@ class TestCredentials:
         reason="File permission check not applicable on Windows",
     )
     def test_file_permissions_unix(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Config file gets 0o600 permissions on Unix."""
         config_path = tmp_path / "config.yaml"
@@ -99,7 +107,8 @@ class TestLabSettings:
         assert result == "http://localhost:8080"
 
     def test_get_lab_setting_missing(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Missing key in lab section returns None."""
         config_path = tmp_path / "config.yaml"
@@ -174,7 +183,8 @@ class TestResolve:
         assert source == "file"
 
     def test_returns_none_default(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """No value anywhere returns (None, 'default')."""
         db_path = tmp_path / "qai.db"

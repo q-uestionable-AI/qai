@@ -1,4 +1,5 @@
 """Shared data models for q-ai core."""
+
 from __future__ import annotations
 
 import datetime
@@ -67,7 +68,8 @@ def _parse_json(val: str | None) -> dict | None:
     """
     if not val:
         return None
-    return json.loads(val)
+    result: dict = json.loads(val)
+    return result
 
 
 def _dump_json(val: dict | None) -> str | None:

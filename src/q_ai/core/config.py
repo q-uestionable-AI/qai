@@ -5,6 +5,7 @@ Supports a hybrid approach:
 - SQLite settings table for operational defaults
 - Precedence resolver: CLI value > env var > DB setting > config file > default
 """
+
 from __future__ import annotations
 
 import os
@@ -49,7 +50,8 @@ def get_credential(
     config = load_config(config_path)
     providers = config.get("providers", {})
     provider_config = providers.get(provider, {})
-    return provider_config.get("api_key")
+    result: str | None = provider_config.get("api_key")
+    return result
 
 
 def set_credential(
@@ -95,7 +97,8 @@ def get_lab_setting(
     """
     config = load_config(config_path)
     lab = config.get("lab", {})
-    return lab.get(key)
+    result: str | None = lab.get(key)
+    return result
 
 
 def resolve(
@@ -138,7 +141,7 @@ def resolve(
             db_value = get_setting(conn, key)
             if db_value is not None:
                 return db_value, "db"
-    except Exception:
+    except Exception:  # noqa: S110 — DB may not exist yet on first run
         pass
 
     # Check config file

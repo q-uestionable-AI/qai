@@ -1,4 +1,5 @@
 """CLI commands for managing targets."""
+
 from __future__ import annotations
 
 import json
@@ -38,7 +39,12 @@ def list_cmd(
 
 @app.command("add")
 def add_cmd(
-    type: str = typer.Option(..., "--type", "-t", help="Target type (e.g. server, endpoint)."),
+    type: str = typer.Option(  # noqa: A002
+        ...,
+        "--type",
+        "-t",
+        help="Target type (e.g. server, endpoint).",
+    ),
     name: str = typer.Option(..., "--name", "-n", help="Target name."),
     uri: str | None = typer.Option(None, "--uri", "-u", help="Target URI."),
     metadata: str | None = typer.Option(None, "--metadata", help="JSON metadata string."),
@@ -48,6 +54,10 @@ def add_cmd(
     meta_dict = json.loads(metadata) if metadata else None
     with get_connection(db_path) as conn:
         tid = create_target(
-            conn, type=type, name=name, uri=uri, metadata=meta_dict,
+            conn,
+            type=type,
+            name=name,
+            uri=uri,
+            metadata=meta_dict,
         )
     console.print(f"Created target {tid[:8]}")

@@ -1,4 +1,5 @@
 """Database schema definitions and migration for q-ai."""
+
 from __future__ import annotations
 
 import sqlite3

@@ -1,4 +1,5 @@
 """Tests for qai findings CLI commands."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,8 +26,11 @@ class TestFindingsList:
         with get_connection(db_path) as conn:
             rid = create_run(conn, module="audit")
             create_finding(
-                conn, run_id=rid, module="audit",
-                category="command_injection", severity=Severity.HIGH,
+                conn,
+                run_id=rid,
+                module="audit",
+                category="command_injection",
+                severity=Severity.HIGH,
                 title="Test injection",
             )
         result = runner.invoke(app, ["findings", "list", "--db-path", str(db_path)])
@@ -39,15 +43,24 @@ class TestFindingsList:
         with get_connection(db_path) as conn:
             rid = create_run(conn, module="audit")
             create_finding(
-                conn, run_id=rid, module="audit",
-                category="low_thing", severity=Severity.LOW, title="Low",
+                conn,
+                run_id=rid,
+                module="audit",
+                category="low_thing",
+                severity=Severity.LOW,
+                title="Low",
             )
             create_finding(
-                conn, run_id=rid, module="audit",
-                category="high_thing", severity=Severity.HIGH, title="High",
+                conn,
+                run_id=rid,
+                module="audit",
+                category="high_thing",
+                severity=Severity.HIGH,
+                title="High",
             )
         result = runner.invoke(
-            app, ["findings", "list", "--severity", "HIGH", "--db-path", str(db_path)],
+            app,
+            ["findings", "list", "--severity", "HIGH", "--db-path", str(db_path)],
         )
         assert result.exit_code == 0
         assert "High" in result.output

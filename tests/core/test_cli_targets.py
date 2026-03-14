@@ -1,4 +1,5 @@
 """Tests for qai targets CLI commands."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,12 +25,18 @@ class TestTargetsAdd:
     def test_add_target(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"
         result = runner.invoke(
-            app, [
-                "targets", "add",
-                "--type", "server",
-                "--name", "test-mcp",
-                "--uri", "http://localhost",
-                "--db-path", str(db_path),
+            app,
+            [
+                "targets",
+                "add",
+                "--type",
+                "server",
+                "--name",
+                "test-mcp",
+                "--uri",
+                "http://localhost",
+                "--db-path",
+                str(db_path),
             ],
         )
         assert result.exit_code == 0
@@ -38,12 +45,18 @@ class TestTargetsAdd:
     def test_add_then_list(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"
         runner.invoke(
-            app, [
-                "targets", "add",
-                "--type", "server",
-                "--name", "visible-target",
-                "--uri", "http://localhost:8080",
-                "--db-path", str(db_path),
+            app,
+            [
+                "targets",
+                "add",
+                "--type",
+                "server",
+                "--name",
+                "visible-target",
+                "--uri",
+                "http://localhost:8080",
+                "--db-path",
+                str(db_path),
             ],
         )
         result = runner.invoke(app, ["targets", "list", "--db-path", str(db_path)])
@@ -54,12 +67,18 @@ class TestTargetsAdd:
     def test_add_with_metadata(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"
         result = runner.invoke(
-            app, [
-                "targets", "add",
-                "--type", "server",
-                "--name", "meta-target",
-                "--metadata", '{"transport": "stdio"}',
-                "--db-path", str(db_path),
+            app,
+            [
+                "targets",
+                "add",
+                "--type",
+                "server",
+                "--name",
+                "meta-target",
+                "--metadata",
+                '{"transport": "stdio"}',
+                "--db-path",
+                str(db_path),
             ],
         )
         assert result.exit_code == 0

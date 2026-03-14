@@ -1,4 +1,5 @@
 """Tests for q-ai core data models."""
+
 from __future__ import annotations
 
 import datetime

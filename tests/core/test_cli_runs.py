@@ -1,4 +1,5 @@
 """Tests for qai runs CLI commands."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -35,7 +36,8 @@ class TestRunsList:
             create_run(conn, module="audit", name="a1")
             create_run(conn, module="inject", name="i1")
         result = runner.invoke(
-            app, ["runs", "list", "--module", "audit", "--db-path", str(db_path)],
+            app,
+            ["runs", "list", "--module", "audit", "--db-path", str(db_path)],
         )
         assert result.exit_code == 0
         assert "audit" in result.output

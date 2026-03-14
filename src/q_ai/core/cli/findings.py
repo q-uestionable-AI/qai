@@ -1,4 +1,5 @@
 """CLI commands for managing findings."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,7 +20,10 @@ def list_cmd(
     module: str | None = typer.Option(None, "--module", "-m", help="Filter by module."),
     category: str | None = typer.Option(None, "--category", "-c", help="Filter by category."),
     severity: str | None = typer.Option(
-        None, "--severity", "-s", help="Minimum severity (INFO/LOW/MEDIUM/HIGH/CRITICAL).",
+        None,
+        "--severity",
+        "-s",
+        help="Minimum severity (INFO/LOW/MEDIUM/HIGH/CRITICAL).",
     ),
     target: str | None = typer.Option(None, "--target", "-t", help="Filter by target ID."),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results."),
@@ -29,8 +33,11 @@ def list_cmd(
     min_sev = Severity[severity.upper()] if severity else None
     with get_connection(db_path) as conn:
         findings = list_findings(
-            conn, module=module, category=category,
-            min_severity=min_sev, target_id=target,
+            conn,
+            module=module,
+            category=category,
+            min_severity=min_sev,
+            target_id=target,
         )
     table = Table(title="Findings")
     table.add_column("ID", style="dim")

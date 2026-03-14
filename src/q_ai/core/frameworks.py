@@ -1,4 +1,5 @@
 """Framework resolver for mapping categories to security framework IDs."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,9 +24,12 @@ class FrameworkResolver:
             import importlib.resources as resources
 
             data_files = resources.files("q_ai.core.data")
-            yaml_path = data_files.joinpath("frameworks.yaml")
-        with open(str(yaml_path)) as f:
-            data = yaml.safe_load(f)
+            resource = data_files.joinpath("frameworks.yaml")
+            with open(str(resource)) as f:
+                data: dict = yaml.safe_load(f)
+        else:
+            with open(str(yaml_path)) as f:
+                data = yaml.safe_load(f)
         self._frameworks: dict = data.get("frameworks", {})
 
     def resolve(self, category: str) -> dict[str, str | list[str]]:
@@ -61,7 +65,8 @@ class FrameworkResolver:
         fw_data = self._frameworks.get(framework)
         if fw_data is None:
             return None
-        return fw_data.get("mappings", {}).get(category)
+        result: str | list[str] | None = fw_data.get("mappings", {}).get(category)
+        return result
 
     def list_frameworks(self) -> list[str]:
         """Return available framework names."""

@@ -1,4 +1,5 @@
 """Tests for q-ai framework resolver."""
+
 from __future__ import annotations
 
 from q_ai.core.frameworks import FrameworkResolver
