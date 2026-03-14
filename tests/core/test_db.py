@@ -10,6 +10,7 @@ from q_ai.core.db import (
     create_run,
     create_target,
     get_connection,
+    get_run,
     get_setting,
     get_target,
     list_findings,
@@ -43,7 +44,7 @@ class TestConnection:
         db_path = tmp_path / "qai.db"
         with get_connection(db_path) as conn:
             ver = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert ver == 1
+            assert ver == 2
 
     def test_schema_tables_created(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"
@@ -184,6 +185,22 @@ class TestRunCRUD:
             )
             runs = list_runs(conn, module="audit")
             assert runs[0].config == cfg
+
+    def test_get_run_returns_run(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "qai.db"
+        with get_connection(db_path) as conn:
+            run_id = create_run(conn, module="audit", name="scan1")
+            run = get_run(conn, run_id)
+            assert run is not None
+            assert run.id == run_id
+            assert run.module == "audit"
+            assert run.name == "scan1"
+
+    def test_get_run_not_found(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "qai.db"
+        with get_connection(db_path) as conn:
+            run = get_run(conn, "nonexistent")
+            assert run is None
 
 
 class TestTargetCRUD:

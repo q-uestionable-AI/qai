@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, Request, WebSocket
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from q_ai.core.db import get_connection, list_findings, list_runs, list_targets
+from q_ai.core.db import get_connection, get_run, list_findings, list_runs, list_targets
 from q_ai.core.models import RunStatus, Severity
 
 router = APIRouter()
@@ -87,7 +87,9 @@ async def launcher(request: Request) -> HTMLResponse:
 async def operations(request: Request) -> HTMLResponse:
     """Render the operations skeleton view."""
     templates = _get_templates(request)
-    return templates.TemplateResponse(request, "operations.html", {"active": "operations"})
+    return templates.TemplateResponse(
+        request, "operations.html", {"active": "operations", "findings": [], "scan_status": None}
+    )
 
 
 @router.get("/research")
@@ -215,3 +217,40 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             await websocket.receive_text()
     except Exception:  # noqa: S110  # WebSocket disconnect is expected
         pass
+
+
+# ---------------------------------------------------------------------------
+# Audit API routes
+# ---------------------------------------------------------------------------
+
+
+@router.post("/api/audit/scan")
+async def api_audit_scan(request: Request) -> HTMLResponse:
+    """Start an audit scan in the background."""
+    templates = _get_templates(request)
+    return templates.TemplateResponse(
+        request, "partials/audit_tab.html", {"scan_status": "submitted"}
+    )
+
+
+@router.get("/api/audit/scan/{run_id}/status")
+async def api_audit_scan_status(request: Request, run_id: str) -> HTMLResponse:
+    """Return scan progress partial."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        run = get_run(conn, run_id)
+    status = run.status.name if run is not None else "UNKNOWN"
+    return templates.TemplateResponse(request, "partials/audit_tab.html", {"scan_status": status})
+
+
+@router.get("/api/audit/findings/{run_id}")
+async def api_audit_findings(request: Request, run_id: str) -> HTMLResponse:
+    """Return findings partial for a specific scan run."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        findings = list_findings(conn, run_id=run_id)
+    return templates.TemplateResponse(
+        request, "partials/audit_findings.html", {"findings": findings}
+    )

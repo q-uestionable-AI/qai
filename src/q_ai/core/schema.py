@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_VERSION = 1
+CURRENT_VERSION = 2
 
 V1_TABLES = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -75,14 +75,39 @@ CREATE INDEX IF NOT EXISTS idx_evidence_run_id ON evidence(run_id);
 """
 
 
+V2_TABLES = """
+CREATE TABLE IF NOT EXISTS audit_scans (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    run_id TEXT NOT NULL REFERENCES runs(id),
+    transport TEXT NOT NULL,
+    server_name TEXT,
+    server_version TEXT,
+    scanners_run TEXT,
+    finding_count INTEGER DEFAULT 0,
+    scan_duration_seconds REAL,
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+"""
+
+V2_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_audit_scans_run_id ON audit_scans(run_id);
+"""
+
+
 def migrate(conn: sqlite3.Connection) -> None:
     """Run schema migrations up to CURRENT_VERSION.
 
     Checks PRAGMA user_version and runs any pending migrations sequentially.
     Version 1 creates all shared tables and indexes.
+    Version 2 adds the audit_scans table.
     """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version < 1:
         conn.executescript(V1_TABLES)
         conn.executescript(V1_INDEXES)
-        conn.execute(f"PRAGMA user_version = {CURRENT_VERSION}")
+        conn.execute("PRAGMA user_version = 1")
+        version = 1
+    if version < 2:
+        conn.executescript(V2_TABLES)
+        conn.executescript(V2_INDEXES)
+        conn.execute("PRAGMA user_version = 2")

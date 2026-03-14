@@ -1,0 +1,303 @@
+"""Tests for the context sharing scanner (context_sharing).
+
+Tests the scanner with synthetic data and verifies detection of
+excessive context, session data leakage, error context leakage,
+resource over-exposure, and sensitive data in resources.
+
+Integration tests requiring fixture servers are skipped.
+"""
+
+import pytest
+
+from q_ai.audit.scanner.context_sharing import (
+    ContextSharingScanner,
+    _build_error_args,
+    _build_minimal_args,
+    _check_resource_scoping,
+    _compute_response_ratio,
+    _find_sensitive_in_resource,
+    _find_session_data,
+)
+from q_ai.mcp.models import ScanContext
+
+
+@pytest.mark.skip(reason="requires fixture server")
+class TestContextSharingIntegration:
+    """Integration tests against the fixture server."""
+
+    @pytest.mark.asyncio
+    async def test_detects_excessive_context(self):
+        pass
+
+    @pytest.mark.asyncio
+    async def test_detects_session_data_in_response(self):
+        pass
+
+    @pytest.mark.asyncio
+    async def test_detects_error_context_leakage(self):
+        pass
+
+    @pytest.mark.asyncio
+    async def test_detects_resource_over_exposure(self):
+        pass
+
+    @pytest.mark.asyncio
+    async def test_detects_sensitive_data_in_resources(self):
+        pass
+
+    @pytest.mark.asyncio
+    async def test_sensitive_resource_findings_have_high_severity(self):
+        pass
+
+    @pytest.mark.asyncio
+    async def test_clean_tools_no_findings(self):
+        pass
+
+    @pytest.mark.asyncio
+    async def test_all_findings_have_remediation(self):
+        pass
+
+    @pytest.mark.asyncio
+    async def test_produces_multiple_finding_types(self):
+        pass
+
+
+class TestSyntheticChecks:
+    """Unit tests with synthetic data."""
+
+    @pytest.mark.asyncio
+    async def test_no_tools_no_resources_returns_empty(self):
+        """Empty tool and resource lists produce no findings."""
+        ctx = ScanContext(
+            tools=[],
+            resources=[],
+            server_info={},
+        )
+        scanner = ContextSharingScanner()
+        findings = await scanner.scan(ctx)
+        assert len(findings) == 0
+
+    @pytest.mark.asyncio
+    async def test_unscoped_resources_detected(self):
+        """Resources without scoping keywords are flagged."""
+        ctx = ScanContext(
+            tools=[],
+            resources=[
+                {
+                    "uri": "config://global/settings",
+                    "name": "settings",
+                    "description": "App config",
+                },
+            ],
+            server_info={},
+        )
+        scanner = ContextSharingScanner()
+        findings = await scanner.scan(ctx)
+
+        scoping_findings = [f for f in findings if f.rule_id == "QAI-CTX-004"]
+        assert len(scoping_findings) == 1
+
+    @pytest.mark.asyncio
+    async def test_scoped_resources_not_flagged(self):
+        """Resources with user/session scoping are not flagged."""
+        ctx = ScanContext(
+            tools=[],
+            resources=[
+                {
+                    "uri": "data://user/123/profile",
+                    "name": "user_profile",
+                    "description": "User profile data",
+                },
+            ],
+            server_info={},
+        )
+        scanner = ContextSharingScanner()
+        findings = await scanner.scan(ctx)
+
+        scoping_findings = [f for f in findings if f.rule_id == "QAI-CTX-004"]
+        assert len(scoping_findings) == 0
+
+    @pytest.mark.asyncio
+    async def test_mixed_resources_partial_findings(self):
+        """Only unscoped resources trigger QAI-CTX-004."""
+        ctx = ScanContext(
+            tools=[],
+            resources=[
+                {
+                    "uri": "config://global",
+                    "name": "global_config",
+                    "description": "All settings",
+                },
+                {
+                    "uri": "data://user/profile",
+                    "name": "user_data",
+                    "description": "Per-user data scoped to session",
+                },
+            ],
+            server_info={},
+        )
+        scanner = ContextSharingScanner()
+        findings = await scanner.scan(ctx)
+
+        scoping_findings = [f for f in findings if f.rule_id == "QAI-CTX-004"]
+        assert len(scoping_findings) == 1
+        assert "global_config" in scoping_findings[0].title
+
+
+class TestHelpers:
+    """Unit tests for helper functions."""
+
+    def test_find_session_data_session_id(self):
+        """Detects session_id in text."""
+        text = "Response: session_id=abc123 data=ok"
+        results = _find_session_data(text)
+        assert len(results) >= 1
+        assert any("Session ID" in r["pattern"] for r in results)
+
+    def test_find_session_data_request_id(self):
+        """Detects request_id in text."""
+        text = "request_id=req-2024-001"
+        results = _find_session_data(text)
+        assert len(results) >= 1
+        assert any("Request ID" in r["pattern"] for r in results)
+
+    def test_find_session_data_trace_id(self):
+        """Detects trace_id in text."""
+        text = "trace_id=trace-deadbeef"
+        results = _find_session_data(text)
+        assert len(results) >= 1
+
+    def test_find_session_data_clean(self):
+        """Clean text produces no session data findings."""
+        text = "Operation completed successfully. Result: 42"
+        results = _find_session_data(text)
+        assert results == []
+
+    def test_find_sensitive_password(self):
+        """Detects password in resource content."""
+        text = "password=SuperSecret123"
+        results = _find_sensitive_in_resource(text)
+        assert len(results) >= 1
+        assert any("Password" in r["pattern"] for r in results)
+
+    def test_find_sensitive_api_key(self):
+        """Detects API key pattern."""
+        text = "api_key=sk-prod-a1b2c3d4e5f6g7h8i9j0"  # gitleaks:allow
+        results = _find_sensitive_in_resource(text)
+        assert len(results) >= 1
+
+    def test_find_sensitive_email(self):
+        """Detects email addresses."""
+        text = "Contact admin@internal.corp for support"
+        results = _find_sensitive_in_resource(text)
+        assert len(results) >= 1
+        assert any("Email" in r["pattern"] for r in results)
+
+    def test_find_sensitive_ssn(self):
+        """Detects SSN patterns."""
+        text = "SSN on file: 123-45-6789"
+        results = _find_sensitive_in_resource(text)
+        assert len(results) >= 1
+        assert any("SSN" in r["pattern"] for r in results)
+
+    def test_find_sensitive_connection_string(self):
+        """Detects database connection URIs."""
+        text = "postgres://admin:pass@db:5432/prod"
+        results = _find_sensitive_in_resource(text)
+        assert len(results) >= 1
+
+    def test_find_sensitive_clean(self):
+        """Clean content produces no findings."""
+        text = "This is a normal report with no sensitive data."
+        results = _find_sensitive_in_resource(text)
+        assert results == []
+
+    def test_check_resource_scoping_unscoped(self):
+        """Unscoped resource returns False."""
+        resource = {
+            "uri": "config://global/settings",
+            "name": "settings",
+            "description": "Application configuration",
+        }
+        assert _check_resource_scoping(resource) is False
+
+    def test_check_resource_scoping_user_in_uri(self):
+        """Resource with 'user' in URI returns True."""
+        resource = {
+            "uri": "data://user/123/profile",
+            "name": "profile",
+            "description": "Data",
+        }
+        assert _check_resource_scoping(resource) is True
+
+    def test_check_resource_scoping_session_in_description(self):
+        """Resource with 'session' in description returns True."""
+        resource = {
+            "uri": "data://cache",
+            "name": "cache",
+            "description": "Per-session cache data",
+        }
+        assert _check_resource_scoping(resource) is True
+
+    def test_compute_response_ratio_normal(self):
+        """Normal ratio for proportionate response."""
+        ratio = _compute_response_ratio("test query", "result data")
+        assert ratio < 5.0
+
+    def test_compute_response_ratio_excessive(self):
+        """High ratio for disproportionate response."""
+        ratio = _compute_response_ratio("x", "A" * 1000)
+        assert ratio > 50.0
+
+    def test_compute_response_ratio_empty_input(self):
+        """Empty input returns 0.0."""
+        ratio = _compute_response_ratio("", "some response")
+        assert ratio == 0.0
+
+    def test_build_minimal_args_string(self):
+        """Builds short string for string params."""
+        tool = {
+            "name": "test",
+            "inputSchema": {"properties": {"query": {"type": "string"}}},
+        }
+        args = _build_minimal_args(tool)
+        assert args["query"] == "test"
+
+    def test_build_minimal_args_number(self):
+        """Builds minimal number for integer params."""
+        tool = {
+            "name": "test",
+            "inputSchema": {"properties": {"count": {"type": "integer"}}},
+        }
+        args = _build_minimal_args(tool)
+        assert args["count"] == 1
+
+    def test_build_minimal_args_empty_schema(self):
+        """Empty schema produces empty args."""
+        tool = {"name": "test", "inputSchema": {}}
+        args = _build_minimal_args(tool)
+        assert args == {}
+
+    def test_build_error_args_string(self):
+        """Builds empty string for string params."""
+        tool = {
+            "name": "test",
+            "inputSchema": {"properties": {"query": {"type": "string"}}},
+        }
+        args = _build_error_args(tool)
+        assert args["query"] == ""
+
+    def test_build_error_args_number(self):
+        """Sends string for number params (type mismatch)."""
+        tool = {
+            "name": "test",
+            "inputSchema": {"properties": {"count": {"type": "integer"}}},
+        }
+        args = _build_error_args(tool)
+        assert args["count"] == "not_a_number"
+
+    def test_build_error_args_empty_schema(self):
+        """Empty schema produces empty args."""
+        tool = {"name": "test", "inputSchema": {}}
+        args = _build_error_args(tool)
+        assert args == {}

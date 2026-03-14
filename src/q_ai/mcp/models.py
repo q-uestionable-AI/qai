@@ -1,0 +1,110 @@
+"""MCP-domain data models for scanner modules.
+
+Contains core types used across audit, proxy, inject, and chain modules.
+Severity, ScanFinding, and ScanContext are consumed by all scanner modules
+and the orchestration layer.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
+
+
+class Severity(StrEnum):
+    """CVSS-aligned severity levels for scanner findings."""
+
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    INFO = "info"
+
+
+class Direction(StrEnum):
+    """Direction of a proxied message relative to the MCP client.
+
+    Attributes:
+        CLIENT_TO_SERVER: Message flowing from the MCP client to the server.
+        SERVER_TO_CLIENT: Message flowing from the MCP server to the client.
+    """
+
+    CLIENT_TO_SERVER = "client_to_server"
+    SERVER_TO_CLIENT = "server_to_client"
+
+
+class Transport(StrEnum):
+    """MCP transport type.
+
+    Attributes:
+        STDIO: Standard input/output transport.
+        SSE: Server-Sent Events transport.
+        STREAMABLE_HTTP: Streamable HTTP transport.
+    """
+
+    STDIO = "stdio"
+    SSE = "sse"
+    STREAMABLE_HTTP = "streamable-http"
+
+
+@dataclass
+class ScanFinding:
+    """A single security finding from a scanner module.
+
+    Attributes:
+        rule_id: Unique identifier for this check within the scanner
+            (e.g., 'cmd_injection_001').
+        category: Internal finding category key used by scanners and
+            framework resolution (e.g., 'command_injection', 'auth').
+        title: Short human-readable title.
+        description: Detailed description of the vulnerability.
+        severity: CVSS-aligned severity level.
+        evidence: Raw evidence supporting the finding (e.g., server response).
+        remediation: Recommended fix or mitigation.
+        tool_name: Name of the MCP tool that triggered the finding, if applicable.
+        metadata: Additional context (e.g., payload used, response time).
+        timestamp: When the finding was generated.
+        framework_ids: Mapping of framework names to their external IDs for
+            this finding (e.g., {'mcp': 'MCP05-001'}).
+    """
+
+    rule_id: str
+    category: str
+    title: str
+    description: str
+    severity: Severity
+    evidence: str = ""
+    remediation: str = ""
+    tool_name: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+    framework_ids: dict[str, str | list[str]] = field(default_factory=dict)
+
+
+@dataclass
+class ScanContext:
+    """Context passed to each scanner module during a scan.
+
+    Attributes:
+        server_info: Server metadata from MCP initialization.
+        tools: List of tools exposed by the server.
+        resources: List of resources exposed by the server.
+        prompts: List of prompts exposed by the server.
+        transport_type: Transport used to connect ('stdio', 'sse', 'streamable-http').
+        connection_url: Server URL for HTTP-based transports (SSE, Streamable HTTP).
+            None for stdio connections. Used by auth scanner for TLS and port checks.
+        session: The active MCP ClientSession for calling tools/resources.
+            Type is Any to avoid coupling scanner modules to the SDK.
+        config: Scanner-specific configuration overrides.
+    """
+
+    server_info: dict[str, Any] = field(default_factory=dict)
+    tools: list[dict[str, Any]] = field(default_factory=list)
+    resources: list[dict[str, Any]] = field(default_factory=list)
+    prompts: list[dict[str, Any]] = field(default_factory=list)
+    transport_type: str = "stdio"
+    connection_url: str | None = None
+    session: Any = None
+    config: dict[str, Any] = field(default_factory=dict)

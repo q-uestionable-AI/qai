@@ -7,6 +7,7 @@ import typer
 import uvicorn
 
 from q_ai import __version__
+from q_ai.audit.cli import app as audit_app
 from q_ai.core.cli.config import app as config_app
 from q_ai.core.cli.findings import app as findings_app
 from q_ai.core.cli.runs import app as runs_app
@@ -102,3 +103,4 @@ app.add_typer(runs_app)
 app.add_typer(findings_app)
 app.add_typer(targets_app)
 app.add_typer(config_app)
+app.add_typer(audit_app, name="audit", help="MCP server security scanning.")
