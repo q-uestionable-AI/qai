@@ -23,12 +23,13 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from typing import Any
 
-import q_ai
 from mcp.client.session import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Implementation, InitializeResult
+
+import q_ai
 
 logger = logging.getLogger("q_ai.mcp.client")
 
