@@ -1,0 +1,79 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "q-ai"
+version = "0.0.1"
+description = "Offensive security platform for agentic AI infrastructure"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [
+    { name = "Richard Spicer", email = "richard@richardspicer.io" },
+]
+keywords = ["security", "ai", "mcp", "red-team", "offensive-security"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+]
+dependencies = [
+    "typer>=0.9",
+    "rich>=13.0",
+]
+
+[project.scripts]
+qai = "q_ai.cli:app"
+
+[project.urls]
+Homepage = "https://q-uestionable.ai"
+Repository = "https://github.com/q-uestionable-AI/qai"
+Issues = "https://github.com/q-uestionable-AI/qai/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/q_ai"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-timeout>=2.2",
+    "pre-commit>=3.5",
+    "mypy>=1.8",
+    "ruff>=0.4",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "S", "A", "C4", "DTZ", "T20", "RUF"]
+ignore = [
+    "S101",  # assert usage (fine in tests)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+disallow_untyped_defs = true
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+timeout = 30
