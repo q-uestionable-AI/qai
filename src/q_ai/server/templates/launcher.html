@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}q-ai — Launcher{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-6 py-12">
+    <div class="text-center mb-10">
+        <h1 class="text-3xl font-bold mb-2">What do you want to test?</h1>
+        <p class="text-base-content/50">
+            Select a workflow to begin. Each combines multiple modules into a guided assessment.
+        </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for wf in workflows %}
+        <div class="card bg-base-100 border border-base-content/5 workflow-card cursor-pointer hover:border-primary/25"
+             onclick="document.getElementById('workflow-modal').showModal()">
+            <div class="card-body p-6">
+                <h3 class="card-title text-base">{{ wf.name }}</h3>
+                <p class="text-sm text-base-content/60 mb-3">{{ wf.description }}</p>
+                <div class="flex flex-wrap gap-1.5">
+                    {% for mod in wf.modules %}
+                    <span class="badge badge-sm badge-outline badge-primary font-semibold uppercase tracking-wider text-[0.65rem]">
+                        {{ mod }}
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Placeholder modal -->
+<dialog id="workflow-modal" class="modal">
+    <div class="modal-box">
+        <h3 class="text-lg font-bold">Coming Soon</h3>
+        <p class="py-4 text-base-content/70">
+            Configuration and orchestration arrive in Phase 5.
+        </p>
+        <div class="modal-action">
+            <form method="dialog">
+                <button class="btn btn-primary btn-sm">Close</button>
+            </form>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+{% endblock %}
