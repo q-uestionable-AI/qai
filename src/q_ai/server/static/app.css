@@ -1,0 +1,59 @@
+/* q-ai custom styles — supplements DaisyUI dark theme */
+
+/* Workflow card hover effects */
+.workflow-card {
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.workflow-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, oklch(var(--p) / 0.4), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.workflow-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.workflow-card:hover::before {
+    opacity: 1;
+}
+
+/* Severity badge colors */
+.badge-critical { --tw-bg-opacity: 1; background-color: oklch(0.637 0.237 25.331); color: #fff; }
+.badge-high { --tw-bg-opacity: 1; background-color: oklch(0.705 0.213 47.604); color: #fff; }
+.badge-medium { --tw-bg-opacity: 1; background-color: oklch(0.795 0.184 86.047); color: #000; }
+.badge-low { --tw-bg-opacity: 1; background-color: oklch(0.623 0.214 259.815); color: #fff; }
+.badge-info { --tw-bg-opacity: 1; background-color: oklch(0.551 0.027 264.364); color: #fff; }
+
+/* Truncated ID styling */
+.id-truncated {
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 0.8rem;
+    opacity: 0.7;
+}
+
+/* Empty state styling */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    opacity: 0.5;
+}
+
+.empty-state svg {
+    width: 3rem;
+    height: 3rem;
+    margin-bottom: 1rem;
+}

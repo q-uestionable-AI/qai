@@ -5,6 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from q_ai.server.app import create_app
 from q_ai.server.helpers import (
     delete_port_file,
     find_free_port,
@@ -63,3 +67,19 @@ class TestOpenBrowser:
         with patch("q_ai.server.helpers.webbrowser.open") as mock_open:
             open_browser("http://localhost:8000")
             mock_open.assert_called_once_with("http://localhost:8000")
+
+
+class TestCreateApp:
+    """create_app returns a configured FastAPI instance."""
+
+    def test_returns_fastapi_app(self, tmp_db: Path) -> None:
+        app = create_app(db_path=tmp_db)
+        assert isinstance(app, FastAPI)
+
+    def test_static_files_mounted(self, client: TestClient) -> None:
+        resp = client.get("/static/app.css")
+        assert resp.status_code == 200
+
+    def test_app_title(self, tmp_db: Path) -> None:
+        app = create_app(db_path=tmp_db)
+        assert app.title == "q-ai"
