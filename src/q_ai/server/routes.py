@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, Request, WebSocket
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from q_ai.core.db import get_connection, list_findings, list_runs, list_targets
+from q_ai.core.db import get_connection, get_run, list_findings, list_runs, list_targets
 from q_ai.core.models import RunStatus, Severity
 
 router = APIRouter()
@@ -239,9 +239,8 @@ async def api_audit_scan_status(request: Request, run_id: str) -> HTMLResponse:
     templates = _get_templates(request)
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
-        runs = list_runs(conn, module="audit")
-    matching = [r for r in runs if r.id == run_id]
-    status = matching[0].status.name if matching else "UNKNOWN"
+        run = get_run(conn, run_id)
+    status = run.status.name if run is not None else "UNKNOWN"
     return templates.TemplateResponse(request, "partials/audit_tab.html", {"scan_status": status})
 
 

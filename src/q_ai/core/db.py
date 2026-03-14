@@ -143,6 +143,25 @@ def update_run_status(
     )
 
 
+def get_run(
+    conn: sqlite3.Connection,
+    run_id: str,
+) -> Run | None:
+    """Retrieve a run by ID.
+
+    Args:
+        conn: Active database connection.
+        run_id: ID of the run to retrieve.
+
+    Returns:
+        A Run instance or None if not found.
+    """
+    row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+    if row is None:
+        return None
+    return Run.from_row(dict(row))
+
+
 def list_runs(
     conn: sqlite3.Connection,
     module: str | None = None,
