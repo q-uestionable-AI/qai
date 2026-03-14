@@ -23,6 +23,7 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from typing import Any
 
+import q_ai
 from mcp.client.session import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
@@ -33,7 +34,7 @@ logger = logging.getLogger("q_ai.mcp.client")
 
 
 # Client info sent during MCP handshake -- identifies us to the server.
-_CLIENT_INFO = Implementation(name="q-ai", version="0.1.0")
+_CLIENT_INFO = Implementation(name="q-ai", version=q_ai.__version__)
 
 
 @dataclass
