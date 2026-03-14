@@ -18,10 +18,10 @@
         <!-- Main panel area -->
         <div class="flex-1">
             <div role="tablist" class="tabs tabs-bordered mb-4">
-                <a role="tab" class="tab tab-active" onclick="switchTab(this, 'audit')">audit</a>
-                <a role="tab" class="tab" onclick="switchTab(this, 'proxy')">proxy</a>
-                <a role="tab" class="tab" onclick="switchTab(this, 'inject')">inject</a>
-                <a role="tab" class="tab" onclick="switchTab(this, 'chain')">chain</a>
+                <button type="button" role="tab" class="tab tab-active" aria-selected="true" tabindex="0" onclick="switchTab(this, 'audit')">audit</button>
+                <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'proxy')">proxy</button>
+                <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'inject')">inject</button>
+                <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'chain')">chain</button>
             </div>
 
             <div class="bg-base-100 rounded-lg border border-base-content/5 p-4 min-h-[400px]">
@@ -41,8 +41,14 @@
 
             <script>
             function switchTab(el, name) {
-                document.querySelectorAll('[role="tab"]').forEach(t => t.classList.remove('tab-active'));
+                document.querySelectorAll('[role="tab"]').forEach(t => {
+                    t.classList.remove('tab-active');
+                    t.setAttribute('aria-selected', 'false');
+                    t.setAttribute('tabindex', '-1');
+                });
                 el.classList.add('tab-active');
+                el.setAttribute('aria-selected', 'true');
+                el.setAttribute('tabindex', '0');
                 document.querySelectorAll('[id^="tab-"]').forEach(d => d.classList.add('hidden'));
                 document.getElementById('tab-' + name).classList.remove('hidden');
             }
