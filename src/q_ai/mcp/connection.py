@@ -187,7 +187,7 @@ class MCPConnection:
         """Disconnect from the server, clean up all resources."""
         await self._exit_stack.aclose()
 
-    async def _open_transport(self) -> tuple:
+    async def _open_transport(self) -> tuple[Any, Any]:
         """Open the appropriate transport and return (read_stream, write_stream).
 
         Uses AsyncExitStack to manage the transport context manager's

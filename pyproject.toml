@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "questionable-ai"
+name = "q-ai"
 version = "0.0.1"
 description = "Offensive security platform for agentic AI infrastructure"
 readme = "README.md"

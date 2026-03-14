@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from q_ai.mcp.connection import MCPConnection
 
 
@@ -73,3 +75,19 @@ class TestStreamableHttpFactory:
             "http://localhost:8080/mcp", headers={"X-Custom": "value"}
         )
         assert conn._transport_args["headers"]["X-Custom"] == "value"
+
+
+class TestMCPConnectionErrors:
+    def test_unknown_transport_raises(self) -> None:
+        conn = MCPConnection(transport_type="unknown")
+        with pytest.raises(ValueError, match="Unknown transport type"):
+            import asyncio
+
+            asyncio.run(conn._open_transport())
+
+    async def test_aenter_cleanup_on_failure(self) -> None:
+        """Verify resources are cleaned up if initialization fails."""
+        conn = MCPConnection.stdio("nonexistent_command_that_does_not_exist_xyz")
+        with pytest.raises(ConnectionError):
+            async with conn:
+                pass  # Should not reach here
