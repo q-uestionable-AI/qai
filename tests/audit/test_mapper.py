@@ -78,8 +78,8 @@ class TestBuildDescription:
 class TestPersistScan:
     def _make_db(self) -> Path:
         """Create a temporary database with schema."""
-        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-        tmp.close()
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+            pass
         db_path = Path(tmp.name)
         conn = sqlite3.connect(str(db_path))
         conn.execute("PRAGMA journal_mode=WAL")
