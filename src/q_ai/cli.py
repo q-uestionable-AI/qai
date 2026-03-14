@@ -5,6 +5,10 @@ from __future__ import annotations
 import typer
 
 from q_ai import __version__
+from q_ai.core.cli.config import app as config_app
+from q_ai.core.cli.findings import app as findings_app
+from q_ai.core.cli.runs import app as runs_app
+from q_ai.core.cli.targets import app as targets_app
 
 app = typer.Typer(
     name="qai",
@@ -32,3 +36,9 @@ def main(
     ),
 ) -> None:
     """q-ai: Offensive security platform for agentic AI infrastructure."""
+
+
+app.add_typer(runs_app)
+app.add_typer(findings_app)
+app.add_typer(targets_app)
+app.add_typer(config_app)
