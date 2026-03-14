@@ -87,7 +87,9 @@ async def launcher(request: Request) -> HTMLResponse:
 async def operations(request: Request) -> HTMLResponse:
     """Render the operations skeleton view."""
     templates = _get_templates(request)
-    return templates.TemplateResponse(request, "operations.html", {"active": "operations"})
+    return templates.TemplateResponse(
+        request, "operations.html", {"active": "operations", "findings": [], "scan_status": None}
+    )
 
 
 @router.get("/research")
@@ -215,3 +217,41 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             await websocket.receive_text()
     except Exception:  # noqa: S110  # WebSocket disconnect is expected
         pass
+
+
+# ---------------------------------------------------------------------------
+# Audit API routes
+# ---------------------------------------------------------------------------
+
+
+@router.post("/api/audit/scan")
+async def api_audit_scan(request: Request) -> HTMLResponse:
+    """Start an audit scan in the background."""
+    templates = _get_templates(request)
+    return templates.TemplateResponse(
+        request, "partials/audit_tab.html", {"scan_status": "submitted"}
+    )
+
+
+@router.get("/api/audit/scan/{run_id}/status")
+async def api_audit_scan_status(request: Request, run_id: str) -> HTMLResponse:
+    """Return scan progress partial."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        runs = list_runs(conn, module="audit")
+    matching = [r for r in runs if r.id == run_id]
+    status = matching[0].status.name if matching else "UNKNOWN"
+    return templates.TemplateResponse(request, "partials/audit_tab.html", {"scan_status": status})
+
+
+@router.get("/api/audit/findings/{run_id}")
+async def api_audit_findings(request: Request, run_id: str) -> HTMLResponse:
+    """Return findings partial for a specific scan run."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        findings = list_findings(conn, run_id=run_id)
+    return templates.TemplateResponse(
+        request, "partials/audit_findings.html", {"findings": findings}
+    )

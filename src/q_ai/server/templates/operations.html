@@ -24,13 +24,8 @@
                 <a role="tab" class="tab">chain</a>
             </div>
 
-            <div class="bg-base-100 rounded-lg border border-base-content/5 min-h-[400px] flex items-center justify-center">
-                <div class="empty-state">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
-                    </svg>
-                    <p class="text-sm">Launch a workflow to see module output here.</p>
-                </div>
+            <div class="bg-base-100 rounded-lg border border-base-content/5 p-4 min-h-[400px]">
+                {% include "partials/audit_tab.html" %}
             </div>
         </div>
 
@@ -39,13 +34,8 @@
             <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50 mb-3">
                 Findings
             </h3>
-            <div class="bg-base-100 rounded-lg border border-base-content/5 min-h-[400px] flex items-center justify-center">
-                <div class="empty-state">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                    </svg>
-                    <p class="text-sm">No findings yet.</p>
-                </div>
+            <div class="bg-base-100 rounded-lg border border-base-content/5 min-h-[400px] p-4">
+                {% include "partials/audit_findings.html" %}
             </div>
         </div>
     </div>
