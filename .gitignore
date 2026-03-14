@@ -43,3 +43,6 @@ Thumbs.db
 
 # uv
 uv.lock
+
+# Superpowers brainstorm artifacts
+.superpowers/
