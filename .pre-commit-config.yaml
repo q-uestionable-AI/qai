@@ -38,6 +38,6 @@ repos:
     hooks:
       - id: mypy
         args: ['--config-file=pyproject.toml', 'src/q_ai/']
-        additional_dependencies: ['typer', 'rich']
+        additional_dependencies: ['typer', 'rich', 'pyyaml', 'types-pyyaml']
         pass_filenames: false
         files: ^src/
