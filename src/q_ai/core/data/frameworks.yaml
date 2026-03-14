@@ -1,0 +1,50 @@
+# Framework mapping data for q-ai
+# Maps internal categories to external security framework identifiers
+# Updated: 2026-03-14
+
+frameworks:
+  owasp_mcp_top10:
+    version: "2025-beta"
+    url: "https://owasp.org/www-project-mcp-top-10/"
+    mappings:
+      command_injection: "MCP05"
+      auth: "MCP07"
+      token_exposure: "MCP01"
+      permissions: "MCP02"
+      tool_poisoning: "MCP03"
+      supply_chain: "MCP04"
+      prompt_injection: "MCP06"
+      audit_telemetry: "MCP08"
+      shadow_servers: "MCP09"
+      context_sharing: "MCP10"
+
+  owasp_agentic_top10:
+    version: "2026"
+    url: "https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/"
+    mappings:
+      prompt_injection: "ASI01"
+      tool_poisoning: "ASI02"
+      command_injection: "ASI02"
+      supply_chain: "ASI04"
+      context_sharing: "ASI06"
+
+  mitre_atlas:
+    version: "4.0"
+    url: "https://atlas.mitre.org/"
+    mappings:
+      command_injection: "AML.T0040"
+      prompt_injection: "AML.T0051"
+
+  cwe:
+    version: "4.15"
+    mappings:
+      command_injection:
+        - "CWE-78"
+        - "CWE-88"
+        - "CWE-22"
+      token_exposure:
+        - "CWE-798"
+        - "CWE-312"
+      permissions:
+        - "CWE-269"
+        - "CWE-732"
