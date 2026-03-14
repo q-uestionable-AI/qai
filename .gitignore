@@ -43,3 +43,9 @@ Thumbs.db
 
 # uv
 uv.lock
+
+# Claude Code
+.claude/
+
+# Superpowers brainstorm artifacts
+.superpowers/

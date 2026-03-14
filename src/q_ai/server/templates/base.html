@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}q-ai{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.23/dist/full.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/htmx.min.js"></script>
+    <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="bg-base-300 min-h-screen flex flex-col">
+    <!-- Navigation -->
+    <nav class="navbar bg-base-100 border-b border-base-content/5 sticky top-0 z-50">
+        <div class="flex-1">
+            <a href="/" class="text-xl font-bold tracking-tight">
+                <span class="text-primary">q</span>ai
+            </a>
+        </div>
+        <div class="flex-none">
+            <ul class="menu menu-horizontal px-1 gap-1">
+                <li>
+                    <a href="/"
+                       class="{% if active == 'launcher' %}active bg-primary/15 text-base-content{% endif %}">
+                        Launcher
+                    </a>
+                </li>
+                <li>
+                    <a href="/operations"
+                       class="{% if active == 'operations' %}active bg-primary/15 text-base-content{% endif %}">
+                        Operations
+                    </a>
+                </li>
+                <li>
+                    <a href="/research"
+                       class="{% if active == 'research' %}active bg-primary/15 text-base-content{% endif %}">
+                        Research
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Page content -->
+    <main class="flex-1">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
