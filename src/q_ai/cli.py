@@ -1,7 +1,5 @@
 """Root CLI for the q-ai platform."""
 
-from __future__ import annotations
-
 import atexit
 import threading
 
