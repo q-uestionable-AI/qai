@@ -1,10 +1,35 @@
-/* q-ai custom styles — supplements DaisyUI dark theme */
+/* q-ai custom styles — brand-aligned with {q-AI} ecosystem */
 
-/* Workflow card hover effects */
+/* ── DaisyUI dark theme overrides ──────────────────────────── */
+[data-theme="dark"] {
+    --b1: 0.22 0.032 257;          /* #1e293b — card/surface backgrounds */
+    --b2: 0.14 0.020 270;          /* mid-tone between body and surface */
+    --b3: 0.07 0.008 278;          /* #08080c — page body background */
+    --bc: 0.87 0.022 253;          /* base content — light text */
+    --p: 0.68 0.132 202;           /* #06b6d4 — teal primary */
+    --pc: 0.98 0.005 200;          /* primary content — near-white */
+    --s: 0.69 0.163 293;           /* #a78bfa — purple secondary */
+    --sc: 0.98 0.005 293;          /* secondary content — near-white */
+    --a: 0.69 0.163 293;           /* accent — purple */
+    --ac: 0.98 0.005 293;          /* accent content */
+    --n: 0.22 0.032 257;           /* neutral — same as surface */
+    --nc: 0.87 0.022 253;          /* neutral content */
+    --rounded-box: 10px;           /* card border radius */
+}
+
+/* ── Typography ────────────────────────────────────────────── */
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ── Workflow card styling ─────────────────────────────────── */
 .workflow-card {
     transition: all 0.2s ease;
     position: relative;
     overflow: hidden;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
 }
 
 .workflow-card::before {
@@ -14,13 +39,14 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, transparent, oklch(var(--p) / 0.4), transparent);
+    background: linear-gradient(90deg, transparent, #a78bfa80, transparent);
     opacity: 0;
     transition: opacity 0.3s;
 }
 
 .workflow-card:hover {
     transform: translateY(-2px);
+    border-color: rgba(139, 92, 246, 0.3);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
@@ -28,21 +54,26 @@
     opacity: 1;
 }
 
-/* Severity badge colors */
-.badge-critical { --tw-bg-opacity: 1; background-color: oklch(0.637 0.237 25.331); color: #fff; }
-.badge-high { --tw-bg-opacity: 1; background-color: oklch(0.705 0.213 47.604); color: #fff; }
-.badge-medium { --tw-bg-opacity: 1; background-color: oklch(0.795 0.184 86.047); color: #000; }
-.badge-low { --tw-bg-opacity: 1; background-color: oklch(0.623 0.214 259.815); color: #fff; }
-.badge-info { --tw-bg-opacity: 1; background-color: oklch(0.551 0.027 264.364); color: #fff; }
+/* ── Severity badge colors (brand-aligned) ─────────────────── */
+.badge-critical { background-color: #ef4444; color: #fff; }
+.badge-high     { background-color: #f59e0b; color: #fff; }
+.badge-medium   { background-color: #eab308; color: #000; }
+.badge-low      { background-color: #06b6d4; color: #fff; }
+.badge-info     { background-color: #94a3b8; color: #fff; }
 
-/* Truncated ID styling */
+/* ── Module pill styling ───────────────────────────────────── */
+.module-pill {
+    font-family: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ── Truncated ID styling ──────────────────────────────────── */
 .id-truncated {
-    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-family: 'Fira Code', ui-monospace, SFMono-Regular, monospace;
     font-size: 0.8rem;
     opacity: 0.7;
 }
 
-/* Empty state styling */
+/* ── Empty state styling ───────────────────────────────────── */
 .empty-state {
     display: flex;
     flex-direction: column;
@@ -56,4 +87,12 @@
     width: 3rem;
     height: 3rem;
     margin-bottom: 1rem;
+}
+
+/* ── Launcher vertical centering ───────────────────────────── */
+.launcher-centered {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: calc(100vh - 64px);  /* full viewport minus navbar */
 }
