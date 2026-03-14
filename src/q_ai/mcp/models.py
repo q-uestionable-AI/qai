@@ -54,8 +54,10 @@ class ScanFinding:
     """A single security finding from a scanner module.
 
     Attributes:
-        rule_id: Unique identifier for this check (e.g., 'MCP05-001').
-        category: Finding category (e.g., 'MCP05').
+        rule_id: Unique identifier for this check within the scanner
+            (e.g., 'cmd_injection_001').
+        category: Internal finding category key used by scanners and
+            framework resolution (e.g., 'command_injection', 'auth').
         title: Short human-readable title.
         description: Detailed description of the vulnerability.
         severity: CVSS-aligned severity level.
@@ -64,7 +66,8 @@ class ScanFinding:
         tool_name: Name of the MCP tool that triggered the finding, if applicable.
         metadata: Additional context (e.g., payload used, response time).
         timestamp: When the finding was generated.
-        framework_ids: Mapping of framework names to their IDs for this finding.
+        framework_ids: Mapping of framework names to their external IDs for
+            this finding (e.g., {'mcp': 'MCP05-001'}).
     """
 
     rule_id: str
