@@ -89,3 +89,6 @@ ignore_errors = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 timeout = 30
+markers = [
+    "integration: marks tests requiring external services (deselect with '-m \"not integration\"')",
+]
