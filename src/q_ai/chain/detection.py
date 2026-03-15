@@ -368,9 +368,8 @@ def write_detection_rules(
         raise ValueError(msg)
 
     suffix = output_path.suffix.lower()
-    is_file_path = (
-        (format == "sigma" and suffix in {".yml", ".yaml"})
-        or (format == "wazuh" and suffix == ".xml")
+    is_file_path = (format == "sigma" and suffix in {".yml", ".yaml"}) or (
+        format == "wazuh" and suffix == ".xml"
     )
 
     if is_file_path:
