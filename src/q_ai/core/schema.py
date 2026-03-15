@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_VERSION = 5
+CURRENT_VERSION = 6
 
 V1_TABLES = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -162,6 +162,41 @@ CREATE INDEX IF NOT EXISTS idx_chain_executions_run_id ON chain_executions(run_i
 CREATE INDEX IF NOT EXISTS idx_chain_step_outputs_execution_id ON chain_step_outputs(execution_id);
 """
 
+V6_TABLES = """
+CREATE TABLE IF NOT EXISTS ipi_payloads (
+    id TEXT PRIMARY KEY,
+    run_id TEXT REFERENCES runs(id),
+    uuid TEXT NOT NULL,
+    token TEXT NOT NULL,
+    filename TEXT,
+    output_path TEXT,
+    format TEXT NOT NULL,
+    technique TEXT NOT NULL,
+    payload_style TEXT,
+    payload_type TEXT,
+    callback_url TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ipi_hits (
+    id TEXT PRIMARY KEY,
+    uuid TEXT NOT NULL,
+    source_ip TEXT,
+    user_agent TEXT,
+    headers TEXT,
+    body TEXT,
+    token_valid INTEGER NOT NULL DEFAULT 0,
+    confidence TEXT NOT NULL,
+    timestamp TEXT NOT NULL
+);
+"""
+
+V6_INDEXES = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ipi_payloads_uuid ON ipi_payloads(uuid);
+CREATE INDEX IF NOT EXISTS idx_ipi_payloads_run_id ON ipi_payloads(run_id);
+CREATE INDEX IF NOT EXISTS idx_ipi_hits_uuid ON ipi_hits(uuid);
+"""
+
 
 def migrate(conn: sqlite3.Connection) -> None:
     """Run schema migrations up to CURRENT_VERSION.
@@ -172,6 +207,7 @@ def migrate(conn: sqlite3.Connection) -> None:
     Version 3 adds the inject_results table.
     Version 4 adds the proxy_sessions table.
     Version 5 adds chain_executions and chain_step_outputs tables.
+    Version 6 adds ipi_payloads and ipi_hits tables.
     """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version < 1:
@@ -195,3 +231,7 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.executescript(V5_TABLES)
         conn.executescript(V5_INDEXES)
         conn.execute("PRAGMA user_version = 5")
+    if version < 6:
+        conn.executescript(V6_TABLES)
+        conn.executescript(V6_INDEXES)
+        conn.execute("PRAGMA user_version = 6")
