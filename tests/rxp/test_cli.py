@@ -135,4 +135,8 @@ class TestCLISaveFlag:
     def test_validate_help_shows_save(self) -> None:
         result = runner.invoke(app, ["validate", "--help"])
         assert result.exit_code == 0
-        assert "--save" in result.output
+        # Strip ANSI escape codes — Rich panels wrap option names in formatting
+        import re
+
+        plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+        assert "--save" in plain
