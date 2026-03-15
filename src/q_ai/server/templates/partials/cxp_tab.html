@@ -1,0 +1,79 @@
+{% if results is defined %}
+<div class="flex items-center justify-between mb-4">
+    <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">
+        CXP — Context File Poisoning
+    </h3>
+    <button class="btn btn-xs btn-ghost"
+            hx-get="/api/cxp/results"
+            hx-target="#tab-cxp"
+            hx-swap="innerHTML">Refresh</button>
+</div>
+
+<div class="stats stats-horizontal shadow mb-4">
+    <div class="stat">
+        <div class="stat-title">Total Tests</div>
+        <div class="stat-value text-lg">{{ total_tests }}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-title">Hits</div>
+        <div class="stat-value text-lg text-error">{{ hit_count }}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-title">Partial</div>
+        <div class="stat-value text-lg text-warning">{{ partial_count }}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-title">Miss</div>
+        <div class="stat-value text-lg text-success">{{ miss_count }}</div>
+    </div>
+</div>
+
+{% if results %}
+<table class="table table-xs">
+    <thead>
+        <tr>
+            <th>Technique</th>
+            <th>Assistant</th>
+            <th>Format</th>
+            <th>Result</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for r in results %}
+        <tr>
+            <td><span class="badge badge-sm badge-outline">{{ r.technique_id }}</span></td>
+            <td>{{ r.assistant }}</td>
+            <td><span class="badge badge-sm">{{ r.format_id or '-' }}</span></td>
+            <td>
+                {% if r.validation_result == 'hit' %}
+                <span class="badge badge-sm badge-error">hit</span>
+                {% elif r.validation_result == 'partial' %}
+                <span class="badge badge-sm badge-warning">partial</span>
+                {% elif r.validation_result == 'miss' %}
+                <span class="badge badge-sm badge-success">miss</span>
+                {% else %}
+                <span class="badge badge-sm badge-ghost">{{ r.validation_result }}</span>
+                {% endif %}
+            </td>
+            <td class="text-xs opacity-50">{{ r.created_at }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="text-sm opacity-50">No CXP test results. Run <code>qai cxp generate</code> to create poisoned repos.</p>
+{% endif %}
+
+{% else %}
+<div class="flex items-center justify-between mb-4">
+    <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">
+        CXP — Context File Poisoning
+    </h3>
+    <button class="btn btn-xs btn-ghost"
+            hx-get="/api/cxp/results"
+            hx-target="#tab-cxp"
+            hx-swap="innerHTML">Load</button>
+</div>
+<p class="text-sm opacity-50">Click Load to view CXP test results and stats.</p>
+{% endif %}
