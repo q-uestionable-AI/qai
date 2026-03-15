@@ -143,6 +143,11 @@
     "og:site_name": "{q-AI} Docs",
     "og:description": "Offensive security platform for agentic AI infrastructure"
   },
+  "seo": {
+    "metatags": {
+      "canonical": "https://docs.q-uestionable.ai"
+    }
+  },
   "search": {
     "placeholder": "Search docs..."
   }
