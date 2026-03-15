@@ -7,6 +7,7 @@ with automatic finding creation for hits.
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from pathlib import Path
 
@@ -50,7 +51,13 @@ def persist_build(
                 f"build-{format_id}-{len(rules_inserted)}-rules",
                 None,
                 None,
-                None,
+                json.dumps(
+                    {
+                        "format_id": format_id,
+                        "rules_inserted": rules_inserted,
+                        "repo_dir": repo_dir,
+                    }
+                ),
                 int(RunStatus.COMPLETED),
                 now_iso,
                 now_iso,

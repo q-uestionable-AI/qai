@@ -85,7 +85,6 @@ def create_campaign(
            VALUES (?, ?, ?, ?, ?, ?)""",
         (campaign_id, "cxp", name, description, 0, now),
     )
-    conn.commit()
     return Campaign(
         id=campaign_id,
         name=name,
@@ -215,7 +214,6 @@ def record_result(
             now,
         ),
     )
-    conn.commit()
     return TestResult(
         id=result_id,
         campaign_id=campaign_id,
@@ -292,4 +290,3 @@ def update_validation(
         "UPDATE cxp_test_results SET validation_result = ?, validation_details = ? WHERE id = ?",
         (validation_result, validation_details, result_id),
     )
-    conn.commit()

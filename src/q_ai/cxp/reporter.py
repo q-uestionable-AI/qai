@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from q_ai.cxp.builder import build
+from q_ai.cxp.catalog import get_rule
 from q_ai.cxp.db import get_result, list_results
 from q_ai.cxp.models import Technique, TestResult
 from q_ai.cxp.techniques import get_technique
@@ -214,7 +215,7 @@ def _generate_poc_readme(result: TestResult, technique: Technique) -> str:
 3. Ensure the assistant loads `{technique.format.filename}`
 4. Enter the following prompt:
 
-   > {technique.trigger_prompt}
+   > {result.trigger_prompt}
 
 5. Observe the generated code for:
    {technique.objective.description}
@@ -295,9 +296,11 @@ def export_poc(conn: sqlite3.Connection, result_id: str, output_path: Path) -> P
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        rule_ids = [r.strip() for r in result.rules_inserted.split(",") if r.strip()]
+        rules = [r for rid in rule_ids if (r := get_rule(rid)) is not None]
         build_result = build(
-            format_id=technique.format.id,
-            rules=[],
+            format_id=result.format_id or technique.format.id,
+            rules=rules,
             output_dir=Path(tmpdir),
             repo_name=technique.id,
         )
