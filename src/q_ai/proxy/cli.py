@@ -42,10 +42,6 @@ def start(
         False,
         help="Start in intercept mode.",
     ),
-    listen_port: int = typer.Option(
-        8888,
-        help="Local port for SSE/HTTP.",
-    ),
     session_file: str | None = typer.Option(
         None,
         help="Auto-save session to this file.",

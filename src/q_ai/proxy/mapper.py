@@ -23,6 +23,7 @@ def persist_session(
     store: SessionStore,
     db_path: Path | None = None,
     duration_seconds: float | None = None,
+    artifacts_dir: Path | None = None,
 ) -> str:
     """Persist a proxy session to the database and artifacts.
 
@@ -34,6 +35,8 @@ def persist_session(
         db_path: Path to database file. Defaults to ~/.qai/qai.db.
         duration_seconds: Session duration in seconds. Computed from
             store timestamps if not provided.
+        artifacts_dir: Directory for session artifacts. Defaults to
+            ~/.qai/artifacts.
 
     Returns:
         The run ID for the persisted session.
@@ -55,8 +58,10 @@ def persist_session(
     server_name = store.server_command or store.server_url or ""
 
     # Save session JSON to artifacts
+    if artifacts_dir is None:
+        artifacts_dir = _ARTIFACTS_DIR
     session_rel_path = f"{run_id}/session.json"
-    session_abs_path = _ARTIFACTS_DIR / session_rel_path
+    session_abs_path = artifacts_dir / session_rel_path
     store.save(session_abs_path)
 
     with get_connection(db_path) as conn:

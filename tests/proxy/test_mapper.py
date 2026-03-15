@@ -53,7 +53,7 @@ class TestPersistSession:
         db_path = tmp_path / "test.db"
         store = _make_store(num_messages=5)
 
-        run_id = persist_session(store, db_path=db_path)
+        run_id = persist_session(store, db_path=db_path, artifacts_dir=tmp_path / "artifacts")
 
         assert run_id  # non-empty string
 
@@ -72,9 +72,10 @@ class TestPersistSession:
 
     def test_saves_session_json(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"
+        artifacts_dir = tmp_path / "artifacts"
         store = _make_store(num_messages=2)
 
-        run_id = persist_session(store, db_path=db_path)
+        run_id = persist_session(store, db_path=db_path, artifacts_dir=artifacts_dir)
 
         with get_connection(db_path) as conn:
             session = conn.execute(
@@ -82,8 +83,7 @@ class TestPersistSession:
             ).fetchone()
             session_file = session["session_file"]
 
-        # Session file should exist under artifacts
-        artifacts_dir = Path.home() / ".qai" / "artifacts"
+        # Session file should exist under tmp artifacts dir
         full_path = artifacts_dir / session_file
         assert full_path.exists()
 
@@ -91,7 +91,7 @@ class TestPersistSession:
         db_path = tmp_path / "test.db"
         store = _make_store()
 
-        run_id = persist_session(store, db_path=db_path)
+        run_id = persist_session(store, db_path=db_path, artifacts_dir=tmp_path / "artifacts")
 
         with get_connection(db_path) as conn:
             run = conn.execute("SELECT status FROM runs WHERE id = ?", (run_id,)).fetchone()
@@ -106,7 +106,7 @@ class TestPersistSession:
             started_at=datetime.now(tz=UTC),
         )
 
-        run_id = persist_session(store, db_path=db_path)
+        run_id = persist_session(store, db_path=db_path, artifacts_dir=tmp_path / "artifacts")
 
         with get_connection(db_path) as conn:
             session = conn.execute(
