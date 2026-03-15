@@ -264,13 +264,13 @@ class TestSaveHitGetHits:
 
     def test_get_hits_returns_all_when_no_uuid(self, tmp_path: Path) -> None:
         db = tmp_path / "test.db"
-        save_hit(_make_hit(uuid_val="uuid-a"))
+        save_hit(_make_hit(uuid_val="uuid-a"), db_path=db)
         save_hit(_make_hit(uuid_val="uuid-b"), db_path=db)
         save_hit(_make_hit(uuid_val="uuid-a"), db_path=db)
 
-        # No uuid filter — should return hits saved to db
+        # No uuid filter — should return all 3 hits
         results = get_hits(db_path=db)
-        assert len(results) >= 1  # at minimum the uuid-b hit
+        assert len(results) == 3
 
     def test_get_hits_filters_by_uuid(self, tmp_path: Path) -> None:
         db = tmp_path / "test.db"

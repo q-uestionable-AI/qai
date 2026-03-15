@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS ipi_hits (
 """
 
 V6_INDEXES = """
-CREATE INDEX IF NOT EXISTS idx_ipi_payloads_uuid ON ipi_payloads(uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ipi_payloads_uuid ON ipi_payloads(uuid);
 CREATE INDEX IF NOT EXISTS idx_ipi_payloads_run_id ON ipi_payloads(run_id);
 CREATE INDEX IF NOT EXISTS idx_ipi_hits_uuid ON ipi_hits(uuid);
 """
