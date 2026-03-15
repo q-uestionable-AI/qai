@@ -35,9 +35,17 @@ class TestRegistry:
         assert wf.modules == ["audit", "proxy", "inject"]
 
     def test_unimplemented_workflows_have_none_executor(self) -> None:
-        """All default workflows have executor=None (not yet implemented)."""
+        """Unimplemented workflows have executor=None."""
         for wf in list_workflows():
+            if wf.id == "assess":
+                continue
             assert wf.executor is None, f"{wf.id} should have executor=None"
+
+    def test_assess_has_executor(self) -> None:
+        """Assess workflow has a non-None executor after registration."""
+        wf = get_workflow("assess")
+        assert wf is not None
+        assert wf.executor is not None
 
     def test_register_workflow_overwrites(self) -> None:
         """Registering a workflow with an existing ID overwrites it."""
