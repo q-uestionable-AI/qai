@@ -346,6 +346,7 @@ def list_findings(
     category: str | None = None,
     min_severity: Severity | None = None,
     run_id: str | None = None,
+    run_ids: list[str] | None = None,
     target_id: str | None = None,
 ) -> list[Finding]:
     """List findings with optional filters.
@@ -355,7 +356,8 @@ def list_findings(
         module: Filter by module name.
         category: Filter by finding category.
         min_severity: Filter findings at or above this severity.
-        run_id: Filter by run ID.
+        run_id: Filter by a single run ID.
+        run_ids: Filter by multiple run IDs (WHERE run_id IN (...)).
         target_id: Filter by target ID (joins on runs table).
 
     Returns:
@@ -384,6 +386,10 @@ def list_findings(
     if run_id is not None:
         conditions.append(f"{prefix}run_id = ?")
         params.append(run_id)
+    if run_ids is not None:
+        placeholders = ", ".join("?" for _ in run_ids)
+        conditions.append(f"{prefix}run_id IN ({placeholders})")
+        params.extend(run_ids)
     if target_id is not None:
         conditions.append("r.target_id = ?")
         params.append(target_id)

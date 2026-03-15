@@ -1,0 +1,15 @@
+{% if findings %}
+  <ul class="space-y-2">
+  {% for f in findings %}
+    <li class="text-sm border-l-2 pl-2
+        {% if f.severity.value >= 3 %}border-error text-error
+        {% elif f.severity.value == 2 %}border-warning text-warning
+        {% else %}border-base-content/20{% endif %}">
+        <span class="font-medium">{{ f.title }}</span>
+        <span class="text-xs text-base-content/40 ml-1">{{ f.module }}</span>
+    </li>
+  {% endfor %}
+  </ul>
+{% else %}
+  <p class="text-sm text-base-content/40">No findings yet.</p>
+{% endif %}
