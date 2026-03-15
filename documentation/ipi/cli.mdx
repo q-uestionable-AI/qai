@@ -1,0 +1,265 @@
+---
+title: IPI CLI Reference
+description: Command reference for qai ipi
+---
+
+```bash
+qai ipi [OPTIONS] COMMAND [ARGS]
+```
+
+Indirect Prompt Injection — Generate payloads and detect AI agent execution via document ingestion.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `generate` | Generate document(s) with hidden prompt injection payloads |
+| `techniques` | List all available hiding techniques |
+| `formats` | List supported output formats |
+| `listen` | Start the callback listener server |
+| `status` | Check campaign status and hits |
+| `export` | Export campaigns and hits to JSON |
+| `reset` | Reset all campaigns, hits, and generated files |
+
+---
+
+## generate
+
+Generate document(s) with hidden prompt injection payload.
+
+```bash
+qai ipi generate [OPTIONS]
+```
+
+Creates one or more documents containing hidden prompt injection payloads using the specified technique(s). Each generated document is registered in the database for callback tracking.
+
+### Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `--callback`, `-c` | TEXT | Yes | — | Callback server URL |
+| `--output`, `-o` | PATH | No | `./payloads/` | Output path (file or directory) |
+| `--format` | TEXT | No | `pdf` | Output format (pdf, image, markdown, html, docx, ics, eml) |
+| `--technique`, `-t` | TEXT | No | `all` | Technique(s): all, phase1, phase2, or specific names (comma-separated) |
+| `--payload-type` | TEXT | No | `callback` | Payload type: callback, exfil_summary, exfil_context, ssrf_internal, instruction_override, tool_abuse, persistence |
+| `--payload`, `--payload-style`, `-p` | TEXT | No | `obvious` | Payload style: obvious, citation, reviewer, helpful, academic, compliance, datasource |
+| `--name`, `-n` | TEXT | No | `report` | Base filename |
+| `--dangerous` | FLAG | No | `false` | Enable non-callback payload types (exfil, ssrf, override, etc.) |
+| `--seed` | INT | No | — | Seed for deterministic UUID/token generation (reproducible corpus) |
+
+### Technique Presets
+
+| Preset | Techniques |
+|--------|-----------|
+| `all` | All 34 techniques across all formats |
+| `phase1` | `white_ink`, `off_canvas`, `metadata` (PDF basic) |
+| `phase2` | `tiny_text`, `white_rect`, `form_field`, `annotation`, `javascript`, `embedded_file`, `incremental` (PDF advanced) |
+
+Individual technique names can also be specified directly or as a comma-separated list. When using `--format`, only techniques valid for that format are generated — incompatible techniques are skipped with a warning.
+
+### Examples
+
+<CodeGroup>
+```bash Generate all PDF techniques
+qai ipi generate --callback http://localhost:8080
+```
+
+```bash Generate markdown payloads with citation style
+qai ipi generate \
+  --callback http://localhost:8080 \
+  --format markdown \
+  --payload-style citation
+```
+
+```bash Generate a specific technique with dangerous payload
+qai ipi generate \
+  --callback http://localhost:8080 \
+  --technique white_ink \
+  --payload-type exfil_summary \
+  --dangerous
+```
+
+```bash Reproducible corpus with seed
+qai ipi generate \
+  --callback http://localhost:8080 \
+  --technique all \
+  --seed 42
+```
+</CodeGroup>
+
+---
+
+## techniques
+
+List all available hiding techniques.
+
+```bash
+qai ipi techniques [OPTIONS]
+```
+
+Displays a table of all supported payload hiding techniques, organized by format and phase with descriptions.
+
+### Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `--format`, `-f` | TEXT | No | — | Filter by format (pdf, image, markdown, html, docx, ics, eml) |
+
+### Examples
+
+<CodeGroup>
+```bash List all techniques
+qai ipi techniques
+```
+
+```bash List only PDF techniques
+qai ipi techniques --format pdf
+```
+</CodeGroup>
+
+---
+
+## formats
+
+List supported output formats.
+
+```bash
+qai ipi formats
+```
+
+Displays a table of all document formats with implementation status and technique count. No options.
+
+---
+
+## listen
+
+Start the callback listener server.
+
+```bash
+qai ipi listen [OPTIONS]
+```
+
+Launches the FastAPI server that receives and logs callback requests from AI agents that execute the hidden payloads. Also serves the web dashboard at `/ui/`.
+
+### Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `--port`, `-p` | INT | No | `8080` | Port to listen on |
+| `--host`, `-h` | TEXT | No | `127.0.0.1` | Host to bind to |
+
+### Examples
+
+<CodeGroup>
+```bash Start on default port
+qai ipi listen
+```
+
+```bash Start on all interfaces, port 9090
+qai ipi listen --host 0.0.0.0 --port 9090
+```
+</CodeGroup>
+
+<Tip>
+The dashboard is available at `http://localhost:<port>/ui/` once the listener starts.
+</Tip>
+
+---
+
+## status
+
+Check status of campaigns and hits.
+
+```bash
+qai ipi status [UUID] [OPTIONS]
+```
+
+Without arguments, displays a table of all campaigns with hit counts and confidence breakdowns. With a UUID argument, shows detailed information for that campaign including all recorded hits.
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `UUID` | Optional — show details for a specific campaign |
+
+### Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `--format` | TEXT | No | — | Filter by format |
+| `--technique` | TEXT | No | — | Filter by technique |
+| `--payload-type` | TEXT | No | — | Filter by payload type |
+
+### Examples
+
+<CodeGroup>
+```bash Show all campaigns
+qai ipi status
+```
+
+```bash Show details for a specific campaign
+qai ipi status a1b2c3d4-...
+```
+
+```bash Filter by format and technique
+qai ipi status --format pdf --technique white_ink
+```
+</CodeGroup>
+
+---
+
+## export
+
+Export campaigns and hits to JSON.
+
+```bash
+qai ipi export [OPTIONS]
+```
+
+Exports all campaign and hit data to a JSON file for external analysis, reporting, or backup purposes.
+
+### Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `--output`, `-o` | PATH | No | `tracking.json` | Output file path |
+
+### Examples
+
+```bash
+qai ipi export --output results.json
+```
+
+---
+
+## reset
+
+Reset all campaigns, hits, and generated files.
+
+```bash
+qai ipi reset [OPTIONS]
+```
+
+Deletes all campaign and hit records from the database and removes generated payload files from disk. Prompts for confirmation unless `--yes` is passed.
+
+### Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `--yes`, `-y` | FLAG | No | `false` | Skip confirmation prompt |
+
+### Examples
+
+<CodeGroup>
+```bash Reset with confirmation prompt
+qai ipi reset
+```
+
+```bash Reset without confirmation
+qai ipi reset --yes
+```
+</CodeGroup>
+
+<Warning>
+This permanently deletes all campaign data and generated files. This action cannot be undone.
+</Warning>

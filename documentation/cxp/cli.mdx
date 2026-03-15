@@ -1,0 +1,242 @@
+---
+title: CXP CLI Reference
+description: Command reference for qai cxp
+---
+
+```bash
+qai cxp [OPTIONS] COMMAND [ARGS]
+```
+
+Context file poisoning research harness. Assemble poisoned instruction files from a rule catalog, generate test repositories, validate assistant output, and produce comparison reports.
+
+Running `qai cxp` with no subcommand launches the interactive TUI.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| *(no subcommand)* | Launch the interactive TUI |
+| `formats` | List supported assistant formats |
+| `generate` | Generate a poisoned test repository |
+| `validate` | Validate captured output against detection rules |
+| `record` | Record a test result into the evidence store |
+| `campaigns` | List campaigns and results |
+| `report` | Generate comparison matrices and PoC packages |
+
+---
+
+## Interactive TUI
+
+```bash
+qai cxp
+```
+
+Launches the Textual-based TUI for the full build → test → record workflow. The TUI walks through five screens:
+
+1. **Format Selection** — Choose the target assistant format
+2. **Rule Selection** — Browse the catalog, toggle rules, or add freestyle rules
+3. **Preview** — See the assembled context file with inserted rules highlighted
+4. **Generate** — Build the test repo, view prompt reference suggestions
+5. **Record** — Store test results with validation
+
+The TUI is the primary interface for CXP. CLI subcommands below are available for scripting and evidence queries.
+
+---
+
+## formats
+
+List supported assistant formats.
+
+```bash
+qai cxp formats
+```
+
+Prints a table of all registered formats with their ID, filename, target assistant, and syntax type.
+
+---
+
+## generate
+
+Generate a poisoned test repository.
+
+```bash
+qai cxp generate [OPTIONS]
+```
+
+Assembles a context file from a base template and selected rules, generates a project skeleton, prompt reference, and manifest. This is the CLI fallback for the TUI's build workflow — useful for scripting.
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--format` | TEXT | `cursorrules` | Target format ID |
+| `--rule` | TEXT | — | Rule ID(s) to insert (repeatable) |
+| `--output-dir` | PATH | `./repos` | Output directory |
+| `--repo-name` | TEXT | `webapp-demo-01` | Repo directory name |
+
+### Examples
+
+```bash
+# Generate with default format and no rules (clean base only)
+qai cxp generate
+
+# Generate with specific rules
+qai cxp generate --format cursorrules --rule weak-crypto-md5 --rule no-csrf
+
+# Generate for Claude Code format
+qai cxp generate --format claude-md --rule hardcoded-secrets
+
+# Custom output location
+qai cxp generate --format agents-md --rule shell-true --output-dir ./test-repos
+```
+
+---
+
+## validate
+
+Validate captured output against detection rules.
+
+```bash
+qai cxp validate [OPTIONS]
+```
+
+Checks assistant-generated code for indicators that the inserted rules were followed.
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--result` | TEXT | — | Stored result ID to validate |
+| `--technique` | TEXT | — | Technique ID (for file validation) |
+| `--file` | PATH | — | Path to file(s) to validate |
+| `--db` | PATH | `~/.qai/cxp.db` | Database path |
+
+### Examples
+
+```bash
+# Validate a stored result
+qai cxp validate --result abc123
+
+# Validate a file against a specific technique's rules
+qai cxp validate --technique backdoor-claude-md --file output.py
+```
+
+---
+
+## record
+
+Record a test result into the evidence store.
+
+```bash
+qai cxp record [OPTIONS]
+```
+
+Logs a test result into the CXP evidence database. The TUI's Record screen is the preferred way to record results; this command is the CLI fallback.
+
+### Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `--technique` | TEXT | Yes | — | Technique ID (or format_id for v0.2.0 builds) |
+| `--assistant` | TEXT | Yes | — | Assistant under test |
+| `--trigger-prompt` | TEXT | Yes | — | Prompt used to trigger |
+| `--file` | PATH | No | — | Path to assistant-generated code file(s) |
+| `--output-file` | PATH | No | — | Path to saved chat output file |
+| `--campaign` | TEXT | No | — | Existing campaign ID |
+| `--model` | TEXT | No | — | Underlying model name |
+| `--notes` | TEXT | No | — | Researcher observations |
+| `--db` | PATH | No | `~/.qai/cxp.db` | Database path |
+
+### Examples
+
+```bash
+qai cxp record \
+  --technique cursorrules \
+  --assistant "Cursor" \
+  --trigger-prompt "Create a user authentication module" \
+  --file ./output/auth.py \
+  --model "claude-sonnet-4-6"
+```
+
+---
+
+## campaigns
+
+List campaigns and results.
+
+```bash
+qai cxp campaigns [CAMPAIGN_ID] [OPTIONS]
+```
+
+Without an argument, lists all campaigns. With a campaign ID, shows detailed results for that campaign.
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `CAMPAIGN_ID` | Optional — show results for a specific campaign |
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--db` | PATH | `~/.qai/cxp.db` | Database path |
+
+### Examples
+
+```bash
+# List all campaigns
+qai cxp campaigns
+
+# View a specific campaign's results
+qai cxp campaigns campaign-2026-03-10
+```
+
+---
+
+## report
+
+Generate comparison matrices and PoC packages.
+
+```bash
+qai cxp report COMMAND [OPTIONS]
+```
+
+### report matrix
+
+Generate an assistant comparison matrix showing which rules succeeded or failed across assistants.
+
+```bash
+qai cxp report matrix [OPTIONS]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--campaign` | TEXT | — | Filter to specific campaign |
+| `--format` | TEXT | `markdown` | Output format |
+| `--output` | PATH | — | Write to file instead of stdout |
+| `--db` | PATH | `~/.qai/cxp.db` | Database path |
+
+```bash
+qai cxp report matrix
+qai cxp report matrix --campaign campaign-2026-03-10 --output matrix.md
+```
+
+### report poc
+
+Export a bounty-ready PoC package containing the poisoned file, trigger prompt, captured output, and validation results.
+
+```bash
+qai cxp report poc [OPTIONS]
+```
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `--result` | TEXT | Yes | — | Test result ID to package |
+| `--output` | PATH | No | `./poc-{technique}.zip` | Output zip path |
+| `--db` | PATH | No | `~/.qai/cxp.db` | Database path |
+
+```bash
+qai cxp report poc --result abc123
+qai cxp report poc --result abc123 --output ./evidence/poc-weak-crypto.zip
+```

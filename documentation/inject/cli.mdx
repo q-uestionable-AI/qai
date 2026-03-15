@@ -1,0 +1,110 @@
+---
+title: Inject CLI Reference
+description: Command reference for qai inject
+---
+
+Tool poisoning and prompt injection framework. Serves adversarial MCP tools, runs automated campaigns against AI models, and reports on injection effectiveness.
+
+## inject
+
+### inject list-payloads
+
+List available injection payload templates.
+
+```bash
+qai inject list-payloads [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--technique` | No | Filter by technique: `description_poisoning`, `output_injection`, `cross_tool_escalation` |
+| `--target` | No | Filter by target agent: `claude`, `gpt`, `copilot`, etc. |
+
+```bash
+qai inject list-payloads
+qai inject list-payloads --technique description_poisoning
+```
+
+### inject serve
+
+Start a malicious MCP server serving configurable payloads. The server presents MCP tools with poisoned descriptions and/or returns injection payloads in tool responses. Connect any MCP client to test how it handles adversarial tool content.
+
+```bash
+qai inject serve [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--transport` | Yes | Transport: `stdio` or `streamable-http` |
+| `--port` | No | Port for streamable-http listener (default: `8888`) |
+| `--payload-dir` | No | Directory of custom payload templates to serve |
+| `--config` | No | Payload configuration YAML file |
+
+<CodeGroup>
+```bash stdio
+qai inject serve --transport stdio
+```
+
+```bash Streamable HTTP
+qai inject serve \
+  --transport streamable-http \
+  --port 9000
+```
+</CodeGroup>
+
+Serve only custom payloads from a directory:
+
+```bash
+qai inject serve \
+  --transport stdio \
+  --payload-dir ./my-payloads
+```
+
+### inject campaign
+
+Run an injection campaign against an AI model. Systematically tests poisoned tool payloads against the target model via the Anthropic API, scoring each for effectiveness.
+
+```bash
+qai inject campaign [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--model` | Yes* | Anthropic model ID (e.g., `claude-sonnet-4-6`). Falls back to `QAI_MODEL` env var. |
+| `--rounds` | No | Number of attempts per payload (default: `1`) |
+| `--output` | No | Output directory for campaign JSON (default: `.`) |
+| `--payloads` | No | Comma-separated payload names, or `all` (default: `all`) |
+| `--technique` | No | Filter by technique: `description_poisoning`, `output_injection`, `cross_tool_escalation` |
+| `--target` | No | Filter by target agent (e.g., `claude`, `gpt`) |
+
+<Note>
+Requires `ANTHROPIC_API_KEY` environment variable to be set.
+
+`--model` is required unless `QAI_MODEL` environment variable is set.
+</Note>
+
+```bash
+qai inject campaign \
+  --model claude-sonnet-4-6 \
+  --rounds 3 \
+  --output results/ \
+  --technique description_poisoning
+```
+
+### inject report
+
+Render a summary report from campaign results. Loads a campaign JSON file and displays a Rich table summary.
+
+```bash
+qai inject report [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--input` / `-i` | Yes | Path to campaign JSON file |
+| `--format` / `-f` | No | Output format: `table` or `json` (default: `table`) |
+
+```bash
+qai inject report -i results/campaign-20260303T120000.json
+qai inject report -i results/campaign-20260303T120000.json -f json
+```

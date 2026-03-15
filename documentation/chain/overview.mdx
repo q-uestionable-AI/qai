@@ -1,0 +1,36 @@
+---
+title: Overview
+description: Declarative multi-step attack chain definition, tracing, and live execution
+---
+
+The chain module is a declarative framework for defining, validating, and executing multi-step attack paths that sequence audit findings and inject techniques into exploitation chains.
+
+## Why Chain Matters
+
+Real attacks against AI agent infrastructure are multi-step — compromise one server, escalate trust, pivot to the next. Chain provides a structured way to model these sequences, validate them against actual scanner and technique coverage, trace execution paths, and execute real attack chains against live targets.
+
+## How It Works
+
+The chain workflow follows five steps:
+
+1. **Define** — Write an attack chain in YAML with ordered steps referencing audit scanners or inject techniques
+2. **Validate** — Check module and technique references, graph structure, and reachability
+3. **Trace** — Run the success path in dry-run mode to preview the execution sequence
+4. **Execute** — Run the chain against real targets with `--no-dry-run`, collecting step evidence and artifacts
+5. **Analyze** — Review the JSON report with step-by-step outcomes, trust boundaries crossed, and the AI-evaluation interpret prompt
+
+## Built-in Components
+
+- **YAML chain loader** — Structural and semantic validation of chain definitions
+- **Graph analysis** — Cycle detection and reachability analysis across chain steps
+- **Dry-run tracer** — Produces ordered step traces without executing live campaigns
+- **Live execution engine** — Dispatches steps to audit/inject, accumulates artifacts, routes on success/failure
+- **Variable resolution** — Pass artifacts between steps via `$step_id.artifact_name` references
+- **Target configuration** — `chain-targets.yaml` for audit connection details and inject model selection
+- **3 built-in templates** — Delegation hijack, MCP server compromise, and RAG trust escalation
+
+## Next Steps
+
+- [Chain CLI Reference](/chain/cli) — Command reference for `qai chain`
+- [Chain Templates](/chain/templates) — Built-in chain templates and custom chain authoring
+- [Chain Architecture](/architecture/chain-module) — Module internals and execution engine design

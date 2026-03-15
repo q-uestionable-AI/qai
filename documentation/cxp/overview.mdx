@@ -1,0 +1,59 @@
+---
+title: Overview
+description: Research harness for context file poisoning in coding assistants
+---
+
+CXP is a research harness for studying whether poisoned project instruction files influence AI coding assistant behavior during code generation.
+
+## Why CXP Matters
+
+Coding assistants automatically ingest project instruction files — CLAUDE.md, .cursorrules, AGENTS.md, and similar. Any attacker who can place or modify these files (supply chain compromise, malicious repository, dependency confusion) controls the assistant's behavior for every developer working in that project.
+
+## How It Works
+
+The CXP workflow is interactive, driven by the TUI or CLI:
+
+1. **Select format** — Choose the target assistant's instruction file format (.cursorrules, CLAUDE.md, etc.)
+2. **Select rules** — Browse the rule catalog and pick insecure coding patterns to insert, or write freestyle rules
+3. **Preview** — See the assembled context file with inserted rules highlighted
+4. **Generate** — Build a test repository with the poisoned context file, project skeleton, and prompt reference
+5. **Test** — Open the repo in a coding assistant, issue a trigger prompt from the prompt reference
+6. **Record** — Store results in the evidence pipeline with validation against detection rules
+
+## Built-in Components
+
+- **Rule catalog** — 8 built-in insecure coding rules (weak crypto, hardcoded secrets, disabled CSRF, command injection, stack trace disclosure, supply chain, insecure permissions, data exfiltration) plus user-defined rules
+- **6 base templates** — Clean, legitimate assistant config files for each format, with section markers for rule insertion
+- **Builder engine** — Assembles context files from base templates + selected rules, strips all tool markers from output
+- **Prompt reference** — Companion file mapping inserted rules to suggested trigger prompts
+- **Evidence store** — SQLite database tracking campaigns, test results, and validation outcomes
+- **Output validator** — Detection rules that check whether the assistant followed the inserted instructions
+- **Reporter** — Comparison matrix across assistants + PoC package export for responsible disclosure
+
+## Interactive TUI
+
+Launch with `qai cxp` (no subcommand). The TUI walks through the full workflow:
+
+Format selection → Rule browsing/freestyle → Preview → Generate → Record results
+
+The TUI is the primary interface for building and testing. CLI subcommands remain available for scripting and evidence queries.
+
+## Testing Methodology
+
+### Repo Placement
+
+Open the generated repo as a **standalone project** in your IDE. Do not open it as a subfolder of another project — coding assistants gather context from the entire project tree, and parent repo files can contaminate the test.
+
+### Single Prompt Protocol
+
+Use one prompt from the prompt reference per test. Do not follow up or answer clarifying questions — the test measures first-prompt compliance with the poisoned instructions.
+
+### Evidence Collection
+
+After testing, record results through the TUI or CLI. The evidence store tracks which rules were inserted, which format was used, which assistant and model were tested, and whether the validator detected compliance.
+
+## Next Steps
+
+- [CXP CLI Reference](/cxp/cli) — Command reference for `qai cxp`
+- [Assistant Formats](/cxp/assistant-formats) — Supported coding assistant context file formats
+- [Output Validation](/cxp/validation) — Validating whether the assistant followed inserted rules

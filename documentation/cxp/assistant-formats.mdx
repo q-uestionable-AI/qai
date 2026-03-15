@@ -1,0 +1,123 @@
+---
+title: Assistant Formats
+description: CLAUDE.md, .cursorrules, copilot-instructions.md, and other context file targets
+---
+
+CXP targets six coding assistant instruction file formats. Each format is a project-level configuration file that the corresponding AI coding assistant reads automatically. A poisoned instruction file placed in a repository will be ingested by the assistant as trusted context.
+
+```bash
+qai cxp formats
+```
+
+## Format Summary
+
+| ID | Filename | Target Assistant | Syntax |
+|----|----------|-----------------|--------|
+| `claude-md` | `CLAUDE.md` | Claude Code | markdown |
+| `cursorrules` | `.cursorrules` | Cursor | plaintext |
+| `copilot-instructions` | `.github/copilot-instructions.md` | GitHub Copilot | markdown |
+| `windsurfrules` | `.windsurfrules` | Windsurf | plaintext |
+| `gemini-md` | `GEMINI.md` | Gemini Code Assist | markdown |
+| `agents-md` | `AGENTS.md` | Multi-assistant | markdown |
+
+---
+
+## claude-md — Claude Code
+
+**Filename:** `CLAUDE.md`
+
+**Location:** Project root
+
+**Target:** Claude Code (Anthropic's CLI coding assistant)
+
+**How the assistant processes it:** Claude Code reads `CLAUDE.md` from the project root at session start and treats its contents as persistent project-level instructions. The file is loaded into the system context and influences all code generation, file editing, and tool use decisions for the session.
+
+**Syntax:** Markdown. Supports headings, lists, code blocks, and structured sections. Claude Code interprets the content as natural language instructions about project conventions, coding standards, and workflow preferences.
+
+---
+
+## cursorrules — Cursor
+
+**Filename:** `.cursorrules`
+
+**Location:** Project root
+
+**Target:** Cursor (AI-powered code editor)
+
+**How the assistant processes it:** Cursor reads `.cursorrules` and applies the contents as rules governing code generation behavior. The file content is prepended to the assistant's context for all interactions within the project.
+
+**Syntax:** Plaintext. Cursor interprets each line or section as a directive. No special markup required — the assistant parses natural language instructions directly.
+
+---
+
+## copilot-instructions — GitHub Copilot
+
+**Filename:** `.github/copilot-instructions.md`
+
+**Location:** `.github/` directory
+
+**Target:** GitHub Copilot (GitHub's AI pair programmer)
+
+**How the assistant processes it:** GitHub Copilot reads the instructions file from the `.github/` directory and uses it to customize code suggestions and chat responses within the repository. The instructions influence completions, explanations, and generated code.
+
+**Syntax:** Markdown. Supports structured instructions using headings and lists. GitHub documents this as the repository-level customization mechanism for Copilot behavior.
+
+---
+
+## windsurfrules — Windsurf
+
+**Filename:** `.windsurfrules`
+
+**Location:** Project root
+
+**Target:** Windsurf (Codeium's AI coding assistant)
+
+**How the assistant processes it:** Windsurf reads `.windsurfrules` at project load and treats the contents as project-specific rules for code generation. The rules are applied as persistent context across all Windsurf interactions within the workspace.
+
+**Syntax:** Plaintext. Similar to `.cursorrules` — the assistant interprets natural language directives without requiring special formatting.
+
+---
+
+## gemini-md — Gemini Code Assist
+
+**Filename:** `GEMINI.md`
+
+**Location:** Project root
+
+**Target:** Gemini Code Assist (Google's AI coding assistant)
+
+**How the assistant processes it:** Gemini Code Assist reads `GEMINI.md` from the project root and uses it as a style guide and instruction set for code generation within the project. The contents are treated as authoritative project preferences.
+
+**Syntax:** Markdown. Supports the same structured format as other markdown-based instruction files.
+
+---
+
+## agents-md — Multi-Assistant
+
+**Filename:** `AGENTS.md`
+
+**Location:** Project root
+
+**Target:** Multiple assistants (emerging standard)
+
+**How the assistant processes it:** `AGENTS.md` is an emerging convention for providing instructions to any AI coding assistant that supports the format. Multiple assistants may read this file, making it a single poisoning vector that can affect several tools simultaneously.
+
+**Syntax:** Markdown. Designed as a cross-assistant instruction format with sections that multiple tools can interpret.
+
+<Info>
+`AGENTS.md` is the only format that targets multiple assistants from a single file. A poisoned `AGENTS.md` provides the broadest attack surface from a single technique.
+</Info>
+
+---
+
+## Technique Matrix
+
+Each format is combined with every [attack objective](/cxp/objectives) to produce a technique. The full matrix is 5 objectives x 6 formats = **30 techniques**.
+
+```bash
+# View the complete technique matrix
+qai cxp techniques
+
+# Generate poisoned repos for all techniques
+qai cxp generate
+```

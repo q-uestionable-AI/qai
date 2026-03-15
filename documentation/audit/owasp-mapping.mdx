@@ -1,0 +1,52 @@
+---
+title: OWASP MCP Top 10 Mapping
+description: How q-ai scanners map to the OWASP MCP Top 10 categories
+---
+
+All 10 q-ai scanners map 1:1 to [OWASP MCP Top 10](https://owasp.org/www-project-mcp-top-10/) categories. Every `audit scan` runs all scanners by default, or use `--checks` to target specific ones.
+
+## Coverage
+
+| OWASP ID | Vulnerability | Scanner | Analysis | Coverage notes |
+|----------|--------------|---------|----------|----------------|
+| MCP01 | Token Mismanagement & Secret Exposure | `token_exposure` | Both | Checks schemas for sensitive parameter names, scans tool responses and errors for leaked secrets (JWT, API keys, bearer tokens) |
+| MCP02 | Privilege Escalation via Scope Creep | `permissions` | Static | Flags excessive tool counts, dangerous capability categories, unconstrained parameters, high write/execute ratios |
+| MCP03 | Tool Poisoning | `tool_poisoning` | Static | Detects embedded instructions, hidden Unicode, homoglyphs, description length anomalies, duplicate/shadowed tools |
+| MCP04 | Supply Chain & Integrity | `supply_chain` | Both | Checks server identity, known CVE versions, protocol version currency, tool namespace confusion |
+| MCP05 | Command Injection & Execution | `injection` | Active | Injects canary-marked payloads into tool parameters, detects command injection, argument injection (CWE-88), path traversal (CWE-22) |
+| MCP06 | Prompt Injection via Contextual Payloads | `prompt_injection` | Active | Calls tools with benign inputs, scans responses for injection patterns, hidden Unicode, suspicious URLs, cross-tool manipulation |
+| MCP07 | Insufficient Authentication & Authorization | `auth` | Active | Tests unauthenticated enumeration and tool invocation, transport encryption, well-known port exposure |
+| MCP08 | Lack of Audit & Telemetry | `audit_telemetry` | Both | Checks server identification, logging capability, error information disclosure, sensitive data in errors |
+| MCP09 | Shadow MCP Servers | `shadow_servers` | Static | Analyzes server metadata and tool names for unmanaged/shadow deployment characteristics |
+| MCP10 | Context Injection & Over-Sharing | `context_sharing` | Both | Tests for excessive context in responses, session data leakage, error context leakage, resource over-exposure |
+
+**Analysis types:**
+
+- **Static** — Analyzes tool schemas, names, and descriptions without invoking any tools. Safe by design.
+- **Active** — Calls tools with test inputs and analyzes responses. May trigger side effects on the target server.
+- **Both** — Combines static schema analysis with active tool invocation.
+
+<Warning>
+Active scanners invoke tools on the target server. Only scan servers you own, control, or have explicit permission to test.
+</Warning>
+
+## Known gaps
+
+| Scanner | What it tests | What it cannot test |
+|---------|--------------|---------------------|
+| `token_exposure` | Secret patterns in schemas, responses, and errors | Secrets stored in server-side memory or logs that are not returned to the client |
+| `permissions` | Tool metadata and schema structure | Runtime permission enforcement or dynamic capability changes |
+| `tool_poisoning` | Static description and name analysis | Dynamic poisoning introduced after initial registration (rug pulls) |
+| `supply_chain` | Server identity, known CVEs, namespace confusion | Build pipeline integrity or dependency graph analysis |
+| `injection` | Parameter-level command injection with canary detection | Blind injection without observable output, time-based detection |
+| `prompt_injection` | Injection patterns in tool output content | Whether injected content actually influences the calling LLM agent |
+| `auth` | Connection-level authentication and transport security | Fine-grained authorization policies, CORS, or session management |
+| `audit_telemetry` | Server metadata and error response content | Server-side logging configuration or alerting infrastructure |
+| `shadow_servers` | Deployment indicators in metadata | Network scanning for undiscovered MCP servers |
+| `context_sharing` | Response content and resource scoping | Cross-session isolation or context persistence across reconnections |
+
+<Note>
+The `inject` module provides deeper testing for MCP03 and MCP06 by measuring actual agent responses to poisoned tools. The `chain` module composes findings across categories into multi-step attack paths.
+</Note>
+
+See [Scanner Coverage](/audit/scanners) for per-scanner detail and CLI usage.

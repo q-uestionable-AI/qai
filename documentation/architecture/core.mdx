@@ -1,0 +1,139 @@
+---
+title: Shared Core
+description: Database, configuration, models, framework resolver, and LLM provider client
+---
+
+The `core/` package provides types and utilities shared across all modules. All modules import from core rather than defining their own base types.
+
+## File layout
+
+```
+src/q_ai/core/
+├── __init__.py
+├── db.py              # SQLite connection manager, shared CRUD, schema migration
+├── schema.py          # DDL for shared tables, PRAGMA user_version migration runner
+├── models.py          # Shared data models (Run, Target, Finding, Evidence, Severity, RunStatus)
+├── config.py          # Config file loader, credential management, settings precedence
+├── frameworks.py      # FrameworkResolver — maps categories to OWASP/MITRE/CWE IDs
+├── llm.py             # ProviderClient protocol, litellm integration, NormalizedResponse
+├── data/
+│   └── frameworks.yaml  # Framework mapping data
+└── cli/
+    ├── config.py      # qai config get/set/set-credential/list-providers
+    ├── findings.py    # qai findings list
+    ├── runs.py        # qai runs list
+    └── targets.py     # qai targets list/add
+```
+
+## Database
+
+SQLite with WAL pragma, stored at `~/.qai/qai.db`. Schema versioned via `PRAGMA user_version` with automatic migration on connect.
+
+### Shared tables
+
+| Table | Purpose |
+|-------|---------|
+| `runs` | Workflow and module execution records with parent/child lineage |
+| `targets` | Registered scan targets (MCP servers, AI pipelines) |
+| `findings` | Security findings with severity, category, OWASP mapping |
+| `evidence` | Supporting evidence attached to findings |
+| `settings` | Key-value configuration store |
+
+### Module-specific tables
+
+| Table | Module |
+|-------|--------|
+| `audit_scans` | audit |
+| `inject_results` | inject |
+| `proxy_sessions` | proxy |
+| `chain_executions`, `chain_step_outputs` | chain |
+| `ipi_hits`, `ipi_payloads` | ipi |
+| `cxp_test_results` | cxp |
+| `rxp_validations` | rxp |
+
+## Key types
+
+### Severity
+
+Integer enum with five CVSS-aligned levels:
+
+| Level | Usage |
+|-------|-------|
+| `CRITICAL` | Remote code execution, full compromise |
+| `HIGH` | Data exfiltration, privilege escalation |
+| `MEDIUM` | Information disclosure, partial access |
+| `LOW` | Minor issues, defense-in-depth gaps |
+| `INFO` | Informational observations, best-practice notes |
+
+### RunStatus
+
+Integer enum tracking run lifecycle:
+
+| Status | Value | Description |
+|--------|-------|-------------|
+| `PENDING` | 0 | Created, not yet started |
+| `RUNNING` | 1 | Actively executing |
+| `COMPLETED` | 2 | Finished successfully |
+| `FAILED` | 3 | Finished with error |
+| `CANCELLED` | 4 | Cancelled by user |
+| `WAITING_FOR_USER` | 5 | Paused, awaiting human input |
+| `PARTIAL` | 6 | Some steps completed, others failed |
+
+### Finding
+
+Dataclass representing a single security finding:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `rule_id` | `str` | Unique check identifier (e.g., `MCP05-001`) |
+| `category` | `str` | Internal taxonomy category |
+| `title` | `str` | Short human-readable title |
+| `description` | `str` | Detailed vulnerability description |
+| `severity` | `Severity` | CVSS-aligned severity level |
+| `evidence` | `str` | Raw evidence supporting the finding |
+| `remediation` | `str` | Recommended fix or mitigation |
+| `metadata` | `dict[str, Any]` | Additional context |
+
+## Configuration
+
+### Credential management
+
+API keys are stored via the `keyring` library in the OS-native secret store. Resolution order: **environment variable → OS keyring → error** (no plaintext fallback).
+
+```python
+from q_ai.core.config import get_credential, set_credential
+
+set_credential("anthropic", "sk-ant-...")
+key = get_credential("anthropic")  # Returns str or None
+```
+
+### Settings precedence
+
+For non-secret settings, the resolution chain is: **CLI flag → environment variable → DB setting → config file → built-in default**.
+
+```python
+from q_ai.core.config import resolve
+
+value, source = resolve("default_model")
+# source: "cli", "env", "db", "file", or "default"
+```
+
+## Framework resolver
+
+`FrameworkResolver` loads `data/frameworks.yaml` and maps internal finding categories to external framework IDs (OWASP MCP Top 10, OWASP Agentic, MITRE ATLAS, CWE).
+
+```python
+from q_ai.core.frameworks import FrameworkResolver
+
+resolver = FrameworkResolver()
+ids = resolver.resolve("command_injection")
+# {"owasp_mcp": "MCP05", "cwe": "CWE-78", ...}
+```
+
+## LLM provider client
+
+`q_ai.core.llm` provides the `ProviderClient` protocol backed by litellm, supporting 100+ providers. All provider responses are normalized to `NormalizedResponse` before scoring or analysis. Raw provider responses are preserved separately for evidence and research.
+
+Model strings use the `provider/model` format (e.g., `anthropic/claude-sonnet-4-20250514`, `ollama/llama3`). Bare strings fall back to `anthropic/` for backward compatibility.
+
+Tool calling is a hard prerequisite for inject campaigns — the client fails fast if the selected model doesn't support tool use.

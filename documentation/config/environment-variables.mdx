@@ -1,0 +1,93 @@
+---
+title: Environment Variables
+description: Environment variables and credential management for q-ai
+---
+
+q-ai uses a multi-provider architecture powered by [litellm](https://docs.litellm.ai/). Credentials are managed via OS keyring (recommended) or environment variables. Most modules require no external configuration — audit and proxy connect directly to MCP servers, IPI generates payloads locally, CXP builds context files locally, and RXP uses local embedding models.
+
+## Provider credentials
+
+API keys are needed only for `inject` campaigns and `chain` execution, which call LLM provider APIs. q-ai supports any litellm-compatible provider.
+
+### OS keyring (recommended)
+
+Store credentials securely in your operating system's native secret store (Windows Credential Manager, macOS Keychain, Linux Secret Service):
+
+```bash
+qai config set-credential anthropic
+qai config set-credential openai
+qai config set-credential groq
+```
+
+Each command prompts for the API key with masked input. Verify configured providers:
+
+```bash
+qai config list-providers
+```
+
+Remove a credential:
+
+```bash
+qai config delete-credential anthropic
+```
+
+### Environment variables (alternative)
+
+Set the provider's standard environment variable. q-ai resolves credentials in this order: **environment variable → OS keyring → error** (no plaintext config file fallback).
+
+| Variable | Provider | Required for |
+|----------|----------|-------------|
+| `ANTHROPIC_API_KEY` | Anthropic | `inject`, `chain` with Anthropic models |
+| `OPENAI_API_KEY` | OpenAI | `inject`, `chain` with OpenAI models |
+| `GROQ_API_KEY` | Groq | `inject`, `chain` with Groq models |
+| `MISTRAL_API_KEY` | Mistral | `inject`, `chain` with Mistral models |
+| `COHERE_API_KEY` | Cohere | `inject`, `chain` with Cohere models |
+
+For local models via Ollama, no API key is needed — just ensure your Ollama server is running.
+
+## Model strings
+
+q-ai uses the `provider/model` format for all model references:
+
+```bash
+qai inject campaign --model anthropic/claude-sonnet-4-20250514 ...
+qai inject campaign --model openai/gpt-4o ...
+qai inject campaign --model groq/llama-3.3-70b-versatile ...
+qai inject campaign --model ollama/llama3 ...
+```
+
+Bare model strings without a provider prefix fall back to `anthropic/` for backward compatibility.
+
+## Legacy credential migration
+
+If you previously stored API keys in `~/.qai/config.yaml` (plaintext), migrate them to the OS keyring:
+
+```bash
+qai config import-legacy-credentials
+```
+
+This reads keys from the YAML file, writes them to the keyring, backs up the original file, and removes the keys from YAML. Non-secret settings are preserved. Safe to run multiple times.
+
+## Data directory
+
+All q-ai data is stored in `~/.qai/`:
+
+| Path | Purpose |
+|------|---------|
+| `~/.qai/qai.db` | Unified SQLite database (runs, findings, targets, evidence, module-specific tables) |
+| `~/.qai/config.yaml` | Non-secret configuration settings |
+| `~/.qai/artifacts/` | Generated reports and exports |
+
+## Modules requiring no configuration
+
+| Module | Why no config needed |
+|--------|---------------------|
+| **audit** | Connects directly to MCP servers via stdio, SSE, or Streamable HTTP |
+| **proxy** | Intercepts MCP traffic — no external API calls |
+| **ipi** | Generates payloads locally, runs a self-hosted callback listener |
+| **cxp** | Builds context files locally from templates and rules |
+| **rxp** | Uses local embedding models via sentence-transformers (downloaded from HuggingFace on first use — no API key needed) |
+
+<Note>
+RXP requires the optional `[rxp]` extra: `pip install q-uestionable-ai[rxp]`. This installs sentence-transformers and chromadb for local embedding and vector search.
+</Note>

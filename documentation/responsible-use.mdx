@@ -1,0 +1,46 @@
+---
+title: Responsible Use
+description: Authorized use requirements and responsible disclosure
+---
+
+q-ai is an offensive security tool. It scans servers for vulnerabilities, generates adversarial payloads, intercepts traffic, tests AI agent susceptibility to injection attacks, and tracks execution via out-of-band callbacks. These capabilities are powerful and potentially disruptive.
+
+## Authorized Testing Only
+
+**Only test systems you own or have explicit written authorization to test.**
+
+This means:
+- MCP servers you built and control
+- AI agent pipelines and RAG systems you built and control
+- Servers and targets in lab environments you operate
+- Third-party systems where you hold a written testing agreement or bug bounty scope that explicitly covers them
+
+Running q-ai against a system without authorization may violate the Computer Fraud and Abuse Act (US), the Computer Misuse Act (UK), and equivalent laws in other jurisdictions. Unauthorized testing is illegal regardless of intent.
+
+## What Authorized Looks Like
+
+If you are unsure whether you have authorization, you do not have authorization. Authorization requires explicit, documented permission — not implied permission, not assumed permission because you have credentials or API access, and not retroactive permission after testing has begun.
+
+For bug bounty programs, verify that MCP servers, AI agent infrastructure, and document ingestion pipelines are explicitly in scope before running any active scans, injection tests, or payload deployments.
+
+## Dangerous Payloads
+
+The `--dangerous` flag enables IPI payload types that go beyond callback verification — data exfiltration, SSRF, and behavior modification. These payloads cause target systems to take real actions with real consequences.
+
+Use dangerous payloads only in isolated test environments where you fully control the blast radius. Verify that no sensitive data is at risk before deploying exfiltration payloads.
+
+## Responsible Disclosure
+
+If you use q-ai to find a genuine vulnerability in a third-party system and have authorization to test, follow responsible disclosure:
+
+1. **Notify the vendor** before publishing — provide reproduction steps, evidence, and affected versions
+2. **Allow reasonable time to patch** — 90 days is the standard baseline; critical infrastructure may warrant an extension
+3. **Coordinate publication** — publish technical details after the vendor has had opportunity to respond, whether or not they do
+
+For vulnerabilities in q-ai itself, see [SECURITY.md](https://github.com/q-uestionable-AI/qai/blob/main/SECURITY.md).
+
+## Intended Use
+
+q-ai is a security testing tool analogous to Burp Suite, Metasploit, or Nmap — purpose-built for authorized penetration testing and security research. It is not a general-purpose automation tool and should not be used to attack systems outside a controlled testing context.
+
+Use findings to improve the security posture of the systems you are responsible for protecting.

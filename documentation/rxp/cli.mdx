@@ -1,0 +1,141 @@
+---
+title: RXP CLI Reference
+description: Command reference for qai rxp
+---
+
+```bash
+qai rxp [OPTIONS] COMMAND [ARGS]
+```
+
+RAG retrieval poisoning optimizer. Validate whether poison documents achieve retrieval in vector similarity searches across embedding models.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `list-models` | Show registered embedding models |
+| `list-profiles` | Show built-in domain profiles |
+| `validate` | Run retrieval validation against a corpus |
+
+---
+
+## list-models
+
+Show all registered embedding models with their HuggingFace model names and vector dimensions.
+
+```bash
+qai rxp list-models
+```
+
+No options. Prints a table:
+
+| ID | Model | Dimensions | Description |
+|----|-------|------------|-------------|
+| `minilm-l6` | `sentence-transformers/all-MiniLM-L6-v2` | 384 | Open WebUI default embedding model |
+| `minilm-l12` | `sentence-transformers/all-MiniLM-L12-v2` | 384 | Higher quality MiniLM variant |
+| `bge-small` | `BAAI/bge-small-en-v1.5` | 384 | BGE small English v1.5 |
+
+<Info>
+This command does not require the optional RXP dependencies (`sentence-transformers`, `chromadb`).
+</Info>
+
+---
+
+## list-profiles
+
+Show built-in domain profiles with query and corpus document counts.
+
+```bash
+qai rxp list-profiles
+```
+
+No options. Prints a table:
+
+| ID | Name | Queries | Corpus Docs |
+|----|------|---------|-------------|
+| `hr-policy` | HR Policy Knowledge Base | 8 | 5 |
+
+<Info>
+This command does not require the optional RXP dependencies (`sentence-transformers`, `chromadb`).
+</Info>
+
+---
+
+## validate
+
+Run retrieval validation — embed a corpus, ingest into ChromaDB, query, and score poison document retrieval.
+
+```bash
+qai rxp validate [OPTIONS]
+```
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--profile` | TEXT | — | Domain profile ID (e.g. `hr-policy`) |
+| `--corpus-dir` | PATH | — | Path to custom corpus directory |
+| `--poison-file` | PATH | — | Path to poison document |
+| `--model` | TEXT | `minilm-l6` | Embedding model: registry shortcut, `all`, or HuggingFace model name |
+| `--top-k` | INTEGER | `5` | Number of retrieval results per query |
+| `--output` | PATH | — | Write JSON results to file |
+| `--verbose` / `-v` | — | off | Show per-query hit details |
+
+<Warning>
+Either `--profile` or `--corpus-dir` is required. The command exits with an error if neither is provided.
+</Warning>
+
+### Using a Built-in Profile
+
+Run validation using the `hr-policy` profile with the default embedding model:
+
+```bash
+qai rxp validate --profile hr-policy
+```
+
+Run with verbose output to see per-query retrieval details:
+
+```bash
+qai rxp validate --profile hr-policy --verbose
+```
+
+### Comparing Across Models
+
+Use `--model all` to run validation against every registered embedding model and get a comparison table:
+
+```bash
+qai rxp validate --profile hr-policy --model all
+```
+
+### Using a Specific Model
+
+Use a registry shortcut:
+
+```bash
+qai rxp validate --profile hr-policy --model bge-small
+```
+
+Or pass any HuggingFace model name directly:
+
+```bash
+qai rxp validate --profile hr-policy --model BAAI/bge-m3
+```
+
+### Custom Corpus and Poison Files
+
+Provide your own corpus directory (all `*.txt` files will be loaded) and poison document:
+
+```bash
+qai rxp validate \
+  --corpus-dir ./my-corpus \
+  --poison-file ./my-poison.txt \
+  --model minilm-l6
+```
+
+### JSON Output
+
+Save results to a JSON file for programmatic analysis:
+
+```bash
+qai rxp validate --profile hr-policy --model all --output results.json
+```
