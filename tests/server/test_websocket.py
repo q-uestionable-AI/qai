@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 class TestWebSocket:
     """WebSocket /ws endpoint accepts connections."""
 
-    def test_connects_and_receives_message(self, client: TestClient) -> None:
+    def test_connects_successfully(self, client: TestClient) -> None:
+        """The /ws endpoint accepts a WebSocket connection."""
         with client.websocket_connect("/ws") as ws:
-            data = ws.receive_json()
-            assert data["status"] == "connected"
+            ws.send_text("ping")

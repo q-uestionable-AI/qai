@@ -27,6 +27,8 @@ class RunStatus(enum.IntEnum):
     COMPLETED = 2
     FAILED = 3
     CANCELLED = 4
+    WAITING_FOR_USER = 5  # Human-in-the-loop pause
+    PARTIAL = 6  # Completed with degraded stages
 
 
 def _parse_dt(val: str | None) -> datetime.datetime | None:

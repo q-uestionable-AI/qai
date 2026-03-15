@@ -77,6 +77,7 @@ def create_run(
     target_id: str | None = None,
     parent_run_id: str | None = None,
     config: dict | None = None,
+    run_id: str | None = None,
 ) -> str:
     """Insert a new run and return its ID.
 
@@ -87,11 +88,12 @@ def create_run(
         target_id: Optional target reference.
         parent_run_id: Optional parent run for chained runs.
         config: Optional configuration dict.
+        run_id: Optional pre-generated run ID. If None, a new UUID is generated.
 
     Returns:
         The hex UUID of the newly created run.
     """
-    run_id = _new_id()
+    run_id = run_id or _new_id()
     conn.execute(
         """
         INSERT INTO runs
@@ -134,6 +136,7 @@ def update_run_status(
         RunStatus.COMPLETED,
         RunStatus.FAILED,
         RunStatus.CANCELLED,
+        RunStatus.PARTIAL,
     }
     if finished_at is None and status in terminal:
         finished_at = _now_iso()
