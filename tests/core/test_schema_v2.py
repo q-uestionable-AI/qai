@@ -9,8 +9,8 @@ from q_ai.core.schema import CURRENT_VERSION, V1_INDEXES, V1_TABLES, migrate
 
 
 class TestSchemaV2:
-    def test_current_version_is_3(self) -> None:
-        assert CURRENT_VERSION == 3
+    def test_current_version_is_4(self) -> None:
+        assert CURRENT_VERSION == 4
 
     def test_audit_scans_table_created(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"
@@ -39,12 +39,12 @@ class TestSchemaV2:
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
         assert ver == 1
 
-        # Now run migrate() which should upgrade through V2 to V3
+        # Now run migrate() which should upgrade through V2 to V4
         migrate(conn)
 
         # Verify final state (migrate goes all the way to CURRENT_VERSION)
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 3
+        assert ver == 4
 
         tables = {
             row[0]

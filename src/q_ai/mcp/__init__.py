@@ -3,6 +3,7 @@
 from q_ai.mcp.connection import MCPConnection
 from q_ai.mcp.discovery import enumerate_server
 from q_ai.mcp.models import Direction, ScanContext, ScanFinding, Severity, Transport
+from q_ai.mcp.transport import TransportAdapter
 
 __all__ = [
     "Direction",
@@ -11,5 +12,6 @@ __all__ = [
     "ScanFinding",
     "Severity",
     "Transport",
+    "TransportAdapter",
     "enumerate_server",
 ]
