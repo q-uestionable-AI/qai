@@ -23,6 +23,7 @@
                 <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'inject')">inject</button>
                 <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'chain')">chain</button>
                 <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'ipi')">ipi</button>
+                <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'cxp')">cxp</button>
             </div>
 
             <div class="bg-base-100 rounded-lg border border-base-content/5 p-4 min-h-[400px]">
@@ -40,6 +41,9 @@
                 </div>
                 <div id="tab-ipi" class="hidden">
                     {% include "partials/ipi_tab.html" %}
+                </div>
+                <div id="tab-cxp" class="hidden">
+                    {% include "partials/cxp_tab.html" %}
                 </div>
             </div>
 

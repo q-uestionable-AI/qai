@@ -316,6 +316,61 @@ async def api_ipi_campaigns(request: Request) -> HTMLResponse:
 
 
 # ---------------------------------------------------------------------------
+# CXP API routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/cxp/tab")
+async def api_cxp_tab(request: Request) -> HTMLResponse:
+    """Return the CXP tab partial."""
+    templates = _get_templates(request)
+    return templates.TemplateResponse(request, "partials/cxp_tab.html", {})
+
+
+@router.get("/api/cxp/results")
+async def api_cxp_results(request: Request) -> HTMLResponse:
+    """Return CXP test results with stats."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT id, technique_id, assistant, model, format_id,
+                   validation_result, created_at
+            FROM cxp_test_results
+            ORDER BY created_at DESC
+            LIMIT 50
+            """
+        ).fetchall()
+        total_row = conn.execute("SELECT COUNT(*) FROM cxp_test_results").fetchone()
+        hit_row = conn.execute(
+            "SELECT COUNT(*) FROM cxp_test_results WHERE validation_result = 'hit'"
+        ).fetchone()
+        partial_row = conn.execute(
+            "SELECT COUNT(*) FROM cxp_test_results WHERE validation_result = 'partial'"
+        ).fetchone()
+        miss_row = conn.execute(
+            "SELECT COUNT(*) FROM cxp_test_results WHERE validation_result = 'miss'"
+        ).fetchone()
+    results = [dict(row) for row in rows]
+    total_tests = total_row[0] if total_row else 0
+    hit_count = hit_row[0] if hit_row else 0
+    partial_count = partial_row[0] if partial_row else 0
+    miss_count = miss_row[0] if miss_row else 0
+    return templates.TemplateResponse(
+        request,
+        "partials/cxp_tab.html",
+        {
+            "results": results,
+            "total_tests": total_tests,
+            "hit_count": hit_count,
+            "partial_count": partial_count,
+            "miss_count": miss_count,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # WebSocket
 # ---------------------------------------------------------------------------
 

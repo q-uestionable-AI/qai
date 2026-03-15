@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_VERSION = 6
+CURRENT_VERSION = 7
 
 V1_TABLES = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -198,6 +198,33 @@ CREATE INDEX IF NOT EXISTS idx_ipi_hits_uuid ON ipi_hits(uuid);
 """
 
 
+V7_TABLES = """
+CREATE TABLE IF NOT EXISTS cxp_test_results (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(id),
+    campaign_id TEXT NOT NULL,
+    technique_id TEXT NOT NULL,
+    assistant TEXT NOT NULL,
+    model TEXT,
+    trigger_prompt TEXT NOT NULL,
+    capture_mode TEXT NOT NULL,
+    captured_files TEXT,
+    raw_output TEXT NOT NULL,
+    validation_result TEXT NOT NULL DEFAULT 'pending',
+    validation_details TEXT,
+    notes TEXT,
+    rules_inserted TEXT,
+    format_id TEXT,
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+"""
+
+V7_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_cxp_test_results_run_id ON cxp_test_results(run_id);
+CREATE INDEX IF NOT EXISTS idx_cxp_test_results_campaign_id ON cxp_test_results(campaign_id);
+"""
+
+
 def migrate(conn: sqlite3.Connection) -> None:
     """Run schema migrations up to CURRENT_VERSION.
 
@@ -208,6 +235,7 @@ def migrate(conn: sqlite3.Connection) -> None:
     Version 4 adds the proxy_sessions table.
     Version 5 adds chain_executions and chain_step_outputs tables.
     Version 6 adds ipi_payloads and ipi_hits tables.
+    Version 7 adds cxp_test_results table.
     """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version < 1:
@@ -235,3 +263,7 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.executescript(V6_TABLES)
         conn.executescript(V6_INDEXES)
         conn.execute("PRAGMA user_version = 6")
+    if version < 7:
+        conn.executescript(V7_TABLES)
+        conn.executescript(V7_INDEXES)
+        conn.execute("PRAGMA user_version = 7")

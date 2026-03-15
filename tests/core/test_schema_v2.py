@@ -10,7 +10,7 @@ from q_ai.core.schema import CURRENT_VERSION, V1_INDEXES, V1_TABLES, migrate
 
 class TestSchemaV2:
     def test_current_version_is_6(self) -> None:
-        assert CURRENT_VERSION == 6
+        assert CURRENT_VERSION == 7
 
     def test_audit_scans_table_created(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"
@@ -44,7 +44,7 @@ class TestSchemaV2:
 
         # Verify final state (migrate goes all the way to CURRENT_VERSION)
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 6
+        assert ver == 7
 
         tables = {
             row[0]

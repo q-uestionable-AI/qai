@@ -13,6 +13,7 @@ from q_ai.core.cli.config import app as config_app
 from q_ai.core.cli.findings import app as findings_app
 from q_ai.core.cli.runs import app as runs_app
 from q_ai.core.cli.targets import app as targets_app
+from q_ai.cxp.cli import app as cxp_app
 from q_ai.inject.cli import app as inject_app
 from q_ai.ipi.cli import app as ipi_app
 from q_ai.proxy.cli import app as proxy_app
@@ -112,3 +113,4 @@ app.add_typer(inject_app, name="inject", help="Tool poisoning and prompt injecti
 app.add_typer(proxy_app, name="proxy", help="MCP traffic interception and replay.")
 app.add_typer(chain_app, name="chain", help="Multi-agent attack chain exploitation.")
 app.add_typer(ipi_app, name="ipi", help="Indirect prompt injection testing.")
+app.add_typer(cxp_app, name="cxp", help="Context file poisoning for coding assistants.")
