@@ -341,12 +341,19 @@ async def api_proxy_session_detail(request: Request, run_id: str) -> HTMLRespons
     messages_summary: list[dict[str, Any]] = []
     if session_data.get("session_file"):
         artifacts_dir = Path.home() / ".qai" / "artifacts"
-        session_path = artifacts_dir / session_data["session_file"]
-        if session_path.exists():
-            raw = json.loads(session_path.read_text(encoding="utf-8"))
+        session_file = session_data["session_file"]
+        # Reject path traversal attempts
+        session_path = (artifacts_dir / session_file).resolve()
+        if not str(session_path).startswith(str(artifacts_dir.resolve())):
+            session_path = None  # type: ignore[assignment]
+        if session_path and session_path.exists():
+            try:
+                raw = json.loads(session_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                raw = {}
             for msg in raw.get("messages", [])[:100]:
                 direction = msg.get("direction", "")
-                arrow = "\u2192" if "client" in direction else "\u2190"
+                arrow = "\u2192" if direction == "client_to_server" else "\u2190"
                 messages_summary.append(
                     {
                         "sequence": msg.get("sequence"),

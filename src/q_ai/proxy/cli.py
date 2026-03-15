@@ -70,7 +70,7 @@ def start(
 
     from q_ai.proxy.tui.app import ProxyApp
 
-    transport_enum = Transport(transport_lower.replace("-", "_"))
+    transport_enum = Transport(transport_lower)
     tui_app = ProxyApp(
         transport=transport_enum,
         server_command=target_command,

@@ -75,7 +75,7 @@ def is_response(message: JSONRPCMessage) -> bool:
     Returns:
         True if the message is a response or error.
     """
-    return isinstance(message.root, JSONRPCResponse | JSONRPCError)
+    return isinstance(message.root, (JSONRPCResponse, JSONRPCError))
 
 
 def is_notification(message: JSONRPCMessage) -> bool:
