@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_VERSION = 3
+CURRENT_VERSION = 4
 
 V1_TABLES = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -110,6 +110,23 @@ V3_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_inject_results_run_id ON inject_results(run_id);
 """
 
+V4_TABLES = """
+CREATE TABLE IF NOT EXISTS proxy_sessions (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    run_id TEXT NOT NULL REFERENCES runs(id),
+    transport TEXT NOT NULL,
+    server_name TEXT,
+    message_count INTEGER DEFAULT 0,
+    duration_seconds REAL,
+    session_file TEXT,
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+"""
+
+V4_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_proxy_sessions_run_id ON proxy_sessions(run_id);
+"""
+
 
 def migrate(conn: sqlite3.Connection) -> None:
     """Run schema migrations up to CURRENT_VERSION.
@@ -117,6 +134,8 @@ def migrate(conn: sqlite3.Connection) -> None:
     Checks PRAGMA user_version and runs any pending migrations sequentially.
     Version 1 creates all shared tables and indexes.
     Version 2 adds the audit_scans table.
+    Version 3 adds the inject_results table.
+    Version 4 adds the proxy_sessions table.
     """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version < 1:
@@ -132,3 +151,7 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.executescript(V3_TABLES)
         conn.executescript(V3_INDEXES)
         conn.execute("PRAGMA user_version = 3")
+    if version < 4:
+        conn.executescript(V4_TABLES)
+        conn.executescript(V4_INDEXES)
+        conn.execute("PRAGMA user_version = 4")
