@@ -41,6 +41,13 @@ dependencies = [
     "icalendar>=6.1.0",
 ]
 
+[project.optional-dependencies]
+rxp = [
+    "sentence-transformers>=5.2,<6",
+    "chromadb>=1.5,<2",
+    "numpy>=1.26",
+]
+
 [project.scripts]
 qai = "q_ai.cli:app"
 
