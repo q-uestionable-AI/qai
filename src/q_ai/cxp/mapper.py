@@ -20,6 +20,7 @@ def persist_build(
     rules_inserted: list[str],
     repo_dir: str,
     db_path: Path | None = None,
+    run_id: str | None = None,
 ) -> str:
     """Persist a CXP build operation to the database.
 
@@ -30,39 +31,52 @@ def persist_build(
         rules_inserted: List of rule IDs that were inserted.
         repo_dir: Path to the generated repo directory.
         db_path: Path to database file. Defaults to ~/.qai/qai.db.
+        run_id: Optional pre-created run ID from the orchestrator.
+            When provided, skips creating a new run record.
 
     Returns:
         The run ID for the build operation.
     """
-    run_id = uuid.uuid4().hex
+    skip_run_insert = run_id is not None
+    if run_id is None:
+        run_id = uuid.uuid4().hex
     now_iso = datetime.datetime.now(datetime.UTC).isoformat()
 
+    build_config = json.dumps(
+        {
+            "format_id": format_id,
+            "rules_inserted": rules_inserted,
+            "repo_dir": repo_dir,
+        }
+    )
+    build_name = f"build-{format_id}-{len(rules_inserted)}-rules"
+
     with get_connection(db_path) as conn:
-        conn.execute(
-            """
-            INSERT INTO runs
-                (id, module, name, target_id, parent_run_id,
-                 config, status, started_at, finished_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                run_id,
-                "cxp",
-                f"build-{format_id}-{len(rules_inserted)}-rules",
-                None,
-                None,
-                json.dumps(
-                    {
-                        "format_id": format_id,
-                        "rules_inserted": rules_inserted,
-                        "repo_dir": repo_dir,
-                    }
+        if skip_run_insert:
+            conn.execute(
+                "UPDATE runs SET name = ?, config = ? WHERE id = ?",
+                (build_name, build_config, run_id),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO runs
+                    (id, module, name, target_id, parent_run_id,
+                     config, status, started_at, finished_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    "cxp",
+                    build_name,
+                    None,
+                    None,
+                    build_config,
+                    int(RunStatus.COMPLETED),
+                    now_iso,
+                    now_iso,
                 ),
-                int(RunStatus.COMPLETED),
-                now_iso,
-                now_iso,
-            ),
-        )
+            )
 
     return run_id
 
