@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
 
@@ -92,3 +94,28 @@ class TestResearchAPIRoutes:
     def test_api_findings_with_invalid_severity_ignored(self, client: TestClient) -> None:
         resp = client.get("/api/findings?severity=invalid")
         assert resp.status_code == 200
+
+
+class TestLauncherRxpAvailable:
+    """Launcher route passes rxp_available to template context."""
+
+    def test_launcher_passes_rxp_available_false(self, client: TestClient) -> None:
+        """When rxp deps unavailable, template shows install hint and disabled toggle."""
+        with patch("q_ai.server.routes.rxp_is_available", return_value=False):
+            resp = client.get("/")
+        assert resp.status_code == 200
+        assert 'pip install "q-uestionable-ai[rxp]"' in resp.text
+        assert "disabled" in resp.text
+
+    def test_launcher_rxp_available_true(self, client: TestClient) -> None:
+        """When rxp deps available, no install hint shown."""
+        with patch("q_ai.server.routes.rxp_is_available", return_value=True):
+            resp = client.get("/")
+        assert resp.status_code == 200
+        assert "RXP pre-validation requires additional dependencies" not in resp.text
+
+    def test_launcher_rxp_toggle_has_name_attribute(self, client: TestClient) -> None:
+        """RXP toggle has name='rxp_enabled' for FormData inclusion."""
+        with patch("q_ai.server.routes.rxp_is_available", return_value=True):
+            resp = client.get("/")
+        assert 'name="rxp_enabled"' in resp.text

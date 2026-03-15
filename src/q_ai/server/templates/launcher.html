@@ -43,6 +43,22 @@
                 </div>
                 {% else %}
                 <form id="form-{{ wf.id }}" class="space-y-4" onsubmit="return launchWorkflow(event, '{{ wf.id }}')">
+                    {% if wf.id == 'test_docs' %}
+                    {% if not rxp_available %}
+                    <div class="alert alert-warning text-sm mb-4">
+                        <span>RXP pre-validation requires additional dependencies.</span>
+                        <code class="ml-2">pip install "q-uestionable-ai[rxp]"</code>
+                    </div>
+                    {% endif %}
+                    <div class="form-control">
+                        <label class="label cursor-pointer">
+                            <span class="label-text">Pre-validate retrieval rank with RXP</span>
+                            <input type="checkbox" id="rxp-enabled" name="rxp_enabled" value="true"
+                                   class="toggle toggle-sm"
+                                   {% if not rxp_available %}disabled{% endif %} />
+                        </label>
+                    </div>
+                    {% endif %}
                     <div class="form-control">
                         <label class="label"><span class="label-text">Target name</span></label>
                         <input type="text" name="target_name" required
@@ -117,6 +133,22 @@
                 <p class="py-4 text-base-content/70">
                     This workflow is not yet implemented.
                 </p>
+                {% if wf.id == 'test_docs' %}
+                {% if not rxp_available %}
+                <div class="alert alert-warning text-sm mb-4">
+                    <span>RXP pre-validation requires additional dependencies.</span>
+                    <code class="ml-2">pip install "q-uestionable-ai[rxp]"</code>
+                </div>
+                {% endif %}
+                <div class="form-control mb-4">
+                    <label class="label cursor-pointer">
+                        <span class="label-text">Pre-validate retrieval rank with RXP</span>
+                        <input type="checkbox" id="rxp-enabled" name="rxp_enabled" value="true"
+                               class="toggle toggle-sm"
+                               {% if not rxp_available %}disabled{% endif %} />
+                    </label>
+                </div>
+                {% endif %}
                 <div class="modal-action">
                     <form method="dialog">
                         <button class="btn btn-primary btn-sm">Close</button>

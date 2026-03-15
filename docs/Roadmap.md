@@ -39,6 +39,19 @@ Local web UI (FastAPI + HTMX). CLI with module subcommands. 1278 tests.
 browser. Provider-agnostic injection (litellm, any provider/model). Keyring-based credential
 storage. Live WebSocket updates. Module adapters for all seven modules.
 
+### Remaining Workflows
+
+Five workflows are visible in the launcher and will be implemented after Phase 6.
+Module adapters for all five already exist (Phase 5e).
+
+| Workflow | Modules | Notes |
+|----------|---------|-------|
+| Test Document Ingestion | ipi, rxp | Generate payloads, validate retrieval rank pre-deployment. RXP is optional pre-validation. |
+| Test a Coding Assistant | cxp | Build poisoned repo, guided manual steps, record results |
+| Trace an Attack Path | chain | Execute chain fail_fast, step-by-step evidence across trust boundaries |
+| Measure Blast Radius | chain | Analysis-only, depends on chain execution results |
+| Manage Research | all | Cross-module research view — largely functional from Phase 3 |
+
 ### Phase 6: Public Launch
 
 **Goal:** The repo is public, the package is on PyPI, and old repos are transitioned.

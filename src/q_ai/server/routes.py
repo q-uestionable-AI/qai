@@ -27,6 +27,7 @@ from q_ai.core.db import (
 from q_ai.core.models import RunStatus, Severity
 from q_ai.orchestrator.registry import get_workflow, list_workflows
 from q_ai.orchestrator.runner import WorkflowRunner
+from q_ai.rxp._deps import is_available as rxp_is_available
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,12 @@ async def launcher(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "launcher.html",
-        {"active": "launcher", "workflows": workflows, "providers": providers},
+        {
+            "active": "launcher",
+            "workflows": workflows,
+            "providers": providers,
+            "rxp_available": rxp_is_available(),
+        },
     )
 
 
@@ -862,11 +868,13 @@ async def launch_workflow(request: Request) -> JSONResponse:
 
     # --- Build workflow config ---
     rounds = int(body.get("rounds", 1))
+    rxp_enabled = bool(body.get("rxp_enabled", False))
     config: dict[str, Any] = {
         "target_id": target_id,
         "transport": transport,
         "command": command,
         "url": url,
+        "rxp_enabled": rxp_enabled,
         "audit": {"checks": None},
         "inject": {"model": model, "rounds": rounds},
         "proxy": {"intercept": False},
