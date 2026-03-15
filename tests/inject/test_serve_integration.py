@@ -6,6 +6,7 @@ and verifies tools and responses work end-to-end.
 
 from __future__ import annotations
 
+import pathlib
 import sys
 
 import pytest
@@ -17,10 +18,11 @@ from q_ai.mcp.discovery import enumerate_server
 pytestmark = pytest.mark.integration
 
 PYTHON = sys.executable
+SRC_DIR = str(pathlib.Path(__file__).resolve().parents[2] / "src")
 
-_SERVER_SCRIPT = """\
+_SERVER_SCRIPT = f"""\
 import sys
-sys.path.insert(0, "src")
+sys.path.insert(0, {SRC_DIR!r})
 from q_ai.inject.payloads.loader import load_all_templates
 from q_ai.inject.server import build_server
 

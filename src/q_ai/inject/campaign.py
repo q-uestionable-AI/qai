@@ -101,7 +101,7 @@ async def run_campaign(
     Returns:
         Completed Campaign object with all results.
     """
-    campaign_id = f"campaign-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
+    campaign_id = f"campaign-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S-%f')}"
     campaign = Campaign(
         id=campaign_id,
         name="inject-campaign",
