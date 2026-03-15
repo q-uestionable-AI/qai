@@ -31,6 +31,7 @@ dependencies = [
     "websockets>=15.0",
     "mcp>=1.26,<2",
     "anthropic>=0.84",
+    "textual>=0.80",
 ]
 
 [project.scripts]
