@@ -1,8 +1,8 @@
 """CLI for the inject module — tool poisoning and prompt injection testing.
 
 Provides subcommands for serving a malicious MCP server with configurable
-payloads, running injection campaigns against AI models via the Anthropic
-API, listing available payloads, and rendering campaign reports.
+payloads, running injection campaigns against AI models, listing available
+payloads, and rendering campaign reports.
 """
 
 import os
@@ -116,7 +116,12 @@ def serve(
 def campaign(
     model: str | None = typer.Option(
         None,
-        help="Anthropic model ID (e.g., claude-sonnet-4-6). Falls back to QAI_MODEL env var.",
+        help=(
+            "LLM model in provider/model format "
+            "(e.g., anthropic/claude-sonnet-4-20250514, openai/gpt-4o, ollama/llama3). "
+            "Falls back to QAI_MODEL env var. "
+            "Bare model names without a provider prefix are treated as Anthropic."
+        ),
     ),
     rounds: int = typer.Option(1, help="Number of attempts per payload"),
     output: str = typer.Option(".", help="Output directory for campaign JSON"),
@@ -133,9 +138,10 @@ def campaign(
 ) -> None:
     """Run an injection campaign against an AI model.
 
-    Systematically tests poisoned tool payloads against the target model
-    via the Anthropic API, scoring each for effectiveness. Requires
-    ANTHROPIC_API_KEY to be set. Results are saved as structured JSON.
+    Systematically tests poisoned tool payloads against the target model,
+    scoring each for effectiveness. Set the appropriate API key for your
+    provider via ``qai config set-credential`` or environment variable.
+    Results are saved as structured JSON.
     """
     import asyncio
 

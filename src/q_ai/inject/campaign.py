@@ -1,7 +1,7 @@
 """Campaign executor for injection testing.
 
-Loads payloads, presents poisoned tools to an AI model via the Anthropic
-tool-use API, captures structured results, and writes campaign JSON.
+Loads payloads, presents poisoned tools to an AI model via a provider-agnostic
+client, captures structured results, and writes campaign JSON.
 """
 
 from __future__ import annotations
@@ -10,11 +10,14 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
 
-from anthropic import APIError, AsyncAnthropic
-from anthropic.types import ToolParam
-
+from q_ai.core.llm import (
+    ProviderError,
+    UnsupportedCapabilityError,
+    get_provider_client,
+    serialize_evidence,
+    tool_spec_from_template,
+)
 from q_ai.inject.models import (
     Campaign,
     InjectionOutcome,
@@ -26,60 +29,6 @@ from q_ai.inject.scoring import score_response
 logger = logging.getLogger(__name__)
 
 
-def _template_to_tool(template: PayloadTemplate) -> dict[str, Any]:
-    """Convert a PayloadTemplate to an Anthropic tool definition.
-
-    Args:
-        template: Payload template with tool metadata.
-
-    Returns:
-        Tool definition dict suitable for the Anthropic Messages API.
-    """
-    properties: dict[str, dict[str, str]] = {}
-    for name, info in template.tool_params.items():
-        prop: dict[str, str] = {"type": info.get("type", "string")}
-        if desc := info.get("description", ""):
-            prop["description"] = desc
-        properties[name] = prop
-
-    return {
-        "name": template.tool_name,
-        "description": template.tool_description,
-        "input_schema": {
-            "type": "object",
-            "properties": properties,
-            "required": list(template.tool_params.keys()),
-        },
-    }
-
-
-def _serialize_content(content: Any) -> str:
-    """Serialize Anthropic response content blocks to a JSON string.
-
-    Handles both SDK message objects and raw dicts.
-
-    Args:
-        content: The ``content`` attribute from an Anthropic Messages response.
-
-    Returns:
-        JSON string of the serialized content blocks.
-    """
-    blocks: list[dict[str, Any]] = []
-    for block in content:
-        if isinstance(block, dict):
-            blocks.append(block)
-        else:
-            # SDK object — convert via model_dump if available, else vars
-            if hasattr(block, "model_dump"):
-                blocks.append(block.model_dump())
-            else:
-                try:
-                    blocks.append(vars(block))
-                except TypeError:
-                    blocks.append({"type": getattr(block, "type", "unknown")})
-    return json.dumps(blocks, indent=2, default=str)
-
-
 async def run_campaign(
     templates: list[PayloadTemplate],
     model: str,
@@ -88,13 +37,13 @@ async def run_campaign(
 ) -> Campaign:
     """Execute an injection campaign against an AI model.
 
-    For each template, converts it to an Anthropic tool definition,
-    sends the test query via the Messages API, scores the response,
+    For each template, converts it to a provider-agnostic ToolSpec,
+    sends the test query via the configured provider, scores the response,
     and records the result.
 
     Args:
         templates: Payload templates to test.
-        model: Anthropic model ID.
+        model: Model string in provider/model format (e.g. anthropic/claude-sonnet-4-20250514).
         rounds: Number of attempts per payload.
         output_dir: Directory to write campaign JSON. If None, no file is written.
 
@@ -108,10 +57,10 @@ async def run_campaign(
         model=model,
     )
 
-    client = AsyncAnthropic()  # reads ANTHROPIC_API_KEY from env
+    client = get_provider_client(model)
 
     for template in templates:
-        tool_def = _template_to_tool(template)
+        tool_spec = tool_spec_from_template(template)
         test_query = template.test_query or f"Use the {template.tool_name} tool."
 
         for round_num in range(rounds):
@@ -122,20 +71,24 @@ async def run_campaign(
                 rounds,
             )
             try:
-                response = await client.messages.create(
+                response = await client.complete(
                     model=model,
-                    max_tokens=1024,
                     messages=[{"role": "user", "content": test_query}],
-                    tools=[cast(ToolParam, tool_def)],
+                    tools=[tool_spec],
                 )
 
-                outcome = score_response(response.content)
-                evidence = _serialize_content(response.content)
+                outcome = score_response(response)
+                evidence = serialize_evidence(response)
 
-            except APIError as exc:
-                logger.warning("API error for payload '%s': %s", template.name, exc)
+            except UnsupportedCapabilityError as exc:
+                logger.warning("Unsupported capability for payload '%s': %s", template.name, exc)
                 outcome = InjectionOutcome.ERROR
-                evidence = json.dumps({"error": str(exc)})
+                evidence = json.dumps({"error": str(exc), "type": "unsupported_capability"})
+
+            except ProviderError as exc:
+                logger.warning("Provider error for payload '%s': %s", template.name, exc)
+                outcome = InjectionOutcome.ERROR
+                evidence = json.dumps({"error": str(exc), "type": "provider_error"})
 
             result = InjectionResult(
                 payload_name=template.name,

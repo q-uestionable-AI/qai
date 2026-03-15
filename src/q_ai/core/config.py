@@ -1,20 +1,26 @@
 """Configuration management for q-ai.
 
 Supports a hybrid approach:
-- YAML file (~/.qai/config.yaml) for credentials and static config
+- OS keyring for credentials (API keys)
+- YAML file (~/.qai/config.yaml) for non-secret settings
 - SQLite settings table for operational defaults
 - Precedence resolver: CLI value > env var > DB setting > config file > default
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from pathlib import Path
 
+import keyring
+import keyring.errors
 import yaml
 
 _DEFAULT_CONFIG_PATH = Path.home() / ".qai" / "config.yaml"
+
+_KEYRING_SERVICE = "q-ai"
 
 
 def load_config(config_path: Path | None = None) -> dict:
@@ -34,52 +40,89 @@ def load_config(config_path: Path | None = None) -> dict:
     return data or {}
 
 
-def get_credential(
-    provider: str,
-    config_path: Path | None = None,
-) -> str | None:
-    """Get an API key for a provider from the config file.
+def get_credential(provider: str) -> str | None:
+    """Get an API key for a provider.
+
+    Resolution order: env var -> keyring -> None.
+    No runtime fallback to config.yaml. Legacy credentials
+    must be migrated via ``qai config import-legacy-credentials``.
 
     Args:
         provider: Provider name (e.g. "anthropic", "openai").
-        config_path: Optional override for config file path.
 
     Returns:
         API key string or None if not found.
     """
-    config = load_config(config_path)
-    providers = config.get("providers", {})
-    provider_config = providers.get(provider, {})
-    result: str | None = provider_config.get("api_key")
+    provider = provider.strip().lower()
+    env_var = _provider_env_var(provider)
+    env_value = os.environ.get(env_var)
+    if env_value is not None:
+        return env_value
+
+    _assert_secure_keyring()
+    result: str | None = keyring.get_password(_KEYRING_SERVICE, provider)
     return result
 
 
-def set_credential(
-    provider: str,
-    api_key: str,
-    config_path: Path | None = None,
-) -> None:
-    """Write or update a provider API key in the config file.
-
-    Creates the config file and parent directory if needed.
-    Sets restrictive permissions (0o600) on the file (Unix only).
+def set_credential(provider: str, api_key: str) -> None:
+    """Store an API key in the OS keyring.
 
     Args:
         provider: Provider name.
         api_key: The API key to store.
-        config_path: Optional override for config file path.
     """
-    path = config_path or _DEFAULT_CONFIG_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    config = load_config(path)
-    if "providers" not in config:
-        config["providers"] = {}
-    config["providers"][provider] = {"api_key": api_key}
-    with open(path, "w") as f:
-        yaml.safe_dump(config, f, default_flow_style=False)
-    # Set restrictive permissions on non-Windows
-    if sys.platform != "win32":
-        path.chmod(0o600)
+    provider = provider.strip().lower()
+    _assert_secure_keyring()
+    keyring.set_password(_KEYRING_SERVICE, provider, api_key)
+
+
+def delete_credential(provider: str) -> None:
+    """Remove an API key from the OS keyring.
+
+    Args:
+        provider: Provider name.
+    """
+    provider = provider.strip().lower()
+    _assert_secure_keyring()
+    with contextlib.suppress(keyring.errors.PasswordDeleteError):
+        keyring.delete_password(_KEYRING_SERVICE, provider)
+
+
+def _assert_secure_keyring() -> None:
+    """Raise if the active keyring backend is known to be insecure.
+
+    On headless Linux without a keyring daemon, keyring may silently
+    fall back to PlaintextKeyring or FailKeyring. Operators in that
+    environment must use environment variables instead.
+
+    Raises:
+        RuntimeError: If the active backend is insecure.
+    """
+    backend = keyring.get_keyring()
+    insecure = ("PlaintextKeyring", "NullKeyring", "FailKeyring")
+    if type(backend).__name__ in insecure:
+        raise RuntimeError(
+            f"Insecure keyring backend detected: {type(backend).__name__}. "
+            "No keyring daemon is available. "
+            "Set credentials via environment variables instead "
+            "(e.g. ANTHROPIC_API_KEY)."
+        )
+
+
+def _provider_env_var(provider: str) -> str:
+    """Map provider name to conventional env var.
+
+    'anthropic' -> 'ANTHROPIC_API_KEY'
+    'openai' -> 'OPENAI_API_KEY'
+    etc.
+
+    Args:
+        provider: Provider name.
+
+    Returns:
+        Environment variable name.
+    """
+    return f"{provider.upper()}_API_KEY"
 
 
 def get_lab_setting(
@@ -161,3 +204,63 @@ def resolve(
         return str(current), "file"
 
     return None, "default"
+
+
+def import_legacy_credentials(config_path: Path | None = None) -> list[tuple[str, bool, str]]:
+    """Migrate plaintext keys from config.yaml to OS keyring.
+
+    Reads provider API keys from the YAML config, writes them to the
+    OS keyring, and removes the keys from the YAML. Non-secret settings
+    are preserved.
+
+    Args:
+        config_path: Optional override for config file path.
+
+    Returns:
+        List of (provider, success, message) tuples.
+    """
+    path = config_path or _DEFAULT_CONFIG_PATH
+    config = load_config(path)
+    providers = config.get("providers", {})
+
+    if not providers:
+        return []
+
+    results: list[tuple[str, bool, str]] = []
+
+    for provider_name, provider_config in list(providers.items()):
+        if not isinstance(provider_config, dict):
+            continue
+        api_key = provider_config.get("api_key")
+        if not api_key:
+            continue
+
+        try:
+            set_credential(provider_name, api_key)
+            # Remove the api_key from config
+            del provider_config["api_key"]
+            if not provider_config:
+                del providers[provider_name]
+            results.append((provider_name, True, "migrated to keyring"))
+        except Exception as exc:
+            results.append((provider_name, False, str(exc)))
+
+    # Clean up empty providers section
+    if not providers:
+        config.pop("providers", None)
+
+    # Write back the config without secrets
+    if any(success for _, success, _ in results):
+        # Backup original
+        backup_path = path.with_suffix(".yaml.bak")
+        if path.exists():
+            backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+
+        # Write cleaned config
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            yaml.safe_dump(config, f, default_flow_style=False)
+        if sys.platform != "win32":
+            path.chmod(0o600)
+
+    return results

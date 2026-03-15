@@ -84,7 +84,7 @@ class TargetConfig:
         audit_transport: Transport type ('stdio', 'sse', 'streamable-http').
         audit_command: Command + args list for stdio transport.
         audit_url: URL for sse/streamable-http transport.
-        inject_model: Model ID for injection campaigns.
+        inject_model: Model in provider/model format (e.g. anthropic/claude-sonnet-4-20250514).
     """
 
     audit_transport: str | None = None

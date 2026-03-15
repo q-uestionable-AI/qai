@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -39,59 +39,45 @@ class TestLoadConfig:
 
 
 class TestCredentials:
-    """Tests for get_credential() and set_credential()."""
+    """Tests for get_credential() and set_credential() with keyring."""
 
-    def test_set_and_get_credential(
+    def test_set_credential_writes_keyring(self) -> None:
+        """set_credential calls keyring.set_password."""
+        with patch("q_ai.core.config.keyring") as mock_kr:
+            set_credential("anthropic", "sk-test-123")
+        mock_kr.set_password.assert_called_once_with("q-ai", "anthropic", "sk-test-123")
+
+    def test_get_credential_from_keyring(
         self,
-        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Round-trip: set then get returns same value."""
-        config_path = tmp_path / "config.yaml"
-        set_credential("anthropic", "sk-test-123", config_path)
-        result = get_credential("anthropic", config_path)
+        """get_credential reads from keyring when env var not set."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        with patch("q_ai.core.config.keyring") as mock_kr:
+            mock_kr.get_password.return_value = "sk-test-123"
+            result = get_credential("anthropic")
         assert result == "sk-test-123"
+
+    def test_get_credential_env_var_precedence(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Env var takes precedence over keyring."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-from-env")
+        with patch("q_ai.core.config.keyring") as mock_kr:
+            mock_kr.get_password.return_value = "sk-from-keyring"
+            result = get_credential("anthropic")
+        assert result == "sk-from-env"
 
     def test_get_credential_missing_provider(
         self,
-        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Missing provider returns None."""
-        config_path = tmp_path / "config.yaml"
-        assert get_credential("nonexistent", config_path) is None
-
-    def test_set_credential_creates_file(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        """set_credential creates parent dirs and file."""
-        config_path = tmp_path / "sub" / "config.yaml"
-        set_credential("openai", "sk-test", config_path)
-        assert config_path.exists()
-
-    def test_set_credential_preserves_existing(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        """Adding a second provider keeps the first."""
-        config_path = tmp_path / "config.yaml"
-        set_credential("anthropic", "sk-a", config_path)
-        set_credential("openai", "sk-o", config_path)
-        assert get_credential("anthropic", config_path) == "sk-a"
-        assert get_credential("openai", config_path) == "sk-o"
-
-    @pytest.mark.skipif(
-        sys.platform == "win32",
-        reason="File permission check not applicable on Windows",
-    )
-    def test_file_permissions_unix(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        """Config file gets 0o600 permissions on Unix."""
-        config_path = tmp_path / "config.yaml"
-        set_credential("test", "key", config_path)
-        mode = config_path.stat().st_mode & 0o777
-        assert mode == 0o600
+        monkeypatch.delenv("NONEXISTENT_API_KEY", raising=False)
+        with patch("q_ai.core.config.keyring") as mock_kr:
+            mock_kr.get_password.return_value = None
+            assert get_credential("nonexistent") is None
 
 
 class TestLabSettings:
