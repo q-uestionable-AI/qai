@@ -35,8 +35,15 @@ def _resolve_corpus(
     profile: str | None,
     corpus_dir: Path | None,
     poison_file: Path | None,
+    queries_override: list[str] | None = None,
 ) -> tuple[list[CorpusDocument], list[CorpusDocument], list[str]]:
     """Resolve corpus docs, poison docs, and queries from CLI args.
+
+    Args:
+        profile: Domain profile ID.
+        corpus_dir: Path to custom corpus directory.
+        poison_file: Path to poison document.
+        queries_override: Explicit queries from --query flags.
 
     Returns:
         Tuple of (corpus_docs, poison_docs, queries).
@@ -69,10 +76,13 @@ def _resolve_corpus(
             CorpusDocument(id=poison_file.stem, text=text, source=str(poison_file), is_poison=True)
         ]
 
+    if queries_override:
+        queries = queries_override
+
     if not poison_docs:
         _error("No poison documents found. Use --poison-file or a profile with poison docs.")
     if not queries:
-        _error("No queries found. Use a profile with queries defined.")
+        _error("No queries found. Use --profile or provide --query flags with --corpus-dir.")
 
     return corpus_docs, poison_docs, queries
 
@@ -176,13 +186,19 @@ def validate(
         bool,
         typer.Option("--save", help="Persist results to the q-ai database."),
     ] = False,
+    query: Annotated[
+        list[str] | None,
+        typer.Option("--query", help="Query to test (repeatable). Required with --corpus-dir."),
+    ] = None,
 ) -> None:
     """Run retrieval validation against a corpus."""
     if profile is None and corpus_dir is None:
         _error("Either --profile or --corpus-dir is required.")
 
     model_ids = _resolve_model_ids(model)
-    corpus_docs, poison_docs, queries = _resolve_corpus(profile, corpus_dir, poison_file)
+    corpus_docs, poison_docs, queries = _resolve_corpus(
+        profile, corpus_dir, poison_file, queries_override=query
+    )
 
     from q_ai.rxp._deps import require_rxp_deps
 

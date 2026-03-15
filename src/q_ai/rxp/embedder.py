@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import functools
+
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
 
 class Embedder:
     """Loads a sentence-transformers model and encodes text to embeddings.
-
-    Caches loaded models in memory. Thread-safe for read-only use.
 
     Args:
         model_name: Full sentence-transformers model name.
@@ -51,11 +51,7 @@ class Embedder:
         return result
 
 
-_model_cache: dict[str, Embedder] = {}
-
-
+@functools.lru_cache(maxsize=8)
 def get_embedder(model_name: str) -> Embedder:
     """Get or create a cached Embedder for the given model."""
-    if model_name not in _model_cache:
-        _model_cache[model_name] = Embedder(model_name)
-    return _model_cache[model_name]
+    return Embedder(model_name)

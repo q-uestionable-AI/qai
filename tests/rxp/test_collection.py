@@ -31,6 +31,7 @@ def docs() -> list[CorpusDocument]:
     ]
 
 
+@pytest.mark.integration
 class TestRetrievalCollection:
     """Tests for RetrievalCollection (requires chromadb + sentence-transformers)."""
 

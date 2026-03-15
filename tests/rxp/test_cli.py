@@ -47,11 +47,26 @@ class TestCLI:
 
     def test_validate_arbitrary_model_accepted(self) -> None:
         """Arbitrary HuggingFace model names pass CLI argument parsing."""
-        result = runner.invoke(
-            app, ["validate", "--profile", "hr-policy", "--model", "BAAI/bge-m3"]
+        import types
+
+        mock_result = ValidationResult(
+            model_id="BAAI/bge-m3",
+            total_queries=0,
+            poison_retrievals=0,
+            retrieval_rate=0.0,
+            mean_poison_rank=None,
+            query_results=[],
         )
-        # Should not fail with "Unknown model" — may fail at dep check or model load,
-        # but argument parsing accepts arbitrary strings
+        fake_validator = types.ModuleType("q_ai.rxp.validator")
+        fake_validator.validate_retrieval = lambda **kwargs: mock_result  # type: ignore[attr-defined]
+
+        with (
+            patch("q_ai.rxp._deps.require_rxp_deps"),
+            patch.dict("sys.modules", {"q_ai.rxp.validator": fake_validator}),
+        ):
+            result = runner.invoke(
+                app, ["validate", "--profile", "hr-policy", "--model", "BAAI/bge-m3"]
+            )
         assert "Unknown model" not in (result.output or "")
 
     def test_validate_unknown_profile(self) -> None:
@@ -59,7 +74,47 @@ class TestCLI:
         assert result.exit_code == 1
         assert "Unknown profile" in result.output
 
+    def test_validate_custom_corpus_with_query(self) -> None:
+        """--corpus-dir with --query succeeds without --profile."""
+        import types
 
+        mock_result = ValidationResult(
+            model_id="minilm-l6",
+            total_queries=1,
+            poison_retrievals=0,
+            retrieval_rate=0.0,
+            mean_poison_rank=None,
+            query_results=[],
+        )
+        fake_validator = types.ModuleType("q_ai.rxp.validator")
+        fake_validator.validate_retrieval = lambda **kwargs: mock_result  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            corpus_dir = Path(tmpdir) / "corpus"
+            corpus_dir.mkdir()
+            (corpus_dir / "doc1.txt").write_text("Test document content", encoding="utf-8")
+            poison_file = Path(tmpdir) / "poison.txt"
+            poison_file.write_text("Poison content", encoding="utf-8")
+            with (
+                patch("q_ai.rxp._deps.require_rxp_deps"),
+                patch.dict("sys.modules", {"q_ai.rxp.validator": fake_validator}),
+            ):
+                result = runner.invoke(
+                    app,
+                    [
+                        "validate",
+                        "--corpus-dir",
+                        str(corpus_dir),
+                        "--poison-file",
+                        str(poison_file),
+                        "--query",
+                        "test query",
+                    ],
+                )
+        assert result.exit_code == 0
+
+
+@pytest.mark.integration
 class TestCLIValidate:
     """Tests for the validate command (requires RXP deps)."""
 

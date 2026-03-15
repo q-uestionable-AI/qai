@@ -11,6 +11,7 @@ from q_ai.rxp.embedder import get_embedder  # noqa: E402
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
+@pytest.mark.integration
 class TestEmbedder:
     """Tests for the Embedder class (requires sentence-transformers)."""
 

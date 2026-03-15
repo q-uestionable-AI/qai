@@ -36,6 +36,7 @@ def poison() -> list[CorpusDocument]:
     ]
 
 
+@pytest.mark.integration
 class TestValidator:
     """Tests for the retrieval validation engine (requires deps)."""
 

@@ -37,7 +37,8 @@ def validate_retrieval(
     model_config = resolve_model(model_id)
 
     embedder = get_embedder(model_config.name)
-    collection = RetrievalCollection(name=f"rxp-validate-{model_id}", embedder=embedder)
+    safe_name = model_id.replace("/", "-").replace(".", "-")
+    collection = RetrievalCollection(name=f"rxp-validate-{safe_name}", embedder=embedder)
 
     # Ingest all documents
     collection.ingest(corpus_docs)
