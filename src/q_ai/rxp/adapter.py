@@ -19,6 +19,24 @@ if TYPE_CHECKING:
     from q_ai.orchestrator.runner import WorkflowRunner
 
 
+def _run_validation(
+    corpus_docs: list[CorpusDocument],
+    poison_docs: list[CorpusDocument],
+    queries: list[str],
+    model_id: str,
+    top_k: int,
+) -> ValidationResult:
+    """Run RXP validation with lazy import of optional deps."""
+    try:
+        from q_ai.rxp.validator import validate_retrieval
+    except ImportError as exc:
+        raise ImportError(
+            "RXP requires additional dependencies. "
+            'Install with: pip install "q-uestionable-ai[rxp]"'
+        ) from exc
+    return validate_retrieval(corpus_docs, poison_docs, queries, model_id, top_k)
+
+
 @dataclass
 class RXPAdapterResult:
     """Result from an RXP adapter run."""
@@ -123,20 +141,13 @@ class RXPAdapter:
                     raise ValueError("queries list is required when not using a profile")
                 queries = raw_queries
 
-            # Check RXP dependencies before importing validator
-            from q_ai.rxp._deps import require_rxp_deps
-
-            require_rxp_deps()
-
-            from q_ai.rxp.validator import validate_retrieval
-
             await self._runner.emit_progress(
                 child_id,
                 f"Running {len(queries)} queries against {model_id}...",
             )
 
             result = await asyncio.to_thread(
-                validate_retrieval, corpus_docs, poison_docs, queries, model_id, top_k
+                _run_validation, corpus_docs, poison_docs, queries, model_id, top_k
             )
 
             persist_validation(

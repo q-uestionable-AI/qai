@@ -9,6 +9,23 @@ _RXP_INSTALL_MSG = (
 )
 
 
+def is_available() -> bool:
+    """Check if RXP optional dependencies are installed.
+
+    Uses importlib.util.find_spec to check without importing
+    (avoids heavy initialization cost at startup).
+
+    Returns:
+        True if chromadb and sentence_transformers are available.
+    """
+    import importlib.util
+
+    return (
+        importlib.util.find_spec("chromadb") is not None
+        and importlib.util.find_spec("sentence_transformers") is not None
+    )
+
+
 def require_rxp_deps() -> None:
     """Raise ImportError with install instructions if RXP deps are missing."""
     try:

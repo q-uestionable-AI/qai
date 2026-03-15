@@ -21,6 +21,7 @@ class WorkflowEntry:
         name: Human-readable workflow name.
         description: Short description for the launcher UI.
         modules: List of module names used by this workflow.
+        optional_modules: Modules that can be skipped if deps are unavailable.
         executor: Async executor function, or None if not yet implemented.
         failure_mode: Error handling policy — "best_effort" or "fail_fast".
     """
@@ -29,6 +30,7 @@ class WorkflowEntry:
     name: str
     description: str
     modules: list[str] = field(default_factory=list)
+    optional_modules: list[str] = field(default_factory=list)
     executor: Callable[..., Any] | None = None
     failure_mode: str = "best_effort"
 
@@ -85,6 +87,7 @@ _DEFAULT_WORKFLOWS = [
         name="Test Document Ingestion",
         description="Generate payloads for document pipelines and track execution callbacks.",
         modules=["ipi", "rxp"],
+        optional_modules=["rxp"],
     ),
     WorkflowEntry(
         id="test_assistant",

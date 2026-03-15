@@ -49,6 +49,7 @@ rxp = [
     "chromadb>=1.5,<2",
     "numpy>=1.26",
 ]
+full = ["q-uestionable-ai[rxp]"]
 
 [project.scripts]
 qai = "q_ai.cli:app"

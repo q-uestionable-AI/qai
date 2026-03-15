@@ -120,9 +120,7 @@ def _mock_rxp_deps():
 class TestRXPAdapter:
     """Tests for RXPAdapter orchestration glue."""
 
-    async def test_rxp_run_with_profile(
-        self, runner: WorkflowRunner, db_path: Path, _mock_rxp_deps: None
-    ) -> None:
+    async def test_rxp_run_with_profile(self, runner: WorkflowRunner, db_path: Path) -> None:
         """Mock profile load + validate_retrieval -> COMPLETED."""
         await runner.start()
         profile = _make_profile()
@@ -136,8 +134,7 @@ class TestRXPAdapter:
             patch("q_ai.rxp.profiles.get_profile", return_value=profile),
             patch("q_ai.rxp.profiles.load_corpus", return_value=corpus),
             patch("q_ai.rxp.profiles.load_poison", return_value=poison),
-            patch("q_ai.rxp._deps.require_rxp_deps"),
-            patch("q_ai.rxp.validator.validate_retrieval", return_value=val_result),
+            patch("q_ai.rxp.adapter._run_validation", return_value=val_result),
             patch("q_ai.rxp.adapter.persist_validation"),
         ):
             result = await adapter.run()
@@ -150,7 +147,7 @@ class TestRXPAdapter:
         assert child.status == RunStatus.COMPLETED
 
     async def test_rxp_persist_called_with_child_id(
-        self, runner: WorkflowRunner, db_path: Path, _mock_rxp_deps: None
+        self, runner: WorkflowRunner, db_path: Path
     ) -> None:
         """Verify persist_validation called with run_id=child_id."""
         await runner.start()
@@ -165,8 +162,7 @@ class TestRXPAdapter:
             patch("q_ai.rxp.profiles.get_profile", return_value=profile),
             patch("q_ai.rxp.profiles.load_corpus", return_value=corpus),
             patch("q_ai.rxp.profiles.load_poison", return_value=poison),
-            patch("q_ai.rxp._deps.require_rxp_deps"),
-            patch("q_ai.rxp.validator.validate_retrieval", return_value=val_result),
+            patch("q_ai.rxp.adapter._run_validation", return_value=val_result),
             patch("q_ai.rxp.adapter.persist_validation") as mock_persist,
         ):
             result = await adapter.run()
@@ -175,7 +171,7 @@ class TestRXPAdapter:
         assert mock_persist.call_args.kwargs["run_id"] == result.run_id
 
     async def test_rxp_finding_emitted_on_retrieval(
-        self, runner: WorkflowRunner, db_path: Path, _mock_rxp_deps: None
+        self, runner: WorkflowRunner, db_path: Path
     ) -> None:
         """result.retrieval_rate > 0 -> emit_finding called."""
         await runner.start()
@@ -192,8 +188,7 @@ class TestRXPAdapter:
             patch("q_ai.rxp.profiles.get_profile", return_value=profile),
             patch("q_ai.rxp.profiles.load_corpus", return_value=corpus),
             patch("q_ai.rxp.profiles.load_poison", return_value=poison),
-            patch("q_ai.rxp._deps.require_rxp_deps"),
-            patch("q_ai.rxp.validator.validate_retrieval", return_value=val_result),
+            patch("q_ai.rxp.adapter._run_validation", return_value=val_result),
             patch("q_ai.rxp.adapter.persist_validation"),
         ):
             await adapter.run()
@@ -206,9 +201,7 @@ class TestRXPAdapter:
         assert len(finding_calls) == 1
         assert finding_calls[0].args[0]["module"] == "rxp"
 
-    async def test_rxp_no_finding_on_zero_rate(
-        self, runner: WorkflowRunner, db_path: Path, _mock_rxp_deps: None
-    ) -> None:
+    async def test_rxp_no_finding_on_zero_rate(self, runner: WorkflowRunner, db_path: Path) -> None:
         """retrieval_rate == 0 -> no finding emitted."""
         await runner.start()
         ws_manager = AsyncMock()
@@ -224,8 +217,7 @@ class TestRXPAdapter:
             patch("q_ai.rxp.profiles.get_profile", return_value=profile),
             patch("q_ai.rxp.profiles.load_corpus", return_value=corpus),
             patch("q_ai.rxp.profiles.load_poison", return_value=poison),
-            patch("q_ai.rxp._deps.require_rxp_deps"),
-            patch("q_ai.rxp.validator.validate_retrieval", return_value=val_result),
+            patch("q_ai.rxp.adapter._run_validation", return_value=val_result),
             patch("q_ai.rxp.adapter.persist_validation"),
         ):
             await adapter.run()
@@ -254,3 +246,45 @@ class TestRXPAdapter:
             child = get_run(conn, children[0]["id"])
         assert child is not None
         assert child.status == RunStatus.FAILED
+
+    async def test_adapter_lazy_import_fails_cleanly(
+        self, runner: WorkflowRunner, db_path: Path
+    ) -> None:
+        """Missing chromadb import -> ImportError with install message, child FAILED."""
+        await runner.start()
+        profile = _make_profile()
+        corpus = [CorpusDocument(id="doc1", text="test", source="test.txt")]
+        poison = [CorpusDocument(id="poison1", text="evil", source="p.txt", is_poison=True)]
+
+        adapter = RXPAdapter(runner, _BASE_CONFIG)
+
+        with (
+            patch("q_ai.rxp.profiles.get_profile", return_value=profile),
+            patch("q_ai.rxp.profiles.load_corpus", return_value=corpus),
+            patch("q_ai.rxp.profiles.load_poison", return_value=poison),
+            patch(
+                "q_ai.rxp.adapter._run_validation",
+                side_effect=ImportError(
+                    "RXP requires additional dependencies. "
+                    'Install with: pip install "q-uestionable-ai[rxp]"'
+                ),
+            ),
+            pytest.raises(ImportError, match="pip install"),
+        ):
+            await adapter.run()
+
+        with get_connection(db_path) as conn:
+            children = conn.execute(
+                "SELECT id FROM runs WHERE parent_run_id = ?", (runner.run_id,)
+            ).fetchall()
+            assert len(children) == 1
+            child = get_run(conn, children[0]["id"])
+        assert child is not None
+        assert child.status == RunStatus.FAILED
+
+    def test_adapter_no_early_require_deps_call(self) -> None:
+        """require_rxp_deps is not called at adapter module level."""
+        import inspect
+
+        source = inspect.getsource(RXPAdapter.run)
+        assert "require_rxp_deps" not in source
