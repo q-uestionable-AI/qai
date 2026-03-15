@@ -11,14 +11,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ["3.11", "3.13", "3.14"]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12", "3.14"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -26,14 +26,34 @@ jobs:
         run: uv sync --group dev
 
       - name: Lint
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          uv run ruff check .
-          uv run ruff format --check .
-          uv run mypy src/q_ai/
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Type check
+        run: uv run mypy src/q_ai/
 
       - name: Test
         run: uv run pytest -q
 
       - name: Smoke test CLI
         run: uv run qai --help
+
+  security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: pip-audit (dependency vulnerabilities)
+        run: uv run pip-audit
