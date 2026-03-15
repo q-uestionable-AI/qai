@@ -8,7 +8,7 @@ from pathlib import Path
 
 from mcp.types import JSONRPCMessage, JSONRPCRequest
 
-from q_ai.core.db import get_connection
+from q_ai.core.db import create_run, get_connection
 from q_ai.mcp.models import Direction, Transport
 from q_ai.proxy.mapper import persist_session
 from q_ai.proxy.models import ProxyMessage
@@ -114,3 +114,32 @@ class TestPersistSession:
             ).fetchone()
             assert session["transport"] == "sse"
             assert session["server_name"] == "http://localhost:3000/sse"
+
+    def test_persist_with_explicit_run_id(self, tmp_path: Path) -> None:
+        """Verify persist_session uses provided run_id instead of creating a new one."""
+        db_path = tmp_path / "test.db"
+        with get_connection(db_path) as conn:
+            pre_run_id = create_run(conn, module="proxy", name="pre-created")
+
+        store = _make_store(num_messages=2)
+
+        run_id = persist_session(
+            store,
+            db_path=db_path,
+            artifacts_dir=tmp_path / "artifacts",
+            run_id=pre_run_id,
+        )
+        assert run_id == pre_run_id
+
+        with get_connection(db_path) as conn:
+            # Should only have the pre-created run
+            runs = conn.execute("SELECT * FROM runs").fetchall()
+            assert len(runs) == 1
+            assert runs[0]["id"] == pre_run_id
+
+            # Session should reference the pre-created run
+            session = conn.execute(
+                "SELECT * FROM proxy_sessions WHERE run_id = ?", (pre_run_id,)
+            ).fetchone()
+            assert session is not None
+            assert session["message_count"] == 2

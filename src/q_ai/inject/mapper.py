@@ -24,6 +24,7 @@ _OUTCOME_SEVERITY: dict[InjectionOutcome, Severity] = {
 def persist_campaign(
     campaign: Campaign,
     db_path: Path | None = None,
+    run_id: str | None = None,
 ) -> str:
     """Persist a Campaign to the database.
 
@@ -33,33 +34,37 @@ def persist_campaign(
     Args:
         campaign: Completed campaign from the executor.
         db_path: Path to database file. Defaults to ~/.qai/qai.db.
+        run_id: Optional pre-created run ID from the orchestrator.
+            When provided, skips creating a new run row.
 
     Returns:
         The run ID for the persisted campaign.
     """
-    run_id = uuid.uuid4().hex
     now_iso = datetime.datetime.now(datetime.UTC).isoformat()
 
     with get_connection(db_path) as conn:
-        conn.execute(
-            """
-            INSERT INTO runs
-                (id, module, name, target_id, parent_run_id,
-                 config, status, started_at, finished_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                run_id,
-                "inject",
-                campaign.name,
-                None,
-                None,
-                None,
-                int(RunStatus.COMPLETED),
-                campaign.started_at.isoformat() if campaign.started_at else now_iso,
-                campaign.finished_at.isoformat() if campaign.finished_at else now_iso,
-            ),
-        )
+        # Create run (unless pre-created by orchestrator)
+        if run_id is None:
+            run_id = uuid.uuid4().hex
+            conn.execute(
+                """
+                INSERT INTO runs
+                    (id, module, name, target_id, parent_run_id,
+                     config, status, started_at, finished_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    "inject",
+                    campaign.name,
+                    None,
+                    None,
+                    None,
+                    int(RunStatus.COMPLETED),
+                    campaign.started_at.isoformat() if campaign.started_at else now_iso,
+                    campaign.finished_at.isoformat() if campaign.finished_at else now_iso,
+                ),
+            )
 
         for result in campaign.results:
             result_id = uuid.uuid4().hex

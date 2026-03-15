@@ -24,6 +24,7 @@ def persist_session(
     db_path: Path | None = None,
     duration_seconds: float | None = None,
     artifacts_dir: Path | None = None,
+    run_id: str | None = None,
 ) -> str:
     """Persist a proxy session to the database and artifacts.
 
@@ -37,11 +38,12 @@ def persist_session(
             store timestamps if not provided.
         artifacts_dir: Directory for session artifacts. Defaults to
             ~/.qai/artifacts.
+        run_id: Optional pre-created run ID from the orchestrator.
+            When provided, skips creating a new run row.
 
     Returns:
         The run ID for the persisted session.
     """
-    run_id = uuid.uuid4().hex
     now_iso = datetime.datetime.now(datetime.UTC).isoformat()
 
     # Compute duration from store timestamps if not provided
@@ -60,31 +62,34 @@ def persist_session(
     # Save session JSON to artifacts
     if artifacts_dir is None:
         artifacts_dir = _ARTIFACTS_DIR
-    session_rel_path = f"{run_id}/session.json"
-    session_abs_path = artifacts_dir / session_rel_path
-    store.save(session_abs_path)
 
     with get_connection(db_path) as conn:
-        # Create run record
-        conn.execute(
-            """
-            INSERT INTO runs
-                (id, module, name, target_id, parent_run_id,
-                 config, status, started_at, finished_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                run_id,
-                "proxy",
-                f"proxy-{store.transport.value}",
-                None,
-                None,
-                None,
-                int(RunStatus.COMPLETED),
-                store.started_at.isoformat(),
-                now_iso,
-            ),
-        )
+        # Create run record (unless pre-created by orchestrator)
+        if run_id is None:
+            run_id = uuid.uuid4().hex
+            conn.execute(
+                """
+                INSERT INTO runs
+                    (id, module, name, target_id, parent_run_id,
+                     config, status, started_at, finished_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    "proxy",
+                    f"proxy-{store.transport.value}",
+                    None,
+                    None,
+                    None,
+                    int(RunStatus.COMPLETED),
+                    store.started_at.isoformat(),
+                    now_iso,
+                ),
+            )
+
+        session_rel_path = f"{run_id}/session.json"
+        session_abs_path = artifacts_dir / session_rel_path
+        store.save(session_abs_path)
 
         # Create proxy_sessions record
         conn.execute(
