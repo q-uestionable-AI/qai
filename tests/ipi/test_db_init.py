@@ -82,13 +82,13 @@ class TestIPISchemaV7:
             assert "idx_ipi_payloads_run_id" in indexes
             assert "idx_ipi_hits_uuid" in indexes
 
-    def test_migration_from_v6(self, tmp_path: Path) -> None:
-        """Existing V6 database upgrades cleanly to V7."""
+    def test_migration_from_v5(self, tmp_path: Path) -> None:
+        """Existing V5 database upgrades through V6→V7, creating IPI tables."""
         import sqlite3
 
         db_path = tmp_path / "test.db"
         conn = sqlite3.connect(str(db_path))
-        conn.execute("PRAGMA user_version = 6")
+        conn.execute("PRAGMA user_version = 5")
         conn.commit()
         conn.close()
 
