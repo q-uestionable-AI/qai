@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_VERSION = 2
+CURRENT_VERSION = 3
 
 V1_TABLES = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -93,6 +93,23 @@ V2_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_audit_scans_run_id ON audit_scans(run_id);
 """
 
+V3_TABLES = """
+CREATE TABLE IF NOT EXISTS inject_results (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(id),
+    payload_name TEXT NOT NULL,
+    technique TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    target_agent TEXT NOT NULL,
+    evidence TEXT,
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+"""
+
+V3_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_inject_results_run_id ON inject_results(run_id);
+"""
+
 
 def migrate(conn: sqlite3.Connection) -> None:
     """Run schema migrations up to CURRENT_VERSION.
@@ -111,3 +128,7 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.executescript(V2_TABLES)
         conn.executescript(V2_INDEXES)
         conn.execute("PRAGMA user_version = 2")
+    if version < 3:
+        conn.executescript(V3_TABLES)
+        conn.executescript(V3_INDEXES)
+        conn.execute("PRAGMA user_version = 3")

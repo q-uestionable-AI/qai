@@ -30,6 +30,7 @@ dependencies = [
     "jinja2>=3.1",
     "websockets>=15.0",
     "mcp>=1.26,<2",
+    "anthropic>=0.84",
 ]
 
 [project.scripts]
@@ -88,3 +89,6 @@ ignore_errors = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 timeout = 30
+markers = [
+    "integration: marks tests requiring external services (deselect with '-m \"not integration\"')",
+]

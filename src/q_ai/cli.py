@@ -12,6 +12,7 @@ from q_ai.core.cli.config import app as config_app
 from q_ai.core.cli.findings import app as findings_app
 from q_ai.core.cli.runs import app as runs_app
 from q_ai.core.cli.targets import app as targets_app
+from q_ai.inject.cli import app as inject_app
 from q_ai.server.helpers import (
     delete_port_file,
     find_free_port,
@@ -104,3 +105,4 @@ app.add_typer(findings_app)
 app.add_typer(targets_app)
 app.add_typer(config_app)
 app.add_typer(audit_app, name="audit", help="MCP server security scanning.")
+app.add_typer(inject_app, name="inject", help="Tool poisoning and prompt injection testing.")
