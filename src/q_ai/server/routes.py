@@ -206,6 +206,68 @@ async def api_targets(request: Request) -> HTMLResponse:
 
 
 # ---------------------------------------------------------------------------
+# Chain API routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/chain/tab")
+async def api_chain_tab(request: Request) -> HTMLResponse:
+    """Return the chain tab partial."""
+    templates = _get_templates(request)
+    return templates.TemplateResponse(request, "partials/chain_tab.html", {})
+
+
+@router.get("/api/chain/executions")
+async def api_chain_executions(request: Request) -> HTMLResponse:
+    """Return chain executions list partial."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT ce.id, ce.run_id, ce.chain_id, ce.chain_name,
+                   ce.dry_run, ce.success, ce.trust_boundaries, ce.created_at
+            FROM chain_executions ce
+            ORDER BY ce.created_at DESC
+            LIMIT 50
+            """
+        ).fetchall()
+    executions = [dict(row) for row in rows]
+    return templates.TemplateResponse(
+        request, "partials/chain_tab.html", {"executions": executions}
+    )
+
+
+@router.get("/api/chain/executions/{run_id}")
+async def api_chain_execution_detail(request: Request, run_id: str) -> HTMLResponse:
+    """Return chain execution detail partial with step outputs."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        exec_row = conn.execute(
+            "SELECT * FROM chain_executions WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        step_rows = []
+        if exec_row:
+            step_rows = conn.execute(
+                """
+                SELECT step_id, module, technique, success, status, error
+                FROM chain_step_outputs
+                WHERE execution_id = ?
+                ORDER BY created_at
+                """,
+                (exec_row["id"],),
+            ).fetchall()
+    execution_detail: dict[str, Any] = dict(exec_row) if exec_row else {}
+    step_outputs = [dict(row) for row in step_rows]
+    return templates.TemplateResponse(
+        request,
+        "partials/chain_tab.html",
+        {"execution_detail": execution_detail, "step_outputs": step_outputs},
+    )
+
+
+# ---------------------------------------------------------------------------
 # WebSocket
 # ---------------------------------------------------------------------------
 
