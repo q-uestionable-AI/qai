@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path
 
 from q_ai.core.db import get_connection
-from q_ai.core.models import Severity
+from q_ai.core.models import Severity, RunStatus
 from q_ai.inject.models import Campaign, InjectionOutcome
 
 _OUTCOME_SEVERITY: dict[InjectionOutcome, Severity] = {
@@ -55,7 +55,7 @@ def persist_campaign(
                 None,
                 None,
                 None,
-                2,  # RunStatus.COMPLETED
+                int(RunStatus.COMPLETED),
                 campaign.started_at.isoformat() if campaign.started_at else now_iso,
                 campaign.finished_at.isoformat() if campaign.finished_at else now_iso,
             ),
