@@ -9,7 +9,7 @@ Usage:
     fastmcp run fixtures/proxy_vuln_injection.py
 """
 
-from fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP(
     name="vuln-injection-server",
