@@ -367,7 +367,13 @@ def write_detection_rules(
         msg = f"Unsupported format '{format}'. Expected 'sigma' or 'wazuh'."
         raise ValueError(msg)
 
-    if output_path.suffix:
+    suffix = output_path.suffix.lower()
+    is_file_path = (
+        (format == "sigma" and suffix in {".yml", ".yaml"})
+        or (format == "wazuh" and suffix == ".xml")
+    )
+
+    if is_file_path:
         # Treat as file
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if format == "wazuh":
