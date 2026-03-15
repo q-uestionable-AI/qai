@@ -82,7 +82,7 @@ ignore = [
 "src/q_ai/core/db.py" = ["A002"]  # type/hash params match DB column names
 "src/q_ai/server/**" = ["B008"]  # FastAPI Depends() in defaults
 "src/q_ai/ipi/server.py" = ["B008"]
-"src/q_ai/ipi/api.py" = ["B008"]
+"src/q_ai/ipi/api.py" = ["B008", "A002"]  # format param name matches HTML form field
 
 [tool.mypy]
 python_version = "3.11"

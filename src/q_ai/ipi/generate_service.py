@@ -164,7 +164,7 @@ def _save_campaign(campaign: Campaign, seed: int | None) -> str | None:
     try:
         db.save_campaign(campaign)
         return None
-    except Exception:  # noqa: BLE001
+    except Exception:
         if seed is not None:
             return f"UUID {campaign.uuid[:8]}... already exists (seed={seed})"
         raise
