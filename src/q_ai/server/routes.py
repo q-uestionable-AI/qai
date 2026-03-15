@@ -268,6 +268,90 @@ async def api_chain_execution_detail(request: Request, run_id: str) -> HTMLRespo
 
 
 # ---------------------------------------------------------------------------
+# IPI API routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/ipi/tab")
+async def api_ipi_tab(request: Request) -> HTMLResponse:
+    """Return the IPI tab partial."""
+    templates = _get_templates(request)
+    return templates.TemplateResponse(request, "partials/ipi_tab.html", {})
+
+
+@router.get("/api/ipi/campaigns")
+async def api_ipi_campaigns(request: Request) -> HTMLResponse:
+    """Return IPI campaigns summary partial."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT ip.uuid, ip.format, ip.technique, ip.created_at,
+                   COUNT(ih.id) as hit_count
+            FROM ipi_payloads ip
+            LEFT JOIN ipi_hits ih ON ip.uuid = ih.uuid
+            GROUP BY ip.uuid, ip.format, ip.technique, ip.created_at
+            ORDER BY ip.created_at DESC
+            LIMIT 50
+            """
+        ).fetchall()
+        total_hits_row = conn.execute("SELECT COUNT(*) FROM ipi_hits").fetchone()
+        high_hits_row = conn.execute(
+            "SELECT COUNT(*) FROM ipi_hits WHERE confidence = 'high'"
+        ).fetchone()
+    campaigns = [dict(row) for row in rows]
+    total_hits = total_hits_row[0] if total_hits_row else 0
+    high_hits = high_hits_row[0] if high_hits_row else 0
+    return templates.TemplateResponse(
+        request,
+        "partials/ipi_tab.html",
+        {
+            "campaigns": campaigns,
+            "total_hits": total_hits,
+            "high_hits": high_hits,
+            "listener_hint": True,
+        },
+    )
+
+
+@router.get("/api/ipi/hits")
+async def api_ipi_hits(request: Request) -> HTMLResponse:
+    """Return recent IPI hits partial."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        campaign_rows = conn.execute(
+            """
+            SELECT ip.uuid, ip.format, ip.technique, ip.created_at,
+                   COUNT(ih.id) as hit_count
+            FROM ipi_payloads ip
+            LEFT JOIN ipi_hits ih ON ip.uuid = ih.uuid
+            GROUP BY ip.uuid, ip.format, ip.technique, ip.created_at
+            ORDER BY ip.created_at DESC
+            LIMIT 50
+            """
+        ).fetchall()
+        total_hits_row = conn.execute("SELECT COUNT(*) FROM ipi_hits").fetchone()
+        high_hits_row = conn.execute(
+            "SELECT COUNT(*) FROM ipi_hits WHERE confidence = 'high'"
+        ).fetchone()
+    campaigns = [dict(row) for row in campaign_rows]
+    total_hits = total_hits_row[0] if total_hits_row else 0
+    high_hits = high_hits_row[0] if high_hits_row else 0
+    return templates.TemplateResponse(
+        request,
+        "partials/ipi_tab.html",
+        {
+            "campaigns": campaigns,
+            "total_hits": total_hits,
+            "high_hits": high_hits,
+            "listener_hint": True,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # WebSocket
 # ---------------------------------------------------------------------------
 

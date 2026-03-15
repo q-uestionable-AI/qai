@@ -1,0 +1,69 @@
+{% if campaigns is defined %}
+<div class="flex items-center justify-between mb-4">
+    <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">
+        IPI — Indirect Prompt Injection
+    </h3>
+    <button class="btn btn-xs btn-ghost"
+            hx-get="/api/ipi/campaigns"
+            hx-target="#tab-ipi"
+            hx-swap="innerHTML">Refresh</button>
+</div>
+
+<div class="stats stats-horizontal shadow mb-4">
+    <div class="stat">
+        <div class="stat-title">Campaigns</div>
+        <div class="stat-value text-lg">{{ campaigns|length }}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-title">Total Hits</div>
+        <div class="stat-value text-lg">{{ total_hits }}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-title">High Confidence</div>
+        <div class="stat-value text-lg text-success">{{ high_hits }}</div>
+    </div>
+</div>
+
+{% if campaigns %}
+<table class="table table-xs">
+    <thead>
+        <tr>
+            <th>UUID</th>
+            <th>Format</th>
+            <th>Technique</th>
+            <th>Hits</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for c in campaigns %}
+        <tr>
+            <td class="font-mono text-xs">{{ c.uuid[:8] }}...</td>
+            <td><span class="badge badge-sm">{{ c.format }}</span></td>
+            <td><span class="badge badge-sm badge-outline">{{ c.technique }}</span></td>
+            <td>{{ c.hit_count }}</td>
+            <td class="text-xs opacity-50">{{ c.created_at }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="text-sm opacity-50">No IPI campaigns. Run <code>qai ipi generate</code> to create payloads.</p>
+{% endif %}
+
+{% if listener_hint %}
+<p class="text-xs opacity-40 mt-4">Full dashboard: <code>qai ipi listen --port 8080</code></p>
+{% endif %}
+
+{% else %}
+<div class="flex items-center justify-between mb-4">
+    <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">
+        IPI — Indirect Prompt Injection
+    </h3>
+    <button class="btn btn-xs btn-ghost"
+            hx-get="/api/ipi/campaigns"
+            hx-target="#tab-ipi"
+            hx-swap="innerHTML">Load</button>
+</div>
+<p class="text-sm opacity-50">Click Load to view IPI campaigns and hits.</p>
+{% endif %}
