@@ -33,8 +33,8 @@ class TestWorkflowCards:
 
     def test_modal_present(self, client: TestClient) -> None:
         resp = client.get("/")
-        assert "workflow-modal" in resp.text
-        assert "Coming Soon" in resp.text or "Phase 5" in resp.text
+        assert "modal-assess" in resp.text
+        assert "Coming Soon" in resp.text
 
 
 class TestEmptyStates:

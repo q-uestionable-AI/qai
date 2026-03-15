@@ -43,6 +43,12 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     # Store db_path in app state for route handlers
     app.state.db_path = db_path
 
+    # WebSocket connection manager and active workflow tracking
+    from q_ai.server.websocket import ConnectionManager
+
+    app.state.ws_manager = ConnectionManager()
+    app.state.active_workflows = {}  # dict[str, WorkflowRunner]
+
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
     app.state.templates = templates
 

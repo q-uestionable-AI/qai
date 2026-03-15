@@ -6,11 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Query, Request, WebSocket
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from starlette.websockets import WebSocketDisconnect
 
 from q_ai.core.db import get_connection, get_run, list_findings, list_runs, list_targets
 from q_ai.core.models import RunStatus, Severity
+from q_ai.orchestrator.registry import list_workflows
 
 router = APIRouter()
 
@@ -38,45 +40,13 @@ async def launcher(request: Request) -> HTMLResponse:
     templates = _get_templates(request)
     workflows: list[dict[str, Any]] = [
         {
-            "name": "Assess an MCP Server",
-            "description": (
-                "Scan, intercept, and test tool trust boundaries in Model Context Protocol servers."
-            ),
-            "modules": ["audit", "proxy", "inject"],
-        },
-        {
-            "name": "Test Document Ingestion",
-            "description": (
-                "Generate payloads for document pipelines and track execution callbacks."
-            ),
-            "modules": ["ipi", "rxp"],
-        },
-        {
-            "name": "Test a Coding Assistant",
-            "description": (
-                "Poison context files and validate whether AI assistants propagate tainted output."
-            ),
-            "modules": ["cxp"],
-        },
-        {
-            "name": "Trace an Attack Path",
-            "description": (
-                "Compose individual vulnerabilities into multi-step exploitation chains."
-            ),
-            "modules": ["chain"],
-        },
-        {
-            "name": "Measure Blast Radius",
-            "description": ("Analyze reach from a compromise point and generate detection rules."),
-            "modules": ["chain"],
-        },
-        {
-            "name": "Manage Research",
-            "description": (
-                "Campaigns, evidence collection, reports, and CVE tracking across all modules."
-            ),
-            "modules": ["audit", "proxy", "inject", "ipi", "cxp", "rxp", "chain"],
-        },
+            "id": wf.id,
+            "name": wf.name,
+            "description": wf.description,
+            "modules": wf.modules,
+            "implemented": wf.executor is not None,
+        }
+        for wf in list_workflows()
     ]
     return templates.TemplateResponse(
         request, "launcher.html", {"active": "launcher", "workflows": workflows}
@@ -423,18 +393,71 @@ async def api_rxp_validations(request: Request) -> HTMLResponse:
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
-    """WebSocket endpoint for live updates.
+    """WebSocket endpoint for live workflow event updates.
 
-    Accepts the connection and sends a status message. Infrastructure only --
-    no event broadcasting yet. This will be used in Phase 4/5.
+    Connects through the ConnectionManager for event broadcasting.
     """
-    await websocket.accept()
-    await websocket.send_json({"status": "connected"})
+    manager = websocket.app.state.ws_manager
+    await manager.connect(websocket)
     try:
         while True:
             await websocket.receive_text()
-    except Exception:  # noqa: S110  # WebSocket disconnect is expected
+    except WebSocketDisconnect:
         pass
+    finally:
+        manager.disconnect(websocket)
+
+
+# ---------------------------------------------------------------------------
+# Workflow resume API
+# ---------------------------------------------------------------------------
+
+
+@router.post("/api/workflows/{run_id}/resume")
+async def resume_workflow(request: Request, run_id: str) -> JSONResponse:
+    """Resume a workflow that is waiting for user action.
+
+    Looks up the active WorkflowRunner for this run_id and calls resume().
+    Returns 404 if no active runner exists, 409 if the run is not in
+    WAITING_FOR_USER state (idempotent — duplicate clicks are safe).
+    """
+    active_workflows: dict[str, object] = request.app.state.active_workflows
+    runner = active_workflows.get(run_id)
+    if runner is None:
+        return JSONResponse(status_code=404, content={"detail": "No active workflow for this run"})
+
+    from q_ai.orchestrator.runner import WorkflowRunner
+
+    if not isinstance(runner, WorkflowRunner):
+        return JSONResponse(status_code=500, content={"detail": "Invalid runner type"})
+
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        run = get_run(conn, run_id)
+    if run is None or run.status != RunStatus.WAITING_FOR_USER:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "Workflow is not waiting for user action"},
+        )
+
+    content_type = request.headers.get("content-type", "")
+    if "application/json" not in content_type:
+        body: dict = {}
+    else:
+        try:
+            body = await request.json()
+        except (ValueError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "Invalid JSON in request body"},
+            )
+        if not isinstance(body, dict):
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "Request body must be a JSON object"},
+            )
+    await runner.resume(body)
+    return JSONResponse(content={"status": "resumed"})
 
 
 # ---------------------------------------------------------------------------

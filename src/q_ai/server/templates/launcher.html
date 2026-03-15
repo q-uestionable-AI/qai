@@ -13,7 +13,7 @@
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {% for wf in workflows %}
         <div class="card workflow-card cursor-pointer"
-             onclick="document.getElementById('workflow-modal').showModal()">
+             onclick="document.getElementById('modal-{{ wf.id }}').showModal()">
             <div class="card-body p-6">
                 <h3 class="card-title text-base">{{ wf.name }}</h3>
                 <p class="text-sm text-base-content/60 mb-3">{{ wf.description }}</p>
@@ -26,25 +26,31 @@
                 </div>
             </div>
         </div>
+
+        <dialog id="modal-{{ wf.id }}" class="modal">
+            <div class="modal-box">
+                {% if wf.implemented %}
+                <h3 class="text-lg font-bold">{{ wf.name }}</h3>
+                <p class="py-4 text-base-content/70">
+                    Configuration dialog coming in Phase 5c.
+                </p>
+                {% else %}
+                <h3 class="text-lg font-bold">Coming Soon</h3>
+                <p class="py-4 text-base-content/70">
+                    This workflow is not yet implemented.
+                </p>
+                {% endif %}
+                <div class="modal-action">
+                    <form method="dialog">
+                        <button class="btn btn-primary btn-sm">Close</button>
+                    </form>
+                </div>
+            </div>
+            <form method="dialog" class="modal-backdrop">
+                <button>close</button>
+            </form>
+        </dialog>
         {% endfor %}
     </div>
 </div>
-
-<!-- Placeholder modal -->
-<dialog id="workflow-modal" class="modal">
-    <div class="modal-box">
-        <h3 class="text-lg font-bold">Coming Soon</h3>
-        <p class="py-4 text-base-content/70">
-            Configuration and orchestration arrive in Phase 5.
-        </p>
-        <div class="modal-action">
-            <form method="dialog">
-                <button class="btn btn-primary btn-sm">Close</button>
-            </form>
-        </div>
-    </div>
-    <form method="dialog" class="modal-backdrop">
-        <button>close</button>
-    </form>
-</dialog>
 {% endblock %}

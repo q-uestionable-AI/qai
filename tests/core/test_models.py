@@ -28,6 +28,8 @@ class TestEnums:
         assert RunStatus.COMPLETED == 2
         assert RunStatus.FAILED == 3
         assert RunStatus.CANCELLED == 4
+        assert RunStatus.WAITING_FOR_USER == 5
+        assert RunStatus.PARTIAL == 6
 
 
 class TestRun:
