@@ -1,6 +1,6 @@
 # Capability Trust Propagation Failure
 
-**Status:** Research theme — informs chain, audit, and inject development  
+**Status:** Research theme — informs chain, audit, and inject development
 **Scope:** Cross-module
 
 ---

@@ -6,7 +6,21 @@ from unittest.mock import patch
 
 import pytest
 
-from q_ai.rxp._deps import _RXP_INSTALL_MSG, require_rxp_deps
+from q_ai.rxp._deps import _RXP_INSTALL_MSG, is_available, require_rxp_deps
+
+
+class TestIsAvailable:
+    """Tests for the is_available() check."""
+
+    def test_is_available_returns_bool(self) -> None:
+        """is_available() always returns a bool."""
+        result = is_available()
+        assert isinstance(result, bool)
+
+    def test_is_available_uses_find_spec(self) -> None:
+        """Returns False when find_spec returns None for chromadb."""
+        with patch("importlib.util.find_spec", return_value=None):
+            assert is_available() is False
 
 
 class TestDepsGuard:

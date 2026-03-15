@@ -49,6 +49,11 @@ rxp = [
     "chromadb>=1.5,<2",
     "numpy>=1.26",
 ]
+full = [
+    "sentence-transformers>=5.2,<6",
+    "chromadb>=1.5,<2",
+    "numpy>=1.26",
+]
 
 [project.scripts]
 qai = "q_ai.cli:app"

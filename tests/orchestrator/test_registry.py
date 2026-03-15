@@ -71,3 +71,16 @@ class TestRegistry:
         wf = get_workflow("trace_path")
         assert wf is not None
         assert wf.failure_mode == "fail_fast"
+
+    def test_test_docs_has_rxp_as_optional_module(self) -> None:
+        """test_docs workflow has rxp in optional_modules."""
+        wf = get_workflow("test_docs")
+        assert wf is not None
+        assert "rxp" in wf.optional_modules
+
+    def test_optional_modules_field_defaults_empty(self) -> None:
+        """Workflows without explicit optional_modules have empty list."""
+        for wf in list_workflows():
+            if wf.id == "test_docs":
+                continue
+            assert wf.optional_modules == [], f"{wf.id} should have empty optional_modules"
