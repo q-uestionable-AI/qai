@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_VERSION = 4
+CURRENT_VERSION = 5
 
 V1_TABLES = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -127,6 +127,41 @@ V4_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_proxy_sessions_run_id ON proxy_sessions(run_id);
 """
 
+V5_TABLES = """
+CREATE TABLE IF NOT EXISTS chain_executions (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    run_id TEXT NOT NULL REFERENCES runs(id),
+    chain_id TEXT NOT NULL,
+    chain_name TEXT,
+    dry_run INTEGER NOT NULL DEFAULT 1,
+    template_path TEXT,
+    target_config TEXT,
+    success INTEGER NOT NULL DEFAULT 0,
+    trust_boundaries TEXT,
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS chain_step_outputs (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    execution_id TEXT NOT NULL REFERENCES chain_executions(id),
+    step_id TEXT NOT NULL,
+    module TEXT NOT NULL,
+    technique TEXT NOT NULL,
+    success INTEGER NOT NULL DEFAULT 0,
+    status TEXT,
+    artifacts TEXT,
+    error TEXT,
+    started_at TEXT,
+    finished_at TEXT,
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+"""
+
+V5_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_chain_executions_run_id ON chain_executions(run_id);
+CREATE INDEX IF NOT EXISTS idx_chain_step_outputs_execution_id ON chain_step_outputs(execution_id);
+"""
+
 
 def migrate(conn: sqlite3.Connection) -> None:
     """Run schema migrations up to CURRENT_VERSION.
@@ -136,6 +171,7 @@ def migrate(conn: sqlite3.Connection) -> None:
     Version 2 adds the audit_scans table.
     Version 3 adds the inject_results table.
     Version 4 adds the proxy_sessions table.
+    Version 5 adds chain_executions and chain_step_outputs tables.
     """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version < 1:
@@ -155,3 +191,7 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.executescript(V4_TABLES)
         conn.executescript(V4_INDEXES)
         conn.execute("PRAGMA user_version = 4")
+    if version < 5:
+        conn.executescript(V5_TABLES)
+        conn.executescript(V5_INDEXES)
+        conn.execute("PRAGMA user_version = 5")

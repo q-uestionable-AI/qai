@@ -44,7 +44,7 @@ class TestConnection:
         db_path = tmp_path / "qai.db"
         with get_connection(db_path) as conn:
             ver = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert ver == 4
+            assert ver == 5
 
     def test_schema_tables_created(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"
