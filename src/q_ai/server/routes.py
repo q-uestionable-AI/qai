@@ -371,6 +371,52 @@ async def api_cxp_results(request: Request) -> HTMLResponse:
 
 
 # ---------------------------------------------------------------------------
+# RXP API routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/rxp/tab")
+async def api_rxp_tab(request: Request) -> HTMLResponse:
+    """Return the RXP tab partial."""
+    templates = _get_templates(request)
+    return templates.TemplateResponse(request, "partials/rxp_tab.html", {})
+
+
+@router.get("/api/rxp/validations")
+async def api_rxp_validations(request: Request) -> HTMLResponse:
+    """Return RXP validations with stats."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT id, model_id, profile_id, retrieval_rate,
+                   mean_poison_rank, created_at
+            FROM rxp_validations
+            ORDER BY created_at DESC
+            LIMIT 50
+            """
+        ).fetchall()
+        total_row = conn.execute("SELECT COUNT(*) FROM rxp_validations").fetchone()
+        models_row = conn.execute("SELECT COUNT(DISTINCT model_id) FROM rxp_validations").fetchone()
+        avg_row = conn.execute("SELECT AVG(retrieval_rate) FROM rxp_validations").fetchone()
+    validations = [dict(row) for row in rows]
+    total_validations = total_row[0] if total_row else 0
+    models_tested = models_row[0] if models_row else 0
+    avg_retrieval_rate = avg_row[0] if avg_row and avg_row[0] is not None else 0.0
+    return templates.TemplateResponse(
+        request,
+        "partials/rxp_tab.html",
+        {
+            "validations": validations,
+            "total_validations": total_validations,
+            "models_tested": models_tested,
+            "avg_retrieval_rate": avg_retrieval_rate,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # WebSocket
 # ---------------------------------------------------------------------------
 

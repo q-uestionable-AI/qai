@@ -17,6 +17,7 @@ from q_ai.cxp.cli import app as cxp_app
 from q_ai.inject.cli import app as inject_app
 from q_ai.ipi.cli import app as ipi_app
 from q_ai.proxy.cli import app as proxy_app
+from q_ai.rxp.cli import app as rxp_app
 from q_ai.server.helpers import (
     delete_port_file,
     find_free_port,
@@ -114,3 +115,4 @@ app.add_typer(proxy_app, name="proxy", help="MCP traffic interception and replay
 app.add_typer(chain_app, name="chain", help="Multi-agent attack chain exploitation.")
 app.add_typer(ipi_app, name="ipi", help="Indirect prompt injection testing.")
 app.add_typer(cxp_app, name="cxp", help="Context file poisoning for coding assistants.")
+app.add_typer(rxp_app, name="rxp", help="RAG retrieval poisoning validation.")

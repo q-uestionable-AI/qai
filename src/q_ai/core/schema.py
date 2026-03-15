@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_VERSION = 7
+CURRENT_VERSION = 8
 
 V1_TABLES = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -225,6 +225,28 @@ CREATE INDEX IF NOT EXISTS idx_cxp_test_results_campaign_id ON cxp_test_results(
 """
 
 
+V8_TABLES = """
+CREATE TABLE IF NOT EXISTS rxp_validations (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(id),
+    model_id TEXT NOT NULL,
+    profile_id TEXT,
+    total_queries INTEGER NOT NULL,
+    poison_retrievals INTEGER NOT NULL,
+    retrieval_rate REAL NOT NULL,
+    mean_poison_rank REAL,
+    top_k INTEGER NOT NULL,
+    results_json TEXT,
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+"""
+
+V8_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_rxp_validations_run_id ON rxp_validations(run_id);
+CREATE INDEX IF NOT EXISTS idx_rxp_validations_model_id ON rxp_validations(model_id);
+"""
+
+
 def migrate(conn: sqlite3.Connection) -> None:
     """Run schema migrations up to CURRENT_VERSION.
 
@@ -236,6 +258,7 @@ def migrate(conn: sqlite3.Connection) -> None:
     Version 5 adds chain_executions and chain_step_outputs tables.
     Version 6 adds ipi_payloads and ipi_hits tables.
     Version 7 adds cxp_test_results table.
+    Version 8 adds rxp_validations table.
     """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version < 1:
@@ -267,3 +290,7 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.executescript(V7_TABLES)
         conn.executescript(V7_INDEXES)
         conn.execute("PRAGMA user_version = 7")
+    if version < 8:
+        conn.executescript(V8_TABLES)
+        conn.executescript(V8_INDEXES)
+        conn.execute("PRAGMA user_version = 8")
