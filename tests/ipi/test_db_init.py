@@ -1,4 +1,4 @@
-"""Tests for IPI schema migration (V6)."""
+"""Tests for IPI schema migration (V7)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 from q_ai.core.db import get_connection
 
 
-class TestIPISchemaV6:
+class TestIPISchemaV7:
     """Verify ipi_payloads and ipi_hits tables exist after migration."""
 
     def test_tables_created(self, tmp_path: Path) -> None:
@@ -22,11 +22,11 @@ class TestIPISchemaV6:
             assert "ipi_payloads" in tables
             assert "ipi_hits" in tables
 
-    def test_schema_version_is_6(self, tmp_path: Path) -> None:
+    def test_schema_version_is_7(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"
         with get_connection(db_path) as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert version == 6
+            assert version == 7
 
     def test_ipi_payloads_columns(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"
@@ -82,19 +82,19 @@ class TestIPISchemaV6:
             assert "idx_ipi_payloads_run_id" in indexes
             assert "idx_ipi_hits_uuid" in indexes
 
-    def test_migration_from_v5(self, tmp_path: Path) -> None:
-        """Existing V5 database upgrades cleanly to V6."""
+    def test_migration_from_v6(self, tmp_path: Path) -> None:
+        """Existing V6 database upgrades cleanly to V7."""
         import sqlite3
 
         db_path = tmp_path / "test.db"
         conn = sqlite3.connect(str(db_path))
-        conn.execute("PRAGMA user_version = 5")
+        conn.execute("PRAGMA user_version = 6")
         conn.commit()
         conn.close()
 
         with get_connection(db_path) as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert version == 6
+            assert version == 7
             tables = {
                 row[0]
                 for row in conn.execute(
