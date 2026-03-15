@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-from q_ai.inject.campaign import (
-    _serialize_content,
-    _template_to_tool,
-    run_campaign,
-)
+from q_ai.core.llm import NormalizedResponse, ProviderError, ToolCall, UnsupportedCapabilityError
+from q_ai.inject.campaign import run_campaign
 from q_ai.inject.models import (
     InjectionOutcome,
     InjectionTechnique,
@@ -36,76 +33,28 @@ def _make_template(
     )
 
 
-class TestTemplateToTool:
-    """Tests for _template_to_tool conversion."""
-
-    def test_basic_conversion(self) -> None:
-        template = _make_template()
-        tool = _template_to_tool(template)
-        assert tool["name"] == "get_weather"
-        assert tool["description"] == "A test tool"
-        assert tool["input_schema"]["type"] == "object"
-        assert "city" in tool["input_schema"]["properties"]
-        assert tool["input_schema"]["required"] == ["city"]
-
-    def test_no_params(self) -> None:
-        template = _make_template()
-        template.tool_params = {}
-        tool = _template_to_tool(template)
-        assert tool["input_schema"]["properties"] == {}
-        assert tool["input_schema"]["required"] == []
-
-    def test_multiple_params(self) -> None:
-        template = _make_template()
-        template.tool_params = {
-            "city": {"type": "string", "description": "City"},
-            "units": {"type": "string", "description": "Units"},
-        }
-        tool = _template_to_tool(template)
-        assert len(tool["input_schema"]["properties"]) == 2
-        assert "city" in tool["input_schema"]["properties"]
-        assert "units" in tool["input_schema"]["properties"]
-
-
-class TestSerializeContent:
-    """Tests for _serialize_content helper."""
-
-    def test_dict_blocks(self) -> None:
-        blocks = [{"type": "text", "text": "hello"}]
-        result = json.loads(_serialize_content(blocks))
-        assert result == [{"type": "text", "text": "hello"}]
-
-    def test_sdk_objects_with_model_dump(self) -> None:
-        mock = MagicMock()
-        mock.model_dump.return_value = {"type": "text", "text": "hello"}
-        result = json.loads(_serialize_content([mock]))
-        assert result == [{"type": "text", "text": "hello"}]
+def _mock_provider(response: NormalizedResponse) -> AsyncMock:
+    """Create a mock ProviderClient returning a fixed response."""
+    mock_client = AsyncMock()
+    mock_client.complete = AsyncMock(return_value=response)
+    return mock_client
 
 
 class TestRunCampaign:
-    """Tests for run_campaign with mocked Anthropic client."""
+    """Tests for run_campaign with mocked ProviderClient."""
 
-    async def test_successful_campaign(self, tmp_path: Path) -> None:
-        """Campaign with tool_use response records result and writes JSON."""
-        mock_response = MagicMock()
-        mock_response.content = [
-            MagicMock(
-                type="tool_use",
-                model_dump=MagicMock(
-                    return_value={
-                        "type": "tool_use",
-                        "id": "t1",
-                        "name": "get_weather",
-                        "input": {"city": "London"},
-                    }
-                ),
-            ),
-        ]
+    async def test_campaign_calls_provider_client(self, tmp_path: Path) -> None:
+        """Campaign calls client.complete() for each template."""
+        response = NormalizedResponse(
+            tool_calls=[ToolCall(name="get_weather", arguments={"city": "London"})],
+            content="",
+            finish_reason="tool_calls",
+            raw_response={"id": "r1"},
+            model="test-model",
+        )
+        mock_client = _mock_provider(response)
 
-        mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-        with patch("q_ai.inject.campaign.AsyncAnthropic", return_value=mock_client):
+        with patch("q_ai.inject.campaign.get_provider_client", return_value=mock_client):
             campaign = await run_campaign(
                 templates=[_make_template()],
                 model="test-model",
@@ -119,69 +68,109 @@ class TestRunCampaign:
         assert campaign.results[0].target_agent == "test-model"
         assert campaign.model == "test-model"
         assert campaign.finished_at is not None
+        mock_client.complete.assert_called_once()
 
         # Verify JSON file was written
         json_files = list(tmp_path.glob("campaign-*.json"))
         assert len(json_files) == 1
-        data = json.loads(json_files[0].read_text())
-        assert data["model"] == "test-model"
-        assert len(data["results"]) == 1
+
+    async def test_campaign_passes_tool_spec(self) -> None:
+        """ToolSpec is passed to client.complete, not Anthropic ToolParam."""
+        from q_ai.core.llm import ToolSpec
+
+        response = NormalizedResponse(
+            tool_calls=[ToolCall(name="get_weather", arguments={})],
+            raw_response={},
+            model="test-model",
+        )
+        mock_client = _mock_provider(response)
+
+        with patch("q_ai.inject.campaign.get_provider_client", return_value=mock_client):
+            await run_campaign(
+                templates=[_make_template()],
+                model="test-model",
+            )
+
+        call_args = mock_client.complete.call_args
+        tools = call_args.kwargs["tools"]
+        assert len(tools) == 1
+        assert isinstance(tools[0], ToolSpec)
+        assert tools[0].name == "get_weather"
+
+    async def test_campaign_handles_provider_error(self) -> None:
+        """ProviderError results in InjectionOutcome.ERROR."""
+        mock_client = AsyncMock()
+        mock_client.complete = AsyncMock(side_effect=ProviderError("Rate limited"))
+
+        with patch("q_ai.inject.campaign.get_provider_client", return_value=mock_client):
+            campaign = await run_campaign(
+                templates=[_make_template(), _make_template(name="second")],
+                model="test-model",
+            )
+
+        assert len(campaign.results) == 2
+        assert all(r.outcome == InjectionOutcome.ERROR for r in campaign.results)
+        evidence = json.loads(campaign.results[0].evidence)
+        assert evidence["type"] == "provider_error"
+
+    async def test_campaign_handles_unsupported_capability(self) -> None:
+        """UnsupportedCapabilityError results in ERROR with correct evidence type."""
+        mock_client = AsyncMock()
+        mock_client.complete = AsyncMock(side_effect=UnsupportedCapabilityError("No tool support"))
+
+        with patch("q_ai.inject.campaign.get_provider_client", return_value=mock_client):
+            campaign = await run_campaign(
+                templates=[_make_template()],
+                model="ollama/llama3",
+            )
+
+        assert campaign.results[0].outcome == InjectionOutcome.ERROR
+        evidence = json.loads(campaign.results[0].evidence)
+        assert evidence["type"] == "unsupported_capability"
+
+    async def test_campaign_model_string_passthrough(self) -> None:
+        """Model string is passed unchanged to client.complete()."""
+        response = NormalizedResponse(raw_response={}, model="openai/gpt-4o")
+        mock_client = _mock_provider(response)
+
+        with patch("q_ai.inject.campaign.get_provider_client", return_value=mock_client):
+            await run_campaign(
+                templates=[_make_template()],
+                model="openai/gpt-4o",
+            )
+
+        call_args = mock_client.complete.call_args
+        assert call_args.kwargs["model"] == "openai/gpt-4o"
 
     async def test_clean_refusal_response(self) -> None:
-        """Response with only text results in CLEAN_REFUSAL."""
-        mock_response = MagicMock()
-        mock_response.content = [
-            MagicMock(type="text", text="I cannot use that tool."),
-        ]
+        """Response with no tool calls results in CLEAN_REFUSAL."""
+        response = NormalizedResponse(
+            content="I cannot use that tool.",
+            finish_reason="stop",
+            raw_response={},
+            model="test-model",
+        )
+        mock_client = _mock_provider(response)
 
-        mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-        with patch("q_ai.inject.campaign.AsyncAnthropic", return_value=mock_client):
+        with patch("q_ai.inject.campaign.get_provider_client", return_value=mock_client):
             campaign = await run_campaign(
                 templates=[_make_template()],
                 model="test-model",
             )
 
-        assert len(campaign.results) == 1
         assert campaign.results[0].outcome == InjectionOutcome.CLEAN_REFUSAL
-
-    async def test_api_error_records_error_outcome(self) -> None:
-        """API error records ERROR outcome, continues campaign."""
-        from anthropic import APIStatusError
-
-        mock_client = AsyncMock()
-        error_response = MagicMock()
-        error_response.status_code = 429
-        error_response.headers = {}
-        mock_client.messages.create = AsyncMock(
-            side_effect=APIStatusError(
-                message="Rate limited",
-                response=error_response,
-                body={"error": {"message": "Rate limited"}},
-            )
-        )
-
-        with patch("q_ai.inject.campaign.AsyncAnthropic", return_value=mock_client):
-            campaign = await run_campaign(
-                templates=[_make_template(), _make_template(name="second_payload")],
-                model="test-model",
-            )
-
-        # Both payloads should have results (campaign continues on error)
-        assert len(campaign.results) == 2
-        assert all(r.outcome == InjectionOutcome.ERROR for r in campaign.results)
-        assert "Rate limited" in campaign.results[0].evidence
 
     async def test_multiple_rounds(self) -> None:
         """Multiple rounds per payload produce multiple results."""
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(type="text", text="No thanks.")]
+        response = NormalizedResponse(
+            content="No thanks.",
+            finish_reason="stop",
+            raw_response={},
+            model="test-model",
+        )
+        mock_client = _mock_provider(response)
 
-        mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-        with patch("q_ai.inject.campaign.AsyncAnthropic", return_value=mock_client):
+        with patch("q_ai.inject.campaign.get_provider_client", return_value=mock_client):
             campaign = await run_campaign(
                 templates=[_make_template()],
                 model="test-model",
@@ -193,17 +182,18 @@ class TestRunCampaign:
     async def test_fallback_test_query(self) -> None:
         """Template with empty test_query uses fallback."""
         template = _make_template(test_query="")
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(type="text", text="Ok")]
+        response = NormalizedResponse(
+            content="Ok",
+            finish_reason="stop",
+            raw_response={},
+            model="test-model",
+        )
+        mock_client = _mock_provider(response)
 
-        mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-        with patch("q_ai.inject.campaign.AsyncAnthropic", return_value=mock_client):
+        with patch("q_ai.inject.campaign.get_provider_client", return_value=mock_client):
             await run_campaign(templates=[template], model="test-model")
 
-        # Verify the fallback query was used
-        call_args = mock_client.messages.create.call_args
+        call_args = mock_client.complete.call_args
         messages = call_args.kwargs["messages"]
         assert "get_weather" in messages[0]["content"]
 

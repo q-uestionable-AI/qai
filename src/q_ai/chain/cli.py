@@ -97,7 +97,13 @@ def run(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
     targets: str | None = typer.Option(None, help="Path to chain-targets.yaml config file"),
     inject_model: str | None = typer.Option(
-        None, "--inject-model", help="Override inject model from targets config"
+        None,
+        "--inject-model",
+        help=(
+            "Override inject model from targets config. "
+            "Use provider/model format (e.g., anthropic/claude-sonnet-4-20250514, "
+            "openai/gpt-4o). Bare model names are treated as Anthropic."
+        ),
     ),
 ) -> None:
     """Execute an attack chain against a target architecture.
