@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from q_ai.core.db import get_connection
+from q_ai.core.db import create_run, get_connection
 from q_ai.core.models import Severity
 from q_ai.inject.mapper import persist_campaign
 from q_ai.inject.models import Campaign, InjectionOutcome, InjectionResult
@@ -114,3 +114,25 @@ class TestPersistCampaign:
             assert finding["module"] == "inject"
             assert finding["category"] == "description_poisoning"
             assert "test_payload" in finding["title"]
+
+    def test_persist_with_explicit_run_id(self, tmp_path: Path) -> None:
+        """Verify persist_campaign uses provided run_id instead of creating a new one."""
+        db_path = tmp_path / "test.db"
+        with get_connection(db_path) as conn:
+            pre_run_id = create_run(conn, module="inject", name="pre-created")
+
+        campaign = _make_campaign([_make_result()])
+        run_id = persist_campaign(campaign, db_path=db_path, run_id=pre_run_id)
+        assert run_id == pre_run_id
+
+        with get_connection(db_path) as conn:
+            # Should only have the pre-created run
+            runs = conn.execute("SELECT * FROM runs").fetchall()
+            assert len(runs) == 1
+            assert runs[0]["id"] == pre_run_id
+
+            # Results should reference the pre-created run
+            results = conn.execute(
+                "SELECT * FROM inject_results WHERE run_id = ?", (pre_run_id,)
+            ).fetchall()
+            assert len(results) == 1

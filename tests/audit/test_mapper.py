@@ -12,6 +12,7 @@ import pytest
 
 from q_ai.audit.mapper import _build_description, _map_severity, persist_scan
 from q_ai.audit.orchestrator import ScanResult
+from q_ai.core.db import create_run, create_target, get_connection
 from q_ai.core.models import Severity as CoreSeverity
 from q_ai.core.schema import migrate
 from q_ai.mcp.models import ScanFinding, Severity
@@ -88,6 +89,63 @@ class TestPersistScan:
         conn.commit()
         conn.close()
         return db_path
+
+    def test_persist_with_explicit_run_id(self) -> None:
+        """Verify persist_scan uses provided run_id instead of creating a new one."""
+        db_path = self._make_db()
+        # Pre-create a run
+        with get_connection(db_path) as conn:
+            pre_run_id = create_run(conn, module="audit", name="pre-created")
+
+        scan_result = ScanResult(
+            findings=[],
+            server_info={"name": "test-server", "version": "1.0"},
+            tools_scanned=0,
+            scanners_run=["injection"],
+            started_at=datetime(2026, 1, 1, tzinfo=UTC),
+            finished_at=datetime(2026, 1, 1, 0, 0, 5, tzinfo=UTC),
+        )
+
+        run_id = persist_scan(scan_result, db_path=db_path, run_id=pre_run_id)
+        assert run_id == pre_run_id
+
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        # Should only have the pre-created run, not a second one
+        all_runs = conn.execute("SELECT * FROM runs").fetchall()
+        assert len(all_runs) == 1
+        assert all_runs[0]["id"] == pre_run_id
+
+        # Audit scan row should reference the pre-created run
+        scans = conn.execute("SELECT * FROM audit_scans").fetchall()
+        assert len(scans) == 1
+        assert scans[0]["run_id"] == pre_run_id
+        conn.close()
+
+    def test_persist_with_explicit_target_id(self) -> None:
+        """Verify persist_scan uses provided target_id instead of creating a new one."""
+        db_path = self._make_db()
+        with get_connection(db_path) as conn:
+            pre_target_id = create_target(conn, type="server", name="pre-target")
+
+        scan_result = ScanResult(
+            findings=[],
+            server_info={"name": "test-server", "version": "1.0"},
+            tools_scanned=0,
+            scanners_run=["injection"],
+            started_at=datetime(2026, 1, 1, tzinfo=UTC),
+            finished_at=datetime(2026, 1, 1, 0, 0, 5, tzinfo=UTC),
+        )
+
+        persist_scan(scan_result, db_path=db_path, target_id=pre_target_id)
+
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        targets = conn.execute("SELECT * FROM targets").fetchall()
+        # Only the pre-created target should exist
+        assert len(targets) == 1
+        assert targets[0]["id"] == pre_target_id
+        conn.close()
 
     def test_persist_creates_run_findings_audit_scan(self) -> None:
         """Verify that persist_scan creates target, run, findings, and audit_scans rows."""
