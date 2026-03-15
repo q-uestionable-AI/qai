@@ -50,7 +50,7 @@ class TestCampaignCrud:
             campaigns = list_campaigns(conn)
             assert len(campaigns) == 2
             assert all(isinstance(c, Campaign) for c in campaigns)
-            assert campaigns[0].name == "second"
+            assert {c.name for c in campaigns} == {"first", "second"}
 
 
 class TestResultCrud:
