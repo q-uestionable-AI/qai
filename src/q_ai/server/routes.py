@@ -101,6 +101,7 @@ async def operations(
         "operations.html",
         {
             "active": "operations",
+            "run_id": run_id,
             "workflow_run": workflow_run,
             "child_runs": child_runs,
             "findings": findings,
@@ -214,6 +215,41 @@ async def api_targets(request: Request) -> HTMLResponse:
     with get_connection(db_path) as conn:
         targets = list_targets(conn)
     return templates.TemplateResponse(request, "partials/targets_table.html", {"targets": targets})
+
+
+@router.get("/api/operations/status-bar")
+async def operations_status_bar(
+    request: Request,
+    run_id: str = Query(...),
+) -> HTMLResponse:
+    """Render child run badges for the given workflow run."""
+    db_path = _get_db_path(request)
+    templates = _get_templates(request)
+    with get_connection(db_path) as conn:
+        child_runs = list_runs(conn, parent_run_id=run_id)
+    return templates.TemplateResponse(
+        request,
+        "partials/child_run_badges.html",
+        {"child_runs": child_runs},
+    )
+
+
+@router.get("/api/operations/findings-sidebar")
+async def operations_findings_sidebar(
+    request: Request,
+    run_id: str = Query(...),
+) -> HTMLResponse:
+    """Render the findings sidebar for the given workflow run."""
+    db_path = _get_db_path(request)
+    templates = _get_templates(request)
+    with get_connection(db_path) as conn:
+        all_ids = [run_id] + [c.id for c in list_runs(conn, parent_run_id=run_id)]
+        findings = list_findings(conn, run_ids=all_ids)
+    return templates.TemplateResponse(
+        request,
+        "partials/findings_sidebar.html",
+        {"findings": findings},
+    )
 
 
 # ---------------------------------------------------------------------------

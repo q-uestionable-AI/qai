@@ -7,8 +7,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from q_ai.core.db import create_run, update_run_status
-from q_ai.core.models import RunStatus
+from q_ai.core.db import create_finding, create_run, update_run_status
+from q_ai.core.models import RunStatus, Severity
 
 
 class TestOperationsNoRunId:
@@ -61,7 +61,7 @@ class TestOperationsWithChildRuns:
         resp = client.get(f"/operations?run_id={parent_id}")
         assert resp.status_code == 200
         assert "audit" in resp.text
-        assert "COMPLETED" in resp.text
+        assert "completed" in resp.text
 
 
 class TestOperationsUnknownRunId:
@@ -72,3 +72,95 @@ class TestOperationsUnknownRunId:
         resp = client.get("/operations?run_id=nonexistent")
         assert resp.status_code == 200
         assert "IDLE" in resp.text
+
+
+class TestOperationsPassesRunId:
+    """Operations page passes run_id to template as data attribute."""
+
+    def test_operations_page_passes_run_id_to_template(self, client: TestClient) -> None:
+        """GET /operations?run_id=abc -> data-run-id="abc" in HTML."""
+        resp = client.get("/operations?run_id=abc")
+        assert resp.status_code == 200
+        assert 'data-run-id="abc"' in resp.text
+
+
+class TestStatusBarPartial:
+    """GET /api/operations/status-bar partial route."""
+
+    def test_status_bar_partial_no_children(self, client: TestClient, tmp_db: Path) -> None:
+        """Status bar partial with run_id that has no children -> 200, empty."""
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            run_id = create_run(conn, module="workflow", name="assess")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/api/operations/status-bar?run_id={run_id}")
+        assert resp.status_code == 200
+        # No child runs, so no badge content
+        assert "badge" not in resp.text
+
+    def test_status_bar_partial_with_children(self, client: TestClient, tmp_db: Path) -> None:
+        """Status bar partial with parent + child runs -> badges rendered."""
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            parent_id = create_run(conn, module="workflow", name="assess")
+            update_run_status(conn, parent_id, RunStatus.RUNNING)
+            child_id = create_run(conn, module="audit", name="audit-child", parent_run_id=parent_id)
+            update_run_status(conn, child_id, RunStatus.COMPLETED)
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/api/operations/status-bar?run_id={parent_id}")
+        assert resp.status_code == 200
+        assert "audit" in resp.text
+        assert "completed" in resp.text
+
+
+class TestFindingsSidebarPartial:
+    """GET /api/operations/findings-sidebar partial route."""
+
+    def test_findings_sidebar_partial_empty(self, client: TestClient, tmp_db: Path) -> None:
+        """Findings sidebar with no findings -> 'No findings yet.'"""
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            run_id = create_run(conn, module="workflow", name="assess")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/api/operations/findings-sidebar?run_id={run_id}")
+        assert resp.status_code == 200
+        assert "No findings yet" in resp.text
+
+    def test_findings_sidebar_partial_with_findings(self, client: TestClient, tmp_db: Path) -> None:
+        """Findings sidebar with findings -> finding titles rendered."""
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            run_id = create_run(conn, module="audit", name="audit-run")
+            create_finding(
+                conn,
+                run_id=run_id,
+                module="audit",
+                category="command_injection",
+                severity=Severity.HIGH,
+                title="Unsafe shell exec",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/api/operations/findings-sidebar?run_id={run_id}")
+        assert resp.status_code == 200
+        assert "Unsafe shell exec" in resp.text
+        assert "audit" in resp.text
