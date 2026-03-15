@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "almond",
-  "name": "{q-ai}",
+  "name": "{q-AI}",
   "colors": {
     "primary": "#06b6d4",
     "light": "#0e7490",
@@ -140,7 +140,7 @@
     }
   },
   "metadata": {
-    "og:site_name": "{q-ai} Docs",
+    "og:site_name": "{q-AI} Docs",
     "og:description": "Offensive security platform for agentic AI infrastructure"
   },
   "search": {
