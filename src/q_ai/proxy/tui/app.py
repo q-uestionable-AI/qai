@@ -64,7 +64,7 @@ class ProxyApp(App[None]):
     """
 
     CSS_PATH = "app.tcss"
-    BINDINGS: ClassVar[list[Binding | tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         ("q", "quit", "Quit"),
         ("i", "toggle_intercept", "Intercept"),
         Binding("f", "forward", "Forward", key_display="f/F5"),

@@ -52,7 +52,7 @@ class MessageListPanel(Widget):
     }
     """
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape", "unfocus_filter", "Back to list", show=False),
     ]
 
