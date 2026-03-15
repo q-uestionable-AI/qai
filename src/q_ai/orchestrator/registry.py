@@ -119,3 +119,24 @@ _DEFAULT_WORKFLOWS = [
 
 for _wf in _DEFAULT_WORKFLOWS:
     register_workflow(_wf)
+
+# ---------------------------------------------------------------------------
+# Wire executor functions into registered workflows
+# ---------------------------------------------------------------------------
+
+
+def _register_executors() -> None:
+    """Attach executor functions to registered workflows.
+
+    Called at import time to wire up implemented workflow executors.
+    Wrapped in a function to keep the import of workflow modules
+    isolated from the top-level namespace.
+    """
+    from q_ai.orchestrator.workflows.assess import assess_mcp_server
+
+    _assess = WORKFLOWS.get("assess")
+    if _assess is not None:
+        _assess.executor = assess_mcp_server
+
+
+_register_executors()

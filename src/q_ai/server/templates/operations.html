@@ -6,13 +6,54 @@
     <!-- Status bar -->
     <div class="bg-base-100 rounded-lg border border-base-content/5 p-4 mb-6 flex items-center gap-6">
         <div class="flex items-center gap-2">
-            <span class="badge badge-sm badge-ghost">IDLE</span>
-            <span class="text-sm font-medium">No active workflow</span>
+            {% if workflow_run %}
+                {% set status_name = workflow_run.status.name %}
+                {% if status_name == 'COMPLETED' %}
+                    <span class="badge badge-sm badge-success">{{ status_name }}</span>
+                {% elif status_name == 'FAILED' %}
+                    <span class="badge badge-sm badge-error">{{ status_name }}</span>
+                {% elif status_name == 'RUNNING' %}
+                    <span class="badge badge-sm badge-info">{{ status_name }}</span>
+                {% elif status_name == 'PARTIAL' %}
+                    <span class="badge badge-sm badge-warning">{{ status_name }}</span>
+                {% elif status_name == 'WAITING_FOR_USER' %}
+                    <span class="badge badge-sm badge-warning">{{ status_name }}</span>
+                {% else %}
+                    <span class="badge badge-sm badge-ghost">{{ status_name }}</span>
+                {% endif %}
+                <span class="text-sm font-medium">{{ workflow_run.name or 'Workflow' }}</span>
+            {% else %}
+                <span class="badge badge-sm badge-ghost">IDLE</span>
+                <span class="text-sm font-medium">No active workflow</span>
+            {% endif %}
         </div>
-        <div class="text-sm text-base-content/40 ml-auto">
+        <div class="text-sm text-base-content/40 ml-auto flex items-center gap-3">
+            {% if workflow_run %}
+            <a href="/operations?run_id={{ workflow_run.id }}" class="btn btn-ghost btn-xs">Refresh</a>
+            {% endif %}
             Elapsed: --:--
         </div>
     </div>
+
+    {% if child_runs %}
+    <div class="flex flex-wrap gap-2 mb-4">
+        {% for child in child_runs %}
+        <div class="badge badge-outline gap-1">
+            <span class="font-mono text-xs">{{ child.module }}</span>
+            {% set child_status = child.status.name %}
+            {% if child_status == 'COMPLETED' %}
+                <span class="badge badge-xs badge-success">{{ child_status }}</span>
+            {% elif child_status == 'FAILED' %}
+                <span class="badge badge-xs badge-error">{{ child_status }}</span>
+            {% elif child_status == 'RUNNING' %}
+                <span class="badge badge-xs badge-info">{{ child_status }}</span>
+            {% else %}
+                <span class="badge badge-xs badge-ghost">{{ child_status }}</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <div class="flex gap-6">
         <!-- Main panel area -->
@@ -73,7 +114,28 @@
                 Findings
             </h3>
             <div class="bg-base-100 rounded-lg border border-base-content/5 min-h-[400px] p-4">
-                {% include "partials/audit_findings.html" %}
+                {% if findings %}
+                    {% for f in findings %}
+                    <div class="mb-2 p-2 rounded border border-base-content/10">
+                        <div class="flex items-center gap-1 mb-1">
+                            {% set sev = f.severity.name %}
+                            {% if sev in ('CRITICAL', 'HIGH') %}
+                            <span class="badge badge-xs badge-error">{{ sev }}</span>
+                            {% elif sev == 'MEDIUM' %}
+                            <span class="badge badge-xs badge-warning">{{ sev }}</span>
+                            {% elif sev == 'LOW' %}
+                            <span class="badge badge-xs badge-info">{{ sev }}</span>
+                            {% else %}
+                            <span class="badge badge-xs badge-ghost">{{ sev }}</span>
+                            {% endif %}
+                            <span class="font-mono text-xs text-base-content/50">{{ f.module }}</span>
+                        </div>
+                        <p class="text-sm">{{ f.title }}</p>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    {% include "partials/audit_findings.html" %}
+                {% endif %}
             </div>
         </div>
     </div>

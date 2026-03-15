@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -10,9 +13,22 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from starlette.websockets import WebSocketDisconnect
 
-from q_ai.core.db import get_connection, get_run, list_findings, list_runs, list_targets
+from q_ai.core.config import delete_credential, get_credential, set_credential
+from q_ai.core.db import (
+    create_target,
+    get_connection,
+    get_run,
+    get_setting,
+    list_findings,
+    list_runs,
+    list_targets,
+    set_setting,
+)
 from q_ai.core.models import RunStatus, Severity
-from q_ai.orchestrator.registry import list_workflows
+from q_ai.orchestrator.registry import get_workflow, list_workflows
+from q_ai.orchestrator.runner import WorkflowRunner
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -48,21 +64,46 @@ async def launcher(request: Request) -> HTMLResponse:
         }
         for wf in list_workflows()
     ]
+    all_providers = _get_providers_status(request)
+    providers = [p for p in all_providers if p["configured"]]
     return templates.TemplateResponse(
-        request, "launcher.html", {"active": "launcher", "workflows": workflows}
+        request,
+        "launcher.html",
+        {"active": "launcher", "workflows": workflows, "providers": providers},
     )
 
 
 @router.get("/operations")
-async def operations(request: Request) -> HTMLResponse:
-    """Render the operations skeleton view."""
+async def operations(
+    request: Request,
+    run_id: str | None = Query(None),
+) -> HTMLResponse:
+    """Render the operations view with optional workflow state."""
     templates = _get_templates(request)
+    db_path = _get_db_path(request)
+
+    workflow_run = None
+    child_runs: list[Any] = []
+    findings: list[Any] = []
+
+    if run_id:
+        with get_connection(db_path) as conn:
+            workflow_run = get_run(conn, run_id)
+            if workflow_run:
+                child_runs = list_runs(conn, parent_run_id=run_id)
+                findings = list_findings(conn, run_id=run_id)
+                # Also collect findings from child runs
+                for child in child_runs:
+                    findings.extend(list_findings(conn, run_id=child.id))
+
     return templates.TemplateResponse(
         request,
         "operations.html",
         {
             "active": "operations",
-            "findings": [],
+            "workflow_run": workflow_run,
+            "child_runs": child_runs,
+            "findings": findings,
             "scan_status": None,
             "campaign_status": None,
         },
@@ -406,6 +447,425 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         pass
     finally:
         manager.disconnect(websocket)
+
+
+# ---------------------------------------------------------------------------
+# Settings helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_providers_status(request: Request) -> list[dict[str, Any]]:
+    """Build a list of provider statuses."""
+    known_providers = [
+        "anthropic",
+        "openai",
+        "groq",
+        "openrouter",
+        "ollama",
+        "lmstudio",
+        "custom",
+    ]
+    db_path = _get_db_path(request)
+    result: list[dict[str, Any]] = []
+    with get_connection(db_path) as conn:
+        for p in known_providers:
+            keyring_unavailable = False
+            try:
+                cred = get_credential(p)
+            except RuntimeError:
+                cred = None
+                keyring_unavailable = True
+            base_url = get_setting(conn, f"{p}.base_url") or ""
+            configured = cred is not None or bool(base_url)
+            result.append(
+                {
+                    "name": p,
+                    "configured": configured,
+                    "has_key": cred is not None,
+                    "base_url": base_url,
+                    "keyring_unavailable": keyring_unavailable,
+                }
+            )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Settings routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/settings")
+async def settings_page(request: Request) -> HTMLResponse:
+    """Render the settings page."""
+    templates = _get_templates(request)
+    providers_status = _get_providers_status(request)
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        defaults = {
+            "default_model": get_setting(conn, "default_model") or "",
+            "audit.default_transport": (get_setting(conn, "audit.default_transport") or "stdio"),
+            "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
+        }
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {"active": "settings", "providers": providers_status, "defaults": defaults},
+    )
+
+
+@router.get("/api/settings/providers")
+async def api_list_providers(request: Request) -> JSONResponse:
+    """List configured providers with status."""
+    return JSONResponse(content={"providers": _get_providers_status(request)})
+
+
+@router.post("/api/settings/providers")
+async def api_add_provider(request: Request) -> JSONResponse:
+    """Add a provider -- key to keyring, base_url to DB settings."""
+    body = await request.json()
+    provider = body.get("provider", "").strip().lower()
+    api_key = body.get("api_key", "").strip()
+    base_url = body.get("base_url", "").strip()
+
+    if not provider:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Provider name required"},
+        )
+
+    cloud_providers = {"anthropic", "openai", "groq", "openrouter"}
+    if provider in cloud_providers and not api_key:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "API key required for cloud providers"},
+        )
+
+    if api_key:
+        try:
+            set_credential(provider, api_key)
+        except RuntimeError:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "detail": (
+                        "Keyring unavailable — set credentials via environment variable instead."
+                    ),
+                },
+            )
+        except Exception:
+            logger.exception("Failed to store credential for %s", provider)
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Failed to store credential"},
+            )
+
+    if base_url:
+        db_path = _get_db_path(request)
+        with get_connection(db_path) as conn:
+            set_setting(conn, f"{provider}.base_url", base_url)
+
+    return JSONResponse(
+        status_code=201,
+        content={"status": "ok", "provider": provider},
+    )
+
+
+@router.delete("/api/settings/providers/{provider}")
+async def api_delete_provider(request: Request, provider: str) -> JSONResponse:
+    """Delete a provider -- remove from keyring and DB."""
+    provider = provider.strip().lower()
+    with contextlib.suppress(Exception):
+        delete_credential(provider)
+
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        set_setting(conn, f"{provider}.base_url", "")
+
+    return JSONResponse(content={"status": "deleted"})
+
+
+@router.get("/api/settings/providers/{provider}/test")
+async def api_test_provider(request: Request, provider: str) -> JSONResponse:
+    """Test provider connectivity with a minimal check."""
+    local_providers = {"ollama", "lmstudio", "custom"}
+
+    if provider in local_providers:
+        db_path = _get_db_path(request)
+        with get_connection(db_path) as conn:
+            base_url = get_setting(conn, f"{provider}.base_url")
+
+        default_urls = {
+            "ollama": "http://localhost:11434",
+            "lmstudio": "http://localhost:1234",
+        }
+        url = base_url or default_urls.get(provider, "")
+        if not url:
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "No base URL configured"},
+            )
+
+        health_path = "/api/tags" if provider == "ollama" else "/v1/models"
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=5.0) as http:
+                resp = await http.get(f"{url}{health_path}")
+                if resp.status_code == 200:
+                    return JSONResponse(
+                        content={"status": "ok", "message": "Connected"},
+                    )
+                return JSONResponse(
+                    content={
+                        "status": "error",
+                        "message": f"HTTP {resp.status_code}",
+                    },
+                )
+        except Exception as exc:
+            return JSONResponse(
+                content={"status": "error", "message": str(exc)},
+            )
+
+    # Cloud provider -- check if credential exists
+    try:
+        credential = get_credential(provider)
+    except RuntimeError:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": (
+                    "Keyring unavailable — set credentials via environment variable instead."
+                ),
+            },
+        )
+    if credential is None:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Provider not configured"},
+        )
+    return JSONResponse(
+        content={"status": "ok", "message": "Credential configured"},
+    )
+
+
+@router.get("/api/settings/defaults")
+async def api_get_defaults(request: Request) -> JSONResponse:
+    """Get default settings."""
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        defaults = {
+            "default_model": get_setting(conn, "default_model") or "",
+            "audit.default_transport": (get_setting(conn, "audit.default_transport") or "stdio"),
+            "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
+        }
+    return JSONResponse(content=defaults)
+
+
+@router.post("/api/settings/defaults")
+async def api_save_defaults(request: Request) -> JSONResponse:
+    """Save default settings to DB."""
+    body = await request.json()
+    db_path = _get_db_path(request)
+    allowed_keys = (
+        "default_model",
+        "audit.default_transport",
+        "ipi.default_callback_url",
+    )
+    with get_connection(db_path) as conn:
+        for key in allowed_keys:
+            value = body.get(key)
+            if value is not None:
+                set_setting(conn, key, str(value))
+    return JSONResponse(content={"status": "saved"})
+
+
+@router.get("/api/settings/infrastructure")
+async def api_infrastructure_status(request: Request) -> HTMLResponse:
+    """Check local endpoint reachability, return HTML partial."""
+    import httpx
+
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+
+    with get_connection(db_path) as conn:
+        ollama_url = get_setting(conn, "ollama.base_url") or "http://localhost:11434"
+        lmstudio_url = get_setting(conn, "lmstudio.base_url") or "http://localhost:1234"
+
+    endpoints = [
+        ("Ollama", ollama_url, "/api/tags"),
+        ("LM Studio", lmstudio_url, "/v1/models"),
+    ]
+    results: list[dict[str, Any]] = []
+    for name, url, health_path in endpoints:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as http:
+                resp = await http.get(f"{url}{health_path}")
+                reachable = resp.status_code == 200
+        except Exception:
+            reachable = False
+        results.append({"name": name, "url": url, "reachable": reachable})
+
+    return templates.TemplateResponse(
+        request,
+        "partials/infrastructure_section.html",
+        {"infrastructure": results},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Workflow launch API
+# ---------------------------------------------------------------------------
+
+_VALID_TRANSPORTS = {"stdio", "sse", "streamable-http"}
+_background_tasks: set[asyncio.Task[None]] = set()
+
+
+async def _run_workflow(
+    runner: WorkflowRunner,
+    executor: Any,
+    config: dict[str, Any],
+) -> None:
+    """Execute a workflow in the background, handling unexpected failures.
+
+    Args:
+        runner: The active WorkflowRunner instance.
+        executor: Async executor function from the workflow registry.
+        config: Workflow configuration dict.
+    """
+    try:
+        await executor(runner, config)
+    except Exception as exc:
+        # Only fail if not already in terminal status
+        with get_connection(runner._db_path) as conn:
+            run = get_run(conn, runner.run_id)
+        if run and run.status in (RunStatus.RUNNING, RunStatus.PENDING):
+            await runner.fail(error=str(exc))
+
+
+@router.post("/api/workflows/launch")
+async def launch_workflow(request: Request) -> JSONResponse:
+    """Launch an assess workflow against an MCP server.
+
+    Validates the request, creates a target, builds the workflow config,
+    and starts the workflow as a background task.
+    """
+    body = await request.json()
+
+    # --- Validate inputs ---
+    transport = body.get("transport", "").strip()
+    if transport not in _VALID_TRANSPORTS:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": (
+                    f"Invalid transport. Must be one of: {', '.join(sorted(_VALID_TRANSPORTS))}"
+                ),
+            },
+        )
+
+    command = body.get("command", "").strip() or None
+    url = body.get("url", "").strip() or None
+
+    if transport == "stdio" and not command:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "command is required for stdio transport"},
+        )
+    if transport in ("sse", "streamable-http") and not url:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "url is required for sse/streamable-http transport"},
+        )
+
+    model = body.get("model", "").strip()
+    if not model or "/" not in model:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "model must be non-empty and in provider/model format"},
+        )
+
+    target_name = body.get("target_name", "").strip()
+    if not target_name:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "target_name is required"},
+        )
+
+    # --- Check provider credential ---
+    provider = model.split("/", 1)[0]
+    local_providers = {"ollama", "lmstudio", "custom"}
+    if provider in local_providers:
+        # Local providers use base_url, not keyring credentials
+        db_path = _get_db_path(request)
+        default_urls = {
+            "ollama": "http://localhost:11434",
+            "lmstudio": "http://localhost:1234",
+        }
+        with get_connection(db_path) as conn:
+            base_url_setting = get_setting(conn, f"{provider}.base_url")
+        if not base_url_setting and provider not in default_urls:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": f"No base URL configured for provider '{provider}'"},
+            )
+    else:
+        try:
+            cred = get_credential(provider)
+        except RuntimeError:
+            cred = None
+        if cred is None:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": f"No credential configured for provider '{provider}'"},
+            )
+
+    # --- Create target ---
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        target_id = create_target(conn, type="server", name=target_name)
+
+    # --- Build workflow config ---
+    rounds = int(body.get("rounds", 1))
+    config: dict[str, Any] = {
+        "target_id": target_id,
+        "transport": transport,
+        "command": command,
+        "url": url,
+        "audit": {"checks": None},
+        "inject": {"model": model, "rounds": rounds},
+        "proxy": {"intercept": False},
+    }
+
+    # --- Look up executor ---
+    entry = get_workflow("assess")
+    if entry is None or entry.executor is None:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "assess workflow executor not registered"},
+        )
+
+    # --- Create runner and start ---
+    runner = WorkflowRunner(
+        workflow_id="assess",
+        config=config,
+        ws_manager=request.app.state.ws_manager,
+        active_workflows=request.app.state.active_workflows,
+        db_path=db_path,
+    )
+    await runner.start()
+
+    # --- Fire-and-forget background task ---
+    task = asyncio.create_task(_run_workflow(runner, entry.executor, config))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "run_id": runner.run_id,
+            "redirect": f"/operations?run_id={runner.run_id}",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

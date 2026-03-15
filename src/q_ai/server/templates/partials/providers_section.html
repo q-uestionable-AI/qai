@@ -1,0 +1,147 @@
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+        <h2 class="card-title text-lg mb-4">Providers</h2>
+
+        <!-- Provider table -->
+        <div class="overflow-x-auto" id="providers-table">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Provider</th>
+                        <th>Status</th>
+                        <th class="text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in providers %}
+                    <tr>
+                        <td class="font-mono text-sm">{{ p.name }}</td>
+                        <td>
+                            {% if p.configured %}
+                            <span class="badge badge-success badge-sm gap-1">configured</span>
+                            {% else %}
+                            <span class="badge badge-ghost badge-sm gap-1">not configured</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-right">
+                            <span id="test-result-{{ p.name }}" class="text-xs mr-2"></span>
+                            {% if p.configured %}
+                            <button class="btn btn-xs btn-outline btn-info"
+                                    onclick="testProvider('{{ p.name }}')">
+                                Test
+                            </button>
+                            <button class="btn btn-xs btn-outline btn-error"
+                                    onclick="deleteProvider('{{ p.name }}')">
+                                Delete
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Add Provider form -->
+        <div class="divider text-sm text-base-content/40">Add Provider</div>
+        <form id="add-provider-form" class="grid grid-cols-1 md:grid-cols-2 gap-4"
+              onsubmit="return addProvider(event)">
+            <div class="form-control">
+                <label class="label"><span class="label-text">Provider</span></label>
+                <select id="provider-select" class="select select-bordered select-sm"
+                        onchange="toggleProviderFields()">
+                    <option value="" disabled selected>Select provider</option>
+                    <option value="anthropic">anthropic</option>
+                    <option value="openai">openai</option>
+                    <option value="groq">groq</option>
+                    <option value="openrouter">openrouter</option>
+                    <option value="ollama">ollama</option>
+                    <option value="lmstudio">lmstudio</option>
+                    <option value="custom">custom</option>
+                </select>
+            </div>
+
+            <div class="form-control" id="api-key-field" style="display:none;">
+                <label class="label"><span class="label-text">API Key</span></label>
+                <input type="password" id="provider-api-key"
+                       class="input input-bordered input-sm"
+                       placeholder="sk-...">
+            </div>
+
+            <div class="form-control" id="base-url-field" style="display:none;">
+                <label class="label"><span class="label-text">Base URL</span></label>
+                <input type="text" id="provider-base-url"
+                       class="input input-bordered input-sm"
+                       placeholder="http://localhost:11434">
+            </div>
+
+            <div class="md:col-span-2 flex items-end gap-2">
+                <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                <span id="add-provider-msg" class="text-xs"></span>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const CLOUD = new Set(["anthropic","openai","groq","openrouter"]);
+const LOCAL_DEFAULTS = {ollama:"http://localhost:11434", lmstudio:"http://localhost:1234"};
+
+function toggleProviderFields() {
+    const p = document.getElementById("provider-select").value;
+    const keyF = document.getElementById("api-key-field");
+    const urlF = document.getElementById("base-url-field");
+    const keyI = document.getElementById("provider-api-key");
+    const urlI = document.getElementById("provider-base-url");
+    const showKey = CLOUD.has(p) || p === "custom";
+    const showUrl = !CLOUD.has(p);
+    keyF.style.display = showKey ? "" : "none";
+    urlF.style.display = showUrl ? "" : "none";
+    if (!showKey) keyI.value = "";
+    if (!showUrl) urlI.value = "";
+    if (LOCAL_DEFAULTS[p]) urlI.value = LOCAL_DEFAULTS[p];
+}
+
+function addProvider(e) {
+    e.preventDefault();
+    const provider = document.getElementById("provider-select").value;
+    const api_key = document.getElementById("provider-api-key").value;
+    const base_url = document.getElementById("provider-base-url").value;
+    const msg = document.getElementById("add-provider-msg");
+    if (!provider) { msg.textContent = "Select a provider"; return false; }
+    fetch("/api/settings/providers", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({provider, api_key, base_url})
+    }).then(r => r.json()).then(d => {
+        if (d.status === "ok") {
+            msg.className = "text-xs text-success";
+            msg.textContent = "Saved";
+            htmx.ajax("GET", "/settings", {target: "#providers", select: "#providers"});
+        } else {
+            msg.className = "text-xs text-error";
+            msg.textContent = d.detail || "Error";
+        }
+    }).catch(() => { msg.className = "text-xs text-error"; msg.textContent = "Request failed"; });
+    return false;
+}
+
+function testProvider(name) {
+    const el = document.getElementById("test-result-" + name);
+    el.textContent = "testing...";
+    el.className = "text-xs mr-2 text-info";
+    fetch("/api/settings/providers/" + name + "/test")
+        .then(r => r.json()).then(d => {
+            el.textContent = d.message || d.status;
+            el.className = "text-xs mr-2 " + (d.status === "ok" ? "text-success" : "text-error");
+        }).catch(() => { el.textContent = "failed"; el.className = "text-xs mr-2 text-error"; });
+}
+
+function deleteProvider(name) {
+    if (!confirm("Delete provider " + name + "?")) return;
+    fetch("/api/settings/providers/" + name, {method: "DELETE"})
+        .then(r => r.json()).then(() => {
+            htmx.ajax("GET", "/settings", {target: "#providers", select: "#providers"});
+        });
+}
+</script>
