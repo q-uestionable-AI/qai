@@ -14,7 +14,7 @@ from q_ai.chain.models import (
     ChainResult,
     StepStatus,
 )
-from q_ai.core.db import get_connection
+from q_ai.core.db import create_run, get_connection
 
 
 def _make_chain_def() -> ChainDefinition:
@@ -163,3 +163,27 @@ class TestPersistChain:
                 (exec_row["id"],),
             ).fetchone()
         assert count["cnt"] == 0
+
+    def test_persist_chain_uses_supplied_run_id(self, tmp_path: Path) -> None:
+        """Verify persist_chain uses provided run_id instead of creating a new one."""
+        db_path = tmp_path / "test.db"
+        # Pre-create a run
+        with get_connection(db_path) as conn:
+            pre_run_id = create_run(conn, module="chain", name="pre-created")
+
+        result = _make_result()
+        chain_def = _make_chain_def()
+
+        run_id = persist_chain(result, chain_def, db_path=db_path, run_id=pre_run_id)
+        assert run_id == pre_run_id
+
+        with get_connection(db_path) as conn:
+            all_runs = conn.execute("SELECT * FROM runs").fetchall()
+            assert len(all_runs) == 1
+            assert all_runs[0]["id"] == pre_run_id
+
+            # Chain execution row should reference the pre-created run
+            exec_row = conn.execute(
+                "SELECT * FROM chain_executions WHERE run_id = ?", (pre_run_id,)
+            ).fetchone()
+            assert exec_row is not None

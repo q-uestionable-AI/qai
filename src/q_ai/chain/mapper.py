@@ -19,6 +19,7 @@ def persist_chain(
     result: object,
     chain: object,
     db_path: Path | None = None,
+    run_id: str | None = None,
 ) -> str:
     """Persist a chain execution result to the database.
 
@@ -29,11 +30,15 @@ def persist_chain(
         result: Completed ChainResult from the executor.
         chain: ChainDefinition that was executed.
         db_path: Path to database file. Defaults to ~/.qai/qai.db.
+        run_id: Optional pre-created run ID from the orchestrator.
+            When provided, skips creating a new run record.
 
     Returns:
         The run ID for the persisted chain execution.
     """
-    run_id = uuid.uuid4().hex
+    skip_run_insert = run_id is not None
+    if run_id is None:
+        run_id = uuid.uuid4().hex
     execution_id = uuid.uuid4().hex
     now_iso = datetime.datetime.now(datetime.UTC).isoformat()
 
@@ -48,26 +53,27 @@ def persist_chain(
     finished_at = getattr(result, "finished_at", None)
 
     with get_connection(db_path) as conn:
-        # Create run record
-        conn.execute(
-            """
-            INSERT INTO runs
-                (id, module, name, target_id, parent_run_id,
-                 config, status, started_at, finished_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                run_id,
-                "chain",
-                chain_name,
-                None,
-                None,
-                None,
-                int(RunStatus.COMPLETED),
-                started_at.isoformat() if started_at else now_iso,
-                finished_at.isoformat() if finished_at else now_iso,
-            ),
-        )
+        # Create run record only when no pre-created run_id was supplied
+        if not skip_run_insert:
+            conn.execute(
+                """
+                INSERT INTO runs
+                    (id, module, name, target_id, parent_run_id,
+                     config, status, started_at, finished_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    "chain",
+                    chain_name,
+                    None,
+                    None,
+                    None,
+                    int(RunStatus.COMPLETED),
+                    started_at.isoformat() if started_at else now_iso,
+                    finished_at.isoformat() if finished_at else now_iso,
+                ),
+            )
 
         # Create chain_executions row
         conn.execute(

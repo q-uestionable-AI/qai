@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from q_ai.core.db import get_connection
+from q_ai.core.db import create_run, get_connection
 from q_ai.ipi.db import save_campaign
 from q_ai.ipi.mapper import persist_generate
 from q_ai.ipi.models import Campaign
@@ -57,3 +57,27 @@ class TestPersistGenerate:
         with get_connection(db_path) as conn:
             run = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
             assert run is not None
+
+    def test_persist_generate_uses_supplied_run_id(self, tmp_path: Path) -> None:
+        """Verify persist_generate uses provided run_id instead of creating a new one."""
+        db_path = tmp_path / "test.db"
+        c = _make_campaign()
+        save_campaign(c, db_path=db_path)
+
+        # Pre-create a run
+        with get_connection(db_path) as conn:
+            pre_run_id = create_run(conn, module="ipi", name="pre-created")
+
+        run_id = persist_generate([c], db_path=db_path, run_id=pre_run_id)
+        assert run_id == pre_run_id
+
+        with get_connection(db_path) as conn:
+            all_runs = conn.execute("SELECT * FROM runs").fetchall()
+            assert len(all_runs) == 1
+            assert all_runs[0]["id"] == pre_run_id
+
+            # Campaign should be linked to the pre-created run
+            rows = conn.execute(
+                "SELECT * FROM ipi_payloads WHERE run_id = ?", (pre_run_id,)
+            ).fetchall()
+            assert len(rows) == 1

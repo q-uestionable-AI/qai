@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from q_ai.core.db import get_connection
+from q_ai.core.db import create_run, get_connection
 from q_ai.cxp.mapper import persist_build, persist_test_result
 
 
@@ -60,3 +61,36 @@ class TestPersistTestResult:
             "r1", "camp1", "exfil-claude-md", "Claude Code", "partial", db_path=db
         )
         assert finding_id is None
+
+
+class TestPersistBuildRunId:
+    """Tests for persist_build run_id passthrough."""
+
+    def test_persist_build_uses_supplied_run_id(self, tmp_path: Path) -> None:
+        """Verify persist_build uses provided run_id instead of creating a new one."""
+        db = tmp_path / "test.db"
+        # Pre-create a run
+        with get_connection(db) as conn:
+            pre_run_id = create_run(conn, module="cxp", name="pre-created")
+
+        run_id = persist_build(
+            "cursorrules",
+            ["weak-crypto-md5"],
+            "/tmp/repo",
+            db_path=db,
+            run_id=pre_run_id,
+        )
+        assert run_id == pre_run_id
+
+        with get_connection(db) as conn:
+            all_runs = conn.execute("SELECT * FROM runs").fetchall()
+            assert len(all_runs) == 1
+            assert all_runs[0]["id"] == pre_run_id
+
+            # Verify metadata was written to the existing run row
+            row = all_runs[0]
+            assert row["name"] == "build-cursorrules-1-rules"
+            config = json.loads(row["config"])
+            assert config["format_id"] == "cursorrules"
+            assert config["rules_inserted"] == ["weak-crypto-md5"]
+            assert config["repo_dir"] == "/tmp/repo"
