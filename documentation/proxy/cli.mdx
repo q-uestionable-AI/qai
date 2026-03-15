@@ -1,0 +1,91 @@
+---
+title: Proxy CLI Reference
+description: Command reference for qai proxy
+---
+
+## proxy
+
+Interactive MCP traffic interceptor. Sits between client and server, intercepting JSON-RPC messages for inspection, modification, and replay.
+
+### proxy start
+
+Start the proxy with the interactive TUI.
+
+```bash
+qai proxy start [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--transport` | Yes | Transport type: `stdio`, `sse`, or `streamable-http` |
+| `--target-command` | When `--transport stdio` | Server command to proxy |
+| `--target-url` | When `--transport sse` or `streamable-http` | Server URL to proxy |
+| `--intercept` | No | Start in intercept mode (default: off) |
+| `--listen-port` | No | Local port for SSE/HTTP (default: `8888`) |
+| `--session-file` | No | Auto-save session to this file |
+
+```bash
+qai proxy start \
+  --transport stdio \
+  --target-command "python my_server.py"
+```
+
+### proxy replay
+
+Replay a captured session against a live server.
+
+```bash
+qai proxy replay [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--session-file` | Yes | Path to a saved session file |
+| `--target-command` | Yes* | Server command for replay (stdio) |
+| `--target-url` | No | Server URL for replay (not yet implemented) |
+| `--output` | No | Save replay results to JSON |
+| `--timeout` | No | Per-message response timeout in seconds (default: `10.0`) |
+| `--no-handshake` | No | Skip auto-handshake if session already includes initialize |
+
+```bash
+qai proxy replay \
+  --session-file session.json \
+  --target-command "python my_server.py"
+```
+
+### proxy export
+
+Export a session to JSON.
+
+```bash
+qai proxy export [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--session-file` | Yes | Path to a saved session file |
+| `--output` | Yes | Output file path |
+| `--output-format` | No | Export format (default: `json`) |
+
+```bash
+qai proxy export \
+  --session-file session.json \
+  --output report.json
+```
+
+### proxy inspect
+
+Print session contents to stdout (non-interactive).
+
+```bash
+qai proxy inspect [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--session-file` | Yes | Path to a saved session file |
+| `--verbose` / `-v` | No | Show full JSON payloads |
+
+```bash
+qai proxy inspect --session-file session.json -v
+```

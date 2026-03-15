@@ -1,0 +1,33 @@
+---
+title: Overview
+description: Automated MCP server security scanning mapped to the OWASP MCP Top 10
+---
+
+The audit module is an automated security scanner for MCP servers — it runs 10 checks mapped to the OWASP MCP Top 10 and produces structured findings.
+
+## Why Audit Matters
+
+MCP servers are trusted tool providers for AI agents. Vulnerabilities in MCP servers translate directly into agent compromise — tool poisoning, privilege escalation, indirect prompt injection, and credential exposure. The audit module systematically checks for these issues so you can identify and remediate them before attackers do.
+
+## How It Works
+
+The audit scanning pipeline follows five steps:
+
+1. **Connect** — Establish a connection to the target MCP server via stdio, SSE, or Streamable HTTP
+2. **Enumerate** — Discover all tools, resources, and prompts exposed by the server
+3. **Scan** — Run each scanner module against the discovered attack surface
+4. **Aggregate** — Collect findings across all scanners into a unified result
+5. **Report** — Output a JSON, HTML, or SARIF report with severity-rated findings mapped to OWASP categories
+
+## Built-in Components
+
+- **10 scanner modules** — One per OWASP MCP Top 10 category, covering token mismanagement, privilege escalation, tool poisoning, supply chain integrity, command injection, prompt injection, authentication, telemetry, shadow servers, and context over-sharing
+- **3 report formats** — HTML for human review, SARIF for CI/CD integration, JSON for programmatic consumption
+- **Fixture-based testing infrastructure** — Intentionally vulnerable MCP servers for offline scanner development and validation
+
+## Next Steps
+
+- [Audit CLI Reference](/audit/cli) — Command reference for `qai audit`
+- [OWASP Mapping](/audit/owasp-mapping) — How findings map to the OWASP MCP Top 10
+- [SARIF Output](/audit/sarif-output) — SARIF report format and CI/CD integration
+- [Scanner Fixtures](/audit/fixtures) — Vulnerable fixture servers for testing

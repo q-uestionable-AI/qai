@@ -1,0 +1,133 @@
+---
+title: Chain Templates
+description: Attack chain template format and built-in chains
+---
+
+Chain templates are declarative YAML definitions that describe multi-step attack paths linking audit scanners and inject techniques into exploitation sequences.
+
+## Chain YAML schema
+
+```yaml
+id: rag-trust-escalation
+name: RAG Trust Escalation
+category: rag_pipeline
+description: >
+  Poison a tool description to inject malicious instructions,
+  escalate through cross-tool agent delegation, then exfiltrate
+  data via output injection.
+steps:
+  - id: poison-tool
+    name: Inject payload via poisoned tool description
+    module: inject
+    technique: description_poisoning
+    trust_boundary: agent-to-tool
+    on_success: escalate-cross-tool
+    on_failure: abort
+
+  - id: escalate-cross-tool
+    name: Escalate through cross-tool delegation
+    module: inject
+    technique: cross_tool_escalation
+    trust_boundary: agent-to-agent
+    on_success: exfil-output
+    on_failure: abort
+
+  - id: exfil-output
+    name: Exfiltrate data via output injection
+    module: inject
+    technique: output_injection
+    trust_boundary: agent-to-data
+    terminal: true
+```
+
+## Top-level fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Unique chain identifier |
+| `name` | Yes | Human-readable name |
+| `category` | Yes | Architecture category (see below) |
+| `description` | Yes | What this chain demonstrates |
+| `steps` | Yes | Ordered list of attack steps |
+
+## Step fields
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `id` | Yes | | Unique step identifier within the chain |
+| `name` | Yes | | Human-readable step description |
+| `module` | Yes | | q-ai module: `audit` or `inject` |
+| `technique` | Yes | | Scanner key (audit) or injection technique (inject) |
+| `depends_on` | No | `[]` | Step IDs that must succeed first |
+| `trust_boundary` | No | `null` | Trust boundary this step crosses |
+| `on_success` | No | `null` | Next step ID on success, or `abort` |
+| `on_failure` | No | `abort` | Next step ID on failure, or `abort` |
+| `terminal` | No | `false` | Whether this is the final step in a path |
+| `inputs` | No | `{}` | Input parameters for live execution |
+
+## Categories
+
+| Category | Description |
+|----------|-------------|
+| `rag_pipeline` | Attacks targeting RAG (retrieval-augmented generation) pipelines |
+| `agent_delegation` | Exploiting agent-to-agent delegation trust |
+| `mcp_ecosystem` | Compromising MCP server infrastructure |
+| `hybrid` | Chains spanning multiple architecture patterns |
+
+## Step routing
+
+Each step can define explicit routing via `on_success` and `on_failure`:
+
+- **Step ID** — route to a specific step by its `id`
+- **`abort`** — stop the chain (default for `on_failure`)
+- **Omitted `on_success`** — proceeds to the next step in list order (implicit routing)
+
+A step marked `terminal: true` ends the chain after execution regardless of routing.
+
+## Built-in templates
+
+### rag_trust_escalation
+
+**Category:** `rag_pipeline` | **Steps:** 3 | **Modules:** inject
+
+Poisons a tool description, escalates through cross-tool delegation, then exfiltrates data via output injection. Demonstrates three trust boundary crossings in a single path.
+
+| Step | Technique | Trust Boundary |
+|------|-----------|----------------|
+| poison-tool | `description_poisoning` | agent-to-tool |
+| escalate-cross-tool | `cross_tool_escalation` | agent-to-agent |
+| exfil-output | `output_injection` | agent-to-data |
+
+### delegation_hijack
+
+**Category:** `agent_delegation` | **Steps:** 3 | **Modules:** inject
+
+Injects instructions via tool output, pivots through cross-tool delegation, then poisons downstream agent tool descriptions.
+
+| Step | Technique | Trust Boundary |
+|------|-----------|----------------|
+| inject-output | `output_injection` | tool-to-agent |
+| cross-tool-pivot | `cross_tool_escalation` | agent-to-agent |
+| poison-downstream | `description_poisoning` | agent-to-tool |
+
+### mcp_server_compromise
+
+**Category:** `mcp_ecosystem` | **Steps:** 3 | **Modules:** audit + inject
+
+Discovers a command injection vulnerability via audit scan, exploits it through tool poisoning, then escalates across tools to reach sensitive data. The only built-in template that combines audit and inject modules.
+
+| Step | Technique | Trust Boundary |
+|------|-----------|----------------|
+| scan-injection | `injection` (audit) | client-to-server |
+| poison-tool | `description_poisoning` | agent-to-tool |
+| cross-tool-exfil | `cross_tool_escalation` | agent-to-agent |
+
+## Valid techniques
+
+When `module` is `audit`, the `technique` field must be a valid scanner key:
+
+`audit_telemetry`, `auth`, `context_sharing`, `injection`, `permissions`, `prompt_injection`, `shadow_servers`, `supply_chain`, `token_exposure`, `tool_poisoning`
+
+When `module` is `inject`, the `technique` field must be one of:
+
+`description_poisoning`, `output_injection`, `cross_tool_escalation`

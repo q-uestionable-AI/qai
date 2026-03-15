@@ -1,0 +1,147 @@
+---
+title: Chain CLI Reference
+description: Command reference for qai chain
+---
+
+Multi-agent attack chain framework. Define declarative attack chains that link audit and inject modules into multi-step exploitation paths, then validate and trace them.
+
+## chain
+
+### chain validate
+
+Validate an attack chain definition without executing it. Checks syntax, step references, module/technique validity, and graph structure.
+
+```bash
+qai chain validate [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--chain-file` | Yes | Path to chain definition to validate |
+
+```bash
+qai chain validate --chain-file chain.yaml
+```
+
+Exits with code 0 on success, code 1 if validation errors are found. Error output includes the step ID, field, and description for each problem.
+
+### chain list-templates
+
+List available attack chain templates.
+
+```bash
+qai chain list-templates [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--category` | No | Filter by category: `rag_pipeline`, `agent_delegation`, `mcp_ecosystem`, `hybrid` |
+
+```bash
+qai chain list-templates
+qai chain list-templates --category mcp_ecosystem
+```
+
+### chain run
+
+Execute an attack chain against a target architecture. Default mode is dry-run (simulation only) which traces the success path without executing destructive steps. Use `--no-dry-run` for live execution against configured targets.
+
+```bash
+qai chain run [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--chain-file` | Yes | Path to attack chain definition (YAML) |
+| `--dry-run` / `--no-dry-run` | No | Trace path without executing destructive steps (default: `--dry-run`) |
+| `--output` | No | Output file for execution result JSON |
+| `--verbose` / `-v` | No | Verbose output |
+| `--targets` | No | Path to `chain-targets.yaml` config file. Falls back to `~/.qai/chain-targets.yaml`. |
+| `--inject-model` | No | Override inject model from targets config |
+
+<CodeGroup>
+```bash Dry run
+qai chain run --chain-file chain.yaml --dry-run
+qai chain run --chain-file chain.yaml --output trace.json -v
+```
+
+```bash Live execution
+qai chain run \
+  --chain-file chain.yaml \
+  --no-dry-run \
+  --targets chain-targets.yaml \
+  --output trace.json
+```
+
+```bash Live with model override
+qai chain run \
+  --chain-file chain.yaml \
+  --no-dry-run \
+  --targets chain-targets.yaml \
+  --inject-model claude-sonnet-4-6 \
+  --output trace.json
+```
+</CodeGroup>
+
+#### Target Configuration
+
+Live execution requires a `chain-targets.yaml` file that specifies how to connect to audit targets and which model to use for inject campaigns.
+
+```yaml
+# chain-targets.yaml
+audit:
+  transport: stdio
+  command: "python my_server.py"
+
+inject:
+  model: claude-sonnet-4-6
+```
+
+| Section | Key | Description |
+|---------|-----|-------------|
+| `audit.transport` | `stdio`, `sse`, or `streamable-http` | Transport for connecting to the target MCP server |
+| `audit.command` | String | Command to launch the server (required for `stdio` transport) |
+| `audit.url` | URL | Server URL (required for `sse` and `streamable-http` transports) |
+| `inject.model` | String | Anthropic model ID for injection campaigns. Falls back to `QAI_MODEL` env var. |
+
+If `--targets` is not provided, the CLI looks for `~/.qai/chain-targets.yaml`.
+
+<Note>
+Live execution requires `ANTHROPIC_API_KEY` for inject steps. Audit-only chains do not require an API key.
+</Note>
+
+### chain blast-radius
+
+Analyze blast radius from a completed chain execution. Quantifies what the attacker reached: data, systems, actions, and persistence.
+
+```bash
+qai chain blast-radius [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--results-dir` | Yes | Path to completed chain results |
+| `--format` | No | Output format: `html` or `json` (default: `html`) |
+| `--output` | No | Output file path |
+
+<Note>
+Blast radius analysis is not yet implemented. The command is defined but returns a stub.
+</Note>
+
+### chain detect
+
+Generate detection rules from observed attack patterns. Produces Sigma or Wazuh rules that would detect the chain's execution in a monitored environment.
+
+```bash
+qai chain detect [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--results-dir` | Yes | Path to completed chain results |
+| `--format` | No | Rule format: `sigma` or `wazuh` (default: `sigma`) |
+| `--output` | No | Output directory for detection rules |
+
+<Note>
+Detection rule generation is not yet implemented. The command is defined but returns a stub.
+</Note>

@@ -1,0 +1,123 @@
+---
+title: Models & Profiles
+description: Embedding model registry and domain profile structure for RXP
+---
+
+RXP ships with a registry of embedding models and a domain profile system for building reproducible retrieval poisoning tests.
+
+## Optional Dependencies
+
+The validation engine requires `sentence-transformers` and `chromadb`. Install with:
+
+```bash
+pip install q-uestionable-ai[rxp]
+# or
+uv sync --extra rxp
+```
+
+The `list-models` and `list-profiles` commands work without these dependencies installed.
+
+---
+
+## Embedding Models
+
+RXP includes three built-in embedding models selected for their prevalence in open-source RAG deployments.
+
+### Built-in Models
+
+| ID | HuggingFace Model | Dimensions | Description |
+|----|-------------------|------------|-------------|
+| `minilm-l6` | `sentence-transformers/all-MiniLM-L6-v2` | 384 | Open WebUI default embedding model |
+| `minilm-l12` | `sentence-transformers/all-MiniLM-L12-v2` | 384 | Higher quality MiniLM variant |
+| `bge-small` | `BAAI/bge-small-en-v1.5` | 384 | BGE small English v1.5 |
+
+```bash
+qai rxp list-models
+```
+
+### Arbitrary HuggingFace Models
+
+The `--model` option also accepts any HuggingFace model name. If the name doesn't match a registry shortcut, RXP creates an ad-hoc configuration and loads the model directly from HuggingFace:
+
+```bash
+# Use a model not in the registry
+qai rxp validate --profile hr-policy --model BAAI/bge-m3
+
+# Use a larger model for comparison
+qai rxp validate --profile hr-policy --model sentence-transformers/all-mpnet-base-v2
+```
+
+### Multi-Model Comparison
+
+Use `--model all` to run validation against every registered model in a single pass. RXP prints per-model results followed by a comparison table:
+
+```bash
+qai rxp validate --profile hr-policy --model all
+```
+
+---
+
+## Domain Profiles
+
+A domain profile is a self-contained test scenario: a corpus of legitimate documents, a set of target queries, and one or more poison documents. Profiles are used to run repeatable validation tests.
+
+```bash
+qai rxp list-profiles
+```
+
+### Profile Structure
+
+Each profile lives in a subdirectory under `src/q_ai/rxp/profiles/` and contains:
+
+```
+profiles/{profile-id}/
+├── profile.yaml       # Profile metadata and queries
+├── corpus/            # Legitimate documents (*.txt)
+│   ├── doc1.txt
+│   └── doc2.txt
+└── poison/            # Adversarial documents (*.txt)
+    └── poison1.txt
+```
+
+**`profile.yaml`** defines the profile metadata and query list:
+
+```yaml
+id: hr-policy
+name: HR Policy Knowledge Base
+queries:
+  - "What is the remote work policy?"
+  - "How do I request time off?"
+  - "What benefits are available?"
+  # ...
+```
+
+**`corpus/`** contains legitimate documents that represent the knowledge base. Each `.txt` file becomes a corpus document with its filename stem as the document ID.
+
+**`poison/`** contains adversarial documents designed to rank highly for the profile's queries. Each `.txt` file is ingested with `is_poison=True` for retrieval tracking.
+
+### Built-in Profile: hr-policy
+
+The `hr-policy` profile simulates an HR knowledge base:
+
+- **8 queries** covering remote work, time off, benefits, dress code, performance reviews, parental leave, expenses, and holidays
+- **5 corpus documents** — benefits, expenses, performance reviews, remote work, and time off policies
+- **1 poison document** — a fake "urgent policy update" that covers all five topic areas to maximize retrieval across diverse queries
+
+The poison document uses classic phishing patterns: urgency language, credential re-verification requests, and a fake external URL.
+
+### Custom Corpus and Poison
+
+Instead of a built-in profile, you can point RXP at your own files:
+
+```bash
+qai rxp validate \
+  --corpus-dir ./my-corpus \
+  --poison-file ./my-poison.txt
+```
+
+- `--corpus-dir`: Directory of `.txt` files to use as the corpus
+- `--poison-file`: Path to a single poison document (overrides profile poison)
+
+<Info>
+When using `--corpus-dir`, you must provide queries through a profile or they will be derived from the corpus. For best results, combine `--profile` with `--corpus-dir` or `--poison-file` to override specific components.
+</Info>

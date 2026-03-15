@@ -1,0 +1,134 @@
+---
+title: Quickstart
+description: Install q-ai and run your first MCP server security assessment
+---
+
+## Prerequisites
+
+- **Python 3.11** or later
+- **[uv](https://docs.astral.sh/uv/)** (recommended) or pip
+- **Node.js / npm** — MCP server targets are typically npm packages. Install the example target used below with `npm install -g @modelcontextprotocol/server-memory`.
+- **LLM provider API key** (optional) — Required only for `inject` campaigns and `chain` execution. q-ai uses [litellm](https://docs.litellm.ai/) for multi-provider support. Model strings use the `provider/model` format (e.g., `anthropic/claude-sonnet-4-20250514`, `openai/gpt-4o`, `groq/llama-3.3-70b-versatile`). Set the matching environment variable (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`) or store credentials in the OS keyring via `qai config set-credential`.
+- **sentence-transformers + chromadb** (optional) — Required only for `rxp` module. Install with `pip install q-uestionable-ai[rxp]`.
+
+## Install
+
+<CodeGroup>
+```bash pip
+pip install q-uestionable-ai
+```
+
+```bash uv (from source)
+git clone https://github.com/q-uestionable-AI/qai.git
+cd qai
+uv sync --group dev
+```
+</CodeGroup>
+
+## Configure a provider (optional)
+
+If you plan to run injection campaigns, store your API key in the OS keyring:
+
+```bash
+qai config set-credential anthropic
+# Prompts for your API key (masked input)
+```
+
+Verify configured providers:
+
+```bash
+qai config list-providers
+```
+
+Alternatively, set the environment variable directly:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+## Run your first scan
+
+<Steps>
+  <Step title="Pick a target server">
+    You can scan any MCP server you have permission to test. This guide uses the
+    official MCP memory server as an example. You don't need to start the server
+    manually — q-ai spawns it via the `--command` flag.
+
+    Install the example target if you don't have one:
+
+    ```bash
+    npm install -g @modelcontextprotocol/server-memory
+    ```
+  </Step>
+
+  <Step title="Run the scan">
+    q-ai launches the server as a child process, connects over stdio,
+    enumerates its tools and resources, then runs all 10 OWASP MCP Top 10
+    scanner modules against it.
+
+    ```bash
+    qai audit scan \
+      --transport stdio \
+      --command "npx @modelcontextprotocol/server-memory"
+    ```
+  </Step>
+
+  <Step title="Review the output">
+    The CLI prints a live summary as it runs:
+
+    - **Connected** — confirms the transport and server name
+    - **Findings** — any security issues found, with severity, description, and remediation
+    - **Report saved** — path to the full JSON report
+  </Step>
+</Steps>
+
+## Enumerate a server
+
+Before a full scan, you can quickly check what a server exposes:
+
+```bash
+qai audit enumerate \
+  --transport stdio \
+  --command "npx @modelcontextprotocol/server-memory"
+```
+
+This lists the server's tools, resources, and prompts without running any security checks.
+
+## Launch the web UI
+
+Running `qai` with no subcommand starts the web UI:
+
+```bash
+qai
+```
+
+This opens a browser with the workflow launcher — workflow cards for guided security assessments. The same findings are accessible via both the web UI and CLI (`qai findings list`).
+
+Use `--port` to specify a port, or `--no-browser` to start the server without opening a browser.
+
+## Try other modules
+
+```bash
+# Generate indirect prompt injection payloads
+qai ipi generate --callback http://localhost:8080 --technique all --format markdown
+
+# Launch the CXP interactive builder
+qai cxp generate
+
+# Validate RAG retrieval rank
+qai rxp validate --profile hr-policy --model minilm-l6
+
+# View all findings across modules
+qai findings list
+```
+
+## Next steps
+
+- [Core Concepts](/concepts) — MCP protocol, OWASP mapping, module methodologies, threat model
+- [Audit CLI Reference](/audit/cli) — full scan options and reporting
+- [IPI Overview](/ipi/overview) — indirect prompt injection testing
+- [CXP Overview](/cxp/overview) — context file poisoning for coding assistants
+
+<Warning>
+Only test systems you own, control, or have explicit written authorization to test.
+</Warning>

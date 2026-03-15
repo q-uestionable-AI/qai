@@ -1,0 +1,45 @@
+---
+title: Overview
+description: Embedding model validation and poison document retrieval testing for RAG pipelines
+---
+
+RXP tests whether adversarial documents can win vector similarity battles in RAG (Retrieval-Augmented Generation) systems. If a poisoned document ranks high enough to enter the LLM context window, the attacker controls part of the generation context — enabling indirect prompt injection at the retrieval layer.
+
+## Why Embedding Model Choice Matters
+
+RAG pipelines rely on embedding models to determine which documents are "relevant" to a user query. Different models produce different vector spaces, meaning the same poison document may rank highly with one model and be ignored by another. RXP validates retrieval behavior across models so you can identify which embeddings are most susceptible.
+
+## How It Works
+
+The RXP validation pipeline follows four steps:
+
+1. **Embed** — Load an embedding model and encode all corpus documents plus the poison document into vectors
+2. **Ingest** — Store the embeddings in an ephemeral ChromaDB collection
+3. **Query** — Run target queries against the collection and retrieve the top-k results
+4. **Score** — Measure how often the poison document appears in results and at what rank
+
+The output is a retrieval rate (percentage of queries where the poison was retrieved) and a mean poison rank across those queries.
+
+## Built-in Components
+
+- **3 embedding models** — MiniLM-L6, MiniLM-L12, and BGE-small, with support for arbitrary HuggingFace model names
+- **Domain profiles** — Pre-built corpus/query/poison sets for testing (currently: HR policy knowledge base)
+- **Multi-model comparison** — Run `--model all` to validate across every registered model in a single pass
+
+## Optional Dependencies
+
+RXP depends on `sentence-transformers` and `chromadb`, which are not installed by default. Install them with:
+
+```bash
+pip install q-uestionable-ai[rxp]
+# or
+uv sync --extra rxp
+```
+
+The `list-models` and `list-profiles` commands work without these dependencies. Only `validate` requires them.
+
+## Next Steps
+
+- [RXP CLI Reference](/rxp/cli) — Command reference for `qai rxp`
+- [Models & Profiles](/rxp/models-profiles) — Embedding model registry and domain profile structure
+- [RXP Architecture](/architecture/rxp-module) — Module internals and data flow

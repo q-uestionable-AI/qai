@@ -1,0 +1,116 @@
+---
+title: Providers & Targets
+description: Configure target MCP servers across stdio, SSE, and Streamable HTTP transports
+---
+
+q-ai connects to MCP servers as targets for scanning, interception, and injection testing. This page covers how to configure target servers across the three supported transports.
+
+<Note>
+"Providers" in this context refers to MCP server targets that q-ai connects to, not AI inference providers.
+</Note>
+
+## stdio
+
+Spawns the MCP server as a child process. Communication happens over stdin/stdout. Best for local servers you can run directly.
+
+<CodeGroup>
+```bash audit
+qai audit scan \
+  --transport stdio \
+  --command "python my_server.py"
+```
+
+```bash proxy
+qai proxy start \
+  --transport stdio \
+  --target-command "python my_server.py"
+```
+</CodeGroup>
+
+The `--command` (audit) or `--target-command` (proxy) value is passed to the shell. You can include arguments:
+
+```bash
+qai audit scan \
+  --transport stdio \
+  --command "python my_server.py --port 3000 --verbose"
+```
+
+### npx servers
+
+Many MCP servers are distributed as npm packages:
+
+```bash
+qai audit scan \
+  --transport stdio \
+  --command "npx @modelcontextprotocol/server-memory"
+```
+
+### Docker targets
+
+Spawn a Docker container as the server process:
+
+```bash
+qai audit scan \
+  --transport stdio \
+  --command "docker run --rm -i my-mcp-server"
+```
+
+<Note>
+The Docker container must use stdio for MCP communication. Pass `-i` to keep stdin open and `--rm` for automatic cleanup.
+</Note>
+
+## SSE (Server-Sent Events)
+
+Connects to a remote server using the legacy SSE transport. The server must already be running.
+
+<CodeGroup>
+```bash audit
+qai audit scan \
+  --transport sse \
+  --url "http://localhost:3000/sse"
+```
+
+```bash proxy
+qai proxy start \
+  --transport sse \
+  --target-url "http://localhost:3000/sse"
+```
+</CodeGroup>
+
+## Streamable HTTP
+
+Connects to a remote server using the current Streamable HTTP transport standard. The server must already be running.
+
+<CodeGroup>
+```bash audit
+qai audit scan \
+  --transport streamable-http \
+  --url "http://localhost:3000/mcp"
+```
+
+```bash proxy
+qai proxy start \
+  --transport streamable-http \
+  --target-url "http://localhost:3000/mcp"
+```
+</CodeGroup>
+
+## Verifying connectivity
+
+Use `audit enumerate` to verify you can connect to a server before running a full scan:
+
+```bash
+qai audit enumerate \
+  --transport stdio \
+  --command "python my_server.py"
+```
+
+This lists the server's name, protocol version, tools, resources, and prompts without running any security checks.
+
+## Authentication
+
+q-ai does not currently support custom authentication headers for SSE or Streamable HTTP connections. Servers requiring auth headers (Bearer tokens, API keys) cannot be scanned over network transports at this time.
+
+<Tip>
+For servers requiring authentication, consider using stdio transport with a local proxy or wrapper script that handles auth, or scan a local instance without auth enabled.
+</Tip>

@@ -1,0 +1,35 @@
+---
+title: Overview
+description: Interactive MCP traffic interception, inspection, and replay
+---
+
+The proxy module is an interactive MCP traffic interceptor — it sits between an MCP client and server to capture, inspect, and optionally modify JSON-RPC messages in real time.
+
+## Why Proxy Matters
+
+MCP communication is opaque to standard network tools. The proxy gives full visibility into tool calls, responses, and notifications — enabling manual traffic analysis, breakpoint-based interception, and session replay for reproducing attack scenarios.
+
+## How It Works
+
+The proxy interception workflow follows five steps:
+
+1. **Launch** — Start the proxy between your MCP client and target server
+2. **Observe** — Watch the live message stream in the Textual TUI
+3. **Intercept** — Set breakpoints to hold messages matching specific criteria
+4. **Act** — Forward, modify, or drop held messages
+5. **Replay** — Save the session and replay it offline for analysis or reproduction
+
+## Built-in Components
+
+- **Textual TUI** — Live message stream with detail panel for inspecting individual messages
+- **Intercept engine** — Hold/release/drop actions with configurable breakpoint rules
+- **Session store** — Capture all messages as an ordered sequence with save/load and export
+- **Replay engine** — Re-send captured messages against the target server
+- **Transport adapters** — stdio, SSE, and Streamable HTTP server-facing adapters
+
+## Next Steps
+
+- [Proxy CLI Reference](/proxy/cli) — Command reference for `qai proxy`
+- [Intercept & Breakpoints](/proxy/intercept) — Breakpoint rules and message interception
+- [Session Replay](/proxy/replay) — Replaying captured sessions
+- [Session Export](/proxy/session-export) — Exporting sessions to external formats

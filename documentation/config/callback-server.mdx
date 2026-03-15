@@ -1,0 +1,99 @@
+---
+title: Callback Server
+description: Configure the FastAPI callback listener for payload verification
+---
+
+The callback server is a FastAPI application that receives HTTP callbacks from AI agents that execute hidden payloads. It also serves the web dashboard for campaign monitoring.
+
+---
+
+## Default Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Host | `127.0.0.1` | Network interface to bind to |
+| Port | `8080` | TCP port to listen on |
+| Database | `~/.qai/ipi.db` | SQLite database for campaigns and hits |
+
+The database directory (`~/.qai/`) is created automatically on first run.
+
+---
+
+## CLI Configuration
+
+All server settings are configured via CLI flags on `ipi listen`:
+
+```bash
+# Default — localhost only
+qai ipi listen
+
+# Bind to all interfaces on port 9090
+qai ipi listen --host 0.0.0.0 --port 9090
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--host`, `-h` | TEXT | `127.0.0.1` | Network interface to bind to |
+| `--port`, `-p` | INT | `8080` | TCP port to listen on |
+
+---
+
+## Callback URL Structure
+
+The listener accepts callbacks at two URL patterns:
+
+| Path | Token Validated | Description |
+|------|:-:|-------------|
+| `/c/<uuid>/<token>` | Yes | Authenticated callback — token checked against database |
+| `/c/<uuid>` | No | Unauthenticated callback — recorded with `token_valid=False` |
+
+Both GET and POST methods are accepted. POST bodies are captured for exfil payload types.
+
+All callback endpoints return a fake 404 response (`404 Not Found: The requested resource could not be located.`) to avoid alerting the target system.
+
+---
+
+## Authentication
+
+Per-campaign cryptographic tokens are generated automatically when payloads are created. No separate authentication configuration is needed.
+
+The token is embedded in the callback URL during payload generation:
+
+```bash
+qai ipi generate --callback http://localhost:8080
+# Generates URLs like: http://localhost:8080/c/a1b2c3d4-.../e5f6g7h8...
+```
+
+---
+
+## Confidence Scoring
+
+Confidence is assigned automatically based on token validity and User-Agent analysis:
+
+| Level | Criteria |
+|-------|----------|
+| **HIGH** | Valid campaign token present |
+| **MEDIUM** | No/invalid token + programmatic User-Agent |
+| **LOW** | No/invalid token + browser/scanner User-Agent |
+
+Confidence thresholds are not user-configurable in the current version. The programmatic User-Agent pattern matches: `python-requests`, `httpx`, `aiohttp`, `urllib`, `curl`, `wget`, `node-fetch`, `axios`, `got`, `undici`, `fetch`, `llm`, `openai`, `langchain`.
+
+---
+
+## Health Check
+
+The server exposes a health endpoint at `/health` that returns `{"status": "ok"}`. This can be used for monitoring and automated testing.
+
+---
+
+## Network Considerations
+
+<Tip>
+For testing against cloud-hosted AI targets, the listener must be reachable from the target system. Options include:
+
+- **Public IP** — Run the listener on a cloud VM with `--host 0.0.0.0`
+- **Tunneling** — Use ngrok or Cloudflare Tunnel to expose a local listener
+- **VPN/Network** — Ensure the target and listener share a network path
+
+When generating payloads, use the externally reachable address as the `--callback` URL.
+</Tip>

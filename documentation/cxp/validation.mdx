@@ -1,0 +1,165 @@
+---
+title: Output Validation
+description: Detection rules and evidence capture for coding assistant output
+---
+
+CXP includes a validation and evidence pipeline for determining whether a coding assistant followed a poisoned instruction. The pipeline has four stages: validate captured output, record test results, review campaigns, and generate reports.
+
+---
+
+## validate
+
+Check assistant-generated code against technique-specific detection rules.
+
+```bash
+qai cxp validate [OPTIONS]
+```
+
+The validator applies detection rules for the specified technique to identify indicators of successful poisoning — hardcoded credentials (backdoor), outbound data transmission (exfil), unsafe shell calls (cmdexec), and so on.
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--result` | TEXT | — | Stored result ID to validate |
+| `--technique` | TEXT | — | Technique ID (for file validation) |
+| `--file` | PATH | — | Path to file(s) to validate |
+| `--db` | PATH | `~/.qai/cxp.db` | Database path |
+
+### Usage Modes
+
+**Validate a stored result** — pulls the recorded code files and technique from the evidence store:
+
+```bash
+qai cxp validate --result abc123
+```
+
+**Validate files directly** — scan one or more files against a technique's detection rules:
+
+```bash
+qai cxp validate --technique backdoor-claude-md --file output.py
+```
+
+---
+
+## record
+
+Log a test result into the CXP evidence store.
+
+```bash
+qai cxp record [OPTIONS]
+```
+
+Each record captures the full test context: which technique was used, which assistant was tested, the prompt that triggered code generation, and the resulting files. Records are grouped into campaigns for cross-assistant comparison.
+
+### Required Options
+
+| Option | Description |
+|--------|-------------|
+| `--technique` | Technique ID that was tested (e.g. `backdoor-claude-md`) |
+| `--assistant` | Name of the assistant under test (e.g. `"Claude Code"`) |
+| `--trigger-prompt` | The prompt given to the assistant to trigger code generation |
+
+### Optional Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--file` | — | Path to assistant-generated code file(s) |
+| `--output-file` | — | Path to saved chat output file |
+| `--campaign` | auto-generated | Existing campaign ID to add this result to |
+| `--model` | — | Underlying model name (e.g. `claude-sonnet-4-6`) |
+| `--notes` | — | Researcher observations |
+| `--db` | `~/.qai/cxp.db` | Database path |
+
+### Example
+
+```bash
+qai cxp record \
+  --technique exfil-copilot-instructions \
+  --assistant "GitHub Copilot" \
+  --trigger-prompt "Add config file loading with environment variables" \
+  --file ./captured/config_loader.py \
+  --model "gpt-4o" \
+  --notes "Copilot added HTTP POST of os.environ to external URL"
+```
+
+---
+
+## campaigns
+
+Review recorded campaigns and their test results.
+
+```bash
+qai cxp campaigns [CAMPAIGN_ID] [OPTIONS]
+```
+
+Without an argument, lists all campaigns with summary counts. With a campaign ID, shows every result in that campaign with technique, assistant, and validation status.
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--db` | PATH | `~/.qai/cxp.db` | Database path |
+
+### Examples
+
+```bash
+# List all campaigns
+qai cxp campaigns
+
+# Inspect a specific campaign
+qai cxp campaigns campaign-2024-01
+```
+
+---
+
+## report
+
+Generate output from recorded evidence. Two subcommands are available.
+
+### report matrix
+
+Generate an assistant comparison matrix showing which techniques succeeded or failed across tested assistants.
+
+```bash
+qai cxp report matrix [OPTIONS]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--campaign` | TEXT | — | Filter to specific campaign |
+| `--format` | TEXT | `markdown` | Output format |
+| `--output` | PATH | — | Write to file instead of stdout |
+| `--db` | PATH | `~/.qai/cxp.db` | Database path |
+
+```bash
+# Print comparison matrix
+qai cxp report matrix
+
+# Save a campaign-specific matrix
+qai cxp report matrix --campaign campaign-2024-01 --output results.md
+```
+
+The matrix output shows each technique as a row with columns for each tested assistant, marking pass/fail status. This is useful for identifying which assistants are vulnerable to which objective/format combinations.
+
+### report poc
+
+Export a bounty-ready proof-of-concept package as a zip file containing the poisoned instruction file, trigger prompt, captured output, and validation results.
+
+```bash
+qai cxp report poc [OPTIONS]
+```
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `--result` | TEXT | Yes | — | Test result ID to package |
+| `--output` | PATH | No | `./poc-{technique}.zip` | Output zip path |
+| `--db` | PATH | No | `~/.qai/cxp.db` | Database path |
+
+```bash
+qai cxp report poc --result abc123 --output ./evidence/poc-backdoor.zip
+```
+
+<Info>
+PoC packages are designed for responsible disclosure. Include the package when reporting vulnerabilities to assistant vendors so they can reproduce the finding.
+</Info>

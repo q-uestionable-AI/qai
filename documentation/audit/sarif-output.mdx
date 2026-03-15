@@ -1,0 +1,87 @@
+---
+title: SARIF Output
+description: Generate SARIF 2.1.0 reports for GitHub Code Scanning and CI/CD integration
+---
+
+q-ai generates [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html) reports compatible with GitHub Code Scanning and other SARIF-compatible tools.
+
+## What is SARIF?
+
+SARIF (Static Analysis Results Interchange Format) is a standard JSON format for security scan results. Version 2.1.0 is supported by GitHub Code Scanning, VS Code, and most security analysis platforms. q-ai maps each finding to a SARIF `result` object with `ruleId` set to the finding's rule ID (e.g., `MCP05-001`) and the OWASP ID (e.g., `MCP05`) included as a tag.
+
+## Generating SARIF output
+
+Use `--format sarif` on `audit scan` to generate a SARIF report directly:
+
+```bash
+qai audit scan \
+  --transport stdio \
+  --command "python my_server.py" \
+  --format sarif \
+  --output results/scan.sarif
+```
+
+Or convert saved JSON results to SARIF with `audit report`:
+
+```bash
+qai audit report \
+  --input results/scan.json \
+  --format sarif \
+  --output results/scan.sarif
+```
+
+## SARIF structure
+
+Each finding maps to SARIF as follows:
+
+| q-ai field | SARIF field | Example |
+|-------------------|-------------|---------|
+| `rule_id` | `ruleId` | `MCP05-001` |
+| `owasp_id` | `properties.tags[]` | `MCP05` |
+| `title` | `rule.shortDescription` | Command injection detected |
+| `description` | `result.message.text` | Full finding description |
+| `severity` | `level` + `security-severity` | `error` / `9.0` for CRITICAL |
+
+Severity mapping:
+
+| q-ai Severity | SARIF Level | Security-Severity Score |
+|----------------------|-------------|------------------------|
+| CRITICAL | `error` | 9.0 |
+| HIGH | `error` | 7.0 |
+| MEDIUM | `warning` | 4.0 |
+| LOW | `note` | 0.1 |
+| INFO | `note` | 0.0 |
+
+## GitHub Code Scanning
+
+Upload SARIF results to GitHub Code Scanning using the `upload-sarif` action:
+
+```yaml
+- name: Upload SARIF
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: results/scan.sarif
+```
+
+## CI/CD integration
+
+Add MCP server scanning to a GitHub Actions workflow:
+
+```yaml
+- name: Scan MCP server
+  run: |
+    qai audit scan \
+      --transport stdio \
+      --command "python my_server.py" \
+      --format sarif \
+      --output results/scan.sarif
+
+- name: Upload SARIF
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: results/scan.sarif
+```
+
+<Tip>
+Combine with `--checks` to run specific scanners in CI, keeping scan times predictable.
+</Tip>

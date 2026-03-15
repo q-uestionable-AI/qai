@@ -1,0 +1,134 @@
+---
+title: Session Export
+description: Export captured MCP sessions as JSON evidence
+---
+
+Session files capture complete MCP request/response sequences for evidence, debugging, and replay.
+
+## Session file format
+
+A session file is a JSON document containing a `ProxySession` with ordered `ProxyMessage` entries:
+
+```json
+{
+  "id": "session-uuid",
+  "started_at": "2026-03-04T10:00:00+00:00",
+  "ended_at": null,
+  "transport": "stdio",
+  "server_command": "python my_server.py",
+  "server_url": null,
+  "messages": [
+    {
+      "proxy_id": "msg-uuid",
+      "sequence": 0,
+      "timestamp": "2026-03-04T10:00:01+00:00",
+      "direction": "client_to_server",
+      "transport": "stdio",
+      "jsonrpc_id": 1,
+      "method": "initialize",
+      "correlated_id": null,
+      "modified": false,
+      "payload": { "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }
+    }
+  ],
+  "metadata": {}
+}
+```
+
+### Message fields
+
+| Field | Description |
+|-------|-------------|
+| `proxy_id` | Unique proxy-assigned UUID for this message |
+| `sequence` | Monotonic sequence number within the session |
+| `timestamp` | When the proxy received the message |
+| `direction` | `client_to_server` or `server_to_client` |
+| `transport` | Transport type (`stdio`, `sse`, or `streamable_http`) |
+| `jsonrpc_id` | JSON-RPC id field (`null` for notifications) |
+| `method` | JSON-RPC method (`null` for responses) |
+| `correlated_id` | Proxy ID of the request this response correlates to |
+| `modified` | `true` if user modified the message before forwarding |
+| `payload` | The raw JSON-RPC message content |
+| `original_payload` | Pre-modification snapshot (present only when `modified` is `true`) |
+
+## Saving sessions
+
+Use `--session-file` on `proxy start` to auto-save the session:
+
+```bash
+qai proxy start \
+  --transport stdio \
+  --target-command "python my_server.py" \
+  --session-file session.json
+```
+
+You can also press `s` in the TUI to save the session at any time.
+
+## proxy export
+
+Export a saved session to a new JSON file:
+
+```bash
+qai proxy export [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--session-file` | Yes | Path to a saved session file |
+| `--output` | Yes | Output file path |
+| `--output-format` | No | Export format (default: `json`) |
+
+```bash
+qai proxy export \
+  --session-file session.json \
+  --output report.json
+```
+
+## proxy inspect
+
+Print session contents to stdout for quick review:
+
+```bash
+qai proxy inspect [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--session-file` | Yes | Path to a saved session file |
+| `--verbose` / `-v` | No | Show full JSON payloads |
+
+```bash
+qai proxy inspect --session-file session.json
+```
+
+Output shows session metadata followed by each message with direction, method, JSON-RPC id, and correlation:
+
+```
+Session: abc-123
+Transport: stdio
+Server command: python my_server.py
+Messages: 12
+---
+  #000 > initialize id=1
+  #001 < (response) id=1 corr=abc...
+  #002 > notifications/initialized
+  #003 > tools/call id=2
+```
+
+Add `-v` to include full JSON payloads for each message:
+
+```bash
+qai proxy inspect --session-file session.json -v
+```
+
+## Evidence use
+
+Session files capture the complete request/response sequence for:
+
+- **Finding reproduction** — replay the exact message sequence that triggered a vulnerability
+- **Bug reports** — attach the session file showing the failing interaction
+- **Audit evidence** — provide the full traffic capture alongside scan results
+
+<Tip>
+Use `proxy inspect` for a quick human-readable summary. Use `proxy export` when you need a clean JSON file for tooling or sharing.
+</Tip>

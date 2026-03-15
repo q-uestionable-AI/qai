@@ -1,0 +1,90 @@
+---
+title: Transport Types
+description: stdio, SSE, and Streamable HTTP — when to use each transport
+---
+
+q-ai supports three MCP transport types for connecting to servers. Each module accepts a `--transport` flag to select the connection method.
+
+## stdio
+
+Spawns the server as a child process and communicates over stdin/stdout. Best for local testing where the server runs on the same machine.
+
+**When to use:** Local development, CI pipelines, testing servers you can run directly.
+
+**Configuration:** Provide the server command via `--command` (audit/proxy) or run the inject server directly.
+
+<CodeGroup>
+```bash audit
+qai audit scan \
+  --transport stdio \
+  --command "python my_server.py"
+```
+
+```bash proxy
+qai proxy start \
+  --transport stdio \
+  --target-command "python my_server.py"
+```
+
+```bash inject
+qai inject serve --transport stdio
+```
+</CodeGroup>
+
+## SSE (Server-Sent Events)
+
+Connects to a remote server over HTTP using the legacy SSE transport. The server must already be running and listening for SSE connections.
+
+**When to use:** Remote servers using the older SSE-based MCP transport protocol.
+
+**Configuration:** Provide the server URL via `--url`.
+
+<CodeGroup>
+```bash audit
+qai audit scan \
+  --transport sse \
+  --url "http://localhost:3000/sse"
+```
+
+```bash proxy
+qai proxy start \
+  --transport sse \
+  --target-url "http://localhost:3000/sse"
+```
+</CodeGroup>
+
+## Streamable HTTP
+
+Connects to a remote server over the current MCP Streamable HTTP transport standard. The server must already be running and listening for HTTP connections.
+
+**When to use:** Remote servers using the current Streamable HTTP MCP transport (recommended for new deployments).
+
+**Configuration:** Provide the server URL via `--url` (audit/proxy) or `--port` (inject).
+
+<CodeGroup>
+```bash audit
+qai audit scan \
+  --transport streamable-http \
+  --url "http://localhost:3000/mcp"
+```
+
+```bash proxy
+qai proxy start \
+  --transport streamable-http \
+  --target-url "http://localhost:3000/mcp"
+```
+
+```bash inject
+qai inject serve \
+  --transport streamable-http \
+  --port 8888
+```
+</CodeGroup>
+
+## Module support matrix
+
+| Transport | audit | proxy | inject serve |
+|-----------|-------|-------|--------------|
+| stdio | Yes | Yes | Yes |
+| SSE | Yes | Yes | No |
+| Streamable HTTP | Yes | Yes | Yes |

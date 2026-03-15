@@ -1,0 +1,31 @@
+---
+title: Web UI Dashboard
+description: IPI campaign monitoring in the q-ai web interface
+---
+
+<Note>
+This section documents the q-ai web UI panel for IPI, which is under active development.
+Content will be expanded as the web UI stabilizes.
+</Note>
+
+## Overview
+
+The IPI module integrates with the q-ai web UI as a panel within the operations view. When running an IPI workflow through the web UI launcher, the operations page shows:
+
+- **Status bar** — current workflow state and progress
+- **IPI tab** — campaign status, hit counts, and confidence breakdowns
+- **Findings sidebar** — security findings generated from callback analysis
+
+Campaign data displayed in the web UI reads from the same unified database accessed by the CLI (`qai ipi status`). Both interfaces show the same data.
+
+## CLI alternative
+
+All IPI monitoring functionality is also available via the CLI:
+
+```bash
+# Check campaign status
+qai ipi status
+
+# Export results
+qai ipi export --format json
+```

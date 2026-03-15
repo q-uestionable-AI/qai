@@ -1,0 +1,78 @@
+---
+title: Intercept Mode
+description: Pause, inspect, and modify MCP messages in transit
+---
+
+Intercept mode pauses MCP messages in transit between client and server, letting you inspect and modify JSON-RPC payloads before they reach their destination.
+
+## Enabling intercept mode
+
+Start the proxy with the `--intercept` flag:
+
+```bash
+qai proxy start \
+  --transport stdio \
+  --target-command "python my_server.py" \
+  --intercept
+```
+
+You can also toggle intercept mode at runtime using the `i` key.
+
+## TUI layout
+
+The proxy TUI has three panels:
+
+- **Message list** (left) — Scrollable list of all proxied messages. Client-to-server messages show `>`, server-to-client show `<`. Held messages are prefixed with a pause icon, dropped messages with a cross mark.
+- **Message detail** (right) — Full JSON-RPC payload of the selected message. In edit mode, this becomes an editable text area.
+- **Status bar** (bottom) — Shows current mode (`[PASSTHROUGH]` or `[INTERCEPT]`), total message count, held message count, and connection status.
+
+## Intercepted message actions
+
+When a message is held, you can take one of three actions:
+
+| Action | Effect |
+|--------|--------|
+| **FORWARD** | Send the message to its destination unchanged |
+| **MODIFY** | Edit the JSON-RPC payload, then send the modified version |
+| **DROP** | Discard the message without forwarding |
+
+## Keyboard shortcuts
+
+| Key | Alternate | Action |
+|-----|-----------|--------|
+| `q` | | Quit the proxy |
+| `i` | | Toggle intercept mode on/off |
+| `f` | `F5` | Forward the held message |
+| `d` | `F8` | Drop the held message |
+| `m` | `F6` | Enter edit mode (modify) |
+| `Ctrl+S` | | Confirm edit and forward modified message |
+| `Escape` | | Cancel edit (forwards message as-is) |
+| `s` | | Save session to file |
+| `r` | `F9` | Replay selected message against the server |
+| `/` | | Focus the message filter input |
+
+## Edit mode
+
+Press `m` or `F6` on a held message to enter edit mode. The detail panel becomes a JSON text editor. Edit the JSON-RPC payload, then press `Ctrl+S` to validate and forward the modified message. Press `Escape` to cancel and forward the original.
+
+Invalid JSON or schema errors are reported in a notification — the editor stays open so you can fix the issue.
+
+## Filtering messages
+
+Press `/` to focus the filter input. Filter syntax:
+
+| Prefix | Effect | Example |
+|--------|--------|---------|
+| `>` | Show client-to-server only | `>initialize` |
+| `<` | Show server-to-client only | `<result` |
+| *(none)* | Substring match on method or payload | `tools/call` |
+
+Press `Escape` in the filter input to return to the message list.
+
+## Mode switching
+
+When you switch from INTERCEPT to PASSTHROUGH (press `i`), all currently held messages are automatically forwarded.
+
+<Tip>
+Intercept mode slows traffic because every message waits for user action. Use it for targeted inspection of specific interactions, not bulk capture. For passive recording, run without `--intercept`.
+</Tip>

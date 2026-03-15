@@ -1,0 +1,112 @@
+---
+title: Audit CLI Reference
+description: Command reference for qai audit
+---
+
+q-ai is organized into subcommands. The top-level entry point is `qai`.
+
+```bash
+qai --help
+```
+
+## audit
+
+Security scanner for MCP servers. Maps findings to the OWASP MCP Top 10.
+
+### audit scan
+
+Scan an MCP server for security vulnerabilities.
+
+```bash
+qai audit scan [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--transport` | Yes | Transport type: `stdio`, `sse`, or `streamable-http` |
+| `--command` | When `--transport stdio` | Server command to spawn (e.g., `"python my_server.py"`) |
+| `--url` | When `--transport sse` or `streamable-http` | Server URL to connect to |
+| `--checks` | No | Comma-separated scanner list (e.g., `"injection,auth"`) |
+| `--output` | No | Output file path (default: `results/scan.json`) |
+| `--format` | No | Output format: `json` or `sarif` (default: `json`) |
+| `--verbose` / `-v` | No | Enable debug logging |
+
+<CodeGroup>
+```bash stdio
+qai audit scan \
+  --transport stdio \
+  --command "python my_server.py"
+```
+
+```bash SSE
+qai audit scan \
+  --transport sse \
+  --url "http://localhost:3000/sse"
+```
+
+```bash Streamable HTTP
+qai audit scan \
+  --transport streamable-http \
+  --url "http://localhost:3000/mcp"
+```
+</CodeGroup>
+
+Run specific scanners only:
+
+```bash
+qai audit scan \
+  --transport stdio \
+  --command "python my_server.py" \
+  --checks injection,auth \
+  --output results/my-scan.json
+```
+
+<Tip>
+Use `--format sarif` with `audit scan` or `audit report` to generate SARIF 2.1.0 reports compatible with GitHub Code Scanning.
+</Tip>
+
+### audit enumerate
+
+Enumerate MCP server capabilities without running security checks.
+
+```bash
+qai audit enumerate [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--transport` | Yes | Transport type: `stdio`, `sse`, or `streamable-http` |
+| `--command` | When `--transport stdio` | Server command to spawn |
+| `--url` | When `--transport sse` or `streamable-http` | Server URL to connect to |
+
+```bash
+qai audit enumerate \
+  --transport stdio \
+  --command "python my_server.py"
+```
+
+Lists the server's name, protocol version, tools, resources, and prompts.
+
+### audit list-checks
+
+List all available scanner modules and their OWASP mappings.
+
+```bash
+qai audit list-checks
+```
+
+No options. Prints a table of scanner modules with OWASP ID, description, and readiness status.
+
+### audit report
+
+Generate a report from saved scan results.
+
+```bash
+qai audit report [OPTIONS]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--input` | Yes | Path to saved scan results JSON file |
+| `--format` | No | Report format: `html`, `json`, or `sarif` (default: `html`) |
+| `--output` | No | Output file path (defaults to input path with new extension) |

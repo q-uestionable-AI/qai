@@ -1,0 +1,37 @@
+---
+title: Overview
+description: Indirect prompt injection testing with callback-verified payload execution
+---
+
+IPI tests whether documents ingested by AI systems can redirect agent behavior through hidden instructions embedded in the document content.
+
+## Why IPI Matters
+
+AI pipelines that ingest external documents — RAG systems, knowledge bases, web fetch tools — are vulnerable to adversarial content in those documents. Unlike output analysis, IPI confirms execution via out-of-band HTTP callbacks: the payload fires a request to your listener, providing proof of execution independent of model output.
+
+## How It Works
+
+The IPI workflow follows five steps:
+
+1. **Start the listener** — Launch the callback server on your machine to receive execution confirmations
+2. **Generate payloads** — Create payload documents using a technique and format combination
+3. **Deploy** — Place the document in the target pipeline (upload to knowledge base, RAG corpus, or web-accessible URL)
+4. **Wait for callbacks** — The callback fires when the agent ingests and acts on the payload
+5. **Review results** — Check execution status in the web dashboard or via `ipi status`
+
+## Built-in Components
+
+- **34 techniques** across 3 categories: social engineering, instruction override, context manipulation
+- **7 output formats** — Markdown, plain text, HTML, PDF, DOCX, CSV, JSON
+- **Callback server** — Authenticated listener with HMAC verification
+- **Web dashboard** — Real-time callback monitoring and campaign management
+- **Deterministic seeding** — Reproducible payload generation for consistent testing
+
+## Next Steps
+
+- [IPI CLI Reference](/ipi/cli) — Command reference for `qai ipi`
+- [Techniques](/ipi/techniques) — Social engineering, instruction override, and context manipulation techniques
+- [Formats](/ipi/formats) — Supported output formats for payload generation
+- [Payloads](/ipi/payloads) — Payload structure and customization
+- [Callbacks](/ipi/callbacks) — Callback server setup and HMAC verification
+- [Web Dashboard](/ipi/dashboard) — Real-time monitoring interface
