@@ -54,18 +54,27 @@ def _query_runs(
     from_date: str | None,
     to_date: str | None,
 ) -> list[Any]:
-    """Resolve parent workflow run IDs for the target, filtered by date."""
+    """Resolve parent workflow run IDs for the target, filtered by date.
+
+    WorkflowRunner.start() does not pass target_id to create_run(), so the
+    column is NULL on workflow runs. The target_id lives inside the config
+    JSON blob instead. We use json_extract() to match against it.
+    """
     query = (
-        "SELECT id, module, status, started_at FROM runs"
-        " WHERE target_id = ? AND module = 'workflow'"
+        "SELECT id, name, status, started_at FROM runs"
+        " WHERE module = 'workflow'"
+        " AND json_extract(config, '$.target_id') = ?"
     )
     params: list[str] = [target_id]
     if from_date:
         query += " AND started_at >= ?"
-        params.append(f"{from_date}T00:00:00")
+        params.append(f"{from_date}T00:00:00+00:00")
     if to_date:
-        query += " AND started_at <= ?"
-        params.append(f"{to_date}T23:59:59")
+        # Use exclusive upper bound on next day to capture fractional
+        # seconds and timezone suffixes (e.g. 2026-03-16T23:59:59.500+00:00)
+        query += " AND started_at < ?"
+        next_day = datetime.date.fromisoformat(to_date) + datetime.timedelta(days=1)
+        params.append(f"{next_day.isoformat()}T00:00:00+00:00")
     result: list[Any] = conn.execute(query, params).fetchall()
     return result
 
@@ -201,10 +210,11 @@ def _render_report(
     lines.append("## Runs Overview")
     lines.append("")
     if parent_rows:
-        lines.append("| Module | Status | Started |")
-        lines.append("|--------|--------|---------|")
+        lines.append("| Workflow | Status | Started |")
+        lines.append("|----------|--------|---------|")
         for row in parent_rows:
-            lines.append(f"| {row['module']} | {row['status']} | {row['started_at']} |")
+            wf_name = row["name"] or "workflow"
+            lines.append(f"| {wf_name} | {row['status']} | {row['started_at']} |")
     else:
         lines.append("_No data in scope._")
     lines.append("")
@@ -317,7 +327,7 @@ def _build_evidence_pack(
     skipped: list[dict[str, str]] = []
     total_size = 0
 
-    qai_home = str(Path.home() / ".qai")
+    qai_home = (Path.home() / ".qai").resolve()
 
     for row in rows:
         row_dict = dict(row)
@@ -336,7 +346,7 @@ def _build_evidence_pack(
 
         file_path = Path(file_path_str).resolve()
 
-        if not str(file_path).startswith(qai_home):
+        if not file_path.is_relative_to(qai_home):
             skipped.append(
                 {
                     "path": file_path_str,
