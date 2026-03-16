@@ -6,9 +6,13 @@ import json
 import sqlite3
 import zipfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from q_ai.core.models import RunStatus, Severity
+
+if TYPE_CHECKING:
+    import pytest
 from q_ai.core.schema import migrate
 from q_ai.orchestrator.workflows.generate_report import generate_report
 
@@ -407,57 +411,63 @@ class TestDateFilter:
 class TestEvidencePack:
     """Evidence pack -> ZIP produced with correct structure."""
 
-    async def test_evidence_zip_created(self, tmp_path: Path) -> None:
+    async def test_evidence_zip_created(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Evidence pack produces ZIP with fixed layout."""
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+
         db_path = tmp_path / "test.db"
         _setup_db(db_path)
         _seed_target(db_path)
         _seed_workflow_run(db_path)
         _seed_child_run(db_path)
 
-        # Create a real evidence file inside a .qai dir
-        qai_dir = Path.home() / ".qai"
+        # Create evidence file inside the monkeypatched ~/.qai/
+        qai_dir = tmp_path / ".qai"
+        qai_dir.mkdir(parents=True, exist_ok=True)
         evidence_file = qai_dir / "test_evidence_file.txt"
         evidence_file.write_text("evidence content", encoding="utf-8")
 
-        try:
-            _seed_evidence(db_path, path=str(evidence_file))
+        _seed_evidence(db_path, path=str(evidence_file))
 
-            runner = _make_runner(db_path=db_path)
-            config = _base_config(tmp_path)
-            config["include_evidence_pack"] = True
+        runner = _make_runner(db_path=db_path)
+        config = _base_config(tmp_path)
+        config["include_evidence_pack"] = True
 
-            await generate_report(runner, config)
+        await generate_report(runner, config)
 
-            runner.complete.assert_awaited_once_with(RunStatus.COMPLETED)
+        runner.complete.assert_awaited_once_with(RunStatus.COMPLETED)
 
-            zip_path = Path(config["output_dir"]) / "report.zip"
-            assert zip_path.exists()
+        zip_path = Path(config["output_dir"]) / "report.zip"
+        assert zip_path.exists()
 
-            with zipfile.ZipFile(zip_path, "r") as zf:
-                names = zf.namelist()
-                assert "report.md" in names
-                assert "manifest.md" in names
-                # Evidence file should be in evidence/<run_id>/<ev_id>-<filename>
-                ev_entries = [n for n in names if n.startswith("evidence/")]
-                assert len(ev_entries) == 1
-                assert "ev-1-" in ev_entries[0]
-        finally:
-            evidence_file.unlink(missing_ok=True)
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            names = zf.namelist()
+            assert "report.md" in names
+            assert "manifest.md" in names
+            # Evidence file should be in evidence/<run_id>/<ev_id>-<filename>
+            ev_entries = [n for n in names if n.startswith("evidence/")]
+            assert len(ev_entries) == 1
+            assert "ev-1-" in ev_entries[0]
 
 
 class TestMissingEvidenceFiles:
     """Missing evidence files -> skipped, recorded in manifest."""
 
-    async def test_missing_files_skipped(self, tmp_path: Path) -> None:
+    async def test_missing_files_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Non-existent evidence file skipped and recorded in manifest."""
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+
         db_path = tmp_path / "test.db"
         _setup_db(db_path)
         _seed_target(db_path)
         _seed_workflow_run(db_path)
         _seed_child_run(db_path)
 
-        fake_path = str(Path.home() / ".qai" / "nonexistent_evidence.bin")
+        fake_path = str(tmp_path / ".qai" / "nonexistent_evidence.bin")
         _seed_evidence(db_path, path=fake_path)
 
         runner = _make_runner(db_path=db_path)
@@ -478,16 +488,22 @@ class TestMissingEvidenceFiles:
 class TestEvidencePathOutsideQai:
     """Evidence path outside ~/.qai/ -> skipped with reason."""
 
-    async def test_outside_qai_skipped(self, tmp_path: Path) -> None:
+    async def test_outside_qai_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """File outside ~/.qai/ is skipped with reason in manifest."""
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+
         db_path = tmp_path / "test.db"
         _setup_db(db_path)
         _seed_target(db_path)
         _seed_workflow_run(db_path)
         _seed_child_run(db_path)
 
-        # Create a file outside ~/.qai/
-        outside_file = tmp_path / "outside.txt"
+        # Create a file outside the monkeypatched ~/.qai/
+        outside_dir = tmp_path / "elsewhere"
+        outside_dir.mkdir()
+        outside_file = outside_dir / "outside.txt"
         outside_file.write_text("outside content", encoding="utf-8")
 
         _seed_evidence(db_path, path=str(outside_file))
@@ -508,42 +524,43 @@ class TestEvidencePathOutsideQai:
 class TestFilenameCollision:
     """Filename collision -> evidence_id prefix prevents overwrite."""
 
-    async def test_evidence_id_prefix_prevents_collision(self, tmp_path: Path) -> None:
+    async def test_evidence_id_prefix_prevents_collision(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Two evidence files with same name get different prefixed names."""
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+
         db_path = tmp_path / "test.db"
         _setup_db(db_path)
         _seed_target(db_path)
         _seed_workflow_run(db_path)
         _seed_child_run(db_path)
 
-        qai_dir = Path.home() / ".qai"
+        qai_dir = tmp_path / ".qai"
+        qai_dir.mkdir(parents=True, exist_ok=True)
         file1 = qai_dir / "collision_test_1.txt"
         file2 = qai_dir / "collision_test_2.txt"
         file1.write_text("content 1", encoding="utf-8")
         file2.write_text("content 2", encoding="utf-8")
 
-        try:
-            _seed_evidence(db_path, ev_id="ev-a", path=str(file1))
-            _seed_evidence(db_path, ev_id="ev-b", path=str(file2))
+        _seed_evidence(db_path, ev_id="ev-a", path=str(file1))
+        _seed_evidence(db_path, ev_id="ev-b", path=str(file2))
 
-            runner = _make_runner(db_path=db_path)
-            config = _base_config(tmp_path)
-            config["include_evidence_pack"] = True
+        runner = _make_runner(db_path=db_path)
+        config = _base_config(tmp_path)
+        config["include_evidence_pack"] = True
 
-            await generate_report(runner, config)
+        await generate_report(runner, config)
 
-            runner.complete.assert_awaited_once_with(RunStatus.COMPLETED)
+        runner.complete.assert_awaited_once_with(RunStatus.COMPLETED)
 
-            zip_path = Path(config["output_dir"]) / "report.zip"
-            with zipfile.ZipFile(zip_path, "r") as zf:
-                ev_entries = [n for n in zf.namelist() if n.startswith("evidence/")]
-                assert len(ev_entries) == 2
-                # Both prefixed with different IDs
-                assert any("ev-a-" in n for n in ev_entries)
-                assert any("ev-b-" in n for n in ev_entries)
-        finally:
-            file1.unlink(missing_ok=True)
-            file2.unlink(missing_ok=True)
+        zip_path = Path(config["output_dir"]) / "report.zip"
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            ev_entries = [n for n in zf.namelist() if n.startswith("evidence/")]
+            assert len(ev_entries) == 2
+            # Both prefixed with different IDs
+            assert any("ev-a-" in n for n in ev_entries)
+            assert any("ev-b-" in n for n in ev_entries)
 
 
 class TestOutputDirCreationFailure:

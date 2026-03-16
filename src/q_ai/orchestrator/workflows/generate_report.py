@@ -18,6 +18,7 @@ Config shape::
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import json
 import logging
 import shutil
@@ -81,21 +82,12 @@ def _resolve_parent_run_ids(
         query += " AND started_at >= ?"
         params.append(f"{from_date}T00:00:00")
     if to_date:
+        next_day = dt.date.fromisoformat(to_date) + dt.timedelta(days=1)
         query += " AND started_at < ?"
-        # Inclusive end of day: next day start
-        params.append(f"{to_date}T23:59:59.999999+99:99")
+        params.append(f"{next_day.isoformat()}T00:00:00")
 
     rows = conn.execute(query, params).fetchall()
-
-    # Post-filter to_date for format safety: the stored timestamps include
-    # fractional seconds and timezone suffixes. We compare date prefixes.
-    result = []
-    for row in rows:
-        started = row["started_at"] or ""
-        if to_date and started[:10] > to_date:
-            continue
-        result.append(row["id"])
-    return result
+    return [row["id"] for row in rows]
 
 
 def _resolve_child_run_ids(conn: Any, parent_ids: list[str]) -> list[str]:
@@ -304,7 +296,10 @@ def _render_runs_section(runs: list[dict[str, Any]]) -> str:
     lines.append("| Run ID | Workflow / Module | Status | Started |")
     lines.append("|--------|-------------------|--------|---------|")
     for r in runs:
-        display_module = r.get("name") or r["module"] if r["module"] == "workflow" else r["module"]
+        if r["module"] == "workflow":  # noqa: SIM108
+            display_module = r.get("name") or r["module"]
+        else:
+            display_module = r["module"]
         status = RunStatus(r["status"]).name
         started = (r.get("started_at") or "")[:19]
         lines.append(f"| {r['id'][:12]} | {display_module} | {status} | {started} |")
@@ -612,8 +607,6 @@ async def generate_report(runner: WorkflowRunner, config: dict[str, Any]) -> Non
         runner: WorkflowRunner managing the parent workflow run.
         config: Configuration dict — see module docstring for shape.
     """
-    import datetime
-
     try:
         target_id = config["target_id"]
 
@@ -645,7 +638,7 @@ async def generate_report(runner: WorkflowRunner, config: dict[str, Any]) -> Non
             chain_steps = _query_chain_steps(conn, exec_ids)
 
         # --- Render report ---
-        generated_at = datetime.datetime.now(datetime.UTC).isoformat()
+        generated_at = dt.datetime.now(dt.UTC).isoformat()
         report_content = _render_report(
             {
                 "target": target,

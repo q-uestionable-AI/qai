@@ -1066,7 +1066,7 @@ def _build_generate_report_config(
         "target_id": target_id,
         "from_date": body.get("from_date") or None,
         "to_date": body.get("to_date") or None,
-        "include_evidence_pack": body.get("include_evidence_pack", False),
+        "include_evidence_pack": bool(body.get("include_evidence_pack", False)),
     }
 
 
@@ -1186,8 +1186,8 @@ def _prepare_output_dir(
 ) -> JSONResponse | None:
     """Create the artifact output directory for workflows that need one.
 
-    Only applies to test_docs and test_assistant workflows. Sets
-    ``config["output_dir"]`` on success.
+    Applies to test_docs, test_assistant, and generate_report workflows.
+    Sets ``config["output_dir"]`` on success.
 
     Args:
         workflow_id: The workflow identifier string.
