@@ -52,16 +52,15 @@ def _build_connection(
         # Split command string respecting quotes and escaped spaces
         parts = shlex.split(command)
         return MCPConnection.stdio(command=parts[0], args=parts[1:])
-    elif transport == "sse":
+    if transport == "sse":
         if not url:
             raise typer.BadParameter("--url is required for SSE transport")
         return MCPConnection.sse(url=url)
-    elif transport == "streamable-http":
+    if transport == "streamable-http":
         if not url:
             raise typer.BadParameter("--url is required for streamable-http transport")
         return MCPConnection.streamable_http(url=url)
-    else:
-        raise typer.BadParameter(f"Unknown transport: {transport}")
+    raise typer.BadParameter(f"Unknown transport: {transport}")
 
 
 @app.command()

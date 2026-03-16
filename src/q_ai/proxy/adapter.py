@@ -85,7 +85,7 @@ def _create_adapters(config: dict[str, Any]) -> tuple[Any, Any]:
         parts = shlex.split(command)
         return StdioClientAdapter(), StdioServerAdapter(command=parts[0], args=parts[1:])
 
-    elif transport == "sse":
+    if transport == "sse":
         from q_ai.proxy.adapters.sse import SseServerAdapter
         from q_ai.proxy.adapters.stdio import StdioClientAdapter
 
@@ -94,7 +94,7 @@ def _create_adapters(config: dict[str, Any]) -> tuple[Any, Any]:
             raise ValueError("'url' is required for SSE transport")
         return StdioClientAdapter(), SseServerAdapter(url=url)
 
-    elif transport == "streamable-http":
+    if transport == "streamable-http":
         from q_ai.proxy.adapters.stdio import StdioClientAdapter
         from q_ai.proxy.adapters.streamable_http import StreamableHttpServerAdapter
 
@@ -103,8 +103,7 @@ def _create_adapters(config: dict[str, Any]) -> tuple[Any, Any]:
             raise ValueError("'url' is required for streamable-http transport")
         return StdioClientAdapter(), StreamableHttpServerAdapter(url=url)
 
-    else:
-        raise ValueError(f"Unknown transport: {transport}")
+    raise ValueError(f"Unknown transport: {transport}")
 
 
 class ProxyAdapter:

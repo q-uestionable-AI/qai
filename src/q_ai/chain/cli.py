@@ -339,14 +339,13 @@ def blast_radius(
             console.print(f"[red]Error:[/red] Failed to write report: {exc}")
             raise typer.Exit(code=1) from exc
         console.print(f"Blast radius report written to {out_path}")
-    else:
-        # Print to stdout
-        if format == "html":
-            from q_ai.chain.blast_radius import _generate_html
+    # Print to stdout
+    elif format == "html":
+        from q_ai.chain.blast_radius import _generate_html
 
-            typer.echo(_generate_html(analysis))
-        else:
-            typer.echo(json.dumps(analysis, indent=2, default=str))
+        typer.echo(_generate_html(analysis))
+    else:
+        typer.echo(json.dumps(analysis, indent=2, default=str))
 
 
 @app.command()

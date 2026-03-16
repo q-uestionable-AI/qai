@@ -311,16 +311,15 @@ def _build_audit_connection(target_config: TargetConfig) -> Any:
             raise ValueError("audit_command is required for stdio transport")
         cmd = target_config.audit_command
         return MCPConnection.stdio(command=cmd[0], args=cmd[1:])
-    elif transport == "sse":
+    if transport == "sse":
         if not target_config.audit_url:
             raise ValueError("audit_url is required for SSE transport")
         return MCPConnection.sse(url=target_config.audit_url)
-    elif transport == "streamable-http":
+    if transport == "streamable-http":
         if not target_config.audit_url:
             raise ValueError("audit_url is required for streamable-http transport")
         return MCPConnection.streamable_http(url=target_config.audit_url)
-    else:
-        raise ValueError(f"Unknown audit transport: {transport}")
+    raise ValueError(f"Unknown audit transport: {transport}")
 
 
 async def execute_inject_step(

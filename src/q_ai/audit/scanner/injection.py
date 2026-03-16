@@ -266,9 +266,9 @@ class InjectionScanner(BaseScanner):
 
         if payload.detection_mode == "canary":
             return self._detect_canary(response_text, tool_name, param_name, payload)
-        elif payload.detection_mode == "pattern":
+        if payload.detection_mode == "pattern":
             return self._detect_pattern(response_text, tool_name, param_name, payload)
-        elif payload.detection_mode == "error_based":
+        if payload.detection_mode == "error_based":
             return self._detect_error_based(response_text, is_error, tool_name, param_name, payload)
 
         return None

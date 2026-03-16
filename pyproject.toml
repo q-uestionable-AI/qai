@@ -85,18 +85,34 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "S", "A", "C4", "DTZ", "T20", "RUF"]
+select = [
+    "E", "F", "W", "I", "UP", "B", "SIM", "S", "A", "C4", "DTZ", "T20", "RUF",
+    "N", "PTH", "RET", "TRY", "C90", "PERF", "ERA", "PLC", "PLE", "PLR", "PLW",
+]
 ignore = [
-    "S101",  # assert usage (fine in tests)
+    "S101",     # assert usage (fine in tests)
+    "PLR2004",  # magic-value-comparison — too noisy for status codes, enum ints, thresholds
+    "PLC0415",  # import-outside-top-level — deferred imports are intentional
+    "TRY003",   # raise-vanilla-args — descriptive error messages in raise are preferred
 ]
 
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 6
+
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S"]
-"src/q_ai/**/cli*.py" = ["B008"]  # typer.Option() in defaults is the standard pattern
-"src/q_ai/core/db.py" = ["A002"]  # type/hash params match DB column names
-"src/q_ai/server/**" = ["B008"]  # FastAPI Depends() in defaults
+"tests/*" = ["S", "N806", "PLR0913"]
+"src/q_ai/**/cli*.py" = ["B008", "PLR0913"]  # typer.Option() defaults + many CLI params
+"src/q_ai/core/db.py" = ["A002", "PLR0913"]  # type/hash params match DB column names + CRUD args
+"src/q_ai/server/**" = ["B008", "PLR0913"]  # FastAPI Depends() defaults + route params
 "src/q_ai/ipi/server.py" = ["B008"]
-"src/q_ai/ipi/api.py" = ["B008", "A002"]  # format param name matches HTML form field
+"src/q_ai/ipi/api.py" = ["B008", "A002", "PLR0913"]  # format param + many form fields
+"src/q_ai/ipi/generate_service.py" = ["PLR0913"]  # document generation takes many params
+"src/q_ai/ipi/generators/*" = ["PLR0913"]  # document generators take many params
+"src/q_ai/audit/mapper.py" = ["PLR0913"]  # audit scan creation takes many params
+"src/q_ai/cxp/db.py" = ["PLR0913"]  # CXP record_result takes many params
 
 [tool.mypy]
 python_version = "3.11"

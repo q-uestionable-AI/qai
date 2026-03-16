@@ -47,18 +47,17 @@ def _build_connection(config: dict[str, Any]) -> MCPConnection:
             raise ValueError("'command' is required for stdio transport")
         parts = shlex.split(command)
         return MCPConnection.stdio(command=parts[0], args=parts[1:])
-    elif transport == "sse":
+    if transport == "sse":
         url = config.get("url")
         if not url:
             raise ValueError("'url' is required for SSE transport")
         return MCPConnection.sse(url=url)
-    elif transport == "streamable-http":
+    if transport == "streamable-http":
         url = config.get("url")
         if not url:
             raise ValueError("'url' is required for streamable-http transport")
         return MCPConnection.streamable_http(url=url)
-    else:
-        raise ValueError(f"Unknown transport: {transport}")
+    raise ValueError(f"Unknown transport: {transport}")
 
 
 class AuditAdapter:

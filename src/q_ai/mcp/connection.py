@@ -215,7 +215,7 @@ class MCPConnection:
             )
             return read_stream, write_stream
 
-        elif self.transport_type == "sse":
+        if self.transport_type == "sse":
             read_stream, write_stream = await self._exit_stack.enter_async_context(
                 sse_client(
                     url=self._transport_args["url"],
@@ -224,7 +224,7 @@ class MCPConnection:
             )
             return read_stream, write_stream
 
-        elif self.transport_type == "streamable-http":
+        if self.transport_type == "streamable-http":
             result = await self._exit_stack.enter_async_context(
                 streamablehttp_client(
                     url=self._transport_args["url"],
@@ -235,5 +235,4 @@ class MCPConnection:
             read_stream, write_stream, _get_session_id = result
             return read_stream, write_stream
 
-        else:
-            raise ValueError(f"Unknown transport type: {self.transport_type}")
+        raise ValueError(f"Unknown transport type: {self.transport_type}")

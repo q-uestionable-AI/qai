@@ -207,9 +207,9 @@ def parse_techniques(technique_str: str) -> list[Technique]:
     # Handle presets
     if technique_str == "all":
         return list(Technique)
-    elif technique_str == "phase1":
+    if technique_str == "phase1":
         return [Technique(t) for t in PHASE1_TECHNIQUES]
-    elif technique_str == "phase2":
+    if technique_str == "phase2":
         return [Technique(t) for t in PHASE2_TECHNIQUES]
 
     # Handle comma-separated list or single technique

@@ -21,7 +21,7 @@ class FrameworkResolver:
             yaml_path: Path to YAML file. Defaults to bundled data file.
         """
         if yaml_path is None:
-            import importlib.resources as resources
+            from importlib import resources
 
             data_files = resources.files("q_ai.core.data")
             resource = data_files.joinpath("frameworks.yaml")
