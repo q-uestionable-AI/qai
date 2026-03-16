@@ -36,8 +36,9 @@ class TestRegistry:
 
     def test_unimplemented_workflows_have_none_executor(self) -> None:
         """Unimplemented workflows have executor=None."""
+        implemented = {"assess", "test_docs", "test_assistant", "trace_path", "blast_radius"}
         for wf in list_workflows():
-            if wf.id == "assess":
+            if wf.id in implemented:
                 continue
             assert wf.executor is None, f"{wf.id} should have executor=None"
 
