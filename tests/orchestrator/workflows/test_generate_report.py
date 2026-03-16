@@ -89,12 +89,10 @@ def _make_conn_with_data(
         """Return a plain dict to represent a database row."""
         return d
 
-
     # NOTE: execute_side_effect should use `_row` to wrap any raw row
     # dictionaries it returns (e.g., via fetchall()/fetchone()). Since `_row`
     # now returns a plain dict, code under test can safely use subscripting
     # (row["col"]) and dict(row) without relying on MagicMock magic methods.
-
 
     def execute_side_effect(query: str, params: tuple | list = ()) -> MagicMock:
         cursor = MagicMock()
