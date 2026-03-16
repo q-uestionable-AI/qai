@@ -98,9 +98,6 @@ def _make_conn_with_data(
 
     def execute_side_effect(query: str, params: tuple | list = ()) -> MagicMock:
         cursor = MagicMock()
-
-    def execute_side_effect(query: str, params: tuple | list = ()) -> MagicMock:
-        cursor = MagicMock()
         q = query.strip().upper()
 
         if "JSON_EXTRACT" in q and "MODULE = 'WORKFLOW'" in q:
