@@ -2,44 +2,113 @@
 {% block title %}q-ai — Launcher{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto px-6 py-12 launcher-centered">
-    <div class="text-center mb-10">
-        <h1 class="text-3xl font-bold mb-2">What do you want to test?</h1>
-        <p class="text-base-content/50">
-            Select a workflow to begin. Each combines multiple modules into a guided assessment.
-        </p>
+<style>
+    .wf-card {
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(139, 92, 246, 0.2);
+        border-left: 2px solid #06b6d4;
+        border-radius: 0.5rem;
+        box-shadow: 0 0 16px rgba(139, 92, 246, 0.08);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        cursor: pointer;
+    }
+    .wf-card:hover {
+        border-color: rgba(139, 92, 246, 0.4);
+        border-left-color: #22d3ee;
+        box-shadow: 0 0 24px rgba(139, 92, 246, 0.15), 0 0 40px rgba(6, 182, 212, 0.08);
+    }
+    .wf-card.wf-disabled {
+        opacity: 0.4;
+        cursor: default;
+    }
+    .wf-card.wf-disabled:hover {
+        border-color: rgba(139, 92, 246, 0.2);
+        border-left-color: #06b6d4;
+        box-shadow: 0 0 16px rgba(139, 92, 246, 0.08);
+    }
+    .wf-modules {
+        font-family: 'Fira Code', ui-monospace, monospace;
+        font-size: 0.75rem;
+        color: #06b6d4;
+    }
+    .launcher-modal .modal-box {
+        background: #1e293b;
+        border: 1px solid rgba(139, 92, 246, 0.25);
+        box-shadow: 0 0 30px rgba(139, 92, 246, 0.1);
+    }
+    .launcher-modal .modal-box h3 {
+        color: #f1f5f9;
+    }
+    .launcher-modal label span,
+    .launcher-modal .label-text {
+        font-family: 'Fira Code', ui-monospace, monospace;
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+    .launcher-modal select {
+        background: #1e293b !important;
+        color: #f1f5f9 !important;
+    }
+    .launcher-modal select option {
+        background: #1e293b;
+        color: #f1f5f9;
+    }
+    .launcher-modal input[type="text"]:focus,
+    .launcher-modal input[type="number"]:focus,
+    .launcher-modal select:focus {
+        border-color: #06b6d4;
+        box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2);
+        outline: none;
+    }
+    .launcher-modal .btn-launch {
+        background: #06b6d4;
+        color: #0f172a;
+        border: none;
+        font-weight: 600;
+    }
+    .launcher-modal .btn-launch:hover {
+        background: #22d3ee;
+    }
+    .launcher-modal .btn-cancel {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #94a3b8;
+    }
+    .launcher-modal .btn-cancel:hover {
+        background: rgba(255,255,255,0.08);
+        color: #f1f5f9;
+    }
+</style>
+
+<div class="max-w-5xl mx-auto px-6 py-12">
+    <div class="mb-10">
+        <h1 class="text-2xl font-semibold mb-1" style="color: #f1f5f9;">Select a workflow</h1>
+
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         {% for wf in workflows %}
-        <div class="card workflow-card cursor-pointer"
-             onclick="openWorkflowModal('{{ wf.id }}')">
-            <div class="card-body p-6">
-                <h3 class="card-title text-base">{{ wf.name }}</h3>
-                <p class="text-sm text-base-content/60 mb-3">{{ wf.description }}</p>
-                <div class="flex flex-wrap gap-1.5">
-                    {% for mod in wf.modules %}
-                    <span class="badge badge-sm badge-outline badge-secondary font-semibold uppercase tracking-wider text-[0.65rem] module-pill">
-                        {{ mod }}
-                    </span>
-                    {% endfor %}
-                </div>
+        <div class="wf-card {% if not wf.implemented %}wf-disabled{% endif %} p-5"
+             {% if wf.implemented %}onclick="openWorkflowModal('{{ wf.id }}')"{% endif %}>
+            <h3 class="text-base font-semibold mb-1" style="color: #f1f5f9;">{{ wf.name }}</h3>
+            <p class="text-sm mb-3" style="color: #94a3b8;">{{ wf.description }}</p>
+            <div class="wf-modules">
+                {% if wf.id != 'manage_research' %}
+                {% for mod in wf.modules %}
+                <span style="font-family: 'Fira Code', monospace; font-size: 0.7rem; color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 9999px; padding: 0.1rem 0.55rem; display: inline-block; margin-right: 0.25rem; margin-top: 0.25rem;">{{ mod }}</span>
+                {% endfor %}
+                {% endif %}
             </div>
         </div>
 
-        <dialog id="modal-{{ wf.id }}" class="modal">
+        <dialog id="modal-{{ wf.id }}" class="modal launcher-modal">
             <div class="modal-box">
                 {% if wf.implemented %}
                 <h3 class="text-lg font-bold mb-4">{{ wf.name }}</h3>
                 {% if wf.requires_provider and providers|length == 0 %}
-                <div class="alert alert-warning mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-5 w-5" fill="none" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                    </svg>
-                    <div>
-                        <p class="text-sm">This workflow requires an LLM provider.</p>
-                        <a href="/settings#providers" class="link link-primary text-sm">Configure one now</a>
-                    </div>
+                <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="mb-4">
+                    <p class="text-sm">This workflow requires an LLM provider.</p>
+                    <a href="/settings#providers" style="color: #06b6d4;" class="text-sm">Configure one now</a>
                 </div>
                 {% elif not wf.requires_provider or providers|length > 0 %}
                 <form id="form-{{ wf.id }}" class="space-y-4" onsubmit="return launchWorkflow(event, '{{ wf.id }}')">
@@ -154,9 +223,9 @@
                     </div>
 
                     {% if not rxp_available %}
-                    <div class="alert alert-warning text-sm mb-4">
+                    <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="text-sm mb-4">
                         <span>RXP pre-validation requires additional dependencies.</span>
-                        <code class="ml-2">pip install "q-uestionable-ai[rxp]"</code>
+                        <code style="color: #06b6d4;" class="ml-2">pip install "q-uestionable-ai[rxp]"</code>
                     </div>
                     {% endif %}
                     <div class="form-control">
@@ -282,7 +351,7 @@
                             <option value="">Select an execution...</option>
                         </select>
                     </div>
-                    <div id="blast-radius-gate-{{ wf.id }}" class="alert alert-warning text-sm hidden">
+                    <div id="blast-radius-gate-{{ wf.id }}" style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; color: #fbbf24; display: none;" class="text-sm">
                         <span>No successful chain executions found. Run Trace an Attack Path first.</span>
                     </div>
 
@@ -291,20 +360,20 @@
                     <div id="error-{{ wf.id }}" class="text-error text-sm hidden"></div>
 
                     <div class="modal-action">
-                        <button type="submit" class="btn btn-primary btn-sm">Launch</button>
-                        <button type="button" class="btn btn-sm"
+                        <button type="submit" class="btn btn-sm btn-launch">Launch</button>
+                        <button type="button" class="btn btn-sm btn-cancel"
                                 onclick="document.getElementById('modal-{{ wf.id }}').close()">Cancel</button>
                     </div>
                 </form>
                 {% endif %}
                 {% else %}
-                <h3 class="text-lg font-bold">Coming Soon</h3>
-                <p class="py-4 text-base-content/70">
+                <h3 class="text-lg font-bold" style="color: #f1f5f9;">Coming Soon</h3>
+                <p class="py-4" style="color: #94a3b8;">
                     This workflow is not yet implemented.
                 </p>
                 <div class="modal-action">
                     <form method="dialog">
-                        <button class="btn btn-primary btn-sm">Close</button>
+                        <button class="btn btn-sm btn-cancel">Close</button>
                     </form>
                 </div>
                 {% endif %}
@@ -363,7 +432,7 @@ async function loadChainExecutions(wfId) {
         });
         if (data.executions.length === 0) {
             const gate = document.getElementById('blast-radius-gate-' + wfId);
-            if (gate) gate.classList.remove('hidden');
+            if (gate) gate.style.display = 'block';
         }
     } catch (err) { /* silently fail */ }
 }
