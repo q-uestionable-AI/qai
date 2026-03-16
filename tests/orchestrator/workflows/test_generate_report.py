@@ -85,19 +85,19 @@ def _make_conn_with_data(
     if evidence_rows is None:
         evidence_rows = []
 
-    def _row(d: dict) -> MagicMock:
-        """Create a dict-like Row mock."""
-        row = MagicMock()
-        row.__getitem__ = lambda self, key: d[key]
-        row.__contains__ = lambda self, key: key in d
-        row.keys = lambda: d.keys()
-        # Make dict(row) work
-        row.__iter__ = lambda self: iter(d)
-        row.__len__ = lambda self: len(d)
-        # For dict() conversion
-        items = d.items()
-        row.items = lambda: items
-        return row
+    def _row(d: dict) -> dict:
+        """Return a plain dict to represent a database row."""
+        return d
+
+
+    # NOTE: execute_side_effect should use `_row` to wrap any raw row
+    # dictionaries it returns (e.g., via fetchall()/fetchone()). Since `_row`
+    # now returns a plain dict, code under test can safely use subscripting
+    # (row["col"]) and dict(row) without relying on MagicMock magic methods.
+
+
+    def execute_side_effect(query: str, params: tuple | list = ()) -> MagicMock:
+        cursor = MagicMock()
 
     def execute_side_effect(query: str, params: tuple | list = ()) -> MagicMock:
         cursor = MagicMock()
