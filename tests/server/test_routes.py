@@ -100,7 +100,6 @@ class TestResearchAPIRoutes:
 class TestLauncherRxpAvailable:
     """Launcher route passes rxp_available to template context."""
 
-    @pytest.mark.xfail(reason="Requires Phase 7B launcher form changes", strict=True)
     def test_launcher_passes_rxp_available_false(self, client: TestClient) -> None:
         """When rxp deps unavailable, template shows install hint and disabled toggle."""
         with patch("q_ai.server.routes.rxp_is_available", return_value=False):

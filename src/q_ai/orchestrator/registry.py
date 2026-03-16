@@ -24,6 +24,9 @@ class WorkflowEntry:
         optional_modules: Modules that can be skipped if deps are unavailable.
         executor: Async executor function, or None if not yet implemented.
         failure_mode: Error handling policy — "best_effort" or "fail_fast".
+        requires_provider: Whether the workflow requires a configured LLM provider.
+            When False, the launcher shows the form without a provider check and
+            the launch API skips credential validation. Defaults to True.
     """
 
     id: str
@@ -89,6 +92,7 @@ _DEFAULT_WORKFLOWS = [
         description="Generate payloads for document pipelines and track execution callbacks.",
         modules=["ipi", "rxp"],
         optional_modules=["rxp"],
+        requires_provider=False,
     ),
     WorkflowEntry(
         id="test_assistant",
@@ -111,6 +115,7 @@ _DEFAULT_WORKFLOWS = [
         name="Measure Blast Radius",
         description="Analyze reach from a compromise point and generate detection rules.",
         modules=["chain"],
+        requires_provider=False,
     ),
     WorkflowEntry(
         id="manage_research",

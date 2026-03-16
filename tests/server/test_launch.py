@@ -162,17 +162,13 @@ class TestLaunchTestDocs:
         body = {
             "workflow_id": "test_docs",
             "target_name": "doc-target",
-            "model": "openai/gpt-4",
             "callback_url": "https://example.com/callback",
             "format": "pdf",
             "payload_style": "obvious",
             "payload_type": "callback",
         }
-        with (
-            patch("q_ai.server.routes.get_credential", return_value="test-key"),
-            patch("q_ai.server.routes.get_workflow") as mock_get_wf,
-        ):
-            mock_get_wf.return_value = _mock_workflow_entry("test_docs")
+        with patch("q_ai.server.routes.get_workflow") as mock_get_wf:
+            mock_get_wf.return_value = _mock_workflow_entry("test_docs", requires_provider=False)
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 201
 
@@ -181,14 +177,10 @@ class TestLaunchTestDocs:
         body = {
             "workflow_id": "test_docs",
             "target_name": "doc-target",
-            "model": "openai/gpt-4",
             "format": "pdf",
         }
-        with (
-            patch("q_ai.server.routes.get_credential", return_value="test-key"),
-            patch("q_ai.server.routes.get_workflow") as mock_get_wf,
-        ):
-            mock_get_wf.return_value = _mock_workflow_entry("test_docs")
+        with patch("q_ai.server.routes.get_workflow") as mock_get_wf:
+            mock_get_wf.return_value = _mock_workflow_entry("test_docs", requires_provider=False)
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
         assert "callback_url" in resp.json()["detail"]

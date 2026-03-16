@@ -838,7 +838,13 @@ def _build_assess_config(body: dict[str, Any], target_id: str) -> dict[str, Any]
             content={"detail": "model must be non-empty and in provider/model format"},
         )
 
-    rounds = int(body.get("rounds", 1))
+    try:
+        rounds = int(body.get("rounds", 1))
+    except (ValueError, TypeError):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "rounds must be an integer"},
+        )
     rxp_enabled = bool(body.get("rxp_enabled", False))
     return {
         "target_id": target_id,
@@ -1076,8 +1082,8 @@ async def launch_workflow(request: Request) -> JSONResponse:
                     content={"detail": f"No credential configured for provider '{provider}'"},
                 )
 
-    # --- Create target (not for blast_radius — derived from chain execution) ---
-    target_id: str = ""
+    # --- Validate target_name early (but don't create row yet) ---
+    target_name: str = ""
     if workflow_id != "blast_radius":
         target_name = body.get("target_name", "").strip()
         if not target_name:
@@ -1085,15 +1091,13 @@ async def launch_workflow(request: Request) -> JSONResponse:
                 status_code=422,
                 content={"detail": "target_name is required"},
             )
-        with get_connection(db_path) as conn:
-            target_id = create_target(conn, type="server", name=target_name)
 
-    # --- Build workflow config ---
+    # --- Build workflow config (before target creation to avoid orphan rows) ---
     builders: dict[str, Any] = {
-        "assess": lambda: _build_assess_config(body, target_id),
-        "test_docs": lambda: _build_test_docs_config(body, target_id),
-        "test_assistant": lambda: _build_test_assistant_config(body, target_id),
-        "trace_path": lambda: _build_trace_path_config(body, target_id, db_path),
+        "assess": lambda: _build_assess_config(body, ""),
+        "test_docs": lambda: _build_test_docs_config(body, ""),
+        "test_assistant": lambda: _build_test_assistant_config(body, ""),
+        "trace_path": lambda: _build_trace_path_config(body, "", db_path),
         "blast_radius": lambda: _build_blast_radius_config(body, db_path),
     }
     builder = builders.get(workflow_id)
@@ -1107,7 +1111,16 @@ async def launch_workflow(request: Request) -> JSONResponse:
         return result
     config: dict[str, Any] = result
 
-    # --- Create runner and start ---
+    # --- Create target (only after builder succeeds, not for blast_radius) ---
+    if workflow_id != "blast_radius":
+        with get_connection(db_path) as conn:
+            target_id = create_target(conn, type="server", name=target_name)
+        config["target_id"] = target_id
+        # Also update nested target_id refs (test_docs RXP config)
+        if "rxp" in config and isinstance(config["rxp"], dict):
+            config["rxp"]["target_id"] = target_id
+
+    # --- Create runner ---
     runner = WorkflowRunner(
         workflow_id=workflow_id,
         config=config,
@@ -1115,13 +1128,14 @@ async def launch_workflow(request: Request) -> JSONResponse:
         active_workflows=request.app.state.active_workflows,
         db_path=db_path,
     )
-    await runner.start()
 
-    # --- Build output_dir from runner.run_id for workflows that need it ---
+    # --- Set output_dir from run_id BEFORE start() persists config ---
     if workflow_id in ("test_docs", "test_assistant"):
         output_dir = Path.home() / ".qai" / "artifacts" / workflow_id / runner.run_id
         output_dir.mkdir(parents=True, exist_ok=True)
         config["output_dir"] = str(output_dir)
+
+    await runner.start()
 
     # --- Fire-and-forget background task ---
     task = asyncio.create_task(_run_workflow(runner, entry.executor, config))
