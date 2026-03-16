@@ -777,8 +777,19 @@ async def api_infrastructure_status(request: Request) -> HTMLResponse:
 
 
 # ---------------------------------------------------------------------------
-# Chain/execution data routes (for launcher dropdowns)
+# Data routes (for launcher dropdowns)
 # ---------------------------------------------------------------------------
+
+
+@router.get("/api/targets/list")
+async def api_targets_list(request: Request) -> JSONResponse:
+    """Return registered targets for the launcher dropdown."""
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT id, name, type, uri FROM targets ORDER BY created_at DESC"
+        ).fetchall()
+    return JSONResponse(content={"targets": [dict(r) for r in rows]})
 
 
 @router.get("/api/chain/templates")
@@ -1031,6 +1042,34 @@ def _build_blast_radius_config(
     }
 
 
+def _build_generate_report_config(
+    body: dict[str, Any], db_path: Path | None
+) -> dict[str, Any] | JSONResponse:
+    """Build config for the generate_report workflow.
+
+    Validates that the target_id exists in the database.
+    """
+    target_id = body.get("target_id", "").strip()
+    if not target_id:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "target_id is required"},
+        )
+    with get_connection(db_path) as conn:
+        row = conn.execute("SELECT id FROM targets WHERE id = ?", (target_id,)).fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Target not found"},
+        )
+    return {
+        "target_id": target_id,
+        "from_date": body.get("from_date") or None,
+        "to_date": body.get("to_date") or None,
+        "include_evidence_pack": bool(body.get("include_evidence_pack", False)),
+    }
+
+
 async def _run_workflow(
     runner: WorkflowRunner,
     executor: Any,
@@ -1119,6 +1158,7 @@ def _build_workflow_config(
         "test_assistant": partial(_build_test_assistant_config, body, ""),
         "trace_path": partial(_build_trace_path_config, body, "", db_path),
         "blast_radius": partial(_build_blast_radius_config, body, db_path),
+        "generate_report": partial(_build_generate_report_config, body, db_path),
     }
     builder = builders.get(workflow_id)
     if builder is None:
@@ -1146,8 +1186,8 @@ def _prepare_output_dir(
 ) -> JSONResponse | None:
     """Create the artifact output directory for workflows that need one.
 
-    Only applies to test_docs and test_assistant workflows. Sets
-    ``config["output_dir"]`` on success.
+    Applies to test_docs, test_assistant, and generate_report workflows.
+    Sets ``config["output_dir"]`` on success.
 
     Args:
         workflow_id: The workflow identifier string.
@@ -1157,9 +1197,12 @@ def _prepare_output_dir(
     Returns:
         A JSONResponse with 500 status on failure, or None on success.
     """
-    if workflow_id not in ("test_docs", "test_assistant"):
+    if workflow_id == "generate_report":
+        output_dir = Path.home() / ".qai" / "exports" / "generate_report" / run_id
+    elif workflow_id in ("test_docs", "test_assistant"):
+        output_dir = Path.home() / ".qai" / "artifacts" / workflow_id / run_id
+    else:
         return None
-    output_dir = Path.home() / ".qai" / "artifacts" / workflow_id / run_id
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
     except OSError:
@@ -1199,8 +1242,9 @@ async def launch_workflow(request: Request) -> JSONResponse:
             return cred_error
 
     # --- Validate target_name early (but don't create row yet) ---
+    _no_target_name_workflows = {"blast_radius", "generate_report"}
     target_name: str = ""
-    if workflow_id != "blast_radius":
+    if workflow_id not in _no_target_name_workflows:
         target_name = body.get("target_name", "").strip()
         if not target_name:
             return JSONResponse(
@@ -1214,8 +1258,8 @@ async def launch_workflow(request: Request) -> JSONResponse:
         return result
     config: dict[str, Any] = result
 
-    # --- Create target (only after builder succeeds, not for blast_radius) ---
-    if workflow_id != "blast_radius":
+    # --- Create target (only after builder succeeds, skip for existing-target workflows) ---
+    if workflow_id not in _no_target_name_workflows:
         with get_connection(db_path) as conn:
             target_id = create_target(conn, type="server", name=target_name)
         _apply_target_id(config, target_id)

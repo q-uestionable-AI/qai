@@ -118,12 +118,11 @@ _DEFAULT_WORKFLOWS = [
         requires_provider=False,
     ),
     WorkflowEntry(
-        id="manage_research",
-        name="Manage Research",
-        description=(
-            "Campaigns, evidence collection, reports, and CVE tracking across all modules."
-        ),
-        modules=["audit", "proxy", "inject", "ipi", "cxp", "rxp", "chain"],
+        id="generate_report",
+        name="Generate Report",
+        description="Generate a cross-module findings report and evidence pack for a target.",
+        modules=["audit", "inject", "ipi", "cxp", "rxp", "chain"],
+        requires_provider=False,
     ),
 ]
 
@@ -144,6 +143,7 @@ def _register_executors() -> None:
     """
     from q_ai.orchestrator.workflows.assess import assess_mcp_server
     from q_ai.orchestrator.workflows.blast_radius import measure_blast_radius
+    from q_ai.orchestrator.workflows.generate_report import generate_report
     from q_ai.orchestrator.workflows.test_assistant import test_coding_assistant
     from q_ai.orchestrator.workflows.test_docs import test_document_ingestion
     from q_ai.orchestrator.workflows.trace_path import trace_attack_path
@@ -157,6 +157,7 @@ def _register_executors() -> None:
         ("test_assistant", test_coding_assistant),
         ("trace_path", trace_attack_path),
         ("blast_radius", measure_blast_radius),
+        ("generate_report", generate_report),
     ]:
         entry = WORKFLOWS.get(wf_id)
         if entry is not None:

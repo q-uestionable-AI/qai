@@ -21,7 +21,7 @@ class TestLauncherRoute:
         assert "Test a Coding Assistant" in resp.text
         assert "Trace an Attack Path" in resp.text
         assert "Measure Blast Radius" in resp.text
-        assert "Manage Research" in resp.text
+        assert "Generate Report" in resp.text
 
     def test_contains_nav_links(self, client: TestClient) -> None:
         resp = client.get("/")

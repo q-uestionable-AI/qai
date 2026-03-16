@@ -22,7 +22,7 @@ class TestWorkflowCards:
             "Test a Coding Assistant",
             "Trace an Attack Path",
             "Measure Blast Radius",
-            "Manage Research",
+            "Generate Report",
         ]:
             assert name in resp.text
 
@@ -34,7 +34,7 @@ class TestWorkflowCards:
     def test_modal_present(self, client: TestClient) -> None:
         resp = client.get("/")
         assert "modal-assess" in resp.text
-        assert "Coming Soon" in resp.text
+        assert "modal-generate_report" in resp.text
 
 
 class TestEmptyStates:
