@@ -29,7 +29,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from q_ai.ipi import db
-from q_ai.ipi.generate_service import generate_documents
+from q_ai.ipi.generate_service import GenerateResult, generate_documents
 from q_ai.ipi.generators import get_techniques_for_format
 from q_ai.ipi.generators.docx import DOCX_TECHNIQUES as DOCX_TECHNIQUE_LIST
 from q_ai.ipi.generators.eml import EML_TECHNIQUES as EML_TECHNIQUE_LIST
@@ -38,7 +38,15 @@ from q_ai.ipi.generators.ics import ICS_TECHNIQUES as ICS_TECHNIQUE_LIST
 from q_ai.ipi.generators.image import IMAGE_TECHNIQUES as IMAGE_TECHNIQUE_LIST
 from q_ai.ipi.generators.markdown import MARKDOWN_TECHNIQUES as MARKDOWN_TECHNIQUE_LIST
 from q_ai.ipi.generators.pdf import PDF_PHASE1_TECHNIQUES, PDF_PHASE2_TECHNIQUES
-from q_ai.ipi.models import Format, Hit, HitConfidence, PayloadStyle, PayloadType, Technique
+from q_ai.ipi.models import (
+    Campaign,
+    Format,
+    Hit,
+    HitConfidence,
+    PayloadStyle,
+    PayloadType,
+    Technique,
+)
 from q_ai.ipi.server import start_server
 
 app = typer.Typer(
@@ -240,6 +248,11 @@ def validate_format(format_name: str) -> Format:
     format_name_lower = format_name.lower().strip()
     try:
         fmt = Format(format_name_lower)
+    except ValueError:
+        console.print(f"[red]X Unknown format: {format_name_lower}[/red]")
+        console.print(f"  Valid formats: {', '.join(f.value for f in Format)}")
+        raise typer.Exit(1) from None
+    else:
         # Check if format is actually implemented
         if fmt not in IMPLEMENTED_FORMATS:
             console.print(f"[red]X Format not yet implemented: {format_name_lower}[/red]")
@@ -249,10 +262,155 @@ def validate_format(format_name: str) -> Format:
             console.print(f"  Planned: {planned}")
             raise typer.Exit(1)
         return fmt
+
+
+def _parse_payload_style(payload_style: str) -> PayloadStyle:
+    """Parse and validate a payload style string.
+
+    Args:
+        payload_style: Raw payload style name from CLI input.
+
+    Returns:
+        Validated PayloadStyle enum value.
+
+    Raises:
+        typer.Exit: If the payload style is invalid.
+    """
+    try:
+        return PayloadStyle(payload_style)
     except ValueError:
-        console.print(f"[red]X Unknown format: {format_name_lower}[/red]")
-        console.print(f"  Valid formats: {', '.join(f.value for f in Format)}")
+        console.print(f"[red]X Invalid payload style: {payload_style}[/red]")
+        console.print(f"  Valid options: {', '.join(p.value for p in PayloadStyle)}")
         raise typer.Exit(1) from None
+
+
+def _parse_payload_type(payload_type: str) -> PayloadType:
+    """Parse and validate a payload type string.
+
+    Args:
+        payload_type: Raw payload type name from CLI input.
+
+    Returns:
+        Validated PayloadType enum value.
+
+    Raises:
+        typer.Exit: If the payload type is invalid.
+    """
+    try:
+        return PayloadType(payload_type)
+    except ValueError:
+        console.print(f"[red]X Invalid payload type: {payload_type}[/red]")
+        console.print(f"  Valid options: {', '.join(p.value for p in PayloadType)}")
+        raise typer.Exit(1) from None
+
+
+def _enforce_dangerous_gate(payload_type_enum: PayloadType, dangerous: bool) -> None:
+    """Enforce the --dangerous safety gate for non-callback payload types.
+
+    Args:
+        payload_type_enum: The resolved payload type.
+        dangerous: Whether the --dangerous flag was provided.
+
+    Raises:
+        typer.Exit: If a dangerous payload type is used without --dangerous.
+    """
+    if payload_type_enum == PayloadType.CALLBACK:
+        return
+
+    if not dangerous:
+        console.print(
+            f"[red]X Payload type '{payload_type_enum.value}' requires --dangerous flag[/red]"
+        )
+        console.print("  Non-callback payloads can cause real harm to target systems.")
+        console.print("  Use [bold]--dangerous[/bold] to confirm authorized testing.")
+        raise typer.Exit(1)
+
+    console.print()
+    console.print("[bold red]" + "=" * 60 + "[/bold red]")
+    console.print("[bold red]  WARNING: DANGEROUS PAYLOAD TYPE ENABLED[/bold red]")
+    console.print(f"[bold red]  Type: {payload_type_enum.value}[/bold red]")
+    console.print("[bold red]  For authorized security testing only.[/bold red]")
+    console.print("[bold red]" + "=" * 60 + "[/bold red]")
+    console.print()
+
+
+def _resolve_techniques(technique: str, format_name: Format) -> list[Technique]:
+    """Parse technique string and filter to those valid for the given format.
+
+    Args:
+        technique: Technique specification string (preset or comma-separated names).
+        format_name: Target format for filtering available techniques.
+
+    Returns:
+        List of validated Technique enums applicable to the format.
+
+    Raises:
+        typer.Exit: If parsing fails or no valid techniques remain.
+    """
+    try:
+        techniques = parse_techniques(technique)
+    except ValueError as e:
+        console.print(f"[red]X {e}[/red]")
+        console.print("  Valid presets: all, phase1, phase2")
+        console.print(f"  Valid techniques: {', '.join(t.value for t in Technique)}")
+        raise typer.Exit(1) from None
+
+    format_techniques = get_techniques_for_format(format_name)
+    valid_techniques = [t for t in techniques if t in format_techniques]
+
+    if not valid_techniques:
+        console.print(f"[red]X No valid techniques for format '{format_name.value}'[/red]")
+        console.print(f"  Available techniques: {', '.join(t.value for t in format_techniques)}")
+        raise typer.Exit(1)
+
+    if len(valid_techniques) < len(techniques):
+        skipped = [t for t in techniques if t not in format_techniques]
+        skipped_names = ", ".join(t.value for t in skipped)
+        console.print(
+            f"[yellow]! Skipping techniques not available"
+            f" for {format_name.value}: {skipped_names}[/yellow]"
+        )
+
+    return valid_techniques
+
+
+def _display_generate_results(
+    result: GenerateResult,
+    format_name: Format,
+    style: PayloadStyle,
+    payload_type_enum: PayloadType,
+    callback_url: str,
+) -> None:
+    """Display generation results to the console.
+
+    Args:
+        result: GenerateResult with campaigns and errors lists.
+        format_name: Format used for generation.
+        style: Payload style used.
+        payload_type_enum: Payload type used.
+        callback_url: Callback URL for display.
+    """
+    if len(result.campaigns) > 1:
+        console.print(
+            f"\n[bold green]OK Generated {len(result.campaigns)} "
+            f"{format_name.value.upper()} files "
+            f"({style.value} payload, {payload_type_enum.value} type):[/bold green]"
+        )
+        for c in result.campaigns:
+            console.print(f"  - {c.filename} ({c.technique}) -> UUID: [cyan]{c.uuid}[/cyan]")
+    elif result.campaigns:
+        c = result.campaigns[0]
+        console.print(f"\n[bold green]OK Generated:[/bold green] {c.filename}")
+        console.print(f"  Format: {format_name.value}")
+        console.print(f"  Technique: {c.technique}")
+        console.print(f"  Payload Style: {style.value}")
+        console.print(f"  Payload Type: {payload_type_enum.value}")
+        console.print(f"  UUID: [cyan]{c.uuid}[/cyan]")
+
+    for err in result.errors:
+        console.print(f"  [yellow]! {err}[/yellow]")
+
+    console.print(f"\n[dim]Callback URL: {callback_url}/c/<uuid>[/dim]")
 
 
 @app.command()
@@ -336,70 +494,11 @@ def generate(
       embedded_file  - Hidden file attachment (Phase 2)
       incremental    - PDF incremental update section (Phase 2)
     """
-    # Validate format
     format_name = validate_format(format_name)
-
-    # Parse payload style
-    try:
-        style = PayloadStyle(payload_style)
-    except ValueError:
-        console.print(f"[red]X Invalid payload style: {payload_style}[/red]")
-        console.print(f"  Valid options: {', '.join(p.value for p in PayloadStyle)}")
-        raise typer.Exit(1) from None
-
-    # Parse payload type
-    try:
-        payload_type_enum = PayloadType(payload_type)
-    except ValueError:
-        console.print(f"[red]X Invalid payload type: {payload_type}[/red]")
-        console.print(f"  Valid options: {', '.join(p.value for p in PayloadType)}")
-        raise typer.Exit(1) from None
-
-    # Safety gate: non-callback types require --dangerous flag
-    if payload_type_enum != PayloadType.CALLBACK and not dangerous:
-        console.print(
-            f"[red]X Payload type '{payload_type_enum.value}' requires --dangerous flag[/red]"
-        )
-        console.print("  Non-callback payloads can cause real harm to target systems.")
-        console.print("  Use [bold]--dangerous[/bold] to confirm authorized testing.")
-        raise typer.Exit(1)
-
-    if payload_type_enum != PayloadType.CALLBACK:
-        console.print()
-        console.print("[bold red]" + "=" * 60 + "[/bold red]")
-        console.print("[bold red]  WARNING: DANGEROUS PAYLOAD TYPE ENABLED[/bold red]")
-        console.print(f"[bold red]  Type: {payload_type_enum.value}[/bold red]")
-        console.print("[bold red]  For authorized security testing only.[/bold red]")
-        console.print("[bold red]" + "=" * 60 + "[/bold red]")
-        console.print()
-
-    # Parse techniques
-    try:
-        techniques = parse_techniques(technique)
-    except ValueError as e:
-        console.print(f"[red]X {e}[/red]")
-        console.print("  Valid presets: all, phase1, phase2")
-        console.print(f"  Valid techniques: {', '.join(t.value for t in Technique)}")
-        raise typer.Exit(1) from None
-
-    # Filter techniques by format
-    format_techniques = get_techniques_for_format(format_name)
-    valid_techniques = [t for t in techniques if t in format_techniques]
-
-    if not valid_techniques:
-        console.print(f"[red]X No valid techniques for format '{format_name.value}'[/red]")
-        console.print(f"  Available techniques: {', '.join(t.value for t in format_techniques)}")
-        raise typer.Exit(1)
-
-    if len(valid_techniques) < len(techniques):
-        skipped = [t for t in techniques if t not in format_techniques]
-        skipped_names = ", ".join(t.value for t in skipped)
-        console.print(
-            f"[yellow]! Skipping techniques not available"
-            f" for {format_name.value}: {skipped_names}[/yellow]"
-        )
-
-    techniques = valid_techniques
+    style = _parse_payload_style(payload_style)
+    payload_type_enum = _parse_payload_type(payload_type)
+    _enforce_dangerous_gate(payload_type_enum, dangerous)
+    techniques = _resolve_techniques(technique, format_name)
 
     # Generate documents via shared service
     result = generate_documents(
@@ -419,28 +518,7 @@ def generate(
     if result.campaigns:
         persist_generate(result.campaigns)
 
-    # Report results
-    if len(result.campaigns) > 1:
-        console.print(
-            f"\n[bold green]OK Generated {len(result.campaigns)} "
-            f"{format_name.value.upper()} files "
-            f"({style.value} payload, {payload_type_enum.value} type):[/bold green]"
-        )
-        for c in result.campaigns:
-            console.print(f"  - {c.filename} ({c.technique}) -> UUID: [cyan]{c.uuid}[/cyan]")
-    elif result.campaigns:
-        c = result.campaigns[0]
-        console.print(f"\n[bold green]OK Generated:[/bold green] {c.filename}")
-        console.print(f"  Format: {format_name.value}")
-        console.print(f"  Technique: {c.technique}")
-        console.print(f"  Payload Style: {style.value}")
-        console.print(f"  Payload Type: {payload_type_enum.value}")
-        console.print(f"  UUID: [cyan]{c.uuid}[/cyan]")
-
-    for err in result.errors:
-        console.print(f"  [yellow]! {err}[/yellow]")
-
-    console.print(f"\n[dim]Callback URL: {callback_url}/c/<uuid>[/dim]")
+    _display_generate_results(result, format_name, style, payload_type_enum, callback_url)
 
 
 @app.command()
@@ -512,6 +590,140 @@ def listen(
     start_server(host=host, port=port)
 
 
+def _display_single_campaign(campaign: Campaign, hits: list[Hit]) -> None:
+    """Render detailed status output for a single campaign.
+
+    Args:
+        campaign: The campaign to display.
+        hits: List of hits associated with this campaign.
+    """
+    console.print(f"\n[bold]Campaign:[/bold] {escape(campaign.uuid)}")
+    console.print(f"  File: {escape(campaign.filename)}")
+    console.print(f"  Format: {campaign.format}")
+    console.print(f"  Technique: {campaign.technique}")
+    console.print(f"  Payload Style: {campaign.payload_style}")
+    console.print(f"  Payload Type: {campaign.payload_type}")
+    console.print(f"  Created: {campaign.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    if not hits:
+        console.print("\n[dim]No hits recorded[/dim]")
+        return
+
+    console.print(f"\n[bold green]Hit {len(hits)} hit(s):[/bold green]")
+    for hit in hits:
+        ts = hit.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        token_icon = "+" if hit.token_valid else "x"
+        conf = hit.confidence.value
+        console.print(
+            f"  * {ts} from {escape(hit.source_ip)}  [token:{token_icon}] [confidence:{conf}]"
+        )
+
+
+def _filter_campaigns(
+    campaigns: list[Campaign],
+    format_name: str | None,
+    technique: str | None,
+    payload_type: str | None,
+) -> list[Campaign]:
+    """Apply optional filters to a list of campaigns.
+
+    Args:
+        campaigns: Full list of campaigns to filter.
+        format_name: If provided, filter by this format name.
+        technique: If provided, filter by this technique name.
+        payload_type: If provided, filter by this payload type name.
+
+    Returns:
+        Filtered list of campaigns.
+
+    Raises:
+        typer.Exit: If a filter value is invalid.
+    """
+    if format_name:
+        validated_format = validate_format(format_name)
+        campaigns = [c for c in campaigns if c.format == validated_format]
+
+    if technique:
+        try:
+            technique_enum = Technique(technique)
+        except ValueError:
+            console.print(f"[red]X Invalid technique: {technique}[/red]")
+            console.print(f"  Valid techniques: {', '.join(t.value for t in Technique)}")
+            raise typer.Exit(1) from None
+        campaigns = [c for c in campaigns if c.technique == technique_enum]
+
+    if payload_type:
+        try:
+            payload_type_enum = PayloadType(payload_type)
+        except ValueError:
+            console.print(f"[red]X Invalid payload type: {payload_type}[/red]")
+            console.print(f"  Valid options: {', '.join(p.value for p in PayloadType)}")
+            raise typer.Exit(1) from None
+        campaigns = [c for c in campaigns if c.payload_type == payload_type_enum]
+
+    return campaigns
+
+
+def _confidence_summary(campaign_hits: list[Hit]) -> str:
+    """Build a Rich-formatted confidence breakdown string (H/M/L counts).
+
+    Args:
+        campaign_hits: List of hits for a single campaign.
+
+    Returns:
+        Rich markup string showing high/medium/low confidence counts,
+        or a dimmed dash if no hits.
+    """
+    if not campaign_hits:
+        return "[dim]-[/dim]"
+    high = sum(1 for h in campaign_hits if h.confidence == HitConfidence.HIGH)
+    med = sum(1 for h in campaign_hits if h.confidence == HitConfidence.MEDIUM)
+    low = sum(1 for h in campaign_hits if h.confidence == HitConfidence.LOW)
+    return f"[green]{high}H[/green]/[yellow]{med}M[/yellow]/[red]{low}L[/red]"
+
+
+def _display_campaigns_table(
+    campaigns: list[Campaign],
+    hits_by_uuid: dict[str, list[Hit]],
+) -> None:
+    """Render a Rich table of all campaigns with hit summaries.
+
+    Args:
+        campaigns: List of campaigns to display.
+        hits_by_uuid: Mapping from campaign UUID to its list of hits.
+    """
+    table = Table(title="IPI Campaigns")
+    table.add_column("UUID", style="cyan", no_wrap=True)
+    table.add_column("File")
+    table.add_column("Format")
+    table.add_column("Technique")
+    table.add_column("Payload Style")
+    table.add_column("Payload Type")
+    table.add_column("Hits", justify="center")
+    table.add_column("Confidence", justify="center")
+    table.add_column("Created")
+
+    for c in campaigns:
+        campaign_hits = hits_by_uuid.get(c.uuid, [])
+        hit_count = len(campaign_hits)
+        hit_style = "bold green" if hit_count > 0 else "dim"
+
+        table.add_row(
+            escape(c.uuid[:8] + "..."),
+            escape(c.filename),
+            escape(c.format),
+            escape(c.technique),
+            escape(c.payload_style),
+            escape(c.payload_type),
+            f"[{hit_style}]{hit_count}[/{hit_style}]",
+            _confidence_summary(campaign_hits),
+            c.created_at.strftime("%Y-%m-%d %H:%M"),
+        )
+
+    console.print(table)
+    console.print("\n[dim]Use 'qai ipi status <uuid>' for details[/dim]")
+
+
 @app.command()
 def status(
     uuid: Annotated[str | None, typer.Argument(help="Campaign UUID (optional)")] = None,
@@ -532,112 +744,28 @@ def status(
     Supports filtering by format, technique, and payload type.
     """
     if uuid:
-        # Show specific campaign
         campaign = db.get_campaign(uuid)
         if not campaign:
             console.print(f"[red]X Campaign not found: {uuid}[/red]")
             raise typer.Exit(1)
+        _display_single_campaign(campaign, db.get_hits(uuid))
+        return
 
-        hits = db.get_hits(uuid)
+    campaigns = _filter_campaigns(db.get_all_campaigns(), format_name, technique, payload_type)
 
-        console.print(f"\n[bold]Campaign:[/bold] {escape(campaign.uuid)}")
-        console.print(f"  File: {escape(campaign.filename)}")
-        console.print(f"  Format: {campaign.format}")
-        console.print(f"  Technique: {campaign.technique}")
-        console.print(f"  Payload Style: {campaign.payload_style}")
-        console.print(f"  Payload Type: {campaign.payload_type}")
-        console.print(f"  Created: {campaign.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
-
-        if hits:
-            console.print(f"\n[bold green]Hit {len(hits)} hit(s):[/bold green]")
-            for hit in hits:
-                ts = hit.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                token_icon = "+" if hit.token_valid else "x"
-                conf = hit.confidence.value
-                console.print(
-                    f"  * {ts} from {escape(hit.source_ip)}"
-                    f"  [token:{token_icon}] [confidence:{conf}]"
-                )
+    if not campaigns:
+        if format_name or technique or payload_type:
+            console.print("[dim]No campaigns match the provided filters.[/dim]")
         else:
-            console.print("\n[dim]No hits recorded[/dim]")
-    else:
-        # Show all campaigns
-        campaigns = db.get_all_campaigns()
-        all_hits = db.get_hits()
+            console.print("[dim]No campaigns found. Run 'qai ipi generate' first.[/dim]")
+        return
 
-        if format_name:
-            format_name = validate_format(format_name)
-            campaigns = [c for c in campaigns if c.format == format_name]
+    all_hits = db.get_hits()
+    hits_by_uuid: dict[str, list[Hit]] = {}
+    for hit in all_hits:
+        hits_by_uuid.setdefault(hit.uuid, []).append(hit)
 
-        if technique:
-            try:
-                technique_enum = Technique(technique)
-            except ValueError:
-                console.print(f"[red]X Invalid technique: {technique}[/red]")
-                console.print(f"  Valid techniques: {', '.join(t.value for t in Technique)}")
-                raise typer.Exit(1) from None
-            campaigns = [c for c in campaigns if c.technique == technique_enum]
-
-        if payload_type:
-            try:
-                payload_type_enum = PayloadType(payload_type)
-            except ValueError:
-                console.print(f"[red]X Invalid payload type: {payload_type}[/red]")
-                console.print(f"  Valid options: {', '.join(p.value for p in PayloadType)}")
-                raise typer.Exit(1) from None
-            campaigns = [c for c in campaigns if c.payload_type == payload_type_enum]
-
-        if not campaigns:
-            if format_name or technique or payload_type:
-                console.print("[dim]No campaigns match the provided filters.[/dim]")
-            else:
-                console.print("[dim]No campaigns found. Run 'qai ipi generate' first.[/dim]")
-            return
-
-        # Build hits lookup
-        hits_by_uuid: dict[str, list[Hit]] = {}
-        for hit in all_hits:
-            hits_by_uuid.setdefault(hit.uuid, []).append(hit)
-
-        table = Table(title="IPI Campaigns")
-        table.add_column("UUID", style="cyan", no_wrap=True)
-        table.add_column("File")
-        table.add_column("Format")
-        table.add_column("Technique")
-        table.add_column("Payload Style")
-        table.add_column("Payload Type")
-        table.add_column("Hits", justify="center")
-        table.add_column("Confidence", justify="center")
-        table.add_column("Created")
-
-        for c in campaigns:
-            campaign_hits = hits_by_uuid.get(c.uuid, [])
-            hit_count = len(campaign_hits)
-            hit_style = "bold green" if hit_count > 0 else "dim"
-
-            # Confidence breakdown: H/M/L counts
-            if campaign_hits:
-                high = sum(1 for h in campaign_hits if h.confidence == HitConfidence.HIGH)
-                med = sum(1 for h in campaign_hits if h.confidence == HitConfidence.MEDIUM)
-                low = sum(1 for h in campaign_hits if h.confidence == HitConfidence.LOW)
-                conf_summary = f"[green]{high}H[/green]/[yellow]{med}M[/yellow]/[red]{low}L[/red]"
-            else:
-                conf_summary = "[dim]-[/dim]"
-
-            table.add_row(
-                escape(c.uuid[:8] + "..."),
-                escape(c.filename),
-                escape(c.format),
-                escape(c.technique),
-                escape(c.payload_style),
-                escape(c.payload_type),
-                f"[{hit_style}]{hit_count}[/{hit_style}]",
-                conf_summary,
-                c.created_at.strftime("%Y-%m-%d %H:%M"),
-            )
-
-        console.print(table)
-        console.print("\n[dim]Use 'qai ipi status <uuid>' for details[/dim]")
+    _display_campaigns_table(campaigns, hits_by_uuid)
 
 
 def _build_ipi_interpret_prompt(campaigns: list, hits: list) -> str:

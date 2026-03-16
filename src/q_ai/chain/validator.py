@@ -29,6 +29,107 @@ class ValidationError:
 _VALID_MODULES = {"audit", "inject"}
 
 
+def _validate_module_and_technique(
+    chain: ChainDefinition,
+    valid_audit_techniques: set[str],
+    valid_inject_techniques: set[str],
+) -> list[ValidationError]:
+    """Validate module and technique references for each step.
+
+    Checks that each step references a known module and that its technique
+    is valid for the declared module.
+
+    Args:
+        chain: The chain definition to validate.
+        valid_audit_techniques: Set of valid audit technique names.
+        valid_inject_techniques: Set of valid inject technique names.
+
+    Returns:
+        A list of ValidationError instances for invalid references.
+    """
+    errors: list[ValidationError] = []
+
+    for step in chain.steps:
+        if step.module not in _VALID_MODULES:
+            errors.append(
+                ValidationError(
+                    step_id=step.id,
+                    field="module",
+                    message=(
+                        f"Step '{step.id}' references unknown module '{step.module}'. "
+                        f"Valid modules: {sorted(_VALID_MODULES)}"
+                    ),
+                )
+            )
+            continue
+
+        if step.module == "audit" and step.technique not in valid_audit_techniques:
+            errors.append(
+                ValidationError(
+                    step_id=step.id,
+                    field="technique",
+                    message=(
+                        f"Step '{step.id}' references unknown audit technique "
+                        f"'{step.technique}'. "
+                        f"Valid techniques: {sorted(valid_audit_techniques)}"
+                    ),
+                )
+            )
+        elif step.module == "inject" and step.technique not in valid_inject_techniques:
+            errors.append(
+                ValidationError(
+                    step_id=step.id,
+                    field="technique",
+                    message=(
+                        f"Step '{step.id}' references unknown inject technique "
+                        f"'{step.technique}'. "
+                        f"Valid techniques: {sorted(valid_inject_techniques)}"
+                    ),
+                )
+            )
+
+    return errors
+
+
+def _validate_graph_references(
+    chain: ChainDefinition,
+    valid_step_ids: set[str],
+) -> list[ValidationError]:
+    """Validate that on_success/on_failure targets reference valid step IDs.
+
+    Checks each step's on_success and on_failure fields. Values of None
+    and 'abort' are allowed; anything else must be a valid step ID.
+
+    Args:
+        chain: The chain definition to validate.
+        valid_step_ids: Set of all valid step IDs in the chain.
+
+    Returns:
+        A list of ValidationError instances for invalid references.
+    """
+    errors: list[ValidationError] = []
+
+    for step in chain.steps:
+        for attr, value in (("on_success", step.on_success), ("on_failure", step.on_failure)):
+            if value is None:
+                continue
+            if value == "abort":
+                continue
+            if value not in valid_step_ids:
+                errors.append(
+                    ValidationError(
+                        step_id=step.id,
+                        field=attr,
+                        message=(
+                            f"Step '{step.id}' {attr} references unknown step '{value}'. "
+                            f"Valid step IDs: {sorted(valid_step_ids)}"
+                        ),
+                    )
+                )
+
+    return errors
+
+
 def validate_chain(chain: ChainDefinition) -> list[ValidationError]:
     """Validate a chain definition against module registries and graph rules.
 
@@ -67,64 +168,12 @@ def validate_chain(chain: ChainDefinition) -> list[ValidationError]:
     valid_inject_techniques = {t.value for t in InjectionTechnique}
 
     # --- Check 1 & 2: module and technique references ---
-    for step in chain.steps:
-        if step.module not in _VALID_MODULES:
-            errors.append(
-                ValidationError(
-                    step_id=step.id,
-                    field="module",
-                    message=(
-                        f"Step '{step.id}' references unknown module '{step.module}'. "
-                        f"Valid modules: {sorted(_VALID_MODULES)}"
-                    ),
-                )
-            )
-            # No point checking technique if the module is unknown
-            continue
-
-        if step.module == "audit" and step.technique not in valid_audit_techniques:
-            errors.append(
-                ValidationError(
-                    step_id=step.id,
-                    field="technique",
-                    message=(
-                        f"Step '{step.id}' references unknown audit technique "
-                        f"'{step.technique}'. "
-                        f"Valid techniques: {sorted(valid_audit_techniques)}"
-                    ),
-                )
-            )
-        elif step.module == "inject" and step.technique not in valid_inject_techniques:
-            errors.append(
-                ValidationError(
-                    step_id=step.id,
-                    field="technique",
-                    message=(
-                        f"Step '{step.id}' references unknown inject technique "
-                        f"'{step.technique}'. "
-                        f"Valid techniques: {sorted(valid_inject_techniques)}"
-                    ),
-                )
-            )
+    errors.extend(
+        _validate_module_and_technique(chain, valid_audit_techniques, valid_inject_techniques)
+    )
 
     # --- Check 3: graph reference validity ---
-    for step in chain.steps:
-        for attr, value in (("on_success", step.on_success), ("on_failure", step.on_failure)):
-            if value is None:
-                continue
-            if value == "abort":
-                continue
-            if value not in valid_step_ids:
-                errors.append(
-                    ValidationError(
-                        step_id=step.id,
-                        field=attr,
-                        message=(
-                            f"Step '{step.id}' {attr} references unknown step '{value}'. "
-                            f"Valid step IDs: {sorted(valid_step_ids)}"
-                        ),
-                    )
-                )
+    errors.extend(_validate_graph_references(chain, valid_step_ids))
 
     # --- Check 4: cycle detection ---
     cycle_errors = _detect_cycles(chain, valid_step_ids)

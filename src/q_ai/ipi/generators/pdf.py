@@ -16,6 +16,7 @@ Usage:
 """
 
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from reportlab.lib.colors import black, white
@@ -238,6 +239,54 @@ def _add_incremental_update(output_path: Path, payload: str) -> None:
 # =============================================================================
 
 
+def _apply_canvas_technique(
+    c: canvas.Canvas,
+    technique: Technique,
+    payload: str,
+    height: float,
+    target_url: str,
+) -> None:
+    """Apply a canvas-based injection technique to the PDF.
+
+    Dispatches to the appropriate injection function based on the technique.
+    Only handles techniques that modify the canvas directly (not post-save
+    techniques like javascript, embedded_file, or incremental).
+
+    Args:
+        c: ReportLab canvas object.
+        technique: The hiding technique to apply.
+        payload: Payload string to inject.
+        height: Page height for positioning.
+        target_url: Callback URL for annotation technique.
+
+    Raises:
+        ValueError: If technique is not a supported canvas technique.
+    """
+    canvas_dispatch: dict[Technique, tuple] = {
+        Technique.WHITE_INK: (_inject_white_ink, (c, payload, height)),
+        Technique.OFF_CANVAS: (_inject_off_canvas, (c, payload)),
+        Technique.METADATA: (_inject_metadata, (c, payload)),
+        Technique.TINY_TEXT: (_inject_tiny_text, (c, payload, height)),
+        Technique.WHITE_RECT: (_inject_white_rect, (c, payload, height)),
+        Technique.FORM_FIELD: (_inject_form_field, (c, payload, height)),
+        Technique.ANNOTATION: (_inject_annotation, (c, payload, height, target_url)),
+    }
+    entry = canvas_dispatch.get(technique)
+    if entry is None:
+        raise ValueError(f"Unsupported canvas PDF technique: {technique.value}")
+    fn, args = entry
+    fn(*args)
+
+
+# Post-save techniques that modify the PDF file after canvas.save()
+_POST_SAVE_DISPATCH: dict[Technique, Callable[[Path, str], None]] = {
+    Technique.JAVASCRIPT: _add_javascript,
+    Technique.EMBEDDED_FILE: _add_embedded_file,
+    Technique.INCREMENTAL: _add_incremental_update,
+}
+"""Maps post-save techniques to their file-modifying functions."""
+
+
 def create_pdf(
     output_path: Path,
     technique: Technique,
@@ -286,67 +335,14 @@ def create_pdf(
     c.drawString(72, height - 100, decoy_content)
     c.drawString(72, height - 120, "Please summarize the key findings below.")
 
-    # Inject payload using selected technique
-    if technique == Technique.WHITE_INK:
-        _inject_white_ink(c, payload, height)
-    elif technique == Technique.OFF_CANVAS:
-        _inject_off_canvas(c, payload)
-    elif technique == Technique.METADATA:
-        _inject_metadata(c, payload)
-    elif technique == Technique.TINY_TEXT:
-        _inject_tiny_text(c, payload, height)
-    elif technique == Technique.WHITE_RECT:
-        _inject_white_rect(c, payload, height)
-    elif technique == Technique.FORM_FIELD:
-        _inject_form_field(c, payload, height)
-    elif technique == Technique.ANNOTATION:
-        _inject_annotation(c, payload, height, target_url)
-    elif technique == Technique.JAVASCRIPT:
+    # Post-save techniques: save canvas first, then modify the file
+    post_save_fn = _POST_SAVE_DISPATCH.get(technique)
+    if post_save_fn is not None:
         c.save()
-        _add_javascript(output_path, payload)
-        return Campaign(
-            id=uuid.uuid4().hex,
-            uuid=canary_uuid,
-            token=token,
-            filename=output_path.name,
-            format=Format.PDF,
-            technique=technique,
-            payload_style=payload_style,
-            payload_type=payload_type,
-            callback_url=callback_url,
-        )
-    elif technique == Technique.EMBEDDED_FILE:
-        c.save()
-        _add_embedded_file(output_path, payload)
-        return Campaign(
-            id=uuid.uuid4().hex,
-            uuid=canary_uuid,
-            token=token,
-            filename=output_path.name,
-            format=Format.PDF,
-            technique=technique,
-            payload_style=payload_style,
-            payload_type=payload_type,
-            callback_url=callback_url,
-        )
-    elif technique == Technique.INCREMENTAL:
-        c.save()
-        _add_incremental_update(output_path, payload)
-        return Campaign(
-            id=uuid.uuid4().hex,
-            uuid=canary_uuid,
-            token=token,
-            filename=output_path.name,
-            format=Format.PDF,
-            technique=technique,
-            payload_style=payload_style,
-            payload_type=payload_type,
-            callback_url=callback_url,
-        )
+        post_save_fn(output_path, payload)
     else:
-        raise ValueError(f"Unsupported PDF technique: {technique.value}")
-
-    c.save()
+        _apply_canvas_technique(c, technique, payload, height, target_url)
+        c.save()
 
     return Campaign(
         id=uuid.uuid4().hex,

@@ -614,9 +614,10 @@ class ProxyApp(App[None]):
         """Mount an Input widget for the user to enter a save path."""
         try:
             self.query_one("#save-input", Input)
-            return  # Already mounted
         except NoMatches:
             pass
+        else:
+            return  # Already mounted
         save_input = Input(placeholder="Enter file path to save session...", id="save-input")
         self.mount(save_input)
         save_input.focus()

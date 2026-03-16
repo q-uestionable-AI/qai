@@ -21,6 +21,65 @@ from q_ai.chain.variables import resolve_variables
 logger = logging.getLogger(__name__)
 
 
+def _build_initial_result(
+    chain: ChainDefinition,
+    target_config: TargetConfig,
+) -> ChainResult:
+    """Build the initial ChainResult with target config metadata.
+
+    Args:
+        chain: The chain definition being executed.
+        target_config: Target configuration for audit and inject steps.
+
+    Returns:
+        A ChainResult pre-populated with chain metadata and target config.
+    """
+    return ChainResult(
+        chain_id=chain.id,
+        chain_name=chain.name,
+        target_config={
+            "audit_transport": target_config.audit_transport,
+            "audit_command": "<configured>" if target_config.audit_command else None,
+            "audit_url": "<configured>" if target_config.audit_url else None,
+            "inject_model": target_config.inject_model,
+        },
+        dry_run=False,
+    )
+
+
+async def _dispatch_step(
+    step: ChainStep,
+    target_config: TargetConfig,
+    resolved_inputs: dict[str, Any],
+) -> StepOutput:
+    """Dispatch a single chain step to the appropriate module executor.
+
+    Routes to audit or inject executors based on step.module, or returns
+    a failed StepOutput for unknown modules.
+
+    Args:
+        step: The chain step to execute.
+        target_config: Target configuration for the step.
+        resolved_inputs: Resolved variable values from upstream steps.
+
+    Returns:
+        StepOutput from the module executor.
+    """
+    if step.module == "audit":
+        return await execute_audit_step(step, target_config, resolved_inputs)
+    if step.module == "inject":
+        return await execute_inject_step(step, target_config, resolved_inputs)
+    return StepOutput(
+        step_id=step.id,
+        module=step.module,
+        technique=step.technique,
+        success=False,
+        status=StepStatus.FAILED,
+        error=f"Unknown module: {step.module}",
+        finished_at=datetime.now(UTC),
+    )
+
+
 async def execute_chain(
     chain: ChainDefinition,
     target_config: TargetConfig,
@@ -39,17 +98,7 @@ async def execute_chain(
     Returns:
         ChainResult with all step outputs and evidence.
     """
-    result = ChainResult(
-        chain_id=chain.id,
-        chain_name=chain.name,
-        target_config={
-            "audit_transport": target_config.audit_transport,
-            "audit_command": "<configured>" if target_config.audit_command else None,
-            "audit_url": "<configured>" if target_config.audit_url else None,
-            "inject_model": target_config.inject_model,
-        },
-        dry_run=False,
-    )
+    result = _build_initial_result(chain, target_config)
 
     if not chain.steps:
         result.finished_at = datetime.now(UTC)
@@ -126,20 +175,7 @@ async def execute_chain(
 
         # Dispatch based on module
         try:
-            if step.module == "audit":
-                step_output = await execute_audit_step(step, target_config, resolved_inputs)
-            elif step.module == "inject":
-                step_output = await execute_inject_step(step, target_config, resolved_inputs)
-            else:
-                step_output = StepOutput(
-                    step_id=step.id,
-                    module=step.module,
-                    technique=step.technique,
-                    success=False,
-                    status=StepStatus.FAILED,
-                    error=f"Unknown module: {step.module}",
-                    finished_at=datetime.now(UTC),
-                )
+            step_output = await _dispatch_step(step, target_config, resolved_inputs)
         except Exception as exc:
             logger.exception("Unexpected error in step '%s'", step.id)
             step_output = StepOutput(

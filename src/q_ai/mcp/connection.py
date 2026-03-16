@@ -173,12 +173,14 @@ class MCPConnection:
                 self.init_result.protocolVersion,
                 self.transport_type,
             )
-            return self
 
         except Exception as exc:
             # Clean up anything we opened if initialization fails
             await self._exit_stack.aclose()
             raise ConnectionError(f"Failed to connect via {self.transport_type}: {exc}") from exc
+
+        else:
+            return self
 
     async def __aexit__(
         self,

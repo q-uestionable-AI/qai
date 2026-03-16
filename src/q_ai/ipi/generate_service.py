@@ -164,11 +164,12 @@ def _save_campaign(campaign: Campaign, seed: int | None) -> str | None:
     """
     try:
         db.save_campaign(campaign)
-        return None
     except sqlite3.IntegrityError:
         if seed is not None:
             return f"UUID {campaign.uuid[:8]}... already exists (seed={seed})"
         raise
+    else:
+        return None
 
 
 def generate_documents(

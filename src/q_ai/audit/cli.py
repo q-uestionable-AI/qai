@@ -14,7 +14,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from q_ai.audit.orchestrator import run_scan
+from q_ai.audit.orchestrator import ScanResult, run_scan
 from q_ai.audit.reporting.html_report import generate_html_report
 from q_ai.audit.reporting.json_report import generate_json_report
 from q_ai.audit.reporting.sarif_report import generate_sarif_report
@@ -26,6 +26,67 @@ app = typer.Typer(
     help="Scan MCP servers for security vulnerabilities",
 )
 console = Console()
+
+_SEVERITY_COLORS: dict[str, str] = {
+    "critical": "red",
+    "high": "bright_red",
+    "medium": "yellow",
+    "low": "blue",
+    "info": "dim",
+}
+
+
+def _configure_logging(verbose: bool) -> None:
+    """Set up logging level based on the --verbose flag.
+
+    Args:
+        verbose: If True, set DEBUG level; otherwise INFO.
+    """
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(level=level, format="%(name)s — %(message)s")
+
+
+def _resolve_output_path(format_name: str, output: str | None) -> str:
+    """Determine the output file path for a scan report.
+
+    Args:
+        format_name: Report format ('json', 'sarif', or 'html').
+        output: Explicit output path from the user, or None for default.
+
+    Returns:
+        Resolved output file path string.
+    """
+    if output is not None:
+        return output
+    ext_map = {"json": "json", "sarif": "sarif", "html": "html"}
+    return f"results/scan.{ext_map[format_name]}"
+
+
+def _print_scan_summary(result: ScanResult) -> None:
+    """Print a summary of scan results to the console.
+
+    Args:
+        result: ScanResult object with tools_scanned, scanners_run,
+            findings, and errors attributes.
+    """
+    console.print("\n[bold]Scan Complete[/bold]")
+    console.print(f"  Tools scanned: {result.tools_scanned}")
+    console.print(f"  Scanners run:  {', '.join(result.scanners_run)}")
+    console.print(f"  Findings:      {len(result.findings)}")
+
+    if result.findings:
+        console.print("\n[bold red]Findings:[/bold red]")
+        for f in result.findings:
+            sev_color = _SEVERITY_COLORS.get(f.severity.value, "white")
+            console.print(f"  [{sev_color}]{f.severity.value.upper()}[/{sev_color}] {f.title}")
+            console.print(f"    {f.description}")
+            console.print(f"    Remediation: {f.remediation}")
+            console.print()
+
+    if result.errors:
+        console.print(f"\n[yellow]Errors ({len(result.errors)}):[/yellow]")
+        for err in result.errors:
+            console.print(f"  {err['scanner']}: {err['error']}")
 
 
 def _build_connection(
@@ -102,14 +163,8 @@ def scan(
     if format not in ("json", "sarif", "html"):
         raise typer.BadParameter(f"Unknown format: {format}. Use 'json', 'sarif', or 'html'.")
 
-    if output is None:
-        ext_map = {"json": "json", "sarif": "sarif", "html": "html"}
-        output = f"results/scan.{ext_map[format]}"
-
-    if verbose:
-        logging.basicConfig(level=logging.DEBUG, format="%(name)s — %(message)s")
-    else:
-        logging.basicConfig(level=logging.INFO, format="%(name)s — %(message)s")
+    output = _resolve_output_path(format, output)
+    _configure_logging(verbose)
 
     console.print("[bold blue]q-ai audit[/bold blue] — MCP Security Scanner\n")
 
@@ -125,33 +180,7 @@ def scan(
             )
             result = await run_scan(conn, check_names=check_names)
 
-            # Summary
-            console.print("\n[bold]Scan Complete[/bold]")
-            console.print(f"  Tools scanned: {result.tools_scanned}")
-            console.print(f"  Scanners run:  {', '.join(result.scanners_run)}")
-            console.print(f"  Findings:      {len(result.findings)}")
-
-            if result.findings:
-                console.print("\n[bold red]Findings:[/bold red]")
-                for f in result.findings:
-                    sev_color = {
-                        "critical": "red",
-                        "high": "bright_red",
-                        "medium": "yellow",
-                        "low": "blue",
-                        "info": "dim",
-                    }.get(f.severity.value, "white")
-                    console.print(
-                        f"  [{sev_color}]{f.severity.value.upper()}[/{sev_color}] {f.title}"
-                    )
-                    console.print(f"    {f.description}")
-                    console.print(f"    Remediation: {f.remediation}")
-                    console.print()
-
-            if result.errors:
-                console.print(f"\n[yellow]Errors ({len(result.errors)}):[/yellow]")
-                for err in result.errors:
-                    console.print(f"  {err['scanner']}: {err['error']}")
+            _print_scan_summary(result)
 
             # Save report
             if format == "sarif":

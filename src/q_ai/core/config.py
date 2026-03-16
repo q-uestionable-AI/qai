@@ -206,6 +206,62 @@ def resolve(
     return None, "default"
 
 
+def _migrate_provider_key(
+    provider_name: str,
+    provider_config: dict,
+    providers: dict,
+) -> tuple[str, bool, str] | None:
+    """Attempt to migrate a single provider's API key to the OS keyring.
+
+    If the provider config is not a dict, has no ``api_key`` entry, or the
+    entry is falsy, returns ``None`` (nothing to migrate).  On success the
+    key is removed from *provider_config* (and *providers* is cleaned up if
+    the config becomes empty).
+
+    Args:
+        provider_name: Name of the provider (e.g. "anthropic").
+        provider_config: Mutable dict for this provider from config.yaml.
+        providers: The top-level ``providers`` mapping (mutated in-place).
+
+    Returns:
+        A ``(provider, success, message)`` tuple, or ``None`` when the
+        entry should be skipped.
+    """
+    if not isinstance(provider_config, dict):
+        return None
+    api_key = provider_config.get("api_key")
+    if not api_key:
+        return None
+
+    try:
+        set_credential(provider_name, api_key)
+        del provider_config["api_key"]
+        if not provider_config:
+            del providers[provider_name]
+    except Exception as exc:
+        return (provider_name, False, str(exc))
+    else:
+        return (provider_name, True, "migrated to keyring")
+
+
+def _write_cleaned_config(path: Path, config: dict) -> None:
+    """Back up the original config and write the cleaned version.
+
+    Args:
+        path: Path to the config YAML file.
+        config: The cleaned configuration dict to persist.
+    """
+    backup_path = path.with_suffix(".yaml.bak")
+    if path.exists():
+        backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as f:
+        yaml.safe_dump(config, f, default_flow_style=False)
+    if sys.platform != "win32":
+        path.chmod(0o600)
+
+
 def import_legacy_credentials(config_path: Path | None = None) -> list[tuple[str, bool, str]]:
     """Migrate plaintext keys from config.yaml to OS keyring.
 
@@ -227,23 +283,10 @@ def import_legacy_credentials(config_path: Path | None = None) -> list[tuple[str
         return []
 
     results: list[tuple[str, bool, str]] = []
-
     for provider_name, provider_config in list(providers.items()):
-        if not isinstance(provider_config, dict):
-            continue
-        api_key = provider_config.get("api_key")
-        if not api_key:
-            continue
-
-        try:
-            set_credential(provider_name, api_key)
-            # Remove the api_key from config
-            del provider_config["api_key"]
-            if not provider_config:
-                del providers[provider_name]
-            results.append((provider_name, True, "migrated to keyring"))
-        except Exception as exc:
-            results.append((provider_name, False, str(exc)))
+        result = _migrate_provider_key(provider_name, provider_config, providers)
+        if result is not None:
+            results.append(result)
 
     # Clean up empty providers section
     if not providers:
@@ -251,16 +294,6 @@ def import_legacy_credentials(config_path: Path | None = None) -> list[tuple[str
 
     # Write back the config without secrets
     if any(success for _, success, _ in results):
-        # Backup original
-        backup_path = path.with_suffix(".yaml.bak")
-        if path.exists():
-            backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-
-        # Write cleaned config
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w") as f:
-            yaml.safe_dump(config, f, default_flow_style=False)
-        if sys.platform != "win32":
-            path.chmod(0o600)
+        _write_cleaned_config(path, config)
 
     return results

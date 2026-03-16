@@ -31,6 +31,41 @@ def _resolve_model_ids(model: str) -> list[str]:
     return [model]
 
 
+def _load_corpus_docs_from_dir(corpus_dir: Path) -> list[CorpusDocument]:
+    """Load corpus documents from a directory of .txt files.
+
+    Args:
+        corpus_dir: Path to directory containing .txt corpus files.
+
+    Returns:
+        List of CorpusDocument objects loaded from the directory.
+    """
+    if not corpus_dir.is_dir():
+        _error(f"Corpus directory not found: {corpus_dir}")
+    docs = []
+    for txt_file in sorted(corpus_dir.glob("*.txt")):
+        text = txt_file.read_text(encoding="utf-8").strip()
+        docs.append(CorpusDocument(id=txt_file.stem, text=text, source=str(txt_file)))
+    if not docs:
+        _error(f"No .txt files found in {corpus_dir}")
+    return docs
+
+
+def _load_poison_doc(poison_file: Path) -> list[CorpusDocument]:
+    """Load a single poison document from a file path.
+
+    Args:
+        poison_file: Path to the poison document file.
+
+    Returns:
+        List containing one CorpusDocument marked as poison.
+    """
+    if not poison_file.exists():
+        _error(f"Poison file not found: {poison_file}")
+    text = poison_file.read_text(encoding="utf-8").strip()
+    return [CorpusDocument(id=poison_file.stem, text=text, source=str(poison_file), is_poison=True)]
+
+
 def _resolve_corpus(
     profile: str | None,
     corpus_dir: Path | None,
@@ -60,21 +95,10 @@ def _resolve_corpus(
         poison_docs = load_poison(prof)
         queries = prof.queries
     elif corpus_dir is not None:
-        if not corpus_dir.is_dir():
-            _error(f"Corpus directory not found: {corpus_dir}")
-        for txt_file in sorted(corpus_dir.glob("*.txt")):
-            text = txt_file.read_text(encoding="utf-8").strip()
-            corpus_docs.append(CorpusDocument(id=txt_file.stem, text=text, source=str(txt_file)))
-        if not corpus_docs:
-            _error(f"No .txt files found in {corpus_dir}")
+        corpus_docs = _load_corpus_docs_from_dir(corpus_dir)
 
     if poison_file is not None:
-        if not poison_file.exists():
-            _error(f"Poison file not found: {poison_file}")
-        text = poison_file.read_text(encoding="utf-8").strip()
-        poison_docs = [
-            CorpusDocument(id=poison_file.stem, text=text, source=str(poison_file), is_poison=True)
-        ]
+        poison_docs = _load_poison_doc(poison_file)
 
     if queries_override:
         queries = queries_override

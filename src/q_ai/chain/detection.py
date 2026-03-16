@@ -310,30 +310,93 @@ def generate_detection_rules(
     wazuh_rule_id = _WAZUH_RULE_ID_BASE
 
     for step in steps_to_analyze:
-        # Determine success — default True for tracer steps (follow success path)
-        success = step.get("success", True)
-        if "status" in step:
-            success = step.get("status") == "success"
-
-        if not success:
+        if not _is_successful_step(step):
             continue
 
         module = step.get("module", "unknown")
 
         if format == "sigma":
-            if module == "audit":
-                rules.append(_sigma_rule_for_audit_step(step, chain_id, chain_name))
-            elif module == "inject":
-                rules.append(_sigma_rule_for_inject_step(step, chain_id, chain_name))
-        elif format == "wazuh":
-            if module == "audit":
-                wazuh_rule_id += 1
-                rules.append(_wazuh_rule_for_audit_step(step, chain_id, chain_name, wazuh_rule_id))
-            elif module == "inject":
-                wazuh_rule_id += 1
-                rules.append(_wazuh_rule_for_inject_step(step, chain_id, chain_name, wazuh_rule_id))
+            rule = _generate_sigma_rule(step, module, chain_id, chain_name)
+        else:
+            wazuh_rule_id += 1
+            rule = _generate_wazuh_rule(step, module, chain_id, chain_name, wazuh_rule_id)
+
+        if rule is not None:
+            rules.append(rule)
 
     return rules
+
+
+def _is_successful_step(step: dict[str, Any]) -> bool:
+    """Determine whether a step should be considered successful.
+
+    Defaults to True for tracer steps (which follow the success path).
+    When a 'status' field is present, uses that instead.
+
+    Args:
+        step: A single step dict from the chain result.
+
+    Returns:
+        True if the step is considered successful.
+    """
+    success = step.get("success", True)
+    if "status" in step:
+        success = step.get("status") == "success"
+    return bool(success)
+
+
+def _generate_sigma_rule(
+    step: dict[str, Any],
+    module: str,
+    chain_id: str,
+    chain_name: str,
+) -> str | None:
+    """Generate a single Sigma rule for a successful step.
+
+    Dispatches to the appropriate module-specific Sigma generator.
+
+    Args:
+        step: A single successful step dict.
+        module: The module name ('audit', 'inject', etc.).
+        chain_id: The chain execution identifier.
+        chain_name: The chain name.
+
+    Returns:
+        Sigma rule string, or None if the module is not supported.
+    """
+    if module == "audit":
+        return _sigma_rule_for_audit_step(step, chain_id, chain_name)
+    if module == "inject":
+        return _sigma_rule_for_inject_step(step, chain_id, chain_name)
+    return None
+
+
+def _generate_wazuh_rule(
+    step: dict[str, Any],
+    module: str,
+    chain_id: str,
+    chain_name: str,
+    rule_id: int,
+) -> str | None:
+    """Generate a single Wazuh rule for a successful step.
+
+    Dispatches to the appropriate module-specific Wazuh generator.
+
+    Args:
+        step: A single successful step dict.
+        module: The module name ('audit', 'inject', etc.).
+        chain_id: The chain execution identifier.
+        chain_name: The chain name.
+        rule_id: The Wazuh rule ID to assign.
+
+    Returns:
+        Wazuh rule XML string, or None if the module is not supported.
+    """
+    if module == "audit":
+        return _wazuh_rule_for_audit_step(step, chain_id, chain_name, rule_id)
+    if module == "inject":
+        return _wazuh_rule_for_inject_step(step, chain_id, chain_name, rule_id)
+    return None
 
 
 def write_detection_rules(
