@@ -60,8 +60,17 @@ async def measure_blast_radius(runner: WorkflowRunner, config: dict[str, Any]) -
             return
 
         # --- Build result dict for analyze_blast_radius ---
+        def _deserialize_row(row: Any) -> dict[str, Any]:
+            d = dict(row)
+            if isinstance(d.get("artifacts"), str):
+                try:
+                    d["artifacts"] = json.loads(d["artifacts"])
+                except (json.JSONDecodeError, TypeError):
+                    d["artifacts"] = {}
+            return d
+
         result = {
-            "step_outputs": [dict(r) for r in step_rows],
+            "step_outputs": [_deserialize_row(r) for r in step_rows],
             "trust_boundaries_crossed": json.loads(exec_row["trust_boundaries"] or "[]"),
         }
 
@@ -79,8 +88,9 @@ async def measure_blast_radius(runner: WorkflowRunner, config: dict[str, Any]) -
             )
 
         # --- Emit summary finding ---
-        n_successful = sum(1 for s in result["step_outputs"] if s.get("success"))
-        systems_touched = analysis.get("systems_touched", [])
+        blast = analysis.get("blast_radius", {})
+        n_successful = blast.get("steps_succeeded", 0)
+        systems_touched = blast.get("systems_touched", [])
         n_systems = len(systems_touched)
         summary_severity = Severity.HIGH if n_successful > 3 else Severity.MEDIUM
 

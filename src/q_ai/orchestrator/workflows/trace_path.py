@@ -47,7 +47,7 @@ async def trace_attack_path(runner: WorkflowRunner, config: dict[str, Any]) -> N
             await runner.emit_progress(runner.run_id, "Chain execution failed")
             await runner.complete(RunStatus.FAILED)
     except Exception:
-        logger.exception("Chain adapter raised for target %s", config["target_id"])
+        logger.exception("Chain adapter raised for target %s", config.get("target_id", "unknown"))
         await runner.emit_progress(runner.run_id, "Chain adapter error")
         await runner.complete(RunStatus.FAILED)
         raise

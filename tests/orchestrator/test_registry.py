@@ -48,6 +48,13 @@ class TestRegistry:
         assert wf is not None
         assert wf.executor is not None
 
+    def test_phase7_workflows_have_executors(self) -> None:
+        """All four Phase 7 workflow executors are wired."""
+        for wf_id in ("test_docs", "test_assistant", "trace_path", "blast_radius"):
+            entry = get_workflow(wf_id)
+            assert entry is not None
+            assert entry.executor is not None, f"Executor not wired for {wf_id}"
+
     def test_register_workflow_overwrites(self) -> None:
         """Registering a workflow with an existing ID overwrites it."""
         original = get_workflow("assess")

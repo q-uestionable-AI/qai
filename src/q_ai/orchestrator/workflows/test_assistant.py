@@ -44,6 +44,6 @@ async def test_coding_assistant(runner: WorkflowRunner, config: dict[str, Any]) 
         await runner.emit_progress(runner.run_id, "CXP build complete")
         await runner.complete(RunStatus.COMPLETED)
     except Exception:
-        logger.exception("CXP stage failed for target %s", config["target_id"])
+        logger.exception("CXP stage failed for target %s", config.get("target_id", "unknown"))
         await runner.emit_progress(runner.run_id, "CXP stage failed")
         await runner.complete(RunStatus.FAILED)

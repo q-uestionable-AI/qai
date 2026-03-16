@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from q_ai.core.models import RunStatus
@@ -24,13 +25,13 @@ def _make_runner(run_id: str = "run-1") -> MagicMock:
     return runner
 
 
-def _base_config() -> dict:
+def _base_config(tmp_path: Path) -> dict:
     """Create a minimal valid config."""
     return {
         "target_id": "target-1",
         "format_id": "python",
         "rule_ids": None,
-        "output_dir": "/tmp/cxp-out",
+        "output_dir": str(tmp_path / "cxp-out"),
         "repo_name": None,
     }
 
@@ -38,10 +39,10 @@ def _base_config() -> dict:
 class TestTestAssistantWorkflow:
     """Tests for the test_coding_assistant workflow executor."""
 
-    async def test_cxp_success(self) -> None:
+    async def test_cxp_success(self, tmp_path: Path) -> None:
         """CXPAdapter.run() succeeds -> COMPLETED."""
         runner = _make_runner()
-        config = _base_config()
+        config = _base_config(tmp_path)
 
         with patch(_CXP_PATCH) as MockCXP:
             MockCXP.return_value.run = AsyncMock()
@@ -50,10 +51,10 @@ class TestTestAssistantWorkflow:
         MockCXP.assert_called_once_with(runner, config)
         runner.complete.assert_awaited_once_with(RunStatus.COMPLETED)
 
-    async def test_cxp_failure(self) -> None:
+    async def test_cxp_failure(self, tmp_path: Path) -> None:
         """CXPAdapter.run() raises -> FAILED."""
         runner = _make_runner()
-        config = _base_config()
+        config = _base_config(tmp_path)
 
         with patch(_CXP_PATCH) as MockCXP:
             MockCXP.return_value.run = AsyncMock(side_effect=RuntimeError("cxp fail"))

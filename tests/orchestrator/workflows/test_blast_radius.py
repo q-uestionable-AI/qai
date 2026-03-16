@@ -76,8 +76,10 @@ class TestBlastRadiusWorkflow:
         ]
 
         mock_analysis = {
-            "systems_touched": ["system-a", "system-b"],
-            "data_reached": [],
+            "blast_radius": {
+                "systems_touched": ["system-a", "system-b"],
+                "steps_succeeded": 2,
+            },
         }
 
         mock_ctx = _mock_conn(exec_row, step_rows)
@@ -119,8 +121,10 @@ class TestBlastRadiusWorkflow:
         ]
 
         mock_analysis = {
-            "systems_touched": ["system-a"],
-            "data_reached": [],
+            "blast_radius": {
+                "systems_touched": ["system-a"],
+                "steps_succeeded": 1,
+            },
         }
 
         mock_ctx = _mock_conn(exec_row, step_rows)
