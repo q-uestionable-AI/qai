@@ -62,11 +62,17 @@ async def launcher(request: Request) -> HTMLResponse:
             "description": wf.description,
             "modules": wf.modules,
             "implemented": wf.executor is not None,
+            "requires_provider": wf.requires_provider,
         }
         for wf in list_workflows()
     ]
     all_providers = _get_providers_status(request)
     providers = [p for p in all_providers if p["configured"]]
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        defaults = {
+            "ipi_callback_url": get_setting(conn, "ipi.default_callback_url") or "",
+        }
     return templates.TemplateResponse(
         request,
         "launcher.html",
@@ -75,6 +81,7 @@ async def launcher(request: Request) -> HTMLResponse:
             "workflows": workflows,
             "providers": providers,
             "rxp_available": rxp_is_available(),
+            "defaults": defaults,
         },
     )
 
@@ -755,6 +762,41 @@ async def api_infrastructure_status(request: Request) -> HTMLResponse:
 
 
 # ---------------------------------------------------------------------------
+# Chain/execution data routes (for launcher dropdowns)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/chain/templates")
+async def api_chain_templates(request: Request) -> JSONResponse:
+    """Return chain templates for the launcher dropdown."""
+    from q_ai.chain.loader import load_all_chains
+
+    try:
+        chains = load_all_chains()
+    except Exception:
+        return JSONResponse(content={"templates": []})
+    templates = [{"id": c.id, "name": c.name, "category": c.category.value} for c in chains]
+    return JSONResponse(content={"templates": templates})
+
+
+@router.get("/api/chain/executions/recent")
+async def api_chain_executions_recent(request: Request) -> JSONResponse:
+    """Return recent successful chain executions for the blast-radius selector."""
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT ce.id, ce.chain_name, ce.success, ce.created_at
+            FROM chain_executions ce
+            WHERE ce.success = 1
+            ORDER BY ce.created_at DESC
+            LIMIT 20
+            """
+        ).fetchall()
+    return JSONResponse(content={"executions": [dict(r) for r in rows]})
+
+
+# ---------------------------------------------------------------------------
 # Workflow launch API
 # ---------------------------------------------------------------------------
 
@@ -762,38 +804,8 @@ _VALID_TRANSPORTS = {"stdio", "sse", "streamable-http"}
 _background_tasks: set[asyncio.Task[None]] = set()
 
 
-async def _run_workflow(
-    runner: WorkflowRunner,
-    executor: Any,
-    config: dict[str, Any],
-) -> None:
-    """Execute a workflow in the background, handling unexpected failures.
-
-    Args:
-        runner: The active WorkflowRunner instance.
-        executor: Async executor function from the workflow registry.
-        config: Workflow configuration dict.
-    """
-    try:
-        await executor(runner, config)
-    except Exception as exc:
-        # Only fail if not already in terminal status
-        with get_connection(runner._db_path) as conn:
-            run = get_run(conn, runner.run_id)
-        if run and run.status in (RunStatus.RUNNING, RunStatus.PENDING):
-            await runner.fail(error=str(exc))
-
-
-@router.post("/api/workflows/launch")
-async def launch_workflow(request: Request) -> JSONResponse:
-    """Launch an assess workflow against an MCP server.
-
-    Validates the request, creates a target, builds the workflow config,
-    and starts the workflow as a background task.
-    """
-    body = await request.json()
-
-    # --- Validate inputs ---
+def _build_assess_config(body: dict[str, Any], target_id: str) -> dict[str, Any] | JSONResponse:
+    """Build config for the assess workflow."""
     transport = body.get("transport", "").strip()
     if transport not in _VALID_TRANSPORTS:
         return JSONResponse(
@@ -826,50 +838,9 @@ async def launch_workflow(request: Request) -> JSONResponse:
             content={"detail": "model must be non-empty and in provider/model format"},
         )
 
-    target_name = body.get("target_name", "").strip()
-    if not target_name:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "target_name is required"},
-        )
-
-    # --- Check provider credential ---
-    provider = model.split("/", 1)[0]
-    local_providers = {"ollama", "lmstudio", "custom"}
-    if provider in local_providers:
-        # Local providers use base_url, not keyring credentials
-        db_path = _get_db_path(request)
-        default_urls = {
-            "ollama": "http://localhost:11434",
-            "lmstudio": "http://localhost:1234",
-        }
-        with get_connection(db_path) as conn:
-            base_url_setting = get_setting(conn, f"{provider}.base_url")
-        if not base_url_setting and provider not in default_urls:
-            return JSONResponse(
-                status_code=422,
-                content={"detail": f"No base URL configured for provider '{provider}'"},
-            )
-    else:
-        try:
-            cred = get_credential(provider)
-        except RuntimeError:
-            cred = None
-        if cred is None:
-            return JSONResponse(
-                status_code=422,
-                content={"detail": f"No credential configured for provider '{provider}'"},
-            )
-
-    # --- Create target ---
-    db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        target_id = create_target(conn, type="server", name=target_name)
-
-    # --- Build workflow config ---
     rounds = int(body.get("rounds", 1))
     rxp_enabled = bool(body.get("rxp_enabled", False))
-    config: dict[str, Any] = {
+    return {
         "target_id": target_id,
         "transport": transport,
         "command": command,
@@ -880,23 +851,277 @@ async def launch_workflow(request: Request) -> JSONResponse:
         "proxy": {"intercept": False},
     }
 
-    # --- Look up executor ---
-    entry = get_workflow("assess")
+
+def _build_test_docs_config(body: dict[str, Any], target_id: str) -> dict[str, Any] | JSONResponse:
+    """Build config for the test_docs workflow."""
+    callback_url = body.get("callback_url", "").strip()
+    if not callback_url:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "callback_url is required"},
+        )
+    return {
+        "target_id": target_id,
+        "callback_url": callback_url,
+        "output_dir": "",
+        "format": body.get("format", "pdf"),
+        "payload_style": body.get("payload_style", "obvious"),
+        "payload_type": body.get("payload_type", "callback"),
+        "base_name": "report",
+        "rxp_enabled": bool(body.get("rxp_enabled", False)),
+        "rxp": {
+            "model_id": body.get("rxp_model_id", ""),
+            "profile_id": body.get("rxp_profile_id") or None,
+            "target_id": target_id,
+        },
+    }
+
+
+def _build_test_assistant_config(
+    body: dict[str, Any], target_id: str
+) -> dict[str, Any] | JSONResponse:
+    """Build config for the test_assistant workflow."""
+    format_id = body.get("format_id", "").strip()
+    if not format_id:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "format_id is required"},
+        )
+    return {
+        "target_id": target_id,
+        "format_id": format_id,
+        "rule_ids": body.get("rule_ids") or None,
+        "output_dir": "",
+        "repo_name": body.get("repo_name", "").strip() or None,
+    }
+
+
+def _build_trace_path_config(
+    body: dict[str, Any], target_id: str, db_path: Path | None
+) -> dict[str, Any] | JSONResponse:
+    """Build config for the trace_path workflow."""
+    from q_ai.chain.loader import discover_chains, load_chain
+
+    template_id = body.get("chain_template_id", "").strip()
+    if not template_id:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "chain_template_id is required"},
+        )
+
+    # Resolve template id to absolute path
+    chain_file: str | None = None
+    try:
+        for path in discover_chains():
+            chain = load_chain(path)
+            if chain.id == template_id:
+                chain_file = str(path.resolve())
+                break
+    except Exception:
+        logger.debug("Failed to load chain templates", exc_info=True)
+
+    if chain_file is None:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"Chain template not found: {template_id}"},
+        )
+
+    # Validate transport (same as assess)
+    transport = body.get("transport", "").strip()
+    if transport not in _VALID_TRANSPORTS:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": (
+                    f"Invalid transport. Must be one of: {', '.join(sorted(_VALID_TRANSPORTS))}"
+                ),
+            },
+        )
+
+    command = body.get("command", "").strip() or None
+    url = body.get("url", "").strip() or None
+
+    if transport == "stdio" and not command:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "command is required for stdio transport"},
+        )
+    if transport in ("sse", "streamable-http") and not url:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "url is required for sse/streamable-http transport"},
+        )
+
+    model = body.get("model", "").strip()
+    if not model or "/" not in model:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "model must be non-empty and in provider/model format"},
+        )
+
+    return {
+        "target_id": target_id,
+        "chain_file": chain_file,
+        "transport": transport,
+        "command": command,
+        "url": url,
+        "inject_model": model,
+    }
+
+
+def _build_blast_radius_config(
+    body: dict[str, Any], db_path: Path | None
+) -> dict[str, Any] | JSONResponse:
+    """Build config for the blast_radius workflow.
+
+    Derives target_id from the chain execution's run row instead of
+    creating a new target.
+    """
+    exec_id = body.get("chain_execution_id", "").strip()
+    if not exec_id:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "chain_execution_id is required"},
+        )
+    with get_connection(db_path) as conn:
+        exec_row = conn.execute(
+            "SELECT ce.id, r.target_id FROM chain_executions ce "
+            "JOIN runs r ON r.id = ce.run_id WHERE ce.id = ?",
+            (exec_id,),
+        ).fetchone()
+    if exec_row is None:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Chain execution not found"},
+        )
+    target_id = exec_row["target_id"]
+    return {
+        "target_id": target_id,
+        "chain_execution_id": exec_id,
+    }
+
+
+async def _run_workflow(
+    runner: WorkflowRunner,
+    executor: Any,
+    config: dict[str, Any],
+) -> None:
+    """Execute a workflow in the background, handling unexpected failures.
+
+    Args:
+        runner: The active WorkflowRunner instance.
+        executor: Async executor function from the workflow registry.
+        config: Workflow configuration dict.
+    """
+    try:
+        await executor(runner, config)
+    except Exception as exc:
+        # Only fail if not already in terminal status
+        with get_connection(runner._db_path) as conn:
+            run = get_run(conn, runner.run_id)
+        if run and run.status in (RunStatus.RUNNING, RunStatus.PENDING):
+            await runner.fail(error=str(exc))
+
+
+@router.post("/api/workflows/launch")
+async def launch_workflow(request: Request) -> JSONResponse:
+    """Launch a workflow.
+
+    Validates the request, dispatches to per-workflow config building,
+    creates a target (where applicable), and starts the workflow as a
+    background task.
+    """
+    body = await request.json()
+    db_path = _get_db_path(request)
+
+    # --- Resolve workflow ---
+    workflow_id = body.get("workflow_id", "assess").strip()
+    entry = get_workflow(workflow_id)
     if entry is None or entry.executor is None:
         return JSONResponse(
-            status_code=500,
-            content={"detail": "assess workflow executor not registered"},
+            status_code=422,
+            content={"detail": f"Unknown workflow: {workflow_id}"},
         )
+
+    # --- Provider credential check (skipped for workflows that don't need one) ---
+    if entry.requires_provider:
+        model = body.get("model", "").strip()
+        if not model or "/" not in model:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "model must be non-empty and in provider/model format"},
+            )
+        provider = model.split("/", 1)[0]
+        local_providers = {"ollama", "lmstudio", "custom"}
+        if provider in local_providers:
+            default_urls = {
+                "ollama": "http://localhost:11434",
+                "lmstudio": "http://localhost:1234",
+            }
+            with get_connection(db_path) as conn:
+                base_url_setting = get_setting(conn, f"{provider}.base_url")
+            if not base_url_setting and provider not in default_urls:
+                return JSONResponse(
+                    status_code=422,
+                    content={"detail": f"No base URL configured for provider '{provider}'"},
+                )
+        else:
+            try:
+                cred = get_credential(provider)
+            except RuntimeError:
+                cred = None
+            if cred is None:
+                return JSONResponse(
+                    status_code=422,
+                    content={"detail": f"No credential configured for provider '{provider}'"},
+                )
+
+    # --- Create target (not for blast_radius — derived from chain execution) ---
+    target_id: str = ""
+    if workflow_id != "blast_radius":
+        target_name = body.get("target_name", "").strip()
+        if not target_name:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "target_name is required"},
+            )
+        with get_connection(db_path) as conn:
+            target_id = create_target(conn, type="server", name=target_name)
+
+    # --- Build workflow config ---
+    builders: dict[str, Any] = {
+        "assess": lambda: _build_assess_config(body, target_id),
+        "test_docs": lambda: _build_test_docs_config(body, target_id),
+        "test_assistant": lambda: _build_test_assistant_config(body, target_id),
+        "trace_path": lambda: _build_trace_path_config(body, target_id, db_path),
+        "blast_radius": lambda: _build_blast_radius_config(body, db_path),
+    }
+    builder = builders.get(workflow_id)
+    if builder is None:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"No builder for: {workflow_id}"},
+        )
+    result = builder()
+    if isinstance(result, JSONResponse):
+        return result
+    config: dict[str, Any] = result
 
     # --- Create runner and start ---
     runner = WorkflowRunner(
-        workflow_id="assess",
+        workflow_id=workflow_id,
         config=config,
         ws_manager=request.app.state.ws_manager,
         active_workflows=request.app.state.active_workflows,
         db_path=db_path,
     )
     await runner.start()
+
+    # --- Build output_dir from runner.run_id for workflows that need it ---
+    if workflow_id in ("test_docs", "test_assistant"):
+        output_dir = Path.home() / ".qai" / "artifacts" / workflow_id / runner.run_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        config["output_dir"] = str(output_dir)
 
     # --- Fire-and-forget background task ---
     task = asyncio.create_task(_run_workflow(runner, entry.executor, config))

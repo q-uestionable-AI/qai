@@ -116,7 +116,6 @@ class TestLauncherRxpAvailable:
         assert resp.status_code == 200
         assert "RXP pre-validation requires additional dependencies" not in resp.text
 
-    @pytest.mark.xfail(reason="Requires Phase 7B launcher form changes", strict=True)
     def test_launcher_rxp_toggle_has_name_attribute(self, client: TestClient) -> None:
         """RXP toggle has name='rxp_enabled' for FormData inclusion."""
         with patch("q_ai.server.routes.rxp_is_available", return_value=True):

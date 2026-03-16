@@ -92,3 +92,16 @@ class TestRegistry:
             if wf.id == "test_docs":
                 continue
             assert wf.optional_modules == [], f"{wf.id} should have empty optional_modules"
+
+    def test_requires_provider_default_true(self) -> None:
+        """All workflows except test_assistant have requires_provider=True."""
+        for wf in list_workflows():
+            if wf.id == "test_assistant":
+                continue
+            assert wf.requires_provider is True, f"{wf.id} should have requires_provider=True"
+
+    def test_test_assistant_requires_provider_false(self) -> None:
+        """test_assistant does not require a provider."""
+        wf = get_workflow("test_assistant")
+        assert wf is not None
+        assert wf.requires_provider is False

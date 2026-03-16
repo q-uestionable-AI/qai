@@ -33,6 +33,7 @@ class WorkflowEntry:
     optional_modules: list[str] = field(default_factory=list)
     executor: Callable[..., Any] | None = None
     failure_mode: str = "best_effort"
+    requires_provider: bool = True
 
 
 WORKFLOWS: dict[str, WorkflowEntry] = {}
@@ -96,6 +97,7 @@ _DEFAULT_WORKFLOWS = [
             "Poison context files and validate whether AI assistants propagate tainted output."
         ),
         modules=["cxp"],
+        requires_provider=False,
     ),
     WorkflowEntry(
         id="trace_path",
