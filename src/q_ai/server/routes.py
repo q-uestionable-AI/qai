@@ -1033,6 +1033,26 @@ def _build_blast_radius_config(
     }
 
 
+def _parse_bool(value: Any, default: bool = False) -> bool:
+    """Parse a value into a boolean in a predictable way.
+
+    Accepts actual booleans and common string representations
+    like "true"/"false", "1"/"0", "yes"/"no".
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "y", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "n", "off", ""}:
+            return False
+        return default
+    if value is None:
+        return default
+    return bool(value)
+
+
 def _build_generate_report_config(
     body: dict[str, Any], db_path: Path | None
 ) -> dict[str, Any] | JSONResponse:
@@ -1048,7 +1068,7 @@ def _build_generate_report_config(
         "target_id": target_id,
         "from_date": body.get("from_date") or None,
         "to_date": body.get("to_date") or None,
-        "include_evidence_pack": bool(body.get("include_evidence_pack", False)),
+        "include_evidence_pack": _parse_bool(body.get("include_evidence_pack", False)),
     }
 
 
