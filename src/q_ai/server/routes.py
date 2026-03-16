@@ -670,9 +670,10 @@ async def api_test_provider(request: Request, provider: str) -> JSONResponse:
                         "message": f"HTTP {resp.status_code}",
                     },
                 )
-        except Exception as exc:
+        except Exception:
+            logger.exception("Provider connectivity check failed for %s", provider)
             return JSONResponse(
-                content={"status": "error", "message": str(exc)},
+                content={"status": "error", "message": "Connection check failed"},
             )
 
     # Cloud provider -- check if credential exists
