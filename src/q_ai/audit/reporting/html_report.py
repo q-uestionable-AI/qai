@@ -137,17 +137,16 @@ def _findings_table(findings: list[ScanFinding]) -> str:
     if not findings:
         return '<p class="no-findings">No findings detected.</p>'
 
-    rows: list[str] = []
-    for f in findings:
-        rows.append(
-            "<tr>"
-            f"<td>{_severity_badge(f.severity.value)}</td>"
-            f"<td>{_esc(f.category)}</td>"
-            f"<td>{_esc(f.rule_id)}</td>"
-            f"<td>{_esc(f.title)}</td>"
-            f"<td>{_esc(f.tool_name or 'N/A')}</td>"
-            "</tr>"
-        )
+    rows: list[str] = [
+        "<tr>"
+        f"<td>{_severity_badge(f.severity.value)}</td>"
+        f"<td>{_esc(f.category)}</td>"
+        f"<td>{_esc(f.rule_id)}</td>"
+        f"<td>{_esc(f.title)}</td>"
+        f"<td>{_esc(f.tool_name or 'N/A')}</td>"
+        "</tr>"
+        for f in findings
+    ]
 
     return (
         '<table class="findings-table">'

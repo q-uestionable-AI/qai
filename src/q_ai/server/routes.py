@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -633,48 +635,60 @@ async def api_delete_provider(request: Request, provider: str) -> JSONResponse:
     return JSONResponse(content={"status": "deleted"})
 
 
+async def _test_local_provider(db_path: Path | None, provider: str) -> JSONResponse:
+    """Test connectivity for a local provider (ollama, lmstudio, custom).
+
+    Args:
+        db_path: Path to the SQLite database.
+        provider: The local provider identifier.
+
+    Returns:
+        JSONResponse with connectivity status or error details.
+    """
+    with get_connection(db_path) as conn:
+        base_url = get_setting(conn, f"{provider}.base_url")
+
+    default_urls = {
+        "ollama": "http://localhost:11434",
+        "lmstudio": "http://localhost:1234",
+    }
+    url = base_url or default_urls.get(provider, "")
+    if not url:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "No base URL configured"},
+        )
+
+    health_path = "/api/tags" if provider == "ollama" else "/v1/models"
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=5.0) as http:
+            resp = await http.get(f"{url}{health_path}")
+            if resp.status_code == 200:
+                return JSONResponse(
+                    content={"status": "ok", "message": "Connected"},
+                )
+            return JSONResponse(
+                content={
+                    "status": "error",
+                    "message": f"HTTP {resp.status_code}",
+                },
+            )
+    except Exception:
+        logger.exception("Provider connectivity check failed for %s", provider)
+        return JSONResponse(
+            content={"status": "error", "message": "Connection check failed"},
+        )
+
+
 @router.get("/api/settings/providers/{provider}/test")
 async def api_test_provider(request: Request, provider: str) -> JSONResponse:
     """Test provider connectivity with a minimal check."""
     local_providers = {"ollama", "lmstudio", "custom"}
 
     if provider in local_providers:
-        db_path = _get_db_path(request)
-        with get_connection(db_path) as conn:
-            base_url = get_setting(conn, f"{provider}.base_url")
-
-        default_urls = {
-            "ollama": "http://localhost:11434",
-            "lmstudio": "http://localhost:1234",
-        }
-        url = base_url or default_urls.get(provider, "")
-        if not url:
-            return JSONResponse(
-                status_code=404,
-                content={"detail": "No base URL configured"},
-            )
-
-        health_path = "/api/tags" if provider == "ollama" else "/v1/models"
-        try:
-            import httpx
-
-            async with httpx.AsyncClient(timeout=5.0) as http:
-                resp = await http.get(f"{url}{health_path}")
-                if resp.status_code == 200:
-                    return JSONResponse(
-                        content={"status": "ok", "message": "Connected"},
-                    )
-                return JSONResponse(
-                    content={
-                        "status": "error",
-                        "message": f"HTTP {resp.status_code}",
-                    },
-                )
-        except Exception:
-            logger.exception("Provider connectivity check failed for %s", provider)
-            return JSONResponse(
-                content={"status": "error", "message": "Connection check failed"},
-            )
+        return await _test_local_provider(_get_db_path(request), provider)
 
     # Cloud provider -- check if credential exists
     try:
@@ -809,8 +823,17 @@ _VALID_TRANSPORTS = {"stdio", "sse", "streamable-http"}
 _background_tasks: set[asyncio.Task[None]] = set()
 
 
-def _build_assess_config(body: dict[str, Any], target_id: str) -> dict[str, Any] | JSONResponse:
-    """Build config for the assess workflow."""
+def _validate_transport_and_model(
+    body: dict[str, Any],
+) -> JSONResponse | None:
+    """Validate transport, command/url, and model fields from a workflow body.
+
+    Args:
+        body: The parsed request body dict.
+
+    Returns:
+        A JSONResponse with 422 status if validation fails, or None on success.
+    """
     transport = body.get("transport", "").strip()
     if transport not in _VALID_TRANSPORTS:
         return JSONResponse(
@@ -842,6 +865,20 @@ def _build_assess_config(body: dict[str, Any], target_id: str) -> dict[str, Any]
             status_code=422,
             content={"detail": "model must be non-empty and in provider/model format"},
         )
+
+    return None
+
+
+def _build_assess_config(body: dict[str, Any], target_id: str) -> dict[str, Any] | JSONResponse:
+    """Build config for the assess workflow."""
+    error = _validate_transport_and_model(body)
+    if error is not None:
+        return error
+
+    transport = body.get("transport", "").strip()
+    command = body.get("command", "").strip() or None
+    url = body.get("url", "").strip() or None
+    model = body.get("model", "").strip()
 
     try:
         rounds = int(body.get("rounds", 1))
@@ -942,38 +979,15 @@ def _build_trace_path_config(
             content={"detail": f"Chain template not found: {template_id}"},
         )
 
-    # Validate transport (same as assess)
-    transport = body.get("transport", "").strip()
-    if transport not in _VALID_TRANSPORTS:
-        return JSONResponse(
-            status_code=422,
-            content={
-                "detail": (
-                    f"Invalid transport. Must be one of: {', '.join(sorted(_VALID_TRANSPORTS))}"
-                ),
-            },
-        )
+    # Validate transport and model (same rules as assess)
+    error = _validate_transport_and_model(body)
+    if error is not None:
+        return error
 
+    transport = body.get("transport", "").strip()
     command = body.get("command", "").strip() or None
     url = body.get("url", "").strip() or None
-
-    if transport == "stdio" and not command:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "command is required for stdio transport"},
-        )
-    if transport in ("sse", "streamable-http") and not url:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "url is required for sse/streamable-http transport"},
-        )
-
     model = body.get("model", "").strip()
-    if not model or "/" not in model:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "model must be non-empty and in provider/model format"},
-        )
 
     return {
         "target_id": target_id,
@@ -1039,6 +1053,125 @@ async def _run_workflow(
             await runner.fail(error=str(exc))
 
 
+def _check_provider_credential(body: dict[str, Any], db_path: Path | None) -> JSONResponse | None:
+    """Validate that the provider referenced by the model field has credentials.
+
+    For local providers (ollama, lmstudio, custom), checks that a base URL is
+    configured or has a default. For cloud providers, checks that a credential
+    exists in the keyring.
+
+    Args:
+        body: The parsed request body dict.
+        db_path: Path to the SQLite database.
+
+    Returns:
+        A JSONResponse with 422 status if validation fails, or None on success.
+    """
+    model = body.get("model", "").strip()
+    if not model or "/" not in model:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "model must be non-empty and in provider/model format"},
+        )
+    provider = model.split("/", 1)[0]
+    local_providers = {"ollama", "lmstudio", "custom"}
+    if provider in local_providers:
+        default_urls = {
+            "ollama": "http://localhost:11434",
+            "lmstudio": "http://localhost:1234",
+        }
+        with get_connection(db_path) as conn:
+            base_url_setting = get_setting(conn, f"{provider}.base_url")
+        if not base_url_setting and provider not in default_urls:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": f"No base URL configured for provider '{provider}'"},
+            )
+    else:
+        try:
+            cred = get_credential(provider)
+        except RuntimeError:
+            cred = None
+        if cred is None:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": f"No credential configured for provider '{provider}'"},
+            )
+    return None
+
+
+def _build_workflow_config(
+    workflow_id: str, body: dict[str, Any], db_path: Path | None
+) -> dict[str, Any] | JSONResponse:
+    """Dispatch to the appropriate config builder for the given workflow.
+
+    Args:
+        workflow_id: The workflow identifier string.
+        body: The parsed request body dict.
+        db_path: Path to the SQLite database.
+
+    Returns:
+        The workflow config dict on success, or a JSONResponse with error details.
+    """
+    builders: dict[str, Callable[[], dict[str, Any] | JSONResponse]] = {
+        "assess": partial(_build_assess_config, body, ""),
+        "test_docs": partial(_build_test_docs_config, body, ""),
+        "test_assistant": partial(_build_test_assistant_config, body, ""),
+        "trace_path": partial(_build_trace_path_config, body, "", db_path),
+        "blast_radius": partial(_build_blast_radius_config, body, db_path),
+    }
+    builder = builders.get(workflow_id)
+    if builder is None:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"No builder for: {workflow_id}"},
+        )
+    return builder()
+
+
+def _apply_target_id(config: dict[str, Any], target_id: str) -> None:
+    """Set target_id on the config and any nested sub-configs.
+
+    Args:
+        config: The workflow configuration dict (mutated in place).
+        target_id: The newly created target identifier.
+    """
+    config["target_id"] = target_id
+    if "rxp" in config and isinstance(config["rxp"], dict):
+        config["rxp"]["target_id"] = target_id
+
+
+def _prepare_output_dir(
+    workflow_id: str, run_id: str, config: dict[str, Any]
+) -> JSONResponse | None:
+    """Create the artifact output directory for workflows that need one.
+
+    Only applies to test_docs and test_assistant workflows. Sets
+    ``config["output_dir"]`` on success.
+
+    Args:
+        workflow_id: The workflow identifier string.
+        run_id: The run identifier for directory naming.
+        config: The workflow configuration dict (mutated in place).
+
+    Returns:
+        A JSONResponse with 500 status on failure, or None on success.
+    """
+    if workflow_id not in ("test_docs", "test_assistant"):
+        return None
+    output_dir = Path.home() / ".qai" / "artifacts" / workflow_id / run_id
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        logger.exception("Failed to create output directory for %s", workflow_id)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to prepare artifact output directory"},
+        )
+    config["output_dir"] = str(output_dir)
+    return None
+
+
 @router.post("/api/workflows/launch")
 async def launch_workflow(request: Request) -> JSONResponse:
     """Launch a workflow.
@@ -1061,36 +1194,9 @@ async def launch_workflow(request: Request) -> JSONResponse:
 
     # --- Provider credential check (skipped for workflows that don't need one) ---
     if entry.requires_provider:
-        model = body.get("model", "").strip()
-        if not model or "/" not in model:
-            return JSONResponse(
-                status_code=422,
-                content={"detail": "model must be non-empty and in provider/model format"},
-            )
-        provider = model.split("/", 1)[0]
-        local_providers = {"ollama", "lmstudio", "custom"}
-        if provider in local_providers:
-            default_urls = {
-                "ollama": "http://localhost:11434",
-                "lmstudio": "http://localhost:1234",
-            }
-            with get_connection(db_path) as conn:
-                base_url_setting = get_setting(conn, f"{provider}.base_url")
-            if not base_url_setting and provider not in default_urls:
-                return JSONResponse(
-                    status_code=422,
-                    content={"detail": f"No base URL configured for provider '{provider}'"},
-                )
-        else:
-            try:
-                cred = get_credential(provider)
-            except RuntimeError:
-                cred = None
-            if cred is None:
-                return JSONResponse(
-                    status_code=422,
-                    content={"detail": f"No credential configured for provider '{provider}'"},
-                )
+        cred_error = _check_provider_credential(body, db_path)
+        if cred_error is not None:
+            return cred_error
 
     # --- Validate target_name early (but don't create row yet) ---
     target_name: str = ""
@@ -1103,20 +1209,7 @@ async def launch_workflow(request: Request) -> JSONResponse:
             )
 
     # --- Build workflow config (before target creation to avoid orphan rows) ---
-    builders: dict[str, Any] = {
-        "assess": lambda: _build_assess_config(body, ""),
-        "test_docs": lambda: _build_test_docs_config(body, ""),
-        "test_assistant": lambda: _build_test_assistant_config(body, ""),
-        "trace_path": lambda: _build_trace_path_config(body, "", db_path),
-        "blast_radius": lambda: _build_blast_radius_config(body, db_path),
-    }
-    builder = builders.get(workflow_id)
-    if builder is None:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": f"No builder for: {workflow_id}"},
-        )
-    result = builder()
+    result = _build_workflow_config(workflow_id, body, db_path)
     if isinstance(result, JSONResponse):
         return result
     config: dict[str, Any] = result
@@ -1125,10 +1218,7 @@ async def launch_workflow(request: Request) -> JSONResponse:
     if workflow_id != "blast_radius":
         with get_connection(db_path) as conn:
             target_id = create_target(conn, type="server", name=target_name)
-        config["target_id"] = target_id
-        # Also update nested target_id refs (test_docs RXP config)
-        if "rxp" in config and isinstance(config["rxp"], dict):
-            config["rxp"]["target_id"] = target_id
+        _apply_target_id(config, target_id)
 
     # --- Create runner ---
     runner = WorkflowRunner(
@@ -1140,17 +1230,9 @@ async def launch_workflow(request: Request) -> JSONResponse:
     )
 
     # --- Set output_dir from run_id BEFORE start() persists config ---
-    if workflow_id in ("test_docs", "test_assistant"):
-        output_dir = Path.home() / ".qai" / "artifacts" / workflow_id / runner.run_id
-        try:
-            output_dir.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            logger.exception("Failed to create output directory for %s", workflow_id)
-            return JSONResponse(
-                status_code=500,
-                content={"detail": "Failed to prepare artifact output directory"},
-            )
-        config["output_dir"] = str(output_dir)
+    dir_error = _prepare_output_dir(workflow_id, runner.run_id, config)
+    if dir_error is not None:
+        return dir_error
 
     await runner.start()
 

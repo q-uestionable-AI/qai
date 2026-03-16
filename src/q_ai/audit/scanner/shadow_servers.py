@@ -266,6 +266,70 @@ def _has_dev_description(description: str) -> str | None:
     return None
 
 
+def _check_name_markers(name: str) -> list[str]:
+    """Check server name for ephemeral deployment markers.
+
+    Looks for UUIDs, Docker-default hex hostnames, container-prefixed
+    names, and timestamp-based names.
+
+    Args:
+        name: Server name to check.
+
+    Returns:
+        List of marker descriptions found. Empty if none.
+    """
+    markers: list[str] = []
+
+    if _UUID_PATTERN.search(name):
+        markers.append("UUID in server name")
+    elif _CONTINUOUS_HEX_PATTERN.search(name):
+        markers.append("32-char hex string in server name (UUID without dashes)")
+
+    if _DOCKER_HEX_PATTERN.match(name):
+        markers.append("Docker-default hex hostname")
+
+    if _CONTAINER_PATTERN.match(name):
+        markers.append("Container-prefixed hostname")
+
+    if _TIMESTAMP_PATTERN.match(name):
+        markers.append("Timestamp-like server name")
+
+    return markers
+
+
+def _check_version_markers(version: str) -> list[str]:
+    """Check server version string for ephemeral deployment markers.
+
+    Looks for auto-generated versions (0.0.0, 0.0.1), dev pre-release
+    suffixes, SNAPSHOT builds, alpha-zero, and canary tags.
+
+    Args:
+        version: Server version string to check.
+
+    Returns:
+        List of marker descriptions found. Empty if none.
+    """
+    markers: list[str] = []
+    version_lower = version.lower()
+
+    if version in _EPHEMERAL_VERSIONS:
+        markers.append(f"Auto-generated version: {version}")
+
+    if re.match(r"^0\.\d+\.\d+-dev$", version_lower):
+        markers.append(f"Dev pre-release version: {version}")
+
+    if "snapshot" in version_lower:
+        markers.append(f"Snapshot version: {version}")
+
+    if "alpha0" in version_lower:
+        markers.append(f"Alpha-zero version: {version}")
+
+    if "canary" in version_lower:
+        markers.append(f"Canary version: {version}")
+
+    return markers
+
+
 def _has_ephemeral_markers(name: str, version: str) -> list[str]:
     """Check for ephemeral deployment markers in server name and version.
 
@@ -283,47 +347,10 @@ def _has_ephemeral_markers(name: str, version: str) -> list[str]:
         >>> _has_ephemeral_markers("abc123def456ab", "0.0.0")
         ['Docker-default hex hostname', 'Auto-generated version: 0.0.0']
     """
-    markers: list[str] = []
+    markers: list[str] = _check_name_markers(name)
 
-    # UUID in name
-    if _UUID_PATTERN.search(name):
-        markers.append("UUID in server name")
-    elif _CONTINUOUS_HEX_PATTERN.search(name):
-        markers.append("32-char hex string in server name (UUID without dashes)")
-
-    # Docker-default hex hostname
-    if _DOCKER_HEX_PATTERN.match(name):
-        markers.append("Docker-default hex hostname")
-
-    # Container-* pattern
-    if _CONTAINER_PATTERN.match(name):
-        markers.append("Container-prefixed hostname")
-
-    # Timestamp-like name (10+ digits)
-    if _TIMESTAMP_PATTERN.match(name):
-        markers.append("Timestamp-like server name")
-
-    # Version checks
     if version:
-        version_lower = version.lower()
-
-        # Exact ephemeral versions
-        if version in _EPHEMERAL_VERSIONS:
-            markers.append(f"Auto-generated version: {version}")
-
-        # 0.x.y-dev pattern
-        if re.match(r"^0\.\d+\.\d+-dev$", version_lower):
-            markers.append(f"Dev pre-release version: {version}")
-
-        # SNAPSHOT versions
-        if "snapshot" in version_lower:
-            markers.append(f"Snapshot version: {version}")
-
-        # alpha0 / canary
-        if "alpha0" in version_lower:
-            markers.append(f"Alpha-zero version: {version}")
-        if "canary" in version_lower:
-            markers.append(f"Canary version: {version}")
+        markers.extend(_check_version_markers(version))
 
     return markers
 

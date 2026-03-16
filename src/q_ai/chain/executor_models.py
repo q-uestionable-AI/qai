@@ -121,9 +121,9 @@ class TargetConfig:
         inject = raw.get("inject", {}) or {}
 
         if not isinstance(audit, dict):
-            raise ValueError(f"'audit' section must be a mapping, got {type(audit).__name__}")
+            raise ValueError(f"'audit' section must be a mapping, got {type(audit).__name__}")  # noqa: TRY004
         if not isinstance(inject, dict):
-            raise ValueError(f"'inject' section must be a mapping, got {type(inject).__name__}")
+            raise ValueError(f"'inject' section must be a mapping, got {type(inject).__name__}")  # noqa: TRY004
 
         raw_command = audit.get("command")
         if isinstance(raw_command, str):

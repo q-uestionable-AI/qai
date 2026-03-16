@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -233,6 +234,81 @@ def _run_live(
         console.print(f"\n[dim]Report written to: {out_path}[/dim]")
 
 
+def _render_step_output(
+    step_output: Any,
+    chain_step: Any,
+    index: int,
+    total_steps: int,
+) -> None:
+    """Render a single step's execution result to the console.
+
+    Prints step header, technique, trust boundary, templated inputs,
+    status with detail, error, artifacts, and duration.
+
+    Args:
+        step_output: The StepOutput for this step.
+        chain_step: The corresponding ChainStep definition, or None.
+        index: 1-based step index.
+        total_steps: Total number of steps executed.
+    """
+    step_name = chain_step.name if chain_step else step_output.step_id
+    status_str = "[green]SUCCESS[/green]" if step_output.success else "[red]FAILED[/red]"
+
+    status_detail = _build_status_detail(step_output)
+
+    console.print(
+        f"Step {index}/{total_steps}: [cyan][{step_output.module}][/cyan] "
+        f"{step_output.step_id} \u2014 {step_name}"
+    )
+    console.print(f"  Technique: {step_output.technique}")
+
+    if chain_step and chain_step.trust_boundary:
+        console.print(f"  Trust boundary: {chain_step.trust_boundary}")
+
+    if chain_step and chain_step.inputs:
+        for key, val in chain_step.inputs.items():
+            if str(val).startswith("$"):
+                console.print(f"  Input: {key}={val}")
+
+    console.print(f"  Status: {status_str}{status_detail}")
+
+    if step_output.error:
+        console.print(f"  Error: [red]{step_output.error}[/red]")
+
+    if step_output.artifacts:
+        artifact_parts = ", ".join(f"{k}={v}" for k, v in step_output.artifacts.items())
+        console.print(f"  [dim]Artifacts: {artifact_parts}[/dim]")
+
+    if step_output.started_at and step_output.finished_at:
+        duration = (step_output.finished_at - step_output.started_at).total_seconds()
+        console.print(f"  [dim]Duration: {duration:.1f}s[/dim]")
+
+    console.print()
+
+
+def _build_status_detail(step_output: Any) -> str:
+    """Build a parenthetical status detail string for a step output.
+
+    Returns a string like " (3 findings)" for audit steps or
+    " (full_compliance)" for inject steps on success, or empty string.
+
+    Args:
+        step_output: The StepOutput to inspect.
+
+    Returns:
+        Status detail suffix string (may be empty).
+    """
+    if not step_output.success:
+        return ""
+    if step_output.module == "audit":
+        count = step_output.artifacts.get("finding_count", "0")
+        return f" ({count} findings)"
+    if step_output.module == "inject":
+        outcome = step_output.artifacts.get("best_outcome", "")
+        return f" ({outcome})" if outcome else ""
+    return ""
+
+
 def _print_live_summary(chain: ChainDefinition, result: ChainResult) -> None:
     """Render step-by-step live execution results to the console."""
     total_steps = len(result.step_outputs)
@@ -240,51 +316,7 @@ def _print_live_summary(chain: ChainDefinition, result: ChainResult) -> None:
 
     for i, step_output in enumerate(result.step_outputs, 1):
         chain_step = step_map.get(step_output.step_id)
-        step_name = chain_step.name if chain_step else step_output.step_id
-
-        status_str = "[green]SUCCESS[/green]" if step_output.success else "[red]FAILED[/red]"
-
-        # Build status detail
-        status_detail = ""
-        if step_output.success and step_output.module == "audit":
-            count = step_output.artifacts.get("finding_count", "0")
-            status_detail = f" ({count} findings)"
-        elif step_output.success and step_output.module == "inject":
-            outcome = step_output.artifacts.get("best_outcome", "")
-            status_detail = f" ({outcome})" if outcome else ""
-
-        console.print(
-            f"Step {i}/{total_steps}: [cyan][{step_output.module}][/cyan] "
-            f"{step_output.step_id} \u2014 {step_name}"
-        )
-        console.print(f"  Technique: {step_output.technique}")
-
-        # Show trust boundary if present
-        if chain_step and chain_step.trust_boundary:
-            console.print(f"  Trust boundary: {chain_step.trust_boundary}")
-
-        # Show templated inputs (references to prior artifacts) if any
-        if chain_step and chain_step.inputs:
-            for key, val in chain_step.inputs.items():
-                if str(val).startswith("$"):
-                    console.print(f"  Input: {key}={val}")
-
-        console.print(f"  Status: {status_str}{status_detail}")
-
-        if step_output.error:
-            console.print(f"  Error: [red]{step_output.error}[/red]")
-
-        # Show artifacts
-        if step_output.artifacts:
-            artifact_parts = ", ".join(f"{k}={v}" for k, v in step_output.artifacts.items())
-            console.print(f"  [dim]Artifacts: {artifact_parts}[/dim]")
-
-        # Show duration
-        if step_output.started_at and step_output.finished_at:
-            duration = (step_output.finished_at - step_output.started_at).total_seconds()
-            console.print(f"  [dim]Duration: {duration:.1f}s[/dim]")
-
-        console.print()
+        _render_step_output(step_output, chain_step, i, total_steps)
 
     # Summary
     if result.trust_boundaries_crossed:

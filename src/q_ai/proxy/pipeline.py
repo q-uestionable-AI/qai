@@ -105,6 +105,26 @@ async def run_pipeline(
             logger.debug("Pipeline forward loop exited: %s", exc)
 
 
+def _correlate_message(
+    session_message: SessionMessage,
+    proxy_msg: ProxyMessage,
+    correlation_map: dict[str | int, str],
+) -> None:
+    """Update correlation map linking JSON-RPC requests to their responses.
+
+    Args:
+        session_message: The raw SDK message.
+        proxy_msg: The wrapped proxy message.
+        correlation_map: Shared JSON-RPC id to ProxyMessage.id mapping.
+    """
+    if is_request(session_message.message) and proxy_msg.jsonrpc_id is not None:
+        correlation_map[proxy_msg.jsonrpc_id] = proxy_msg.id
+    elif is_response(session_message.message) and proxy_msg.jsonrpc_id is not None:
+        correlated = correlation_map.pop(proxy_msg.jsonrpc_id, None)
+        if correlated is not None:
+            proxy_msg.correlated_id = correlated
+
+
 async def _forward_loop(
     source: TransportAdapter,
     destination: TransportAdapter,
@@ -127,13 +147,7 @@ async def _forward_loop(
         session_message = await source.read()
         proxy_msg = _wrap_message(session_message, direction, session.transport, seq)
 
-        # Correlate responses to requests
-        if is_request(session_message.message) and proxy_msg.jsonrpc_id is not None:
-            correlation_map[proxy_msg.jsonrpc_id] = proxy_msg.id
-        elif is_response(session_message.message) and proxy_msg.jsonrpc_id is not None:
-            correlated = correlation_map.pop(proxy_msg.jsonrpc_id, None)
-            if correlated is not None:
-                proxy_msg.correlated_id = correlated
+        _correlate_message(session_message, proxy_msg, correlation_map)
 
         # Capture
         session.session_store.append(proxy_msg)

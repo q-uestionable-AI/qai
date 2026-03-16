@@ -167,14 +167,13 @@ class WorkflowRunner:
             The child run_id.
         """
         with get_connection(self._db_path) as conn:
-            child_id = create_run(
+            return create_run(
                 conn,
                 module=module,
                 name=name,
                 parent_run_id=self._run_id,
                 config=config,
             )
-        return child_id
 
     async def update_child_status(self, run_id: str, status: RunStatus) -> None:
         """Update a child run's status and emit run_status event.

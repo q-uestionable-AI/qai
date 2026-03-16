@@ -15,6 +15,70 @@ from typing import Any
 _REPO_URL = "https://github.com/q-uestionable-AI/qai"
 
 
+def _extract_enriched_data(
+    step: dict[str, Any],
+    step_id: str,
+    data_reached: list[dict[str, str]],
+) -> None:
+    """Extract data_reached entries from enriched step fields.
+
+    Checks total_findings, outcome, and payload_name fields on the step
+    dict and appends corresponding entries to data_reached.
+
+    Args:
+        step: A single step dict from the chain result.
+        step_id: The identifier for this step.
+        data_reached: Accumulator list to append entries to.
+    """
+    data_reached.extend(
+        {
+            "type": field,
+            "value": str(step[field]),
+            "source_step": step_id,
+        }
+        for field in ("total_findings", "outcome", "payload_name")
+        if step.get(field)
+    )
+
+
+def _collect_system_touched(
+    module: str,
+    step_id: str,
+    target_config: dict[str, Any],
+    seen_transports: set[str],
+    systems_touched: list[dict[str, str]],
+) -> None:
+    """Record a system-touched entry if the transport key is new.
+
+    Derives transport from target_config based on the step module and
+    appends to systems_touched when the transport key has not been seen.
+
+    Args:
+        module: The module name (e.g. 'audit', 'inject').
+        step_id: The identifier for this step.
+        target_config: Target configuration dict from the chain result.
+        seen_transports: Set of already-recorded transport keys (mutated in place).
+        systems_touched: Accumulator list to append entries to.
+    """
+    transport_key = f"{module}:{step_id}"
+    if transport_key in seen_transports:
+        return
+
+    seen_transports.add(transport_key)
+    transport = ""
+    if module == "audit":
+        transport = target_config.get("audit_transport", "") or ""
+    elif module == "inject":
+        transport = target_config.get("inject_model", "") or ""
+    entry: dict[str, str] = {
+        "step": step_id,
+        "module": module,
+    }
+    if transport:
+        entry["transport"] = transport
+    systems_touched.append(entry)
+
+
 def analyze_blast_radius(result: dict[str, Any]) -> dict[str, Any]:
     """Analyze the blast radius from a completed chain execution.
 
@@ -39,22 +103,17 @@ def analyze_blast_radius(result: dict[str, Any]) -> dict[str, Any]:
     data_reached: list[dict[str, str]] = []
     attack_path: list[dict[str, Any]] = []
     systems_touched: list[dict[str, str]] = []
-
-    # Track which transports we've already recorded
     seen_transports: set[str] = set()
 
     for step in steps_to_analyze:
         step_id = step.get("step_id") or step.get("id", "")
         module = step.get("module", "unknown")
         technique = step.get("technique", "")
-        # Default success=True for tracer steps (trace_chain follows success path)
         success = step.get("success", True)
 
-        # For tracer steps, infer success from status if present
         if "status" in step:
             success = step.get("status") == "success"
 
-        # Build attack path entry
         attack_path.append(
             {
                 "step": step_id,
@@ -76,48 +135,8 @@ def analyze_blast_radius(result: dict[str, Any]) -> dict[str, Any]:
                     }
                 )
 
-        # Extract from enriched fields (total_findings, outcome, payload_name)
-        if step.get("total_findings"):
-            data_reached.append(
-                {
-                    "type": "total_findings",
-                    "value": str(step["total_findings"]),
-                    "source_step": step_id,
-                }
-            )
-        if step.get("outcome"):
-            data_reached.append(
-                {
-                    "type": "outcome",
-                    "value": str(step["outcome"]),
-                    "source_step": step_id,
-                }
-            )
-        if step.get("payload_name"):
-            data_reached.append(
-                {
-                    "type": "payload_name",
-                    "value": str(step["payload_name"]),
-                    "source_step": step_id,
-                }
-            )
-
-        # Systems touched — derive from target_config per step module
-        transport_key = f"{module}:{step_id}"
-        if transport_key not in seen_transports:
-            seen_transports.add(transport_key)
-            transport = ""
-            if module == "audit":
-                transport = target_config.get("audit_transport", "") or ""
-            elif module == "inject":
-                transport = target_config.get("inject_model", "") or ""
-            entry: dict[str, str] = {
-                "step": step_id,
-                "module": module,
-            }
-            if transport:
-                entry["transport"] = transport
-            systems_touched.append(entry)
+        _extract_enriched_data(step, step_id, data_reached)
+        _collect_system_touched(module, step_id, target_config, seen_transports, systems_touched)
 
     steps_succeeded = sum(1 for s in attack_path if s["success"])
     steps_failed = len(attack_path) - steps_succeeded
@@ -296,15 +315,14 @@ def _data_reached_section(data_reached: list[dict[str, str]]) -> str:
             '<h2 class="section-title">Data Reached</h2>\n'
             '<p class="empty-note">No data artifacts collected.</p>'
         )
-    rows: list[str] = []
-    for item in data_reached:
-        rows.append(
-            "<tr>"
-            f"<td>{_esc(item.get('type', ''))}</td>"
-            f"<td>{_esc(item.get('value', ''))}</td>"
-            f"<td>{_esc(item.get('source_step', ''))}</td>"
-            "</tr>"
-        )
+    rows: list[str] = [
+        "<tr>"
+        f"<td>{_esc(item.get('type', ''))}</td>"
+        f"<td>{_esc(item.get('value', ''))}</td>"
+        f"<td>{_esc(item.get('source_step', ''))}</td>"
+        "</tr>"
+        for item in data_reached
+    ]
     return (
         '<h2 class="section-title">Data Reached</h2>\n'
         '<table class="findings-table">'
@@ -323,15 +341,14 @@ def _systems_touched_section(systems: list[dict[str, str]]) -> str:
             '<h2 class="section-title">Systems Touched</h2>\n'
             '<p class="empty-note">No systems recorded.</p>'
         )
-    rows: list[str] = []
-    for sys in systems:
-        rows.append(
-            "<tr>"
-            f"<td>{_esc(sys.get('step', ''))}</td>"
-            f"<td>{_esc(sys.get('module', ''))}</td>"
-            f"<td>{_esc(sys.get('transport', 'N/A'))}</td>"
-            "</tr>"
-        )
+    rows: list[str] = [
+        "<tr>"
+        f"<td>{_esc(sys.get('step', ''))}</td>"
+        f"<td>{_esc(sys.get('module', ''))}</td>"
+        f"<td>{_esc(sys.get('transport', 'N/A'))}</td>"
+        "</tr>"
+        for sys in systems
+    ]
     return (
         '<h2 class="section-title">Systems Touched</h2>\n'
         '<table class="findings-table">'

@@ -87,14 +87,15 @@ def _extract_url_components(url: str) -> dict[str, Any]:
         port = parsed.port
         if port is None:
             port = 443 if parsed.scheme == "https" else 80
+    except Exception:
+        return {}
+    else:
         return {
             "scheme": parsed.scheme,
             "hostname": parsed.hostname or "",
             "port": port,
             "is_tls": parsed.scheme == "https",
         }
-    except Exception:
-        return {}
 
 
 class AuthScanner(BaseScanner):

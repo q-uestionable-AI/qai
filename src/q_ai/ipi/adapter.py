@@ -54,6 +54,75 @@ class IPIAdapter:
         self._runner = runner
         self._config = config
 
+    async def _fail_run(self, child_id: str, message: str) -> None:
+        """Mark a child run as failed and raise a descriptive error.
+
+        Args:
+            child_id: The child run identifier to mark as failed.
+            message: Error message for the ValueError.
+
+        Raises:
+            ValueError: Always raised with the provided message.
+        """
+        await self._runner.update_child_status(child_id, RunStatus.FAILED)
+        raise ValueError(message)
+
+    async def _resolve_config(
+        self, child_id: str
+    ) -> tuple[Format, list[Technique], PayloadStyle, PayloadType, str, str, Path]:
+        """Resolve and validate configuration enums for a run.
+
+        Args:
+            child_id: The child run identifier (for failure reporting).
+
+        Returns:
+            Tuple of (format_name, techniques, payload_style, payload_type,
+            base_name, callback_url, output_dir).
+
+        Raises:
+            ValueError: If any configuration value is invalid.
+        """
+        try:
+            format_name = Format(self._config["format"])
+        except ValueError:
+            await self._fail_run(child_id, f"Invalid IPI format: {self._config['format']!r}")
+
+        raw_techniques = self._config.get("techniques")
+        if raw_techniques is not None:
+            try:
+                techniques = [Technique(t) for t in raw_techniques]
+            except ValueError as exc:
+                await self._fail_run(child_id, f"Invalid IPI technique: {exc}")
+        else:
+            techniques = get_techniques_for_format(format_name)
+
+        if not techniques:
+            await self._fail_run(
+                child_id, f"No techniques resolved for format {format_name.value!r}"
+            )
+
+        payload_style_str = self._config.get("payload_style", "obvious")
+        payload_type_str = self._config.get("payload_type", "callback")
+        try:
+            payload_style = PayloadStyle(payload_style_str)
+            payload_type = PayloadType(payload_type_str)
+        except ValueError as exc:
+            await self._fail_run(child_id, f"Invalid IPI payload_style or payload_type: {exc}")
+
+        base_name = self._config.get("base_name", "report")
+        callback_url = self._config["callback_url"]
+        output_dir = Path(self._config["output_dir"])
+
+        return (
+            format_name,
+            techniques,
+            payload_style,
+            payload_type,
+            base_name,
+            callback_url,
+            output_dir,
+        )
+
     async def run(self) -> IPIAdapterResult:
         """Execute IPI payload generation within the orchestrator lifecycle.
 
@@ -69,39 +138,15 @@ class IPIAdapter:
         try:
             await self._runner.emit_progress(child_id, "Generating IPI payloads...")
 
-            # Resolve enums from config strings
-            try:
-                format_name = Format(self._config["format"])
-            except ValueError:
-                await self._runner.update_child_status(child_id, RunStatus.FAILED)
-                raise ValueError(f"Invalid IPI format: {self._config['format']!r}") from None
-
-            raw_techniques = self._config.get("techniques")
-            if raw_techniques is not None:
-                try:
-                    techniques = [Technique(t) for t in raw_techniques]
-                except ValueError as exc:
-                    await self._runner.update_child_status(child_id, RunStatus.FAILED)
-                    raise ValueError(f"Invalid IPI technique: {exc}") from None
-            else:
-                techniques = get_techniques_for_format(format_name)
-
-            if not techniques:
-                await self._runner.update_child_status(child_id, RunStatus.FAILED)
-                raise ValueError(f"No techniques resolved for format {format_name.value!r}")
-
-            payload_style_str = self._config.get("payload_style", "obvious")
-            payload_type_str = self._config.get("payload_type", "callback")
-            try:
-                payload_style = PayloadStyle(payload_style_str)
-                payload_type = PayloadType(payload_type_str)
-            except ValueError as exc:
-                await self._runner.update_child_status(child_id, RunStatus.FAILED)
-                raise ValueError(f"Invalid IPI payload_style or payload_type: {exc}") from None
-
-            base_name = self._config.get("base_name", "report")
-            callback_url = self._config["callback_url"]
-            output_dir = Path(self._config["output_dir"])
+            (
+                format_name,
+                techniques,
+                payload_style,
+                payload_type,
+                base_name,
+                callback_url,
+                output_dir,
+            ) = await self._resolve_config(child_id)
 
             generate_result = await asyncio.to_thread(
                 generate_documents,

@@ -160,13 +160,13 @@ def matrix_to_markdown(matrix: dict) -> str:
         "|-----------|-----------|--------|-----------|-------|--------|",
     ]
 
-    for entry in matrix["matrix"]:
-        for result in entry["results"]:
-            lines.append(
-                f"| {entry['technique_id']} | {entry['objective']} | {entry['format']}"
-                f" | {result['assistant']} | {result['model']}"
-                f" | {result['validation_result']} |"
-            )
+    lines.extend(
+        f"| {entry['technique_id']} | {entry['objective']} | {entry['format']}"
+        f" | {result['assistant']} | {result['model']}"
+        f" | {result['validation_result']} |"
+        for entry in matrix["matrix"]
+        for result in entry["results"]
+    )
 
     if not matrix["matrix"]:
         lines.append("| (no results) | | | | | |")

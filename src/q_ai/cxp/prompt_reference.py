@@ -32,8 +32,7 @@ def generate_prompt_reference(rules: list[Rule]) -> str:
     lines.append("")
     lines.append("## Inserted Rules")
     lines.append("")
-    for rule in rules:
-        lines.append(f"- **{rule.id}**: {rule.name}")
+    lines.extend(f"- **{rule.id}**: {rule.name}" for rule in rules)
     lines.append("")
 
     # Build prompt → rule-IDs mapping for deduplication.
@@ -69,8 +68,7 @@ def generate_prompt_reference(rules: list[Rule]) -> str:
         if rule_prompts:
             lines.append(f"### {rule.id}")
             lines.append("")
-            for prompt in rule_prompts:
-                lines.append(f"- {prompt}")
+            lines.extend(f"- {prompt}" for prompt in rule_prompts)
             lines.append("")
 
     lines.append("## Test Protocol")

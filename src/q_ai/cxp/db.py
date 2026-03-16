@@ -106,16 +106,15 @@ def list_campaigns(conn: sqlite3.Connection) -> list[Campaign]:
         "SELECT id, name, config, started_at FROM runs WHERE module = 'cxp' "
         "ORDER BY started_at DESC"
     )
-    campaigns: list[Campaign] = []
-    for row in cursor.fetchall():
-        campaigns.append(
-            Campaign(
-                id=row["id"],
-                name=row["name"] or "",
-                created=datetime.fromisoformat(row["started_at"]),
-                description=row["config"] or "",
-            )
+    campaigns: list[Campaign] = [
+        Campaign(
+            id=row["id"],
+            name=row["name"] or "",
+            created=datetime.fromisoformat(row["started_at"]),
+            description=row["config"] or "",
         )
+        for row in cursor.fetchall()
+    ]
     return campaigns
 
 

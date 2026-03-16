@@ -16,7 +16,7 @@ from q_ai.cxp.models import Rule
 
 _USER_RULES_DIR = Path.home() / ".qai" / "cxp" / "rules"
 
-_catalog: list[Rule] | None = None
+_cache: dict[str, list[Rule]] = {}
 
 
 def _parse_rule(data: dict) -> Rule:
@@ -86,13 +86,12 @@ def load_catalog() -> list[Rule]:
     Returns:
         List of all rules, built-in first then user-added.
     """
-    global _catalog
-    if _catalog is not None:
-        return _catalog
+    if "catalog" in _cache:
+        return _cache["catalog"]
     merged: dict[str, Rule] = _load_builtin_rules()
     merged.update(_load_user_rules())
-    _catalog = list(merged.values())
-    return _catalog
+    _cache["catalog"] = list(merged.values())
+    return _cache["catalog"]
 
 
 def _invalidate_cache() -> None:
@@ -101,8 +100,7 @@ def _invalidate_cache() -> None:
     Intended for test use only — forces the next ``load_catalog()`` call
     to re-read from disk.
     """
-    global _catalog
-    _catalog = None
+    _cache.clear()
 
 
 def get_rule(rule_id: str) -> Rule | None:

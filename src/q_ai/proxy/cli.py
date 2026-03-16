@@ -15,6 +15,7 @@ from q_ai.mcp.models import Transport
 
 if TYPE_CHECKING:
     from q_ai.proxy.replay import ReplayResult, ReplaySessionResult
+    from q_ai.proxy.session_store import SessionStore
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -77,39 +78,24 @@ def start(
     tui_app.run()
 
 
-@app.command()
-def replay(
-    session_file: str = typer.Option(
-        ...,
-        help="Path to a saved session file.",
-    ),
-    target_command: str | None = typer.Option(
-        None,
-        help="Server command for replay (stdio).",
-    ),
-    target_url: str | None = typer.Option(
-        None,
-        help="Server URL for replay (SSE/HTTP, future).",
-    ),
-    output: str | None = typer.Option(
-        None,
-        help="Save replay results to JSON.",
-    ),
-    timeout: float = typer.Option(
-        10.0,
-        help="Per-message response timeout (seconds).",
-    ),
-    no_handshake: bool = typer.Option(
-        False,
-        "--no-handshake",
-        help="Skip auto-handshake (if session already includes initialize).",
-    ),
-) -> None:
-    """Replay a saved session against a live server."""
-    import asyncio
-    import shlex
+def _validate_and_load_session(
+    session_file: str,
+    target_command: str | None,
+    target_url: str | None,
+) -> tuple[Path, SessionStore, list]:
+    """Validate replay inputs and load the session from disk.
 
-    from q_ai.mcp.models import Direction
+    Args:
+        session_file: Path to the session file.
+        target_command: Server command for replay (stdio).
+        target_url: Server URL for replay (SSE/HTTP).
+
+    Returns:
+        A tuple of (session_path, session_store, messages).
+
+    Raises:
+        typer.Exit: If validation fails or the session cannot be loaded.
+    """
     from q_ai.proxy.session_store import SessionStore
 
     if not target_command and not target_url:
@@ -128,32 +114,51 @@ def replay(
         raise typer.Exit(code=1) from exc
 
     messages = store.get_messages()
-    c2s_messages = [m for m in messages if m.direction == Direction.CLIENT_TO_SERVER]
+    return session_path, store, messages
 
-    if not c2s_messages:
-        typer.echo("No client-to-server messages to replay.")
-        return
 
-    target_display = target_command or target_url or "unknown"
-    typer.echo(f'Replaying {len(c2s_messages)} messages against "{target_display}"...')
+def _execute_replay(
+    store: SessionStore,
+    messages: list,
+    target_command: str | None,
+    target_url: str | None,
+    timeout: float,
+    auto_handshake: bool,
+) -> ReplaySessionResult:
+    """Run the replay against the target server.
+
+    Args:
+        store: The loaded session store.
+        messages: List of proxy messages to replay.
+        target_command: Server command for stdio replay.
+        target_url: Server URL for HTTP replay.
+        timeout: Per-message response timeout in seconds.
+        auto_handshake: Whether to send a synthetic handshake.
+
+    Returns:
+        A ReplaySessionResult with results for each replayed message.
+
+    Raises:
+        typer.Exit: If the replay fails to start or is interrupted.
+    """
+    import asyncio
+    import shlex
 
     try:
         if target_command:
             parts = shlex.split(target_command)
             command = parts[0]
             args = parts[1:]
-            session_result = asyncio.run(
-                _run_replay(command, args, messages, timeout, not no_handshake)
-            )
-        elif target_url:
-            # Determine transport from session metadata or URL convention
+            return asyncio.run(_run_replay(command, args, messages, timeout, auto_handshake))
+
+        if target_url:
             transport_str = store.to_proxy_session().transport.value
-            session_result = asyncio.run(
-                _run_replay_http(target_url, transport_str, messages, timeout, not no_handshake)
+            return asyncio.run(
+                _run_replay_http(target_url, transport_str, messages, timeout, auto_handshake)
             )
-        else:
-            typer.echo("Error: Either --target-command or --target-url is required.", err=True)
-            raise typer.Exit(code=1)
+
+        typer.echo("Error: Either --target-command or --target-url is required.", err=True)
+        raise typer.Exit(code=1)
     except (OSError, FileNotFoundError) as exc:
         typer.echo(f"Error: Failed to start server: {exc}", err=True)
         raise typer.Exit(code=1) from exc
@@ -161,6 +166,19 @@ def replay(
         typer.echo("\nReplay interrupted.")
         raise typer.Exit(code=130) from None
 
+
+def _display_replay_results(
+    session_result: ReplaySessionResult,
+    output: str | None,
+    target_command: str | None,
+) -> None:
+    """Print replay results to the console and optionally save to JSON.
+
+    Args:
+        session_result: The replay session result to display.
+        output: Optional file path for JSON output.
+        target_command: The server command used for replay.
+    """
     succeeded = 0
     failed = 0
     for i, r in enumerate(session_result.results):
@@ -193,6 +211,56 @@ def replay(
         output_path = Path(output)
         _save_replay_results(session_result, output_path, target_command)
         typer.echo(f"Results saved to {output_path}")
+
+
+@app.command()
+def replay(
+    session_file: str = typer.Option(
+        ...,
+        help="Path to a saved session file.",
+    ),
+    target_command: str | None = typer.Option(
+        None,
+        help="Server command for replay (stdio).",
+    ),
+    target_url: str | None = typer.Option(
+        None,
+        help="Server URL for replay (SSE/HTTP, future).",
+    ),
+    output: str | None = typer.Option(
+        None,
+        help="Save replay results to JSON.",
+    ),
+    timeout: float = typer.Option(
+        10.0,
+        help="Per-message response timeout (seconds).",
+    ),
+    no_handshake: bool = typer.Option(
+        False,
+        "--no-handshake",
+        help="Skip auto-handshake (if session already includes initialize).",
+    ),
+) -> None:
+    """Replay a saved session against a live server."""
+    from q_ai.mcp.models import Direction
+
+    _session_path, store, messages = _validate_and_load_session(
+        session_file, target_command, target_url
+    )
+    c2s_messages = [m for m in messages if m.direction == Direction.CLIENT_TO_SERVER]
+
+    if not c2s_messages:
+        typer.echo("No client-to-server messages to replay.")
+        return
+
+    target_display = target_command or target_url or "unknown"
+    typer.echo(f'Replaying {len(c2s_messages)} messages against "{target_display}"...')
+
+    session_result = _execute_replay(
+        store, messages, target_command, target_url, timeout, not no_handshake
+    )
+
+    _display_replay_results(session_result, output, target_command)
 
 
 def _save_replay_results(

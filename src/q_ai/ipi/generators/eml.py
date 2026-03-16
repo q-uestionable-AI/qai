@@ -275,7 +275,7 @@ def create_eml(
 
     # Save EML file
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "wb") as f:
+    with output_path.open("wb") as f:
         f.write(msg.as_bytes())
 
     return Campaign(

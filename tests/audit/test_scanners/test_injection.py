@@ -42,7 +42,10 @@ class MockCallToolResult:
     """Simulates MCP CallToolResult."""
 
     content: list[Any] = field(default_factory=list)
-    isError: bool = False
+    is_error: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "isError", self.is_error)
 
 
 class MockSession:
@@ -74,7 +77,7 @@ class MockSession:
             if t_name == tool_name and substr in args_str:
                 return MockCallToolResult(
                     content=[MockTextContent(text=err_text)],
-                    isError=True,
+                    is_error=True,
                 )
 
         # Check normal responses
