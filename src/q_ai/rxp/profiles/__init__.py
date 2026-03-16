@@ -21,7 +21,7 @@ def _load_profile(profile_dir: Path) -> DomainProfile:
         Loaded DomainProfile instance.
     """
     yaml_path = profile_dir / "profile.yaml"
-    with open(yaml_path, encoding="utf-8") as f:
+    with yaml_path.open(encoding="utf-8") as f:
         data = yaml.safe_load(f)
     return DomainProfile(
         id=data["id"],
@@ -34,10 +34,11 @@ def _load_profile(profile_dir: Path) -> DomainProfile:
 
 def list_profiles() -> list[DomainProfile]:
     """Return all built-in domain profiles."""
-    profiles: list[DomainProfile] = []
-    for child in sorted(_PROFILES_DIR.iterdir()):
-        if child.is_dir() and (child / "profile.yaml").exists():
-            profiles.append(_load_profile(child))
+    profiles: list[DomainProfile] = [
+        _load_profile(child)
+        for child in sorted(_PROFILES_DIR.iterdir())
+        if child.is_dir() and (child / "profile.yaml").exists()
+    ]
     return profiles
 
 

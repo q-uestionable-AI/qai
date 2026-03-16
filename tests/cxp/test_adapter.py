@@ -168,10 +168,11 @@ class TestCXPAdapter:
             captured_rules.extend(rules)
             return build_result
 
+        rule_map = {"rule-a": rule1, "rule-b": rule2}
         with (
             patch(
                 "q_ai.cxp.adapter.get_rule",
-                side_effect=lambda rid: {"rule-a": rule1, "rule-b": rule2}.get(rid),
+                side_effect=rule_map.get,
             ),
             patch("q_ai.cxp.adapter.build", side_effect=capture_build),
             patch("q_ai.cxp.adapter.persist_build"),

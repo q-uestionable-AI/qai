@@ -123,8 +123,7 @@ def _sigma_rule_for_audit_step(
         "  condition: selection",
         "tags:",
     ]
-    for tag in mitre["tags"]:
-        lines.append(f"  - {tag}")
+    lines.extend(f"  - {tag}" for tag in mitre["tags"])
     lines.extend(
         [
             "fields:",
@@ -182,8 +181,7 @@ def _sigma_rule_for_inject_step(
         "  condition: selection",
         "tags:",
     ]
-    for tag in mitre["tags"]:
-        lines.append(f"  - {tag}")
+    lines.extend(f"  - {tag}" for tag in mitre["tags"])
     lines.extend(
         [
             "fields:",

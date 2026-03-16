@@ -172,5 +172,4 @@ def strip_markers(content: str) -> str:
     """
     result = _ANY_MARKER.sub("", content)
     # Clean up triple+ blank lines left by marker removal.
-    result = re.sub(r"\n{3,}", "\n\n", result)
-    return result
+    return re.sub(r"\n{3,}", "\n\n", result)

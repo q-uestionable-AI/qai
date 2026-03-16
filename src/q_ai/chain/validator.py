@@ -265,21 +265,18 @@ def _check_reachability(chain: ChainDefinition, valid_step_ids: set[str]) -> lis
         if node in visited:
             continue
         visited.add(node)
-        for neighbor in adjacency.get(node, []):
-            if neighbor not in visited:
-                queue.append(neighbor)
+        queue.extend(neighbor for neighbor in adjacency.get(node, []) if neighbor not in visited)
 
     unreachable = valid_step_ids - visited
-    errors: list[ValidationError] = []
-    for step_id in sorted(unreachable):
-        errors.append(
-            ValidationError(
-                step_id=step_id,
-                field="reachability",
-                message=(
-                    f"Step '{step_id}' is unreachable from the first step "
-                    f"'{start}' via on_success/on_failure paths."
-                ),
-            )
+    errors: list[ValidationError] = [
+        ValidationError(
+            step_id=step_id,
+            field="reachability",
+            message=(
+                f"Step '{step_id}' is unreachable from the first step "
+                f"'{start}' via on_success/on_failure paths."
+            ),
         )
+        for step_id in sorted(unreachable)
+    ]
     return errors

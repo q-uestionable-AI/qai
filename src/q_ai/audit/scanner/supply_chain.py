@@ -656,7 +656,7 @@ class SupplyChainScanner(BaseScanner):
                         },
                     )
                 )
-            # else: not affected — no finding
+            # Server version not in affected range
 
         return findings
 

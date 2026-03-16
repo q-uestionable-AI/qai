@@ -46,7 +46,7 @@ class MockAdapter:
         """Return next message, or raise when None (signals close)."""
         item = await self.read_queue.get()
         if item is None:
-            raise Exception("Connection closed")
+            raise ConnectionError("Connection closed")
         return item
 
     async def write(self, message: SessionMessage) -> None:
@@ -224,7 +224,7 @@ class TestProxyMessageWrapping:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Correlation
+# Tests - Correlation
 # ---------------------------------------------------------------------------
 
 
@@ -382,7 +382,7 @@ class TestInterceptModify:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Callbacks
+# Tests - Callbacks
 # ---------------------------------------------------------------------------
 
 
@@ -397,7 +397,7 @@ class TestCallbacks:
         server.enqueue()
 
         received: list[ProxyMessage] = []
-        session = _make_pipeline_session(on_message=lambda m: received.append(m))
+        session = _make_pipeline_session(on_message=received.append)
         await run_pipeline(client, server, session)
 
         assert len(received) >= 1
@@ -411,7 +411,7 @@ class TestCallbacks:
         server.enqueue()
 
         forwarded: list[ProxyMessage] = []
-        session = _make_pipeline_session(on_forwarded=lambda m: forwarded.append(m))
+        session = _make_pipeline_session(on_forwarded=forwarded.append)
         await run_pipeline(client, server, session)
 
         assert len(forwarded) >= 1

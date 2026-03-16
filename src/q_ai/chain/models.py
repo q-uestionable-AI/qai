@@ -219,19 +219,18 @@ class ChainResult:
                 step_dicts.append(str(s))
 
         # Backward-compatible serialization of tracer steps.
-        tracer_steps = []
-        for step in self.steps:
-            tracer_steps.append(
-                {
-                    "id": step.id,
-                    "name": step.name,
-                    "module": step.module,
-                    "technique": step.technique,
-                    "status": str(step.status),
-                    "trust_boundary": step.trust_boundary,
-                    "terminal": step.terminal,
-                }
-            )
+        tracer_steps = [
+            {
+                "id": step.id,
+                "name": step.name,
+                "module": step.module,
+                "technique": step.technique,
+                "status": str(step.status),
+                "trust_boundary": step.trust_boundary,
+                "terminal": step.terminal,
+            }
+            for step in self.steps
+        ]
 
         result: dict[str, Any] = {
             "prompt": self._build_interpret_prompt(),

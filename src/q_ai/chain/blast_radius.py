@@ -296,15 +296,14 @@ def _data_reached_section(data_reached: list[dict[str, str]]) -> str:
             '<h2 class="section-title">Data Reached</h2>\n'
             '<p class="empty-note">No data artifacts collected.</p>'
         )
-    rows: list[str] = []
-    for item in data_reached:
-        rows.append(
-            "<tr>"
-            f"<td>{_esc(item.get('type', ''))}</td>"
-            f"<td>{_esc(item.get('value', ''))}</td>"
-            f"<td>{_esc(item.get('source_step', ''))}</td>"
-            "</tr>"
-        )
+    rows: list[str] = [
+        "<tr>"
+        f"<td>{_esc(item.get('type', ''))}</td>"
+        f"<td>{_esc(item.get('value', ''))}</td>"
+        f"<td>{_esc(item.get('source_step', ''))}</td>"
+        "</tr>"
+        for item in data_reached
+    ]
     return (
         '<h2 class="section-title">Data Reached</h2>\n'
         '<table class="findings-table">'
@@ -323,15 +322,14 @@ def _systems_touched_section(systems: list[dict[str, str]]) -> str:
             '<h2 class="section-title">Systems Touched</h2>\n'
             '<p class="empty-note">No systems recorded.</p>'
         )
-    rows: list[str] = []
-    for sys in systems:
-        rows.append(
-            "<tr>"
-            f"<td>{_esc(sys.get('step', ''))}</td>"
-            f"<td>{_esc(sys.get('module', ''))}</td>"
-            f"<td>{_esc(sys.get('transport', 'N/A'))}</td>"
-            "</tr>"
-        )
+    rows: list[str] = [
+        "<tr>"
+        f"<td>{_esc(sys.get('step', ''))}</td>"
+        f"<td>{_esc(sys.get('module', ''))}</td>"
+        f"<td>{_esc(sys.get('transport', 'N/A'))}</td>"
+        "</tr>"
+        for sys in systems
+    ]
     return (
         '<h2 class="section-title">Systems Touched</h2>\n'
         '<table class="findings-table">'

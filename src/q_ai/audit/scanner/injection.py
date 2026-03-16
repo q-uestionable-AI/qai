@@ -137,10 +137,9 @@ def _extract_text(result: Any) -> str:
     if result is None:
         return ""
 
-    parts: list[str] = []
-    for block in getattr(result, "content", []):
-        if hasattr(block, "text"):
-            parts.append(block.text)
+    parts: list[str] = [
+        block.text for block in getattr(result, "content", []) if hasattr(block, "text")
+    ]
     return "\n".join(parts)
 
 

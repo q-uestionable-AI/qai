@@ -209,7 +209,7 @@ def generate_documents(
     """
     # Sanitize base_name to prevent path traversal
     base_name = Path(base_name).name
-    if not base_name or base_name == "." or base_name == "..":
+    if not base_name or base_name in {".", ".."}:
         raise ValueError("Invalid base filename")
 
     result = GenerateResult()

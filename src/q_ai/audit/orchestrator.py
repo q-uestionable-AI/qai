@@ -91,7 +91,7 @@ async def run_scan(
                 scanners.append(get_scanner(name))
             except KeyError as exc:
                 result.errors.append({"scanner": name, "error": str(exc)})
-                logger.error("Scanner not found: %s", name)
+                logger.exception("Scanner not found: %s", name)
     else:
         scanners = get_all_scanners()
 

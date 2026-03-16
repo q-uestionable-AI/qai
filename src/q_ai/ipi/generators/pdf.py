@@ -183,7 +183,7 @@ def _add_javascript(output_path: Path, payload: str) -> None:
     js_code = f'var hiddenData = "{escaped_payload}";'
     writer.add_js(js_code)
 
-    with open(output_path, "wb") as f:
+    with output_path.open("wb") as f:
         writer.write(f)
 
 
@@ -205,7 +205,7 @@ def _add_embedded_file(output_path: Path, payload: str) -> None:
     payload_bytes = payload.encode("utf-8")
     writer.add_attachment("data.txt", payload_bytes)
 
-    with open(output_path, "wb") as f:
+    with output_path.open("wb") as f:
         writer.write(f)
 
 
@@ -229,7 +229,7 @@ def _add_incremental_update(output_path: Path, payload: str) -> None:
         }
     )
 
-    with open(output_path, "ab") as f:  # Append mode for incremental
+    with output_path.open("ab") as f:  # Append mode for incremental
         writer.write(f)
 
 

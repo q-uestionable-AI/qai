@@ -35,7 +35,7 @@ def load_config(config_path: Path | None = None) -> dict:
     path = config_path or _DEFAULT_CONFIG_PATH
     if not path.exists():
         return {}
-    with open(path) as f:
+    with path.open() as f:
         data = yaml.safe_load(f)
     return data or {}
 
@@ -190,8 +190,8 @@ def resolve(
     # Check config file
     config = load_config(config_path)
     # Walk nested keys
-    # e.g. "audit.default_transport" ->
-    #      config["audit"]["default_transport"]
+    # Walk nested keys, e.g. "audit.default_transport" resolves
+    # through config -> audit -> default_transport
     parts = key.split(".")
     current: object = config
     for part in parts:
@@ -258,7 +258,7 @@ def import_legacy_credentials(config_path: Path | None = None) -> list[tuple[str
 
         # Write cleaned config
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
+        with path.open("w") as f:
             yaml.safe_dump(config, f, default_flow_style=False)
         if sys.platform != "win32":
             path.chmod(0o600)

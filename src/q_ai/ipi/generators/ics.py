@@ -265,7 +265,7 @@ def create_ics(
 
     # Save calendar file
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "wb") as f:
+    with output_path.open("wb") as f:
         f.write(cal.to_ical())
 
     return Campaign(

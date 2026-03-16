@@ -129,10 +129,9 @@ def _extract_text(result: Any) -> str:
     """
     if result is None:
         return ""
-    parts: list[str] = []
-    for block in getattr(result, "content", []):
-        if hasattr(block, "text"):
-            parts.append(block.text)
+    parts: list[str] = [
+        block.text for block in getattr(result, "content", []) if hasattr(block, "text")
+    ]
     return "\n".join(parts)
 
 
@@ -228,11 +227,10 @@ def _find_cross_tool_references(
     Returns:
         List of other tool names referenced in the response.
     """
-    referenced: list[str] = []
     text_lower = text.lower()
-    for name in all_tool_names:
-        if name != current_tool and name.lower() in text_lower:
-            referenced.append(name)
+    referenced: list[str] = [
+        name for name in all_tool_names if name != current_tool and name.lower() in text_lower
+    ]
     return referenced
 
 
@@ -348,40 +346,37 @@ class PromptInjectionScanner(BaseScanner):
         Returns:
             List of Findings for each injection pattern detected.
         """
-        findings: list[ScanFinding] = []
         patterns = _find_injection_patterns(response)
 
-        for match in patterns:
-            findings.append(
-                ScanFinding(
-                    rule_id="QAI-PINJ-001",
-                    category=self.category,
-                    title=f"Injection pattern in '{tool_name}' response",
-                    description=(
-                        f"Tool '{tool_name}' returned a response containing "
-                        f"a prompt injection pattern: {match['pattern_desc']}. "
-                        f"Matched text: '{match['matched_text']}'. When the "
-                        f"calling LLM agent processes this response, the "
-                        f"embedded instructions could override its behavior."
-                    ),
-                    severity=Severity.CRITICAL,
-                    evidence=(
-                        f"Pattern '{match['pattern_desc']}' matched: '{match['matched_text']}'"
-                    ),
-                    remediation=(
-                        "Sanitize tool responses before returning them to the "
-                        "agent. Strip instruction-like content, XML tags that "
-                        "could be interpreted as directives, and override "
-                        "language. Consider response content filtering at the "
-                        "MCP client level."
-                    ),
-                    tool_name=tool_name,
-                    metadata={
-                        "pattern": match["pattern_desc"],
-                        "matched_text": match["matched_text"],
-                    },
-                )
+        findings: list[ScanFinding] = [
+            ScanFinding(
+                rule_id="QAI-PINJ-001",
+                category=self.category,
+                title=f"Injection pattern in '{tool_name}' response",
+                description=(
+                    f"Tool '{tool_name}' returned a response containing "
+                    f"a prompt injection pattern: {match['pattern_desc']}. "
+                    f"Matched text: '{match['matched_text']}'. When the "
+                    f"calling LLM agent processes this response, the "
+                    f"embedded instructions could override its behavior."
+                ),
+                severity=Severity.CRITICAL,
+                evidence=(f"Pattern '{match['pattern_desc']}' matched: '{match['matched_text']}'"),
+                remediation=(
+                    "Sanitize tool responses before returning them to the "
+                    "agent. Strip instruction-like content, XML tags that "
+                    "could be interpreted as directives, and override "
+                    "language. Consider response content filtering at the "
+                    "MCP client level."
+                ),
+                tool_name=tool_name,
+                metadata={
+                    "pattern": match["pattern_desc"],
+                    "matched_text": match["matched_text"],
+                },
             )
+            for match in patterns
+        ]
 
         return findings
 
@@ -444,33 +439,32 @@ class PromptInjectionScanner(BaseScanner):
             List of Findings for each suspicious URL found.
         """
         urls = _find_suspicious_urls(response)
-        findings: list[ScanFinding] = []
 
-        for url in urls:
-            findings.append(
-                ScanFinding(
-                    rule_id="QAI-PINJ-003",
-                    category=self.category,
-                    title=f"Suspicious URL in '{tool_name}' response",
-                    description=(
-                        f"Tool '{tool_name}' returned a response containing "
-                        f"the URL '{url}'. URLs in tool responses can serve "
-                        f"as exfiltration targets when combined with "
-                        f"injection directives — the agent may be instructed "
-                        f"to send user data to this endpoint."
-                    ),
-                    severity=Severity.HIGH,
-                    evidence=f"URL found: {url}",
-                    remediation=(
-                        "Validate and allowlist URLs in tool responses. "
-                        "Block or flag responses containing URLs to external "
-                        "domains that are not part of the tool's expected "
-                        "behavior."
-                    ),
-                    tool_name=tool_name,
-                    metadata={"url": url},
-                )
+        findings: list[ScanFinding] = [
+            ScanFinding(
+                rule_id="QAI-PINJ-003",
+                category=self.category,
+                title=f"Suspicious URL in '{tool_name}' response",
+                description=(
+                    f"Tool '{tool_name}' returned a response containing "
+                    f"the URL '{url}'. URLs in tool responses can serve "
+                    f"as exfiltration targets when combined with "
+                    f"injection directives — the agent may be instructed "
+                    f"to send user data to this endpoint."
+                ),
+                severity=Severity.HIGH,
+                evidence=f"URL found: {url}",
+                remediation=(
+                    "Validate and allowlist URLs in tool responses. "
+                    "Block or flag responses containing URLs to external "
+                    "domains that are not part of the tool's expected "
+                    "behavior."
+                ),
+                tool_name=tool_name,
+                metadata={"url": url},
             )
+            for url in urls
+        ]
 
         return findings
 
