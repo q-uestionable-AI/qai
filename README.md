@@ -39,7 +39,7 @@ uv sync --group dev
 
 ---
 
-Full documentation at [docs.q-uestionable.ai](https://docs.q-uestionable.ai).
+Full documentation at [docs.q-uestionable.ai](https://docs.q-uestionable.ai)
 
 ---
 
@@ -53,4 +53,4 @@ All tools are intended for authorized security testing only. Only test systems y
 
 ## AI Disclosure
 
-This project uses a human-led, AI-augmented workflow. See [AI-STATEMENT.md](AI-STATEMENT.md).
+This project uses a human-led, AI-augmented workflow. See [AI-STATEMENT.md](AI-STATEMENT.md)
