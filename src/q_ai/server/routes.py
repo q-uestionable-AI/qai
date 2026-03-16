@@ -1214,7 +1214,6 @@ async def launch_workflow(request: Request) -> JSONResponse:
             output_dir.mkdir(parents=True, exist_ok=True)
         except OSError:
             logger.exception("Failed to create output directory for %s", workflow_id)
-            await runner.fail()
             return JSONResponse(
                 status_code=500,
                 content={"detail": "Failed to prepare export output directory"},
