@@ -136,10 +136,24 @@ def _register_executors() -> None:
     isolated from the top-level namespace.
     """
     from q_ai.orchestrator.workflows.assess import assess_mcp_server
+    from q_ai.orchestrator.workflows.blast_radius import measure_blast_radius
+    from q_ai.orchestrator.workflows.test_assistant import test_coding_assistant
+    from q_ai.orchestrator.workflows.test_docs import test_document_ingestion
+    from q_ai.orchestrator.workflows.trace_path import trace_attack_path
 
     _assess = WORKFLOWS.get("assess")
     if _assess is not None:
         _assess.executor = assess_mcp_server
+
+    for wf_id, executor in [
+        ("test_docs", test_document_ingestion),
+        ("test_assistant", test_coding_assistant),
+        ("trace_path", trace_attack_path),
+        ("blast_radius", measure_blast_radius),
+    ]:
+        entry = WORKFLOWS.get(wf_id)
+        if entry is not None:
+            entry.executor = executor
 
 
 _register_executors()

@@ -36,8 +36,9 @@ class TestRegistry:
 
     def test_unimplemented_workflows_have_none_executor(self) -> None:
         """Unimplemented workflows have executor=None."""
+        implemented = {"assess", "test_docs", "test_assistant", "trace_path", "blast_radius"}
         for wf in list_workflows():
-            if wf.id == "assess":
+            if wf.id in implemented:
                 continue
             assert wf.executor is None, f"{wf.id} should have executor=None"
 
@@ -46,6 +47,13 @@ class TestRegistry:
         wf = get_workflow("assess")
         assert wf is not None
         assert wf.executor is not None
+
+    def test_phase7_workflows_have_executors(self) -> None:
+        """All four Phase 7 workflow executors are wired."""
+        for wf_id in ("test_docs", "test_assistant", "trace_path", "blast_radius"):
+            entry = get_workflow(wf_id)
+            assert entry is not None
+            assert entry.executor is not None, f"Executor not wired for {wf_id}"
 
     def test_register_workflow_overwrites(self) -> None:
         """Registering a workflow with an existing ID overwrites it."""
