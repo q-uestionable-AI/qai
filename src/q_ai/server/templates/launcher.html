@@ -2,32 +2,103 @@
 {% block title %}q-ai — Launcher{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto px-6 py-12 launcher-centered">
-    <div class="text-center mb-10">
-        <h1 class="text-3xl font-bold mb-2">What do you want to test?</h1>
-        <p class="text-base-content/50">
-            Select a workflow to begin. Each combines multiple modules into a guided assessment.
+<style>
+    .wf-card {
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(139, 92, 246, 0.2);
+        border-left: 2px solid #06b6d4;
+        border-radius: 0.5rem;
+        box-shadow: 0 0 16px rgba(139, 92, 246, 0.08);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        cursor: pointer;
+    }
+    .wf-card:hover {
+        border-color: rgba(139, 92, 246, 0.4);
+        border-left-color: #22d3ee;
+        box-shadow: 0 0 24px rgba(139, 92, 246, 0.15), 0 0 40px rgba(6, 182, 212, 0.08);
+    }
+    .wf-card.wf-disabled {
+        opacity: 0.4;
+        cursor: default;
+    }
+    .wf-card.wf-disabled:hover {
+        border-color: rgba(139, 92, 246, 0.2);
+        border-left-color: #06b6d4;
+        box-shadow: 0 0 16px rgba(139, 92, 246, 0.08);
+    }
+    .wf-modules {
+        font-family: 'Fira Code', ui-monospace, monospace;
+        font-size: 0.75rem;
+        color: #06b6d4;
+    }
+    .launcher-modal .modal-box {
+        background: #1e293b;
+        border: 1px solid rgba(139, 92, 246, 0.25);
+        box-shadow: 0 0 30px rgba(139, 92, 246, 0.1);
+    }
+    .launcher-modal .modal-box h3 {
+        color: #f1f5f9;
+    }
+    .launcher-modal label span,
+    .launcher-modal .label-text {
+        font-family: 'Fira Code', ui-monospace, monospace;
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+    .launcher-modal input[type="text"],
+    .launcher-modal input[type="number"],
+    .launcher-modal select {
+        background: rgba(255,255,255,0.04);
+        border-color: rgba(139, 92, 246, 0.2);
+        color: #f1f5f9;
+    }
+    .launcher-modal input[type="text"]:focus,
+    .launcher-modal input[type="number"]:focus,
+    .launcher-modal select:focus {
+        border-color: #06b6d4;
+        box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2);
+        outline: none;
+    }
+    .launcher-modal .btn-launch {
+        background: #06b6d4;
+        color: #0f172a;
+        border: none;
+        font-weight: 600;
+    }
+    .launcher-modal .btn-launch:hover {
+        background: #22d3ee;
+    }
+    .launcher-modal .btn-cancel {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #94a3b8;
+    }
+    .launcher-modal .btn-cancel:hover {
+        background: rgba(255,255,255,0.08);
+        color: #f1f5f9;
+    }
+</style>
+
+<div class="max-w-5xl mx-auto px-6 py-12">
+    <div class="mb-10">
+        <h1 class="text-2xl font-semibold mb-1" style="color: #f1f5f9;">Select a workflow</h1>
+        <p class="text-sm" style="color: #94a3b8;">
+            Each workflow combines multiple modules into a guided security assessment.
         </p>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         {% for wf in workflows %}
-        <div class="card workflow-card cursor-pointer"
-             onclick="openWorkflowModal('{{ wf.id }}')">
-            <div class="card-body p-6">
-                <h3 class="card-title text-base">{{ wf.name }}</h3>
-                <p class="text-sm text-base-content/60 mb-3">{{ wf.description }}</p>
-                <div class="flex flex-wrap gap-1.5">
-                    {% for mod in wf.modules %}
-                    <span class="badge badge-sm badge-outline badge-secondary font-semibold uppercase tracking-wider text-[0.65rem] module-pill">
-                        {{ mod }}
-                    </span>
-                    {% endfor %}
-                </div>
+        <div class="wf-card {% if not wf.implemented %}wf-disabled{% endif %} p-5"
+             {% if wf.implemented %}onclick="openWorkflowModal('{{ wf.id }}')"{% endif %}>
+            <h3 class="text-base font-semibold mb-1" style="color: #f1f5f9;">{{ wf.name }}</h3>
+            <p class="text-sm mb-3" style="color: #94a3b8;">{{ wf.description }}</p>
+            <div class="wf-modules">
+                {{ wf.modules | join(' &middot; ') }}
             </div>
         </div>
 
-        <dialog id="modal-{{ wf.id }}" class="modal">
+        <dialog id="modal-{{ wf.id }}" class="modal launcher-modal">
             <div class="modal-box">
                 {% if wf.implemented %}
                 <h3 class="text-lg font-bold mb-4">{{ wf.name }}</h3>
@@ -291,20 +362,20 @@
                     <div id="error-{{ wf.id }}" class="text-error text-sm hidden"></div>
 
                     <div class="modal-action">
-                        <button type="submit" class="btn btn-primary btn-sm">Launch</button>
-                        <button type="button" class="btn btn-sm"
+                        <button type="submit" class="btn btn-sm btn-launch">Launch</button>
+                        <button type="button" class="btn btn-sm btn-cancel"
                                 onclick="document.getElementById('modal-{{ wf.id }}').close()">Cancel</button>
                     </div>
                 </form>
                 {% endif %}
                 {% else %}
-                <h3 class="text-lg font-bold">Coming Soon</h3>
-                <p class="py-4 text-base-content/70">
+                <h3 class="text-lg font-bold" style="color: #f1f5f9;">Coming Soon</h3>
+                <p class="py-4" style="color: #94a3b8;">
                     This workflow is not yet implemented.
                 </p>
                 <div class="modal-action">
                     <form method="dialog">
-                        <button class="btn btn-primary btn-sm">Close</button>
+                        <button class="btn btn-sm btn-cancel">Close</button>
                     </form>
                 </div>
                 {% endif %}
