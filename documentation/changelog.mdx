@@ -3,6 +3,29 @@ title: Changelog
 description: Release history for the q-ai platform
 ---
 
+## v0.3.0
+
+Workflow-aware launch system with per-workflow forms and executor implementations.
+
+- Four new workflow executors: Test Document Ingestion, Test a Coding Assistant, Trace an Attack Path, Measure Blast Radius
+- Per-workflow launcher forms in the web UI with workflow-specific field sets
+- `requires_provider` metadata on `WorkflowEntry` — launcher and API gate provider credential validation per workflow; IPI, CXP, and chain analysis workflows do not require a configured provider
+- Chain template and recent execution API routes to populate launcher dropdowns
+- Target creation moved after config builder validation to prevent orphan rows on failed launches
+- Artifact output directory computed and persisted in run config before runner start
+- Input validation hardening: `rounds` type and bounds (1–10), `api_chain_templates` surfaces loader failures as 500 instead of silent empty response, `output_dir` creation failures handled cleanly
+- CodeQL findings resolved: explicit `permissions: contents: read` on CI and release workflow jobs, exception details no longer leaked in provider connectivity check responses
+
+## v0.2.0
+
+Full platform expansion with all seven modules, orchestration layer, and web UI.
+
+- All seven modules ported to unified platform: audit, proxy, inject, chain, ipi, cxp, rxp
+- Shared orchestration layer: WorkflowRunner, workflow registry, background task execution
+- Web UI: workflow launcher, operations view with live WebSocket updates, research workspace
+- Multi-provider LLM support via litellm (100+ providers) with OS keyring credential storage
+- Mintlify documentation live at docs.q-uestionable.ai
+
 ## v0.1.0
 
 Initial release of the unified q-ai platform.
