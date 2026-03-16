@@ -1,14 +1,14 @@
 # {q-AI}
 
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![CI](https://github.com/q-uestionable-AI/qai/actions/workflows/ci.yml/badge.svg)](https://github.com/q-uestionable-AI/qai/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![Docs](https://img.shields.io/badge/docs-q--uestionable.ai-8b5cf6)](https://docs.q-uestionable.ai)
 
-**Unified offensive security platform for agentic AI infrastructure.**
+**Offensive security platform for agentic AI infrastructure.**
 
-Seven research modules in one package: audit MCP servers, intercept agent traffic, test tool poisoning and prompt injection, execute multi-step attack chains, generate IPI payloads, poison coding assistant context files, and measure RAG retrieval rank. A local web UI orchestrates multi-module workflows. All findings write to a shared SQLite database.
+Audit MCP servers, intercept agent traffic, test tool poisoning and prompt injection, execute multi-step attack chains, generate IPI payloads, poison coding assistant context files, and measure RAG retrieval rank. A local web UI orchestrates multi-module workflows. All findings write to a shared SQLite database.
 
 > Research program by [Richard Spicer](https://richardspicer.io) · [{q-AI}](https://q-uestionable.ai)
 
