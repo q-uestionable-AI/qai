@@ -87,6 +87,16 @@ class TestResearchAPIRoutes:
         resp = client.get("/api/targets")
         assert "No targets" in resp.text
 
+    def test_api_targets_list_returns_200(self, client: TestClient) -> None:
+        resp = client.get("/api/targets/list")
+        assert resp.status_code == 200
+
+    def test_api_targets_list_response_schema(self, client: TestClient) -> None:
+        resp = client.get("/api/targets/list")
+        data = resp.json()
+        assert "targets" in data
+        assert isinstance(data["targets"], list)
+
     def test_api_runs_with_invalid_filter_ignored(self, client: TestClient) -> None:
         resp = client.get("/api/runs?status=invalid")
         assert resp.status_code == 200
