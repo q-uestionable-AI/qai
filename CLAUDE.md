@@ -73,6 +73,19 @@
   <rule>Cross-platform: Windows + macOS + Linux — use pathlib, no platform-specific shell commands</rule>
 </coding_standards>
 
+<code_quality>
+  <rule>Functions: max 50 lines of logic (excluding docstring and type stubs). If longer, decompose.</rule>
+  <rule>One responsibility per function. If you need "and" to describe what it does, split it.</rule>
+  <rule>Guard clauses: return/raise early on error conditions. Do not nest the happy path inside conditionals.</rule>
+  <rule>No magic strings or numbers in logic. Define constants at module level or use enums.</rule>
+  <rule>SQL: Always use parameterized queries (? placeholders). Never interpolate values into SQL strings.</rule>
+  <rule>Empty collection guard: Before using a collection in SQL IN (...) or iteration, check if empty and handle the empty case explicitly.</rule>
+  <rule>Context managers: Use `with` for all file handles, DB connections, and anything requiring cleanup.</rule>
+  <rule>Don't suppress errors silently. If catching an exception to continue, log the exception or comment why.</rule>
+  <rule>Prefer composition over nesting. Max 3 levels of indentation inside a function body.</rule>
+  <rule>Explicit over implicit (PEP 20). If behavior depends on a default value, state the default in the call.</rule>
+</code_quality>
+
 <testing_protocols>
   <framework>pytest + pytest-asyncio (asyncio_mode = "auto") + pytest-timeout (30s)</framework>
   <execution>uv run pytest -q</execution>
