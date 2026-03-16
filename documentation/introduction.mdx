@@ -1,21 +1,21 @@
 ---
-title: Introduction
-description: Offensive security platform for agentic AI infrastructure
+title: "Introduction"
+description: "Offensive security platform for agentic AI infrastructure"
 ---
 
 Offensive security platform for AI agents and MCP infrastructure. Seven modules cover the full attack surface — from server scanning to document poisoning to retrieval manipulation.
 
 ## Modules
 
-| Module | What it does |
-|--------|-------------|
-| **audit** | Scans MCP servers for vulnerabilities, maps findings to the OWASP MCP Top 10, outputs SARIF |
-| **proxy** | Intercepts MCP traffic between client and server for inspection, modification, and replay |
-| **inject** | Tests AI agent susceptibility to tool poisoning and prompt injection using configurable payloads |
-| **chain** | Composes multi-step attack sequences across audit findings and inject techniques |
-| **ipi** | Generates adversarial documents with hidden instructions, tracks execution via authenticated callbacks |
-| **cxp** | Builds poisoned instruction files for coding assistants, validates whether models comply |
-| **rxp** | Measures whether adversarial documents win vector similarity battles in RAG retrieval layers |
+| Module     | What it does                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------ |
+| **audit**  | Scans MCP servers for vulnerabilities, maps findings to the OWASP MCP Top 10, outputs SARIF            |
+| **proxy**  | Intercepts MCP traffic between client and server for inspection, modification, and replay              |
+| **inject** | Tests AI agent susceptibility to tool poisoning and prompt injection using configurable payloads       |
+| **chain**  | Composes multi-step attack sequences across audit findings and inject techniques                       |
+| **ipi**    | Generates adversarial documents with hidden instructions, tracks execution via authenticated callbacks |
+| **cxp**    | Builds poisoned instruction files for coding assistants, validates whether models comply               |
+| **rxp**    | Measures whether adversarial documents win vector similarity battles in RAG retrieval layers           |
 
 ## Quick start
 
@@ -30,8 +30,4 @@ Or launch the web UI:
 qai
 ```
 
-## Links
-
 - [GitHub](https://github.com/q-uestionable-AI/qai)
-- [Blog](https://richardspicer.io/blog)
-- [Research](https://mlsecopslab.io/research)
