@@ -93,11 +93,9 @@
             <h3 class="text-base font-semibold mb-1" style="color: #f1f5f9;">{{ wf.name }}</h3>
             <p class="text-sm mb-3" style="color: #94a3b8;">{{ wf.description }}</p>
             <div class="wf-modules">
-                {% if wf.id != 'manage_research' %}
                 {% for mod in wf.modules %}
                 <span style="font-family: 'Fira Code', monospace; font-size: 0.7rem; color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 9999px; padding: 0.1rem 0.55rem; display: inline-block; margin-right: 0.25rem; margin-top: 0.25rem;">{{ mod }}</span>
                 {% endfor %}
-                {% endif %}
             </div>
         </div>
 
@@ -355,6 +353,35 @@
                         <span>No successful chain executions found. Run Trace an Attack Path first.</span>
                     </div>
 
+                    {% elif wf.id == 'generate_report' %}
+                    {# ---- GENERATE REPORT FORM ---- #}
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Target</span></label>
+                        <select name="target_id" class="select select-bordered select-sm w-full" required>
+                            <option value="">Select a target...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">From date (optional)</span></label>
+                        <input type="date" name="from_date"
+                               class="input input-bordered input-sm w-full" />
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">To date (optional)</span></label>
+                        <input type="date" name="to_date"
+                               class="input input-bordered input-sm w-full" />
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label cursor-pointer">
+                            <span class="label-text">Include evidence pack (ZIP)</span>
+                            <input type="checkbox" name="include_evidence_pack" value="true"
+                                   class="toggle toggle-sm" />
+                        </label>
+                    </div>
+
                     {% endif %}
 
                     <div id="error-{{ wf.id }}" class="text-error text-sm hidden"></div>
@@ -437,9 +464,32 @@ async function loadChainExecutions(wfId) {
     } catch (err) { /* silently fail */ }
 }
 
+async function loadTargets(wfId) {
+    var sel = document.querySelector('#modal-' + wfId + ' select[name="target_id"]');
+    if (!sel || sel.options.length > 1) return;
+    try {
+        var resp = await fetch('/api/targets/list');
+        var data = await resp.json();
+        data.targets.forEach(function(t) {
+            var opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.name + (t.uri ? ' (' + t.uri + ')' : '');
+            sel.appendChild(opt);
+        });
+        if (data.targets.length === 0) {
+            var opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = 'No targets found \u2014 run a workflow first';
+            opt.disabled = true;
+            sel.appendChild(opt);
+        }
+    } catch (err) { /* silently fail */ }
+}
+
 function openWorkflowModal(wfId) {
     if (wfId === 'trace_path') loadChainTemplates(wfId);
     if (wfId === 'blast_radius') loadChainExecutions(wfId);
+    if (wfId === 'generate_report') loadTargets(wfId);
     document.getElementById('modal-' + wfId).showModal();
 }
 

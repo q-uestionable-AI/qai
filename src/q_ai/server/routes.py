@@ -19,6 +19,7 @@ from q_ai.core.db import (
     get_connection,
     get_run,
     get_setting,
+    get_target,
     list_findings,
     list_runs,
     list_targets,
@@ -228,6 +229,21 @@ async def api_targets(request: Request) -> HTMLResponse:
     with get_connection(db_path) as conn:
         targets = list_targets(conn)
     return templates.TemplateResponse(request, "partials/targets_table.html", {"targets": targets})
+
+
+@router.get("/api/targets/list")
+async def api_targets_list(request: Request) -> JSONResponse:
+    """Return registered targets for launcher dropdowns."""
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        targets = list_targets(conn)
+    return JSONResponse(
+        content={
+            "targets": [
+                {"id": t.id, "name": t.name, "type": t.type, "uri": t.uri or ""} for t in targets
+            ]
+        }
+    )
 
 
 @router.get("/api/operations/status-bar")
@@ -1017,6 +1033,25 @@ def _build_blast_radius_config(
     }
 
 
+def _build_generate_report_config(
+    body: dict[str, Any], db_path: Path | None
+) -> dict[str, Any] | JSONResponse:
+    """Build config for the generate_report workflow."""
+    target_id = body.get("target_id", "").strip()
+    if not target_id:
+        return JSONResponse(status_code=422, content={"detail": "target_id is required"})
+    with get_connection(db_path) as conn:
+        target = get_target(conn, target_id)
+    if target is None:
+        return JSONResponse(status_code=422, content={"detail": "Target not found"})
+    return {
+        "target_id": target_id,
+        "from_date": body.get("from_date") or None,
+        "to_date": body.get("to_date") or None,
+        "include_evidence_pack": bool(body.get("include_evidence_pack", False)),
+    }
+
+
 async def _run_workflow(
     runner: WorkflowRunner,
     executor: Any,
@@ -1094,7 +1129,7 @@ async def launch_workflow(request: Request) -> JSONResponse:
 
     # --- Validate target_name early (but don't create row yet) ---
     target_name: str = ""
-    if workflow_id != "blast_radius":
+    if workflow_id not in ("blast_radius", "generate_report"):
         target_name = body.get("target_name", "").strip()
         if not target_name:
             return JSONResponse(
@@ -1109,6 +1144,7 @@ async def launch_workflow(request: Request) -> JSONResponse:
         "test_assistant": lambda: _build_test_assistant_config(body, ""),
         "trace_path": lambda: _build_trace_path_config(body, "", db_path),
         "blast_radius": lambda: _build_blast_radius_config(body, db_path),
+        "generate_report": lambda: _build_generate_report_config(body, db_path),
     }
     builder = builders.get(workflow_id)
     if builder is None:
@@ -1122,7 +1158,7 @@ async def launch_workflow(request: Request) -> JSONResponse:
     config: dict[str, Any] = result
 
     # --- Create target (only after builder succeeds, not for blast_radius) ---
-    if workflow_id != "blast_radius":
+    if workflow_id not in ("blast_radius", "generate_report"):
         with get_connection(db_path) as conn:
             target_id = create_target(conn, type="server", name=target_name)
         config["target_id"] = target_id
@@ -1149,6 +1185,19 @@ async def launch_workflow(request: Request) -> JSONResponse:
             return JSONResponse(
                 status_code=500,
                 content={"detail": "Failed to prepare artifact output directory"},
+            )
+        config["output_dir"] = str(output_dir)
+
+    if workflow_id == "generate_report":
+        output_dir = Path.home() / ".qai" / "exports" / "generate_report" / runner.run_id
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            logger.exception("Failed to create output directory for %s", workflow_id)
+            await runner.fail()
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Failed to prepare export output directory"},
             )
         config["output_dir"] = str(output_dir)
 
