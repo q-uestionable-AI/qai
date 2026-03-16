@@ -284,7 +284,7 @@ _POST_SAVE_DISPATCH: dict[Technique, Callable[[Path, str], None]] = {
     Technique.EMBEDDED_FILE: _add_embedded_file,
     Technique.INCREMENTAL: _add_incremental_update,
 }
-"""Maps post-save techniques to their file-modifying functions."""
+# Maps post-save techniques to their file-modifying functions.
 
 
 def create_pdf(
