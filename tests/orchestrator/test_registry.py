@@ -94,7 +94,7 @@ class TestRegistry:
             assert wf.optional_modules == [], f"{wf.id} should have empty optional_modules"
 
     def test_requires_provider_default_true(self) -> None:
-        """assess and trace_path require a provider; others do not."""
+        """assess, trace_path, and manage_research require a provider; others do not."""
         provider_required = {"assess", "trace_path", "manage_research"}
         for wf in list_workflows():
             if wf.id in provider_required:

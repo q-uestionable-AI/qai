@@ -774,7 +774,11 @@ async def api_chain_templates(request: Request) -> JSONResponse:
     try:
         chains = load_all_chains()
     except Exception:
-        return JSONResponse(content={"templates": []})
+        logger.exception("Failed to load chain templates")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to load chain templates"},
+        )
     templates = [{"id": c.id, "name": c.name, "category": c.category.value} for c in chains]
     return JSONResponse(content={"templates": templates})
 
@@ -844,6 +848,11 @@ def _build_assess_config(body: dict[str, Any], target_id: str) -> dict[str, Any]
         return JSONResponse(
             status_code=422,
             content={"detail": "rounds must be an integer"},
+        )
+    if not 1 <= rounds <= 10:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "rounds must be an integer between 1 and 10"},
         )
     rxp_enabled = bool(body.get("rxp_enabled", False))
     return {
@@ -1132,7 +1141,14 @@ async def launch_workflow(request: Request) -> JSONResponse:
     # --- Set output_dir from run_id BEFORE start() persists config ---
     if workflow_id in ("test_docs", "test_assistant"):
         output_dir = Path.home() / ".qai" / "artifacts" / workflow_id / runner.run_id
-        output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            logger.exception("Failed to create output directory for %s", workflow_id)
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Failed to prepare artifact output directory"},
+            )
         config["output_dir"] = str(output_dir)
 
     await runner.start()
