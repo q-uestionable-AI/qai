@@ -45,11 +45,12 @@
         font-size: 0.75rem;
         color: #94a3b8;
     }
-    .launcher-modal input[type="text"],
-    .launcher-modal input[type="number"],
     .launcher-modal select {
-        background: rgba(255,255,255,0.04);
-        border-color: rgba(139, 92, 246, 0.2);
+        background: #1e293b !important;
+        color: #f1f5f9 !important;
+    }
+    .launcher-modal select option {
+        background: #1e293b;
         color: #f1f5f9;
     }
     .launcher-modal input[type="text"]:focus,
@@ -82,9 +83,7 @@
 <div class="max-w-5xl mx-auto px-6 py-12">
     <div class="mb-10">
         <h1 class="text-2xl font-semibold mb-1" style="color: #f1f5f9;">Select a workflow</h1>
-        <p class="text-sm" style="color: #94a3b8;">
-            Each workflow combines multiple modules into a guided security assessment.
-        </p>
+
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -94,7 +93,11 @@
             <h3 class="text-base font-semibold mb-1" style="color: #f1f5f9;">{{ wf.name }}</h3>
             <p class="text-sm mb-3" style="color: #94a3b8;">{{ wf.description }}</p>
             <div class="wf-modules">
-                {{ wf.modules | join(' &middot; ') }}
+                {% if wf.id != 'manage_research' %}
+                {% for mod in wf.modules %}
+                <span style="font-family: 'Fira Code', monospace; font-size: 0.7rem; color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 9999px; padding: 0.1rem 0.55rem; display: inline-block; margin-right: 0.25rem; margin-top: 0.25rem;">{{ mod }}</span>
+                {% endfor %}
+                {% endif %}
             </div>
         </div>
 
@@ -103,14 +106,9 @@
                 {% if wf.implemented %}
                 <h3 class="text-lg font-bold mb-4">{{ wf.name }}</h3>
                 {% if wf.requires_provider and providers|length == 0 %}
-                <div class="alert alert-warning mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-5 w-5" fill="none" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                    </svg>
-                    <div>
-                        <p class="text-sm">This workflow requires an LLM provider.</p>
-                        <a href="/settings#providers" class="link link-primary text-sm">Configure one now</a>
-                    </div>
+                <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="mb-4">
+                    <p class="text-sm">This workflow requires an LLM provider.</p>
+                    <a href="/settings#providers" style="color: #06b6d4;" class="text-sm">Configure one now</a>
                 </div>
                 {% elif not wf.requires_provider or providers|length > 0 %}
                 <form id="form-{{ wf.id }}" class="space-y-4" onsubmit="return launchWorkflow(event, '{{ wf.id }}')">
@@ -225,9 +223,9 @@
                     </div>
 
                     {% if not rxp_available %}
-                    <div class="alert alert-warning text-sm mb-4">
+                    <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="text-sm mb-4">
                         <span>RXP pre-validation requires additional dependencies.</span>
-                        <code class="ml-2">pip install "q-uestionable-ai[rxp]"</code>
+                        <code style="color: #06b6d4;" class="ml-2">pip install "q-uestionable-ai[rxp]"</code>
                     </div>
                     {% endif %}
                     <div class="form-control">
@@ -353,7 +351,7 @@
                             <option value="">Select an execution...</option>
                         </select>
                     </div>
-                    <div id="blast-radius-gate-{{ wf.id }}" class="alert alert-warning text-sm hidden">
+                    <div id="blast-radius-gate-{{ wf.id }}" style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; color: #fbbf24; display: none;" class="text-sm">
                         <span>No successful chain executions found. Run Trace an Attack Path first.</span>
                     </div>
 
@@ -434,7 +432,7 @@ async function loadChainExecutions(wfId) {
         });
         if (data.executions.length === 0) {
             const gate = document.getElementById('blast-radius-gate-' + wfId);
-            if (gate) gate.classList.remove('hidden');
+            if (gate) gate.style.display = 'block';
         }
     } catch (err) { /* silently fail */ }
 }

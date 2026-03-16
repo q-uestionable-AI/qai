@@ -96,3 +96,33 @@ body {
     justify-content: center;
     min-height: calc(100vh - 64px);  /* full viewport minus navbar */
 }
+
+/* ── Alert warning override ────────────────────────────────────────── */
+.alert-warning,
+[data-theme="dark"] .alert-warning {
+    background: rgba(245, 158, 11, 0.1) !important;
+    border: 1px solid rgba(245, 158, 11, 0.35) !important;
+    color: #fbbf24 !important;
+}
+
+.alert-warning svg,
+[data-theme="dark"] .alert-warning svg {
+    color: #fbbf24 !important;
+    stroke: #fbbf24 !important;
+}
+
+.alert-warning a,
+[data-theme="dark"] .alert-warning a {
+    color: #06b6d4 !important;
+}
+
+/* ── Select option dark background fix ───────────────────── */
+select option {
+    background-color: #1e293b !important;
+    color: #f1f5f9 !important;
+}
+
+select {
+    background-color: rgba(255,255,255,0.04) !important;
+    color: #f1f5f9 !important;
+}
