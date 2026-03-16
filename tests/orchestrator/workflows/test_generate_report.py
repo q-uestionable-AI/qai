@@ -103,7 +103,7 @@ def _make_conn_with_data(
         cursor = MagicMock()
         q = query.strip().upper()
 
-        if "FROM RUNS WHERE TARGET_ID" in q and "MODULE = 'WORKFLOW'" in q:
+        if "JSON_EXTRACT" in q and "MODULE = 'WORKFLOW'" in q:
             rows = [_row(r) for r in parent_rows]
             cursor.fetchall.return_value = rows
         elif "FROM RUNS WHERE PARENT_RUN_ID" in q:
@@ -192,7 +192,7 @@ class TestGenerateReport:
         assert "_No data in scope._" in content
 
     async def test_runs_and_findings_in_report(self, tmp_path: Path) -> None:
-        """Runs and findings appear in the report."""
+        """Runs and findings appear in the report with workflow name."""
         runner = _make_runner()
         config = _base_config(tmp_path)
         target = _make_target()
@@ -200,9 +200,9 @@ class TestGenerateReport:
         parent_rows = [
             {
                 "id": "parent-1",
-                "module": "workflow",
+                "name": "assess",
                 "status": "COMPLETED",
-                "started_at": "2026-03-15T10:00:00",
+                "started_at": "2026-03-15T10:00:00.000000+00:00",
             }
         ]
         child_rows = [{"id": "child-1"}]
@@ -252,7 +252,9 @@ class TestGenerateReport:
 
         assert "Test finding" in content
         assert "Low finding" in content
-        assert "workflow" in content
+        # Runs Overview shows workflow name, not "workflow" module
+        assert "| assess |" in content
+        assert "| Workflow |" in content
         assert "Payloads generated: 5" in content
         assert "Callback hits: 3" in content
         assert "High-confidence hits: 1" in content
@@ -261,8 +263,28 @@ class TestGenerateReport:
         assert "HIGH: 1" in content
         assert "LOW: 1" in content
 
-    async def test_date_filter_excludes_out_of_range_runs(self, tmp_path: Path) -> None:
-        """Date filters are passed to the SQL query."""
+    async def test_run_query_uses_json_extract_for_target_id(self, tmp_path: Path) -> None:
+        """Run query uses json_extract on config, not target_id column."""
+        runner = _make_runner()
+        config = _base_config(tmp_path)
+        target = _make_target()
+
+        mock_ctx = _make_conn_with_data(parent_rows=[])
+
+        with (
+            patch(_GET_CONN_PATCH, return_value=mock_ctx),
+            patch(_GET_TARGET_PATCH, return_value=target),
+        ):
+            await generate_report(runner, config)
+
+        # Verify the SQL query uses json_extract
+        conn = mock_ctx.__enter__.return_value
+        calls = [str(c) for c in conn.execute.call_args_list]
+        json_calls = [c for c in calls if "json_extract" in c.lower()]
+        assert len(json_calls) > 0, "Should use json_extract to find target_id in config"
+
+    async def test_date_filter_uses_exclusive_upper_bound(self, tmp_path: Path) -> None:
+        """Date filter uses < next_day to include fractional seconds."""
         runner = _make_runner()
         config = _base_config(tmp_path)
         config["from_date"] = "2026-03-01"
@@ -279,11 +301,15 @@ class TestGenerateReport:
 
         runner.complete.assert_awaited_once_with(RunStatus.COMPLETED)
 
-        # Verify the SQL query included date filters
+        # Verify the SQL uses next-day exclusive bound (2026-03-16)
         conn = mock_ctx.__enter__.return_value
         calls = [str(c) for c in conn.execute.call_args_list]
-        date_calls = [c for c in calls if "2026-03-01" in c or "2026-03-15" in c]
-        assert len(date_calls) > 0, "Date filter should be applied in SQL query"
+        # Upper bound should be 2026-03-16 (next day), not 2026-03-15T23:59:59
+        upper_calls = [c for c in calls if "2026-03-16" in c]
+        assert len(upper_calls) > 0, "Should use next day as exclusive upper bound"
+        # Lower bound should include timezone suffix
+        lower_calls = [c for c in calls if "2026-03-01T00:00:00+00:00" in c]
+        assert len(lower_calls) > 0, "Lower bound should include +00:00 suffix"
 
         # Check report header shows date scope
         report_path = Path(config["output_dir"]) / "report.md"
@@ -307,9 +333,9 @@ class TestGenerateReport:
         parent_rows = [
             {
                 "id": "parent-1",
-                "module": "workflow",
+                "name": "assess",
                 "status": "COMPLETED",
-                "started_at": "2026-03-15T10:00:00",
+                "started_at": "2026-03-15T10:00:00.000000+00:00",
             }
         ]
         child_rows = [{"id": "child-1"}]
@@ -373,9 +399,9 @@ class TestGenerateReport:
         parent_rows = [
             {
                 "id": "parent-1",
-                "module": "workflow",
+                "name": "assess",
                 "status": "COMPLETED",
-                "started_at": "2026-03-15T10:00:00",
+                "started_at": "2026-03-15T10:00:00.000000+00:00",
             }
         ]
         child_rows = [{"id": "child-1"}]
@@ -433,9 +459,9 @@ class TestGenerateReport:
         parent_rows = [
             {
                 "id": "parent-1",
-                "module": "workflow",
+                "name": "assess",
                 "status": "COMPLETED",
-                "started_at": "2026-03-15T10:00:00",
+                "started_at": "2026-03-15T10:00:00.000000+00:00",
             }
         ]
         child_rows = [{"id": "child-1"}]
@@ -474,6 +500,72 @@ class TestGenerateReport:
         manifest = (Path(config["output_dir"]) / "manifest.md").read_text(encoding="utf-8")
         assert "skipped: path outside ~/.qai/" in manifest
 
+    async def test_evidence_path_prefix_bypass_blocked(self, tmp_path: Path) -> None:
+        """Paths like ~/.qai_backup/ must not pass the boundary check."""
+        runner = _make_runner()
+        config = _base_config(tmp_path)
+        config["include_evidence_pack"] = True
+        target = _make_target()
+
+        fake_home = tmp_path / "fakehome"
+        qai_dir = fake_home / ".qai"
+        qai_dir.mkdir(parents=True)
+
+        # Create a file in a prefix-similar directory (.qai_backup)
+        bypass_dir = fake_home / ".qai_backup"
+        bypass_dir.mkdir(parents=True)
+        bypass_file = bypass_dir / "stolen.txt"
+        bypass_file.write_text("should not be copied")
+
+        parent_rows = [
+            {
+                "id": "parent-1",
+                "name": "assess",
+                "status": "COMPLETED",
+                "started_at": "2026-03-15T10:00:00.000000+00:00",
+            }
+        ]
+        child_rows = [{"id": "child-1"}]
+
+        evidence_rows = [
+            {
+                "id": "ev-1",
+                "run_id": "child-1",
+                "type": "file",
+                "storage": "file",
+                "path": str(bypass_file),
+                "mime_type": "text/plain",
+                "hash": None,
+                "content": None,
+                "finding_id": None,
+                "created_at": "2026-03-15T10:00:00",
+            }
+        ]
+
+        mock_ctx = _make_conn_with_data(
+            parent_rows=parent_rows,
+            child_rows=child_rows,
+            evidence_rows=evidence_rows,
+        )
+
+        with (
+            patch(_GET_CONN_PATCH, return_value=mock_ctx),
+            patch(_GET_TARGET_PATCH, return_value=target),
+            patch(_LIST_FINDINGS_PATCH, return_value=[]),
+            patch("q_ai.orchestrator.workflows.generate_report.Path.home", return_value=fake_home),
+        ):
+            await generate_report(runner, config)
+
+        runner.complete.assert_awaited_once_with(RunStatus.COMPLETED)
+
+        manifest = (Path(config["output_dir"]) / "manifest.md").read_text(encoding="utf-8")
+        assert "skipped: path outside ~/.qai/" in manifest
+        # File must NOT have been copied
+        evidence_dir = Path(config["output_dir"]) / "evidence"
+        if evidence_dir.exists():
+            copied = list(evidence_dir.rglob("*"))
+            assert not any(f.is_file() for f in copied), "No files should be copied"
+
     async def test_filename_collision_uses_evidence_id_prefix(self, tmp_path: Path) -> None:
         """Multiple evidence files with same name use evidence_id prefix to avoid collision."""
         runner = _make_runner()
@@ -497,9 +589,9 @@ class TestGenerateReport:
         parent_rows = [
             {
                 "id": "parent-1",
-                "module": "workflow",
+                "name": "assess",
                 "status": "COMPLETED",
-                "started_at": "2026-03-15T10:00:00",
+                "started_at": "2026-03-15T10:00:00.000000+00:00",
             }
         ]
         child_rows = [{"id": "child-1"}]
