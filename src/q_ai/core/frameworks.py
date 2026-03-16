@@ -25,7 +25,7 @@ class FrameworkResolver:
 
             data_files = resources.files("q_ai.core.data")
             resource = data_files.joinpath("frameworks.yaml")
-            with Path(str(resource)).open() as f:
+            with resource.open() as f:
                 data: dict = yaml.safe_load(f)
         else:
             with yaml_path.open() as f:
