@@ -3,11 +3,94 @@ title: Workflow Launcher
 description: Guided workflow selection and configuration
 ---
 
-<Note>
-This section documents the q-ai web UI, which is under active development.
-Content will be added as the web UI stabilizes.
-</Note>
-
 ## Overview
 
-The launcher is the landing page of the web UI. It presents workflow cards — each representing a multi-module security assessment. Selecting a card opens a configuration dialog for target selection, transport type, and model choice before launching the workflow.
+The launcher is the landing page of the web UI. It presents six workflow cards — each representing a multi-module security assessment. Workflows that are not yet implemented are shown as disabled cards. Selecting an active workflow expands a per-workflow configuration form directly on the page.
+
+## Workflows
+
+| Workflow | Modules | Requires Provider |
+|---|---|---|
+| Assess an MCP Server | audit, proxy, inject | Yes |
+| Test Document Ingestion | ipi, rxp | No |
+| Test a Coding Assistant | cxp | No |
+| Trace an Attack Path | chain | Yes |
+| Measure Blast Radius | chain | No |
+| Manage Research | all modules | Yes |
+
+**Requires Provider** indicates whether the workflow needs a configured LLM provider credential before it can be launched. Workflows marked No operate entirely on local file generation, callback tracking, or database analysis — no LLM calls are made.
+
+## Provider gate
+
+Workflows that require a provider show their configuration form only when at least one provider is configured in Settings. If no provider is configured, the card displays a prompt to add one. Workflows that do not require a provider always show their form regardless of provider configuration.
+
+## Per-workflow forms
+
+### Assess an MCP Server
+
+Tests tool trust boundaries in an MCP server using the audit, proxy, and inject modules.
+
+
+| Field | Description |
+|---|---|
+| Target name | A label for this MCP server target, stored in the database |
+| Provider / Model | LLM provider and model in `provider/model` format (e.g. `anthropic/claude-opus-4-5`) |
+| Transport | `stdio`, `sse`, or `streamable-http` |
+| Command | Server launch command — required for stdio transport |
+| URL | Server endpoint — required for sse and streamable-http transports |
+| Rounds | Number of inject rounds to run (1–10) |
+| RXP pre-validation | Optional — run RXP retrieval validation before injection (requires `pip install "q-uestionable-ai[rxp]"`) |
+
+### Test Document Ingestion
+
+Generates IPI payloads embedded in documents and tracks execution via HTTP callbacks.
+
+| Field | Description |
+|---|---|
+| Target name | Label for this test target |
+| Callback URL | The URL your IPI listener is running on (e.g. `http://your-server:8080`) |
+| Format | Document format: PDF, DOCX, XLSX, PPTX, ICAL, or JPEG |
+| Payload style | How the injection instruction is hidden in the document |
+| Payload type | What the agent is instructed to do (callback, exfil, etc.) |
+| RXP pre-validation | Optional — validate retrieval before deployment |
+
+The callback URL defaults to the value configured in Settings → Defaults if set.
+
+### Test a Coding Assistant
+
+Poisons coding assistant instruction files and validates whether tainted output is produced.
+
+| Field | Description |
+|---|---|
+| Target name | Label for this test target |
+| Format / Rule set | CXP format and rule catalog selection |
+| Repo name | Optional — name for the generated test repository |
+
+### Trace an Attack Path
+
+Composes a multi-step attack chain across modules using a pre-defined chain template.
+
+| Field | Description |
+|---|---|
+| Target name | Label for this MCP server target |
+| Chain template | Select from available chain definitions |
+| Provider / Model | LLM provider and model |
+| Transport | `stdio`, `sse`, or `streamable-http` |
+| Command / URL | Server connection details |
+
+
+### Measure Blast Radius
+
+Analyzes the reach of a prior successful chain execution and generates detection rules. This workflow requires a completed chain execution to already exist in the database — it does not run a new chain.
+
+| Field | Description |
+|---|---|
+| Prior chain execution | Select from recent successful chain executions |
+
+### Manage Research
+
+Cross-module research management covering campaigns, evidence collection, reports, and CVE tracking. Not yet implemented — available in a future release.
+
+## Launching a workflow
+
+After filling in the form, click **Launch**. The launcher redirects to the Operations view where you can monitor workflow progress in real time via WebSocket updates. All run data — findings, child runs, targets — is immediately available in the Research view.
