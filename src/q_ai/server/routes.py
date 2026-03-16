@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -1113,11 +1114,11 @@ def _build_workflow_config(
         The workflow config dict on success, or a JSONResponse with error details.
     """
     builders: dict[str, Callable[[], dict[str, Any] | JSONResponse]] = {
-        "assess": lambda: _build_assess_config(body, ""),
-        "test_docs": lambda: _build_test_docs_config(body, ""),
-        "test_assistant": lambda: _build_test_assistant_config(body, ""),
-        "trace_path": lambda: _build_trace_path_config(body, "", db_path),
-        "blast_radius": lambda: _build_blast_radius_config(body, db_path),
+        "assess": partial(_build_assess_config, body, ""),
+        "test_docs": partial(_build_test_docs_config, body, ""),
+        "test_assistant": partial(_build_test_assistant_config, body, ""),
+        "trace_path": partial(_build_trace_path_config, body, "", db_path),
+        "blast_radius": partial(_build_blast_radius_config, body, db_path),
     }
     builder = builders.get(workflow_id)
     if builder is None:
