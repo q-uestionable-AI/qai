@@ -4,7 +4,7 @@
 {% block content %}
 <div id="operations-root" data-run-id="{{ run_id or '' }}" class="max-w-7xl mx-auto px-6 py-6">
     <!-- Status bar -->
-    <div class="bg-base-100 rounded-lg border border-base-content/5 p-4 mb-6 flex items-center gap-6">
+    <div class="panel p-4 mb-6 flex items-center gap-6">
         <div class="flex items-center gap-2">
             {% if workflow_run %}
                 {% set status_name = workflow_run.status.name %}
@@ -29,7 +29,7 @@
         </div>
         <div class="text-sm text-base-content/40 ml-auto flex items-center gap-3">
             {% if workflow_run %}
-            <a href="/operations?run_id={{ workflow_run.id }}" class="btn btn-ghost btn-xs">Refresh</a>
+            <a href="/operations?run_id={{ workflow_run.id }}" class="btn btn-outline btn-secondary btn-xs">Refresh</a>
             {% endif %}
             Elapsed: <span id="workflow-elapsed">--:--</span>
         </div>
@@ -73,7 +73,7 @@
                 <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'rxp')">rxp</button>
             </div>
 
-            <div class="bg-base-100 rounded-lg border border-base-content/5 p-4 min-h-[400px]">
+            <div class="panel p-4 min-h-[200px]">
                 <div id="tab-audit">
                     {% include "partials/audit_tab.html" %}
                 </div>
@@ -118,7 +118,7 @@
             <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50 mb-3">
                 Findings
             </h3>
-            <div class="bg-base-100 rounded-lg border border-base-content/5 min-h-[400px] p-4">
+            <div class="panel min-h-[200px] p-4">
                 <div id="findings-sidebar-content">
                     {% include "partials/findings_sidebar.html" %}
                 </div>

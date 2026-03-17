@@ -22,6 +22,53 @@ body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
+/* ── Nav link overrides ─────────────────────────────────────── */
+.menu-horizontal a {
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    transition: all 0.2s ease;
+}
+.menu-horizontal a.active {
+    background: rgba(139, 92, 246, 0.1) !important;
+    border-color: rgba(139, 92, 246, 0.4) !important;
+    color: #a78bfa !important;
+}
+.menu-horizontal a:not(.active):hover {
+    background: rgba(139, 92, 246, 0.05);
+    border-color: rgba(139, 92, 246, 0.2);
+    color: #c4b5fd;
+}
+
+/* ── Panel styling (shared across Operations, Research) ──── */
+.panel {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    border-radius: 0.5rem;
+    box-shadow: 0 0 16px rgba(139, 92, 246, 0.08);
+}
+
+/* ── Action button overrides ────────────────────────────────── */
+.btn-outline.btn-primary {
+    background: transparent;
+    border-color: rgba(6, 182, 212, 0.4);
+    color: #06b6d4;
+}
+.btn-outline.btn-primary:hover {
+    background: rgba(6, 182, 212, 0.1);
+    border-color: #22d3ee;
+    color: #22d3ee;
+}
+.btn-outline.btn-secondary {
+    background: transparent;
+    border-color: rgba(139, 92, 246, 0.4);
+    color: #a78bfa;
+}
+.btn-outline.btn-secondary:hover {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: #a78bfa;
+    color: #c4b5fd;
+}
+
 /* ── Workflow card styling ─────────────────────────────────── */
 .workflow-card {
     transition: all 0.2s ease;
@@ -52,6 +99,20 @@ body {
 
 .workflow-card:hover::before {
     opacity: 1;
+}
+
+/* ── Stat box overrides ─────────────────────────────────────── */
+.stats {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(139, 92, 246, 0.25) !important;
+    box-shadow: none !important;
+}
+.stat {
+    border-color: rgba(139, 92, 246, 0.15) !important;
+    text-align: center !important;
+}
+.stat-title {
+    color: #94a3b8 !important;
 }
 
 /* ── Severity badge colors (brand-aligned) ─────────────────── */
@@ -116,13 +177,30 @@ body {
     color: #06b6d4 !important;
 }
 
-/* ── Select option dark background fix ───────────────────── */
-select option {
+/* ── Select / dropdown dark background fix ───────────────── */
+select,
+select.select,
+select.select-bordered,
+.select {
+    background-color: #0a0a0f !important;
+    color: #f1f5f9 !important;
+    border-color: rgba(139, 92, 246, 0.25) !important;
+}
+select option,
+select.select option {
+    background-color: #0a0a0f !important;
+    color: #e2e8f0 !important;
+    padding: 0.5rem;
+}
+select option:hover,
+select option:checked,
+select option:focus {
     background-color: #1e293b !important;
     color: #f1f5f9 !important;
 }
-
-select {
-    background-color: rgba(255,255,255,0.04) !important;
-    color: #f1f5f9 !important;
+select:focus,
+select.select:focus {
+    border-color: rgba(139, 92, 246, 0.5) !important;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15) !important;
+    outline: none !important;
 }
