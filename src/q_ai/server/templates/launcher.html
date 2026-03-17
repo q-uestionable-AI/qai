@@ -91,14 +91,14 @@
     }
 </style>
 
-<div class="max-w-5xl mx-auto px-6 py-6">
+<div class="max-w-5xl lg:max-w-6xl mx-auto px-6 pt-16 lg:pt-24">
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8 w-full">
         {% for wf in workflows %}
-        <div class="wf-card {% if not wf.implemented %}wf-disabled{% endif %} p-6"
+        <div class="wf-card {% if not wf.implemented %}wf-disabled{% endif %} p-6 lg:p-8"
              {% if wf.implemented %}onclick="openWorkflowModal('{{ wf.id }}')"{% endif %}>
-            <h3 class="text-base font-semibold mb-1" style="color: #f1f5f9;">{{ wf.name }}</h3>
-            <p class="text-sm mb-3" style="color: #94a3b8;">{{ wf.description }}</p>
+            <h3 class="text-base lg:text-lg font-semibold mb-1" style="color: #f1f5f9;">{{ wf.name }}</h3>
+            <p class="text-sm lg:text-base mb-3" style="color: #94a3b8;">{{ wf.description }}</p>
             <div class="wf-modules">
                 {% for mod in wf.modules %}
                 <span style="font-family: 'Fira Code', monospace; font-size: 0.7rem; color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 9999px; padding: 0.1rem 0.55rem; display: inline-block; margin-right: 0.25rem; margin-top: 0.25rem;">{{ mod }}</span>
