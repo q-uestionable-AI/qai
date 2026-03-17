@@ -123,7 +123,7 @@ _DEFAULT_WORKFLOWS = [
         description=(
             "Generate a cross-module findings report and optional evidence pack for a target."
         ),
-        modules=["audit", "inject", "ipi", "cxp", "rxp", "chain"],
+        modules=[],
         requires_provider=False,
     ),
 ]
