@@ -89,7 +89,7 @@ _DEFAULT_WORKFLOWS = [
     WorkflowEntry(
         id="test_docs",
         name="Test Document Ingestion",
-        description="Generate payloads for document pipelines and track execution callbacks.",
+        description="Generate payloads for document pipelines and validate ingestion behavior.",
         modules=["ipi", "rxp"],
         optional_modules=["rxp"],
         requires_provider=False,
@@ -120,7 +120,9 @@ _DEFAULT_WORKFLOWS = [
     WorkflowEntry(
         id="generate_report",
         name="Generate Report",
-        description="Generate a cross-module findings report and evidence pack for a target.",
+        description=(
+            "Generate a cross-module findings report and optional evidence pack for a target."
+        ),
         modules=["audit", "inject", "ipi", "cxp", "rxp", "chain"],
         requires_provider=False,
     ),

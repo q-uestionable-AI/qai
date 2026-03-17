@@ -4,7 +4,7 @@
 {% block content %}
 <style>
     .wf-card {
-        background: rgba(255,255,255,0.02);
+        background: rgba(255,255,255,0.05);
         border: 1px solid rgba(139, 92, 246, 0.2);
         border-left: 2px solid #06b6d4;
         border-radius: 0.5rem;
@@ -32,7 +32,7 @@
         color: #06b6d4;
     }
     .launcher-modal .modal-box {
-        background: #1e293b;
+        background: #0f1219;
         border: 1px solid rgba(139, 92, 246, 0.25);
         box-shadow: 0 0 30px rgba(139, 92, 246, 0.1);
     }
@@ -46,49 +46,56 @@
         color: #94a3b8;
     }
     .launcher-modal select {
-        background: #1e293b !important;
+        background: #0a0a0f !important;
         color: #f1f5f9 !important;
+        border-color: rgba(139, 92, 246, 0.25) !important;
     }
     .launcher-modal select option {
-        background: #1e293b;
-        color: #f1f5f9;
+        background: #0a0a0f !important;
+        color: #e2e8f0 !important;
+    }
+    .launcher-modal select:focus {
+        border-color: rgba(139, 92, 246, 0.5) !important;
+        box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15) !important;
     }
     .launcher-modal input[type="text"]:focus,
     .launcher-modal input[type="number"]:focus,
     .launcher-modal select:focus {
-        border-color: #06b6d4;
-        box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2);
+        border-color: rgba(139, 92, 246, 0.5);
+        box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+        outline: none;
+    }
+    .launcher-modal a:focus {
         outline: none;
     }
     .launcher-modal .btn-launch {
-        background: #06b6d4;
-        color: #0f172a;
-        border: none;
+        background: transparent;
+        color: #06b6d4;
+        border: 1px solid rgba(6, 182, 212, 0.4);
         font-weight: 600;
     }
     .launcher-modal .btn-launch:hover {
-        background: #22d3ee;
+        background: rgba(6, 182, 212, 0.1);
+        border-color: #22d3ee;
+        color: #22d3ee;
     }
     .launcher-modal .btn-cancel {
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.1);
-        color: #94a3b8;
+        background: transparent;
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        color: #a78bfa;
     }
     .launcher-modal .btn-cancel:hover {
-        background: rgba(255,255,255,0.08);
-        color: #f1f5f9;
+        background: rgba(139, 92, 246, 0.1);
+        border-color: #a78bfa;
+        color: #c4b5fd;
     }
 </style>
 
-<div class="max-w-5xl mx-auto px-6 py-12">
-    <div class="mb-10">
-        <h1 class="text-2xl font-semibold mb-1" style="color: #f1f5f9;">Select a workflow</h1>
+<div class="max-w-5xl mx-auto px-6 py-6">
 
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         {% for wf in workflows %}
-        <div class="wf-card {% if not wf.implemented %}wf-disabled{% endif %} p-5"
+        <div class="wf-card {% if not wf.implemented %}wf-disabled{% endif %} p-6"
              {% if wf.implemented %}onclick="openWorkflowModal('{{ wf.id }}')"{% endif %}>
             <h3 class="text-base font-semibold mb-1" style="color: #f1f5f9;">{{ wf.name }}</h3>
             <p class="text-sm mb-3" style="color: #94a3b8;">{{ wf.description }}</p>
@@ -222,8 +229,8 @@
 
                     {% if not rxp_available %}
                     <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="text-sm mb-4">
-                        <span>RXP pre-validation requires additional dependencies.</span>
-                        <code style="color: #06b6d4;" class="ml-2">pip install "q-uestionable-ai[rxp]"</code>
+                        <span>RXP pre-validation requires additional dependencies.</span><br>
+                        <code style="color: #06b6d4; margin-top: 0.25rem; display: inline-block;">pip install "q-uestionable-ai[rxp]"</code>
                     </div>
                     {% endif %}
                     <div class="form-control">

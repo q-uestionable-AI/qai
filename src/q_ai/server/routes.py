@@ -771,7 +771,7 @@ async def api_infrastructure_status(request: Request) -> HTMLResponse:
 
     return templates.TemplateResponse(
         request,
-        "partials/infrastructure_section.html",
+        "partials/infrastructure_content.html",
         {"infrastructure": results},
     )
 
