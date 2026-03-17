@@ -2,32 +2,7 @@
         <h2 class="text-lg font-semibold mb-4" style="color: #f1f5f9;">Infrastructure</h2>
 
         {% if infrastructure is defined and infrastructure %}
-        <div class="overflow-x-auto">
-            <table class="table table-sm">
-                <thead>
-                    <tr>
-                        <th>Service</th>
-                        <th>URL</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for svc in infrastructure %}
-                    <tr>
-                        <td class="font-semibold text-sm">{{ svc.name }}</td>
-                        <td class="font-mono text-xs text-base-content/60">{{ svc.url }}</td>
-                        <td>
-                            {% if svc.reachable %}
-                            <span class="badge badge-success badge-sm">online</span>
-                            {% else %}
-                            <span class="badge badge-error badge-sm">offline</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+        {% include "partials/infrastructure_content.html" %}
         {% else %}
         <div id="infra-status"
              hx-get="/api/settings/infrastructure"

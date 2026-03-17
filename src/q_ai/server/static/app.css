@@ -39,6 +39,15 @@ body {
     color: #c4b5fd;
 }
 
+/* ── Modal focus outline override ───────────────────────────── */
+.modal-box:focus,
+.modal-box:focus-visible,
+dialog:focus,
+dialog:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
 /* ── Panel styling (shared across Operations, Research) ──── */
 .panel {
     background: rgba(255, 255, 255, 0.05);
