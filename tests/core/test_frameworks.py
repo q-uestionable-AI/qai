@@ -97,3 +97,9 @@ class TestFrameworkResolver:
         resolver = FrameworkResolver()
         result = resolver.resolve_one(category, "owasp_agentic_top10")
         assert result, f"{category} has no owasp_agentic_top10 mapping"
+
+    @pytest.mark.parametrize("category", ALL_CATEGORIES)
+    def test_all_categories_have_owasp_mcp_mapping(self, category: str) -> None:
+        resolver = FrameworkResolver()
+        result = resolver.resolve_one(category, "owasp_mcp_top10")
+        assert result, f"{category} has no owasp_mcp_top10 mapping"
