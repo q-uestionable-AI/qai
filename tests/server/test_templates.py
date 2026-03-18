@@ -84,6 +84,43 @@ class TestSeverityBadges:
         assert "INFO" in resp.text
 
 
+class TestFrameworkIdBadges:
+    """Framework ID badges render in findings table."""
+
+    def test_framework_id_badges_in_findings(self, tmp_db: Path, client: TestClient) -> None:
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            target_id = create_target(conn, type="server", name="badge-srv")
+            run_id = create_run(conn, module="audit", target_id=target_id)
+            create_finding(
+                conn,
+                run_id=run_id,
+                module="audit",
+                category="tool_poisoning",
+                severity=Severity.HIGH,
+                title="Poisoned tool detected",
+                framework_ids={
+                    "owasp_mcp_top10": "MCP03",
+                    "owasp_agentic_top10": "ASI02",
+                    "mitre_atlas": ["AML.T0051.000", "AML.T0080"],
+                    "cwe": ["CWE-94", "CWE-74"],
+                },
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get("/api/findings")
+        assert "MCP03" in resp.text
+        assert "ASI02" in resp.text
+        assert "AML.T0051.000" in resp.text
+        assert "AML.T0080" in resp.text
+        assert "CWE-94" in resp.text
+        assert "CWE-74" in resp.text
+
+
 class TestResearchWithData:
     """Research tables render data from the database."""
 

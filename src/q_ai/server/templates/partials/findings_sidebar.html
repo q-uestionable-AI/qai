@@ -7,6 +7,19 @@
         {% else %}border-base-content/20{% endif %}">
         <span class="font-medium">{{ f.title }}</span>
         <span class="text-xs text-base-content/40 ml-1">{{ f.module }}</span>
+        {% if f.framework_ids %}
+        <div class="flex flex-wrap gap-0.5 mt-0.5">
+            {% for fw, ids in f.framework_ids.items() %}
+                {% if ids is string %}
+            <span class="badge badge-xs badge-ghost font-mono">{{ ids }}</span>
+                {% else %}
+                    {% for fid in ids %}
+            <span class="badge badge-xs badge-ghost font-mono">{{ fid }}</span>
+                    {% endfor %}
+                {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
     </li>
   {% endfor %}
   </ul>
