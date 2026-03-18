@@ -4,8 +4,7 @@ early_access: true
 tone_instructions: >-
   Concise, direct, security-aware. This is an offensive security platform —
   intentional attack payloads, injection techniques, and malicious server
-  construction are the product, not vulnerabilities. Focus reviews on the
-  platform's own code quality, not its offensive capabilities. No fluff.
+  construction are the product, not vulnerabilities.
 
 reviews:
   profile: "chill"
