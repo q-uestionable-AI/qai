@@ -10,7 +10,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Query, Request, WebSocket
+from fastapi import APIRouter, Query, Request, Response, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from starlette.websockets import WebSocketDisconnect
@@ -251,6 +251,23 @@ async def operations_status_bar(
     )
 
 
+@router.get("/api/operations/workflow-status-bar")
+async def operations_workflow_status_bar(
+    request: Request,
+    run_id: str = Query(...),
+) -> HTMLResponse:
+    """Render the full workflow status bar partial (badge, elapsed, report link)."""
+    db_path = _get_db_path(request)
+    templates = _get_templates(request)
+    with get_connection(db_path) as conn:
+        workflow_run = get_run(conn, run_id)
+    return templates.TemplateResponse(
+        request,
+        "partials/status_bar.html",
+        {"workflow_run": workflow_run},
+    )
+
+
 @router.get("/api/operations/findings-sidebar")
 async def operations_findings_sidebar(
     request: Request,
@@ -276,8 +293,11 @@ async def operations_findings_sidebar(
 _EXPORTS_BASE = Path.home() / ".qai" / "exports"
 
 
-@router.get("/api/exports/{run_id}/report")
-async def export_report(request: Request, run_id: str) -> FileResponse:
+_REPORT_ROOT = (_EXPORTS_BASE / "generate_report").resolve()
+
+
+@router.get("/api/exports/{run_id}/report", response_model=None)
+def export_report(request: Request, run_id: str) -> Response:
     """Serve a generated report.md file for the given run.
 
     Validates that the run_id exists in the database and that the report
@@ -287,14 +307,14 @@ async def export_report(request: Request, run_id: str) -> FileResponse:
     with get_connection(db_path) as conn:
         run = get_run(conn, run_id)
     if run is None:
-        return JSONResponse(status_code=404, content={"detail": "Run not found"})  # type: ignore[return-value]
+        return JSONResponse(status_code=404, content={"detail": "Run not found"})
 
     report_path = (_EXPORTS_BASE / "generate_report" / run_id / "report.md").resolve()
-    if not str(report_path).startswith(str(_EXPORTS_BASE.resolve())):
-        return JSONResponse(status_code=403, content={"detail": "Forbidden"})  # type: ignore[return-value]
+    if not report_path.is_relative_to(_REPORT_ROOT):
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
 
     if not report_path.is_file():
-        return JSONResponse(status_code=404, content={"detail": "Report not found"})  # type: ignore[return-value]
+        return JSONResponse(status_code=404, content={"detail": "Report not found"})
 
     return FileResponse(
         path=report_path,

@@ -7,7 +7,6 @@ lifecycle, and session persistence. Does not use the TUI.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import shlex
 import time
 import uuid
@@ -186,11 +185,19 @@ class ProxyAdapter:
         assert self._session_store is not None, "start() must be called before stop()"
 
         child_status = RunStatus.COMPLETED
+        duration = 0.0
+        message_count = 0
+
         try:
-            # Cancel the background task
+            # Cancel the background task — CancelledError is the expected
+            # shutdown signal; TimeoutError means the task didn't stop in time.
             self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, TimeoutError, Exception):
+            try:
                 await asyncio.wait_for(self._task, timeout=5.0)
+            except asyncio.CancelledError:
+                pass  # Expected: task was cancelled by us
+            except TimeoutError:
+                child_status = RunStatus.FAILED
 
             duration = time.monotonic() - (self._start_time or time.monotonic())
             message_count = len(self._session_store.get_messages())
@@ -205,7 +212,7 @@ class ProxyAdapter:
         except Exception:
             child_status = RunStatus.FAILED
             duration = time.monotonic() - (self._start_time or time.monotonic())
-            message_count = 0
+            message_count = len(self._session_store.get_messages())
             raise
         finally:
             await self._runner.update_child_status(self._child_id, child_status)

@@ -19,6 +19,12 @@
         3: 'badge-error', 4: 'badge-ghost', 5: 'badge-warning', 6: 'badge-warning',
     };
 
+    // --- Status bar data attribute access ---
+
+    function getStatusBar() {
+        return document.getElementById('operations-status-bar');
+    }
+
     // --- Elapsed timer ---
 
     function formatElapsed(totalSeconds) {
@@ -82,9 +88,11 @@
     }
 
     function initElapsedTimer() {
-        var status = parseInt(root.dataset.workflowStatus, 10);
-        var startedAt = root.dataset.startedAt || '';
-        var finishedAt = root.dataset.finishedAt || '';
+        var bar = getStatusBar();
+        if (!bar) return;
+        var status = parseInt(bar.dataset.workflowStatus, 10);
+        var startedAt = bar.dataset.startedAt || '';
+        var finishedAt = bar.dataset.finishedAt || '';
 
         if (isNaN(status) || !startedAt) return; // No run or no start time
 
@@ -123,17 +131,20 @@
     }
 
     function handleRunStatus(event) {
-        // Parent run update → status bar badge + elapsed timer
-        if (event.run_id === runId) {
+        if (event.run_id === runId && TERMINAL_STATUSES.indexOf(event.status) !== -1) {
+            // Terminal parent status — re-fetch full status bar partial so
+            // badge, elapsed, and report link all render from fresh DB state
+            stopElapsedTimer();
+            htmx.ajax('GET', '/api/operations/workflow-status-bar?run_id=' + runId,
+                      {target: '#operations-status-bar', swap: 'outerHTML'}).then(function () {
+                initElapsedTimer();
+            });
+        } else if (event.run_id === runId) {
+            // Non-terminal parent update — just update the badge inline
             var badge = document.getElementById('workflow-status-badge');
             if (badge) {
                 badge.textContent = STATUS_LABELS[event.status] || event.status;
                 badge.className = 'badge badge-sm ' + (STATUS_CLASSES[event.status] || 'badge-ghost');
-            }
-            if (TERMINAL_STATUSES.indexOf(event.status) !== -1) {
-                // Terminal — stop live timer, compute final from now
-                var startedAt = root.dataset.startedAt || '';
-                showFinalElapsed(startedAt, new Date().toISOString());
             }
         }
         // Any run_status → refresh child badges via HTMX
