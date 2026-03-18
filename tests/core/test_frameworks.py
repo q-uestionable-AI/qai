@@ -46,7 +46,7 @@ class TestFrameworkResolver:
     def test_command_injection_atlas_does_not_contain_t0040(self) -> None:
         resolver = FrameworkResolver()
         result = resolver.resolve_one("command_injection", "mitre_atlas")
-        assert result is not None
+        assert isinstance(result, list)
         assert "AML.T0040" not in result
 
     def test_resolve_unknown_category(self) -> None:
