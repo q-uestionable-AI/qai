@@ -94,6 +94,30 @@ def _compute_invalidation_key(frameworks: dict) -> str:
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
+def _is_cache_fresh(data: dict) -> bool:
+    """Check whether a parsed cache payload is still within the TTL.
+
+    Args:
+        data: Parsed JSON cache dict.
+
+    Returns:
+        ``True`` if the ``cached_at`` timestamp is valid, timezone-aware,
+        and within ``CACHE_TTL``. ``False`` otherwise.
+    """
+    try:
+        cached_at = datetime.fromisoformat(data["cached_at"])
+    except (ValueError, KeyError):
+        return False
+
+    if cached_at.tzinfo is None:
+        return False
+
+    try:
+        return datetime.now(tz=UTC) - cached_at <= CACHE_TTL
+    except TypeError:
+        return False
+
+
 def _load_cache(invalidation_key: str) -> list[dict] | None:
     """Load cached results if valid and within TTL.
 
@@ -114,19 +138,15 @@ def _load_cache(invalidation_key: str) -> list[dict] | None:
     except (json.JSONDecodeError, OSError):
         return None
 
-    if data.get("invalidation_key") != invalidation_key:
+    if (
+        not isinstance(data, dict)
+        or data.get("invalidation_key") != invalidation_key
+        or not _is_cache_fresh(data)
+    ):
         return None
 
-    try:
-        cached_at = datetime.fromisoformat(data["cached_at"])
-    except (ValueError, KeyError):
-        return None
-
-    if datetime.now(tz=UTC) - cached_at > CACHE_TTL:
-        return None
-
-    result: list[dict] | None = data.get("results")
-    return result
+    results = data.get("results")
+    return results if isinstance(results, list) else None
 
 
 def _save_cache(results: list[dict], invalidation_key: str) -> None:
@@ -318,6 +338,61 @@ def _find_atlas_asset_url(release_data: dict) -> str | None:
     return None
 
 
+def _build_atlas_diff_status(
+    local_version: str,
+    upstream_version: str,
+    upstream_ids: set[str],
+    local_ids: set[str],
+) -> FrameworkStatus:
+    """Compare local and upstream ATLAS technique IDs and build a status.
+
+    Args:
+        local_version: The ``reviewed_against`` value from ``frameworks.yaml``.
+        upstream_version: The tag name from the latest GitHub release.
+        upstream_ids: Technique IDs extracted from the upstream ATLAS.yaml.
+        local_ids: Technique IDs extracted from the local mappings.
+
+    Returns:
+        A ``FrameworkStatus`` reflecting whether an update is available.
+    """
+    new_techniques = sorted(upstream_ids - local_ids)
+    deprecated_techniques = sorted(local_ids - upstream_ids)
+
+    # Normalise versions for comparison (strip leading 'v' if present)
+    local_norm = local_version.lstrip("v").strip()
+    upstream_norm = upstream_version.lstrip("v").strip()
+
+    if local_norm == upstream_norm and not new_techniques and not deprecated_techniques:
+        return FrameworkStatus(
+            framework="mitre_atlas",
+            local_version=local_version,
+            upstream_version=upstream_version,
+            status="up-to-date",
+            message="Local mappings match upstream",
+        )
+
+    diff = AtlasDiff(
+        new_techniques=new_techniques,
+        deprecated_techniques=deprecated_techniques,
+    )
+    parts: list[str] = []
+    if local_norm != upstream_norm:
+        parts.append(f"Version delta: {local_version} -> {upstream_version}")
+    if new_techniques:
+        parts.append(f"{len(new_techniques)} new technique(s) not yet mapped")
+    if deprecated_techniques:
+        parts.append(f"{len(deprecated_techniques)} mapped technique(s) no longer upstream")
+
+    return FrameworkStatus(
+        framework="mitre_atlas",
+        local_version=local_version,
+        upstream_version=upstream_version,
+        status="update-available",
+        message="; ".join(parts),
+        atlas_diff=diff,
+    )
+
+
 def check_atlas(frameworks: dict) -> FrameworkStatus:
     """Check MITRE ATLAS for upstream changes.
 
@@ -365,45 +440,19 @@ def check_atlas(frameworks: dict) -> FrameworkStatus:
             message=f"Failed to download ATLAS.yaml: {exc}",
         )
 
-    upstream_ids = _extract_upstream_atlas_ids(atlas_yaml_bytes)
-    local_ids = _extract_local_atlas_ids(frameworks)
-
-    new_techniques = sorted(upstream_ids - local_ids)
-    deprecated_techniques = sorted(local_ids - upstream_ids)
-
-    # Normalise versions for comparison (strip leading 'v' if present)
-    local_norm = local_version.lstrip("v").strip()
-    upstream_norm = upstream_version.lstrip("v").strip()
-
-    if local_norm == upstream_norm and not new_techniques and not deprecated_techniques:
+    try:
+        upstream_ids = _extract_upstream_atlas_ids(atlas_yaml_bytes)
+    except yaml.YAMLError as exc:
         return FrameworkStatus(
             framework="mitre_atlas",
             local_version=local_version,
             upstream_version=upstream_version,
-            status="up-to-date",
-            message="Local mappings match upstream",
+            status="error",
+            message=f"Failed to parse ATLAS.yaml: {exc}",
         )
 
-    diff = AtlasDiff(
-        new_techniques=new_techniques,
-        deprecated_techniques=deprecated_techniques,
-    )
-    parts: list[str] = []
-    if local_norm != upstream_norm:
-        parts.append(f"Version delta: {local_version} -> {upstream_version}")
-    if new_techniques:
-        parts.append(f"{len(new_techniques)} new technique(s) not yet mapped")
-    if deprecated_techniques:
-        parts.append(f"{len(deprecated_techniques)} mapped technique(s) no longer upstream")
-
-    return FrameworkStatus(
-        framework="mitre_atlas",
-        local_version=local_version,
-        upstream_version=upstream_version,
-        status="update-available",
-        message="; ".join(parts),
-        atlas_diff=diff,
-    )
+    local_ids = _extract_local_atlas_ids(frameworks)
+    return _build_atlas_diff_status(local_version, upstream_version, upstream_ids, local_ids)
 
 
 # ---------------------------------------------------------------------------
@@ -519,7 +568,9 @@ def check_frameworks(
     results.append(check_atlas(frameworks))
     results.append(check_owasp_mcp(frameworks))
 
-    serialised = [_status_to_dict(r) for r in results]
-    _save_cache(serialised, invalidation_key)
+    has_errors = any(r.status == "error" for r in results)
+    if not skip_cache and not has_errors:
+        serialised = [_status_to_dict(r) for r in results]
+        _save_cache(serialised, invalidation_key)
 
     return results
