@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 from unittest.mock import patch
@@ -24,6 +25,13 @@ from q_ai.core.framework_update import (
 )
 
 runner = CliRunner()
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes so assertions work in CI with Rich output."""
+    return _ANSI_RE.sub("", text)
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -497,14 +505,16 @@ class TestUpdateFrameworksCli:
     def test_help_shows_usage(self) -> None:
         result = runner.invoke(app, ["update-frameworks", "--help"])
         assert result.exit_code == 0
-        assert "update-frameworks" in result.output
-        assert "--atlas" in result.output
-        assert "--no-cache" in result.output
+        output = _strip_ansi(result.output)
+        assert "update-frameworks" in output
+        assert "--atlas" in output
+        assert "--no-cache" in output
 
     def test_root_help_shows_command(self) -> None:
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "update-frameworks" in result.output
+        output = _strip_ansi(result.output)
+        assert "update-frameworks" in output
 
     @patch("q_ai.core.framework_update._fetch_text")
     @patch("q_ai.core.framework_update._fetch_yaml")
