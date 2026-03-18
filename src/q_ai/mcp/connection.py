@@ -104,12 +104,15 @@ class MCPConnection:
         return conn
 
     @classmethod
-    def sse(cls, url: str, headers: dict[str, Any] | None = None) -> MCPConnection:
+    def sse(
+        cls, url: str, headers: dict[str, Any] | None = None, timeout: float = 5.0
+    ) -> MCPConnection:
         """Create a connection to an SSE-based MCP server.
 
         Args:
             url: The SSE endpoint URL (e.g., "http://localhost:8080/sse").
             headers: Optional HTTP headers (e.g., for authentication).
+            timeout: Optional connection timeout in seconds.
 
         Returns:
             An MCPConnection (use as async context manager).
@@ -119,16 +122,19 @@ class MCPConnection:
                 tools = await conn.session.list_tools()
         """
         conn = cls(transport_type="sse")
-        conn._transport_args = {"url": url, "headers": headers}
+        conn._transport_args = {"url": url, "headers": headers, "timeout": timeout}
         return conn
 
     @classmethod
-    def streamable_http(cls, url: str, headers: dict[str, str] | None = None) -> MCPConnection:
+    def streamable_http(
+        cls, url: str, headers: dict[str, str] | None = None, timeout: float = 5.0
+    ) -> MCPConnection:
         """Create a connection to a Streamable HTTP MCP server.
 
         Args:
             url: The HTTP endpoint URL.
             headers: Optional HTTP headers (e.g., for authentication).
+            timeout: Optional connection timeout in seconds.
 
         Returns:
             An MCPConnection (use as async context manager).
@@ -138,7 +144,7 @@ class MCPConnection:
                 tools = await conn.session.list_tools()
         """
         conn = cls(transport_type="streamable-http")
-        conn._transport_args = {"url": url, "headers": headers}
+        conn._transport_args = {"url": url, "headers": headers, "timeout": timeout}
         return conn
 
     async def __aenter__(self) -> MCPConnection:
@@ -222,6 +228,7 @@ class MCPConnection:
                 sse_client(
                     url=self._transport_args["url"],
                     headers=self._transport_args.get("headers"),
+                    timeout=self._transport_args.get("timeout", 5.0),
                 )
             )
             return read_stream, write_stream
@@ -231,6 +238,7 @@ class MCPConnection:
                 streamablehttp_client(
                     url=self._transport_args["url"],
                     headers=self._transport_args.get("headers"),
+                    timeout=self._transport_args.get("timeout", 5.0),
                 )
             )
             # streamablehttp_client yields (read, write, get_session_id)
