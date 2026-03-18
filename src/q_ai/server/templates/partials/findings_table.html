@@ -14,7 +14,22 @@
                 {{ finding.severity.name }}
             </span>
         </td>
-        <td>{{ finding.title }}</td>
+        <td>
+            {{ finding.title }}
+            {% if finding.framework_ids %}
+            <div class="flex flex-wrap gap-1 mt-1">
+                {% for fw, ids in finding.framework_ids.items() %}
+                    {% if ids is string %}
+                <span class="badge badge-xs badge-ghost font-mono">{{ ids }}</span>
+                    {% else %}
+                        {% for fid in ids %}
+                <span class="badge badge-xs badge-ghost font-mono">{{ fid }}</span>
+                        {% endfor %}
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+        </td>
         <td class="text-xs text-base-content/50">
             {{ finding.created_at.strftime('%Y-%m-%d %H:%M') if finding.created_at else "—" }}
         </td>
