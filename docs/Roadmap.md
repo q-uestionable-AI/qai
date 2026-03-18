@@ -147,10 +147,12 @@ template schema. Breaking changes require major version bump after 1.0.
 
 | Framework | Usage |
 |-----------|-------|
-| OWASP MCP Top 10 | Primary vulnerability taxonomy for audit scanners |
-| OWASP Top 10 for Agentic AI | Attack pattern classification for inject and chain |
-| MITRE ATLAS | Adversarial ML technique mapping |
-| NIST AI RMF | Risk management context for defensive guidance |
+| OWASP MCP Top 10 | Primary vulnerability taxonomy for all scanner categories (all 10 categories mapped, verified 2026-03-18) |
+| OWASP Top 10 for Agentic AI | Agentic attack classification — all 10 ASI categories mapped |
+| MITRE ATLAS | Adversarial ML technique mapping — all 10 categories mapped, verified against ATLAS.yaml v5.4.0 |
+| CWE | Weakness enumeration for SARIF consumers and security tooling — all 10 categories mapped |
+
+Framework mappings are maintained in `src/q_ai/core/data/frameworks.yaml` and kept current via `qai update-frameworks`.
 
 ---
 

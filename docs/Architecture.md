@@ -20,15 +20,16 @@ src/q_ai/
 ├── __main__.py                     # python -m q_ai support
 ├── cli.py                          # Root Typer app — mounts all module subcommands
 ├── core/                           # Shared database, models, config, LLM abstraction
-│   ├── cli/                        # Shared CLI commands (config, runs, findings, targets)
+│   ├── cli/                        # Shared CLI commands (config, runs, findings, targets, update-frameworks)
 │   ├── config.py                   # Config loader, keyring credential store, settings resolver
-│   ├── data/frameworks.yaml        # Framework mapping data (OWASP MCP, MITRE ATLAS, CWE)
+│   ├── data/frameworks.yaml        # Framework mapping data (OWASP MCP, OWASP Agentic, MITRE ATLAS, CWE)
 │   ├── db.py                       # Connection manager, CRUD for shared tables, schema migration
 │   ├── frameworks.py               # FrameworkResolver — category → framework IDs
 │   ├── llm.py                      # ProviderClient protocol, NormalizedResponse, ToolSpec, ToolCall
 │   ├── llm_litellm.py              # LiteLLMClient — only file importing litellm
 │   ├── models.py                   # Run, Target, Finding, Evidence, Severity, RunStatus
-│   └── schema.py                   # DDL for shared tables, PRAGMA user_version migration runner
+│   ├── schema.py                   # DDL for shared tables, PRAGMA user_version migration runner
+│   └── update_frameworks.py        # Framework update checker — ATLAS YAML diff, OWASP version detection, cache
 ├── mcp/                            # MCP connection utilities (shared by audit, proxy, chain)
 │   ├── connection.py               # MCPConnection — establish MCP client connections
 │   ├── discovery.py                # enumerate_server() — capability discovery
@@ -106,7 +107,8 @@ The core module is the integration surface. All modules read and write through i
 - **`config.py`** — OS keyring for API keys. Non-secret settings in `~/.qai/config.yaml` and DB `settings` table. Precedence: CLI flag → env var → keyring/DB setting/config file → default.
 - **`llm.py`** — `ProviderClient` protocol, `NormalizedResponse`, `ToolSpec`, `ToolCall`. `provider/model` string convention. Bare strings fall back to `anthropic/`.
 - **`llm_litellm.py`** — The only file that imports `litellm`. If litellm needs replacing, only this file changes.
-- **`frameworks.py`** — `FrameworkResolver` resolves `category` strings (e.g., `tool_poisoning`) to OWASP MCP Top 10, OWASP Agentic AI, MITRE ATLAS, and CWE IDs. The `category` field is the canonical taxonomy; framework IDs are derived.
+- **`frameworks.py`** — `FrameworkResolver` resolves `category` strings (e.g., `tool_poisoning`) to OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, and CWE IDs. All four frameworks are fully mapped for all 10 scanner categories. The `category` field is the canonical taxonomy; framework IDs are derived. ATLAS mappings verified against v5.4.0.
+- **`update_frameworks.py`** — `check_frameworks()` fetches the structured ATLAS.yaml from the latest GitHub release, diffs technique IDs against local mappings, and checks the OWASP MCP Top 10 page for version changes. Results cached 24h at `~/.qai/cache/framework_updates.json`. Never writes to `frameworks.yaml`.
 
 ---
 
@@ -191,6 +193,7 @@ qai
 ├── runs         list
 ├── findings     list
 ├── targets      list, add
+├── update-frameworks  check (--atlas for full diff, --no-cache to bypass cache)
 └── config       get, set, set-credential, delete-credential, list-providers,
                  import-legacy-credentials
 ```
