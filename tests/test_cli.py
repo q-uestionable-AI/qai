@@ -38,14 +38,18 @@ class TestCLIVersion:
     """qai --version shows version string."""
 
     def test_version_exits_zero(self) -> None:
+        from q_ai import __version__
+
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
-        assert "qai 0.1.0" in result.output
+        assert f"qai {__version__}" in result.output
 
     def test_version_short_flag(self) -> None:
+        from q_ai import __version__
+
         result = runner.invoke(app, ["-V"])
         assert result.exit_code == 0
-        assert "qai 0.1.0" in result.output
+        assert f"qai {__version__}" in result.output
 
 
 class TestCLIServerLaunch:
