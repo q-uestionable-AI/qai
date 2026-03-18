@@ -2,7 +2,12 @@
 {% block title %}q-ai — Operations{% endblock %}
 
 {% block content %}
-<div id="operations-root" data-run-id="{{ run_id or '' }}" class="max-w-7xl mx-auto px-6 py-6">
+<div id="operations-root" data-run-id="{{ run_id or '' }}"
+     data-workflow-status="{{ workflow_run.status.value if workflow_run else '' }}"
+     data-workflow-name="{{ workflow_run.name or '' }}"
+     data-started-at="{{ workflow_run.started_at.isoformat() if workflow_run and workflow_run.started_at else '' }}"
+     data-finished-at="{{ workflow_run.finished_at.isoformat() if workflow_run and workflow_run.finished_at else '' }}"
+     class="max-w-7xl mx-auto px-6 py-6">
     <!-- Status bar -->
     <div class="panel p-4 mb-6 flex items-center gap-6">
         <div class="flex items-center gap-2">
@@ -32,6 +37,11 @@
             <a href="/operations?run_id={{ workflow_run.id }}" class="btn btn-outline btn-secondary btn-xs">Refresh</a>
             {% endif %}
             Elapsed: <span id="workflow-elapsed">--:--</span>
+            {% if workflow_run and workflow_run.name == 'generate_report' and workflow_run.status.name in ('COMPLETED', 'PARTIAL') %}
+            <a href="/api/exports/{{ workflow_run.id }}/report"
+               class="btn btn-outline btn-primary btn-xs" target="_blank"
+               id="report-download-link">Download Report</a>
+            {% endif %}
         </div>
     </div>
 

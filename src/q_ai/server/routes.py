@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Query, Request, WebSocket
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from starlette.websockets import WebSocketDisconnect
 
@@ -266,6 +266,40 @@ async def operations_findings_sidebar(
         request,
         "partials/findings_sidebar.html",
         {"findings": findings},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Report export route
+# ---------------------------------------------------------------------------
+
+_EXPORTS_BASE = Path.home() / ".qai" / "exports"
+
+
+@router.get("/api/exports/{run_id}/report")
+async def export_report(request: Request, run_id: str) -> FileResponse:
+    """Serve a generated report.md file for the given run.
+
+    Validates that the run_id exists in the database and that the report
+    file is within the expected exports directory (path traversal prevention).
+    """
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        run = get_run(conn, run_id)
+    if run is None:
+        return JSONResponse(status_code=404, content={"detail": "Run not found"})  # type: ignore[return-value]
+
+    report_path = (_EXPORTS_BASE / "generate_report" / run_id / "report.md").resolve()
+    if not str(report_path).startswith(str(_EXPORTS_BASE.resolve())):
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})  # type: ignore[return-value]
+
+    if not report_path.is_file():
+        return JSONResponse(status_code=404, content={"detail": "Report not found"})  # type: ignore[return-value]
+
+    return FileResponse(
+        path=report_path,
+        media_type="text/markdown; charset=utf-8",
+        filename=f"report-{run_id[:12]}.md",
     )
 
 
