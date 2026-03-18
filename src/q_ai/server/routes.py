@@ -106,10 +106,12 @@ async def operations(
             workflow_run = get_run(conn, run_id)
             if workflow_run:
                 child_runs = list_runs(conn, parent_run_id=run_id)
-                findings = list_findings(conn, run_id=run_id)
-                # Also collect findings from child runs
-                for child in child_runs:
-                    findings.extend(list_findings(conn, run_id=child.id))
+
+                # OPTIMIZATION: Fix N+1 query. Instead of looping through child_runs
+                # and querying list_findings for each, we gather all run IDs and fetch
+                # findings in a single query reducing O(N) queries to O(1).
+                all_run_ids = [run_id] + [child.id for child in child_runs]
+                findings = list_findings(conn, run_ids=all_run_ids)
 
     return templates.TemplateResponse(
         request,
