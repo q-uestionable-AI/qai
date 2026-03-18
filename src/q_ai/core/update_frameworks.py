@@ -365,7 +365,25 @@ def check_atlas(frameworks: dict) -> FrameworkStatus:
             message=f"Failed to download ATLAS.yaml: {exc}",
         )
 
-    upstream_ids = _extract_upstream_atlas_ids(atlas_yaml_bytes)
+    try:
+        upstream_ids = _extract_upstream_atlas_ids(atlas_yaml_bytes)
+    except yaml.YAMLError as exc:
+        return FrameworkStatus(
+            framework="mitre_atlas",
+            local_version=local_version,
+            upstream_version=upstream_version,
+            status="error",
+            message=f"Failed to parse ATLAS.yaml: {exc}",
+        )
+    except (TypeError, ValueError) as exc:
+        return FrameworkStatus(
+            framework="mitre_atlas",
+            local_version=local_version,
+            upstream_version=upstream_version,
+            status="error",
+            message=f"Unexpected structure in ATLAS.yaml: {exc}",
+        )
+
     local_ids = _extract_local_atlas_ids(frameworks)
 
     new_techniques = sorted(upstream_ids - local_ids)
