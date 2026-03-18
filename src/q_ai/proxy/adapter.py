@@ -7,7 +7,6 @@ lifecycle, and session persistence. Does not use the TUI.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import shlex
 import time
 import uuid
@@ -185,27 +184,42 @@ class ProxyAdapter:
         assert self._task is not None, "start() must be called before stop()"
         assert self._session_store is not None, "start() must be called before stop()"
 
-        # Cancel the background task
-        self._task.cancel()
-        with contextlib.suppress(asyncio.CancelledError, TimeoutError, Exception):
-            await asyncio.wait_for(self._task, timeout=5.0)
+        child_status = RunStatus.COMPLETED
+        duration = 0.0
+        message_count = 0
 
-        duration = time.monotonic() - (self._start_time or time.monotonic())
-        message_count = len(self._session_store.get_messages())
+        try:
+            # Cancel the background task — CancelledError is the expected
+            # shutdown signal; TimeoutError means the task didn't stop in time.
+            self._task.cancel()
+            try:
+                await asyncio.wait_for(self._task, timeout=5.0)
+            except asyncio.CancelledError:
+                pass  # Expected: task was cancelled by us
+            except TimeoutError:
+                child_status = RunStatus.FAILED
 
-        # Persist session via mapper — pass child run_id to skip run creation
-        persist_session(
-            self._session_store,
-            db_path=self._runner._db_path,
-            duration_seconds=duration,
-            run_id=self._child_id,
-        )
+            duration = time.monotonic() - (self._start_time or time.monotonic())
+            message_count = len(self._session_store.get_messages())
 
-        await self._runner.update_child_status(self._child_id, RunStatus.COMPLETED)
-        await self._runner.emit_progress(
-            self._child_id,
-            f"Proxy stopped, {message_count} messages captured",
-        )
+            # Persist session via mapper — pass child run_id to skip run creation
+            persist_session(
+                self._session_store,
+                db_path=self._runner._db_path,
+                duration_seconds=duration,
+                run_id=self._child_id,
+            )
+        except Exception:
+            child_status = RunStatus.FAILED
+            duration = time.monotonic() - (self._start_time or time.monotonic())
+            message_count = len(self._session_store.get_messages())
+            raise
+        finally:
+            await self._runner.update_child_status(self._child_id, child_status)
+            await self._runner.emit_progress(
+                self._child_id,
+                f"Proxy stopped ({child_status.name.lower()}), {message_count} messages captured",
+            )
 
         return ProxyResult(
             run_id=self._child_id,
