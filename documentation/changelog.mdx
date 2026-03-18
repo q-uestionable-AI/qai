@@ -3,6 +3,17 @@ title: Changelog
 description: Release history for the q-ai platform
 ---
 
+## v0.3.3
+
+Framework coverage, MCP connection hardening, and CodeRabbit integration.
+
+- Framework taxonomy data fix: corrected MITRE ATLAS mappings (all 10 categories, reviewed against v5.4.0), completed CWE coverage (all 10 categories), completed OWASP Agentic Top 10 coverage (all 10 categories)
+- `qai update-frameworks` CLI command: checks MITRE ATLAS and OWASP MCP Top 10 for upstream changes; ATLAS check fetches structured `ATLAS.yaml` from the latest GitHub release and diffs technique IDs; results cached in `~/.qai/` with 24-hour TTL
+- Framework ID badges in findings UI: MCP, ATLAS, CWE, and Agentic IDs rendered as inline pill badges in the Research findings table and Operations findings sidebar
+- Framework coverage added to README, Mintlify docs, and q-uestionable.ai; `audit/owasp-mapping` page renamed to `audit/framework-coverage` with full four-framework coverage tables
+- MCP connection timeout hardening: explicit timeouts added to stdio, SSE, and Streamable HTTP transport clients
+- CodeRabbit integration: PR review automation configured; badge added to README
+
 ## v0.3.2
 
 Launcher layout polish and registry fix.
