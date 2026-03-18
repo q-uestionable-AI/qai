@@ -63,8 +63,8 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
   <Step title="Run the scan">
     q-ai launches the server as a child process, connects over stdio,
-    enumerates its tools and resources, then runs all 10 OWASP MCP Top 10
-    scanner modules against it.
+    enumerates its tools and resources, then runs all 10 scanner modules
+    against it — each mapped to the OWASP MCP Top 10 and MITRE ATLAS.
 
     ```bash
     qai audit scan \
@@ -124,7 +124,7 @@ qai findings list
 
 ## Next steps
 
-- [Core Concepts](/concepts) — MCP protocol, OWASP mapping, module methodologies, threat model
+- [Core Concepts](/concepts) — MCP protocol, OWASP and MITRE ATLAS mapping, module methodologies, threat model
 - [Audit CLI Reference](/audit/cli) — full scan options and reporting
 - [IPI Overview](/ipi/overview) — indirect prompt injection testing
 - [CXP Overview](/cxp/overview) — context file poisoning for coding assistants

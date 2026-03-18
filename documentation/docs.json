@@ -36,7 +36,7 @@
           "audit/overview",
           "audit/cli",
           "audit/scanners",
-          "audit/owasp-mapping",
+          "audit/framework-coverage",
           "audit/sarif-output",
           "audit/fixtures"
         ]

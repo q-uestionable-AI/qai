@@ -1,11 +1,11 @@
 ---
-title: OWASP MCP Top 10 Mapping
-description: How q-ai scanners map to the OWASP MCP Top 10 categories
+title: Framework Coverage
+description: "How q-ai findings map to OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, and CWE"
 ---
 
 All 10 q-ai scanners map 1:1 to [OWASP MCP Top 10](https://owasp.org/www-project-mcp-top-10/) categories. Every `audit scan` runs all scanners by default, or use `--checks` to target specific ones.
 
-## Coverage
+## OWASP MCP Top 10
 
 | OWASP ID | Vulnerability | Scanner | Analysis | Coverage notes |
 |----------|--------------|---------|----------|----------------|
@@ -48,5 +48,47 @@ Active scanners invoke tools on the target server. Only scan servers you own, co
 <Note>
 The `inject` module provides deeper testing for MCP03 and MCP06 by measuring actual agent responses to poisoned tools. The `chain` module composes findings across categories into multi-step attack paths.
 </Note>
+
+## OWASP Agentic Top 10
+
+All 10 categories of the [OWASP Top 10 for Agentic Applications](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) are mapped. Each audit finding carries `framework_ids` that include the relevant Agentic Top 10 category alongside the MCP Top 10 mapping, providing coverage across both OWASP taxonomies.
+
+## MITRE ATLAS
+
+q-ai maps audit finding categories to [MITRE ATLAS](https://atlas.mitre.org/) technique IDs, connecting MCP-specific vulnerabilities to the broader adversarial ML threat landscape.
+
+`reviewed_against: v5.4.0, last_reviewed: 2026-03-18`
+
+| Category | ATLAS Technique(s) |
+|---|---|
+| command_injection | AML.T0043, AML.T0050 |
+| tool_poisoning | AML.T0051.000, AML.T0080, AML.T0099 |
+| prompt_injection | AML.T0051.000, AML.T0051.001 |
+| supply_chain | AML.T0010 |
+| auth | AML.T0012, AML.T0040 |
+| token_exposure | AML.T0057, AML.T0024 |
+| context_sharing | AML.T0080, AML.T0085 |
+| permissions | AML.T0054, AML.T0081 |
+| shadow_servers | AML.T0010, AML.T0049 |
+| audit_telemetry | AML.T0014, AML.T0007 |
+
+## CWE
+
+q-ai maps audit finding categories to [CWE](https://cwe.mitre.org/) weakness IDs for integration with vulnerability management workflows.
+
+`version: 4.15`
+
+| Category | CWE(s) |
+|---|---|
+| command_injection | CWE-78, CWE-88, CWE-22 |
+| token_exposure | CWE-798, CWE-312 |
+| permissions | CWE-269, CWE-732 |
+| auth | CWE-287, CWE-306 |
+| prompt_injection | CWE-94, CWE-74 |
+| tool_poisoning | CWE-94, CWE-74 |
+| supply_chain | CWE-1104, CWE-829 |
+| context_sharing | CWE-200, CWE-359 |
+| shadow_servers | CWE-345, CWE-346 |
+| audit_telemetry | CWE-778, CWE-223 |
 
 See [Scanner Coverage](/audit/scanners) for per-scanner detail and CLI usage.

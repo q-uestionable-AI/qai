@@ -24,6 +24,19 @@ All findings stored in a SQLite database.
 
 ---
 
+## Framework Coverage
+
+All audit findings map to four security taxonomies:
+
+| Framework | Coverage |
+|-----------|----------|
+| [OWASP MCP Top 10](https://owasp.org/www-project-mcp-top-10/) | All 10 categories |
+| [OWASP Agentic Top 10](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) | All 10 categories |
+| [MITRE ATLAS](https://atlas.mitre.org/) | Technique-level mapping per finding category |
+| [CWE](https://cwe.mitre.org/) | Weakness-level mapping per finding category |
+
+---
+
 ## Install
 
 ```bash
