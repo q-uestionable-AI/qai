@@ -117,7 +117,11 @@ def _load_cache(invalidation_key: str) -> list[dict] | None:
     if data.get("invalidation_key") != invalidation_key:
         return None
 
-    cached_at = datetime.fromisoformat(data["cached_at"])
+    try:
+        cached_at = datetime.fromisoformat(data["cached_at"])
+    except (ValueError, KeyError):
+        return None
+
     if datetime.now(tz=UTC) - cached_at > CACHE_TTL:
         return None
 
