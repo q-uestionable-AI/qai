@@ -27,13 +27,51 @@ frameworks:
       command_injection: "ASI02"
       supply_chain: "ASI04"
       context_sharing: "ASI06"
+      auth: "ASI03"
+      token_exposure: "ASI03"
+      permissions:
+        - "ASI03"
+        - "ASI09"
+      shadow_servers:
+        - "ASI04"
+        - "ASI10"
+      audit_telemetry: "ASI08"
 
   mitre_atlas:
-    version: "4.0"
+    reviewed_against: "v5.4.0"
+    last_reviewed: "2026-03-18"
     url: "https://atlas.mitre.org/"
     mappings:
-      command_injection: "AML.T0040"
-      prompt_injection: "AML.T0051"
+      command_injection:
+        - "AML.T0043"
+        - "AML.T0050"
+      tool_poisoning:
+        - "AML.T0051.000"
+        - "AML.T0080"
+        - "AML.T0099"
+      prompt_injection:
+        - "AML.T0051.000"
+        - "AML.T0051.001"
+      supply_chain:
+        - "AML.T0010"
+      auth:
+        - "AML.T0012"
+        - "AML.T0040"
+      token_exposure:
+        - "AML.T0057"
+        - "AML.T0024"
+      context_sharing:
+        - "AML.T0080"
+        - "AML.T0085"
+      permissions:
+        - "AML.T0054"
+        - "AML.T0081"
+      shadow_servers:
+        - "AML.T0010"
+        - "AML.T0049"
+      audit_telemetry:
+        - "AML.T0014"
+        - "AML.T0007"
 
   cwe:
     version: "4.15"
@@ -48,3 +86,24 @@ frameworks:
       permissions:
         - "CWE-269"
         - "CWE-732"
+      auth:
+        - "CWE-287"
+        - "CWE-306"
+      prompt_injection:
+        - "CWE-94"
+        - "CWE-74"
+      tool_poisoning:
+        - "CWE-94"
+        - "CWE-74"
+      supply_chain:
+        - "CWE-1104"
+        - "CWE-829"
+      context_sharing:
+        - "CWE-200"
+        - "CWE-359"
+      shadow_servers:
+        - "CWE-345"
+        - "CWE-346"
+      audit_telemetry:
+        - "CWE-778"
+        - "CWE-223"
