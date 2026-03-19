@@ -1,6 +1,94 @@
 {% extends "base.html" %}
 {% block title %}q-ai — Launcher{% endblock %}
 
+{# ---- Reusable macro for a workflow card ---- #}
+{% macro workflow_card(wf, is_hero=false) %}
+<div class="wf-card {% if not wf.implemented %}wf-disabled{% endif %}{% if is_hero %} wf-hero{% endif %} p-6 lg:p-8"
+     {% if wf.implemented %}onclick="openWorkflowModal('{{ wf.id }}')"{% endif %}
+     role="button" tabindex="0" aria-label="Launch {{ wf.name }}">
+    <h3 class="{% if is_hero %}text-lg lg:text-xl{% else %}text-base lg:text-lg{% endif %} font-semibold mb-1" style="color: #f1f5f9;">{{ wf.name }}</h3>
+    <p class="text-sm lg:text-base mb-3" style="color: #94a3b8;">{{ wf.description }}</p>
+    <div class="wf-modules">
+        {% for mod in wf.modules %}
+        <span style="font-family: 'Fira Code', monospace; font-size: 0.7rem; color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 9999px; padding: 0.1rem 0.55rem; display: inline-block; margin-right: 0.25rem; margin-top: 0.25rem;">{{ mod }}</span>
+        {% endfor %}
+    </div>
+</div>
+{% endmacro %}
+
+{# ---- Reusable macro for target name field with collision check ---- #}
+{% macro target_name_field(wf_id, placeholder="my-mcp-server") %}
+<div class="form-control">
+    <label class="label"><span class="label-text">Target name</span></label>
+    <input type="text" name="target_name" required
+           placeholder="{{ placeholder }}"
+           class="input input-bordered input-sm w-full"
+           oninput="checkTargetName(this, '{{ wf_id }}')" />
+    <div id="target-warn-{{ wf_id }}" class="text-xs mt-1 hidden" style="color: #fbbf24;">
+        A target with this name already exists. A new run will be created.
+        <button type="button" class="ml-2 underline" style="color: #06b6d4;"
+                onclick="autoSuffixTarget('{{ wf_id }}')">Add suffix</button>
+    </div>
+</div>
+{% endmacro %}
+
+{# ---- Reusable macro for transport + command/url fields ---- #}
+{% macro transport_fields(wf_id) %}
+<div class="form-control">
+    <label class="label"><span class="label-text">Transport</span></label>
+    <div class="flex gap-4">
+        <label class="label cursor-pointer gap-2">
+            <input type="radio" name="transport" value="stdio"
+                   class="radio radio-sm radio-primary"
+                   {% if defaults.audit_default_transport == 'stdio' %}checked{% endif %}
+                   onchange="toggleTransport('{{ wf_id }}')" />
+            <span class="label-text">stdio</span>
+        </label>
+        <label class="label cursor-pointer gap-2">
+            <input type="radio" name="transport" value="sse"
+                   class="radio radio-sm radio-primary"
+                   {% if defaults.audit_default_transport == 'sse' %}checked{% endif %}
+                   onchange="toggleTransport('{{ wf_id }}')" />
+            <span class="label-text">sse</span>
+        </label>
+        <label class="label cursor-pointer gap-2">
+            <input type="radio" name="transport" value="streamable-http"
+                   class="radio radio-sm radio-primary"
+                   {% if defaults.audit_default_transport == 'streamable-http' %}checked{% endif %}
+                   onchange="toggleTransport('{{ wf_id }}')" />
+            <span class="label-text">streamable-http</span>
+        </label>
+    </div>
+</div>
+
+<div id="cmd-{{ wf_id }}" class="form-control {% if defaults.audit_default_transport != 'stdio' %}hidden{% endif %}">
+    <label class="label"><span class="label-text">Command</span></label>
+    <input type="text" name="command"
+           placeholder="npx @modelcontextprotocol/server-everything"
+           class="input input-bordered input-sm w-full" />
+</div>
+
+<div id="url-{{ wf_id }}" class="form-control {% if defaults.audit_default_transport == 'stdio' %}hidden{% endif %}">
+    <label class="label"><span class="label-text">URL</span></label>
+    <input type="text" name="url"
+           placeholder="{% if defaults.audit_default_transport == 'streamable-http' %}http://localhost:3000/mcp{% else %}http://localhost:3000/sse{% endif %}"
+           class="input input-bordered input-sm w-full" />
+</div>
+{% endmacro %}
+
+{# ---- Reusable macro for model dropdown ---- #}
+{% macro model_dropdown() %}
+<div class="form-control">
+    <label class="label"><span class="label-text">Model</span></label>
+    <select name="model" class="select select-bordered select-sm w-full">
+        {% for opt in model_options %}
+        <option value="{{ opt.value }}"
+                {% if opt.value == defaults.default_model %}selected{% endif %}>{{ opt.label }}</option>
+        {% endfor %}
+    </select>
+</div>
+{% endmacro %}
+
 {% block content %}
 <style>
     .wf-card {
@@ -30,6 +118,28 @@
         font-family: 'Fira Code', ui-monospace, monospace;
         font-size: 0.75rem;
         color: #06b6d4;
+    }
+    .wf-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 1.5rem;
+        justify-items: center;
+    }
+    .wf-grid .wf-card { width: 100%; }
+    @media (min-width: 1024px) { .wf-grid { gap: 2rem; } }
+    .qa-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(139, 92, 246, 0.15);
+        border-left: 2px solid rgba(6, 182, 212, 0.5);
+        border-radius: 0.375rem;
+        padding: 0.75rem 1rem;
+        cursor: pointer;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .qa-card:hover {
+        border-color: rgba(139, 92, 246, 0.35);
+        border-left-color: #22d3ee;
+        box-shadow: 0 0 16px rgba(139, 92, 246, 0.1);
     }
     .launcher-modal .modal-box {
         background: #0f1219;
@@ -93,358 +203,431 @@
 
 <div class="max-w-5xl lg:max-w-6xl mx-auto px-6 pt-16 lg:pt-24 pb-6 lg:pb-8">
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8 w-full">
+    {# ---- Hero workflow card (full width) ---- #}
+    {% if hero_workflow %}
+    <div class="mb-6 lg:mb-8">
+        {{ workflow_card(hero_workflow, is_hero=true) }}
+    </div>
+    {% endif %}
+
+    {# ---- Workflow grid (auto-fit) ---- #}
+    <div class="wf-grid">
         {% for wf in workflows %}
-        <div class="wf-card {% if not wf.implemented %}wf-disabled{% endif %} p-6 lg:p-8"
-             {% if wf.implemented %}onclick="openWorkflowModal('{{ wf.id }}')"{% endif %}>
-            <h3 class="text-base lg:text-lg font-semibold mb-1" style="color: #f1f5f9;">{{ wf.name }}</h3>
-            <p class="text-sm lg:text-base mb-3" style="color: #94a3b8;">{{ wf.description }}</p>
-            <div class="wf-modules">
-                {% for mod in wf.modules %}
-                <span style="font-family: 'Fira Code', monospace; font-size: 0.7rem; color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 9999px; padding: 0.1rem 0.55rem; display: inline-block; margin-right: 0.25rem; margin-top: 0.25rem;">{{ mod }}</span>
-                {% endfor %}
-            </div>
-        </div>
-
-        <dialog id="modal-{{ wf.id }}" class="modal launcher-modal">
-            <div class="modal-box">
-                {% if wf.implemented %}
-                <h3 class="text-lg font-bold mb-4">{{ wf.name }}</h3>
-                {% if wf.requires_provider and providers|length == 0 %}
-                <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="mb-4">
-                    <p class="text-sm">This workflow requires an LLM provider.</p>
-                    <a href="/settings#providers" style="color: #06b6d4;" class="text-sm">Configure one now</a>
-                </div>
-                {% elif not wf.requires_provider or providers|length > 0 %}
-                <form id="form-{{ wf.id }}" class="space-y-4" onsubmit="return launchWorkflow(event, '{{ wf.id }}')">
-                    <input type="hidden" name="workflow_id" value="{{ wf.id }}" />
-
-                    {% if wf.id == 'assess' %}
-                    {# ---- ASSESS FORM ---- #}
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Target name</span></label>
-                        <input type="text" name="target_name" required
-                               placeholder="my-mcp-server"
-                               class="input input-bordered input-sm w-full" />
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Transport</span></label>
-                        <div class="flex gap-4">
-                            <label class="label cursor-pointer gap-2">
-                                <input type="radio" name="transport" value="stdio"
-                                       class="radio radio-sm radio-primary"
-                                       checked onchange="toggleTransport('{{ wf.id }}')" />
-                                <span class="label-text">stdio</span>
-                            </label>
-                            <label class="label cursor-pointer gap-2">
-                                <input type="radio" name="transport" value="sse"
-                                       class="radio radio-sm radio-primary"
-                                       onchange="toggleTransport('{{ wf.id }}')" />
-                                <span class="label-text">sse</span>
-                            </label>
-                            <label class="label cursor-pointer gap-2">
-                                <input type="radio" name="transport" value="streamable-http"
-                                       class="radio radio-sm radio-primary"
-                                       onchange="toggleTransport('{{ wf.id }}')" />
-                                <span class="label-text">streamable-http</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div id="cmd-{{ wf.id }}" class="form-control">
-                        <label class="label"><span class="label-text">Command</span></label>
-                        <input type="text" name="command"
-                               placeholder="npx @modelcontextprotocol/server-everything"
-                               class="input input-bordered input-sm w-full" />
-                    </div>
-
-                    <div id="url-{{ wf.id }}" class="form-control hidden">
-                        <label class="label"><span class="label-text">URL</span></label>
-                        <input type="text" name="url"
-                               placeholder="http://localhost:3000/sse"
-                               class="input input-bordered input-sm w-full" />
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Model</span></label>
-                        <select name="model" class="select select-bordered select-sm w-full">
-                            {% for p in providers %}
-                            <option value="{{ p.name }}/default">{{ p.name }}/default</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Rounds</span></label>
-                        <input type="number" name="rounds" value="1" min="1" max="10"
-                               class="input input-bordered input-sm w-24" />
-                    </div>
-
-                    {% elif wf.id == 'test_docs' %}
-                    {# ---- TEST DOCS FORM ---- #}
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Target name</span></label>
-                        <input type="text" name="target_name" required
-                               placeholder="doc-pipeline"
-                               class="input input-bordered input-sm w-full" />
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Callback URL</span></label>
-                        <input type="text" name="callback_url" required
-                               value="{{ defaults.ipi_callback_url }}"
-                               placeholder="https://your-listener.example.com/callback"
-                               class="input input-bordered input-sm w-full" />
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Format</span></label>
-                        <select name="format" class="select select-bordered select-sm w-full">
-                            <option value="pdf">pdf</option>
-                            <option value="markdown">markdown</option>
-                            <option value="html">html</option>
-                            <option value="docx">docx</option>
-                            <option value="ics">ics</option>
-                            <option value="eml">eml</option>
-                        </select>
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Payload style</span></label>
-                        <select name="payload_style" class="select select-bordered select-sm w-full">
-                            <option value="obvious">obvious</option>
-                            <option value="subtle">subtle</option>
-                            <option value="invisible">invisible</option>
-                        </select>
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Payload type</span></label>
-                        <select name="payload_type" class="select select-bordered select-sm w-full">
-                            <option value="callback">callback</option>
-                            <option value="exfil">exfil</option>
-                        </select>
-                    </div>
-
-                    {% if not rxp_available %}
-                    <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="text-sm mb-4">
-                        <span>RXP pre-validation requires additional dependencies.</span><br>
-                        <code style="color: #06b6d4; margin-top: 0.25rem; display: inline-block;">pip install "q-uestionable-ai[rxp]"</code>
-                    </div>
-                    {% endif %}
-                    <div class="form-control">
-                        <label class="label cursor-pointer">
-                            <span class="label-text">Pre-validate retrieval rank with RXP</span>
-                            <input type="checkbox" name="rxp_enabled" value="true"
-                                   class="toggle toggle-sm"
-                                   onchange="toggleRxpSection('{{ wf.id }}')"
-                                   {% if not rxp_available %}disabled{% endif %} />
-                        </label>
-                    </div>
-
-                    <div id="rxp-section-{{ wf.id }}" class="space-y-4 hidden">
-                        <div class="form-control">
-                            <label class="label"><span class="label-text">Embedding model</span></label>
-                            <input type="text" name="rxp_model_id"
-                                   placeholder="all-MiniLM-L6-v2"
-                                   class="input input-bordered input-sm w-full" />
-                        </div>
-                        <div class="form-control">
-                            <label class="label"><span class="label-text">Profile</span></label>
-                            <input type="text" name="rxp_profile_id"
-                                   placeholder="leave blank for custom"
-                                   class="input input-bordered input-sm w-full" />
-                        </div>
-                    </div>
-
-                    {% elif wf.id == 'test_assistant' %}
-                    {# ---- TEST ASSISTANT FORM ---- #}
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Target name</span></label>
-                        <input type="text" name="target_name" required
-                               placeholder="coding-assistant"
-                               class="input input-bordered input-sm w-full" />
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Format</span></label>
-                        <select name="format_id" class="select select-bordered select-sm w-full">
-                            <option value="python">python</option>
-                            <option value="javascript">javascript</option>
-                            <option value="typescript">typescript</option>
-                            <option value="go">go</option>
-                            <option value="rust">rust</option>
-                        </select>
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Repo name (optional)</span></label>
-                        <input type="text" name="repo_name"
-                               placeholder="cxp-python"
-                               class="input input-bordered input-sm w-full" />
-                    </div>
-
-                    {% elif wf.id == 'trace_path' %}
-                    {# ---- TRACE PATH FORM ---- #}
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Target name</span></label>
-                        <input type="text" name="target_name" required
-                               placeholder="target-server"
-                               class="input input-bordered input-sm w-full" />
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Chain template</span></label>
-                        <select name="chain_template_id" class="select select-bordered select-sm w-full">
-                            <option value="">Select a template...</option>
-                        </select>
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Transport</span></label>
-                        <div class="flex gap-4">
-                            <label class="label cursor-pointer gap-2">
-                                <input type="radio" name="transport" value="stdio"
-                                       class="radio radio-sm radio-primary"
-                                       checked onchange="toggleTransport('{{ wf.id }}')" />
-                                <span class="label-text">stdio</span>
-                            </label>
-                            <label class="label cursor-pointer gap-2">
-                                <input type="radio" name="transport" value="sse"
-                                       class="radio radio-sm radio-primary"
-                                       onchange="toggleTransport('{{ wf.id }}')" />
-                                <span class="label-text">sse</span>
-                            </label>
-                            <label class="label cursor-pointer gap-2">
-                                <input type="radio" name="transport" value="streamable-http"
-                                       class="radio radio-sm radio-primary"
-                                       onchange="toggleTransport('{{ wf.id }}')" />
-                                <span class="label-text">streamable-http</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div id="cmd-{{ wf.id }}" class="form-control">
-                        <label class="label"><span class="label-text">Command</span></label>
-                        <input type="text" name="command"
-                               placeholder="npx @modelcontextprotocol/server-everything"
-                               class="input input-bordered input-sm w-full" />
-                    </div>
-
-                    <div id="url-{{ wf.id }}" class="form-control hidden">
-                        <label class="label"><span class="label-text">URL</span></label>
-                        <input type="text" name="url"
-                               placeholder="http://localhost:3000/sse"
-                               class="input input-bordered input-sm w-full" />
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Model</span></label>
-                        <select name="model" class="select select-bordered select-sm w-full">
-                            {% for p in providers %}
-                            <option value="{{ p.name }}/default">{{ p.name }}/default</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    {% elif wf.id == 'blast_radius' %}
-                    {# ---- BLAST RADIUS FORM ---- #}
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Chain execution</span></label>
-                        <select name="chain_execution_id" class="select select-bordered select-sm w-full">
-                            <option value="">Select an execution...</option>
-                        </select>
-                    </div>
-                    <div id="blast-radius-gate-{{ wf.id }}" style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; color: #fbbf24; display: none;" class="text-sm">
-                        <span>No successful chain executions found. Run Trace an Attack Path first.</span>
-                    </div>
-
-                    {% elif wf.id == 'generate_report' %}
-                    {# ---- GENERATE REPORT FORM ---- #}
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Target</span></label>
-                        <select name="target_id" class="select select-bordered select-sm w-full">
-                            <option value="">Select a target...</option>
-                        </select>
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">From date (optional)</span></label>
-                        <input type="date" name="from_date"
-                               class="input input-bordered input-sm w-full" />
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">To date (optional)</span></label>
-                        <input type="date" name="to_date"
-                               class="input input-bordered input-sm w-full" />
-                    </div>
-
-                    <div class="form-control">
-                        <label class="label cursor-pointer">
-                            <span class="label-text">Include evidence pack</span>
-                            <input type="checkbox" name="include_evidence_pack" value="true"
-                                   class="toggle toggle-sm" />
-                        </label>
-                    </div>
-
-                    {% endif %}
-
-                    <div id="error-{{ wf.id }}" class="text-error text-sm hidden"></div>
-
-                    <div class="modal-action">
-                        <button type="submit" class="btn btn-sm btn-launch">Launch</button>
-                        <button type="button" class="btn btn-sm btn-cancel"
-                                onclick="document.getElementById('modal-{{ wf.id }}').close()">Cancel</button>
-                    </div>
-                </form>
-                {% endif %}
-                {% else %}
-                <h3 class="text-lg font-bold" style="color: #f1f5f9;">Coming Soon</h3>
-                <p class="py-4" style="color: #94a3b8;">
-                    This workflow is not yet implemented.
-                </p>
-                <div class="modal-action">
-                    <form method="dialog">
-                        <button class="btn btn-sm btn-cancel">Close</button>
-                    </form>
-                </div>
-                {% endif %}
-            </div>
-            <form method="dialog" class="modal-backdrop">
-                <button>close</button>
-            </form>
-        </dialog>
+        {{ workflow_card(wf) }}
         {% endfor %}
     </div>
+
+    {# ---- Quick Actions section ---- #}
+    <div class="mt-10 lg:mt-12">
+        <h2 class="text-sm font-semibold uppercase tracking-wider mb-4" style="color: #64748b; font-family: 'Fira Code', monospace;">Quick Actions</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="qa-card" onclick="openWorkflowModal('qa_scan')" role="button" tabindex="0" aria-label="Quick Scan">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium" style="color: #f1f5f9;">Scan</span>
+                    <span style="font-family: 'Fira Code', monospace; font-size: 0.65rem; color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 9999px; padding: 0.05rem 0.4rem;">audit</span>
+                </div>
+                <p class="text-xs mt-1" style="color: #64748b;">Run a standalone audit scan</p>
+            </div>
+            <div class="qa-card" onclick="openWorkflowModal('qa_intercept')" role="button" tabindex="0" aria-label="Quick Intercept">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium" style="color: #f1f5f9;">Intercept</span>
+                    <span style="font-family: 'Fira Code', monospace; font-size: 0.65rem; color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 9999px; padding: 0.05rem 0.4rem;">proxy</span>
+                </div>
+                <p class="text-xs mt-1" style="color: #64748b;">Capture MCP traffic</p>
+            </div>
+            <div class="qa-card" onclick="openWorkflowModal('qa_campaign')" role="button" tabindex="0" aria-label="Quick Campaign">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium" style="color: #f1f5f9;">Campaign</span>
+                    <span style="font-family: 'Fira Code', monospace; font-size: 0.65rem; color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 9999px; padding: 0.05rem 0.4rem;">inject</span>
+                </div>
+                <p class="text-xs mt-1" style="color: #64748b;">Run an inject campaign</p>
+            </div>
+        </div>
+    </div>
+
+    {# ==== MODALS ==== #}
+
+    {# ---- Hero workflow modal ---- #}
+    {% if hero_workflow %}
+    {% set wf = hero_workflow %}
+    <dialog id="modal-{{ wf.id }}" class="modal launcher-modal">
+        <div class="modal-box">
+            {% if wf.implemented %}
+            <h3 class="text-lg font-bold mb-4">{{ wf.name }}</h3>
+            {% if wf.requires_provider and providers|length == 0 %}
+            <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="mb-4">
+                <p class="text-sm">This workflow requires an LLM provider.</p>
+                <a href="/settings#providers" style="color: #06b6d4;" class="text-sm">Configure one now</a>
+            </div>
+            {% elif not wf.requires_provider or providers|length > 0 %}
+            <form id="form-{{ wf.id }}" class="space-y-4" onsubmit="return launchWorkflow(event, '{{ wf.id }}')">
+                <input type="hidden" name="workflow_id" value="{{ wf.id }}" />
+                {# ---- ASSESS FORM ---- #}
+                {{ target_name_field(wf.id, "my-mcp-server") }}
+                {{ transport_fields(wf.id) }}
+                {{ model_dropdown() }}
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Rounds</span></label>
+                    <input type="number" name="rounds" value="1" min="1" max="10"
+                           class="input input-bordered input-sm w-24" />
+                </div>
+
+                <div id="error-{{ wf.id }}" class="text-error text-sm hidden"></div>
+
+                <div class="modal-action">
+                    <button type="submit" class="btn btn-sm btn-launch">Launch</button>
+                    <button type="button" class="btn btn-sm btn-cancel"
+                            onclick="document.getElementById('modal-{{ wf.id }}').close()">Cancel</button>
+                </div>
+            </form>
+            {% endif %}
+            {% else %}
+            <h3 class="text-lg font-bold" style="color: #f1f5f9;">Coming Soon</h3>
+            <p class="py-4" style="color: #94a3b8;">This workflow is not yet implemented.</p>
+            <div class="modal-action">
+                <form method="dialog"><button class="btn btn-sm btn-cancel">Close</button></form>
+            </div>
+            {% endif %}
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+    {% endif %}
+
+    {# ---- Non-hero workflow modals ---- #}
+    {% for wf in workflows %}
+    <dialog id="modal-{{ wf.id }}" class="modal launcher-modal">
+        <div class="modal-box">
+            {% if wf.implemented %}
+            <h3 class="text-lg font-bold mb-4">{{ wf.name }}</h3>
+            {% if wf.requires_provider and providers|length == 0 %}
+            <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="mb-4">
+                <p class="text-sm">This workflow requires an LLM provider.</p>
+                <a href="/settings#providers" style="color: #06b6d4;" class="text-sm">Configure one now</a>
+            </div>
+            {% elif not wf.requires_provider or providers|length > 0 %}
+            <form id="form-{{ wf.id }}" class="space-y-4" onsubmit="return launchWorkflow(event, '{{ wf.id }}')">
+                <input type="hidden" name="workflow_id" value="{{ wf.id }}" />
+
+                {% if wf.id == 'test_docs' %}
+                {# ---- TEST DOCS FORM ---- #}
+                {{ target_name_field(wf.id, "doc-pipeline") }}
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Callback URL</span></label>
+                    <input type="text" name="callback_url" required
+                           value="{{ defaults.ipi_callback_url }}"
+                           placeholder="https://your-listener.example.com/callback"
+                           class="input input-bordered input-sm w-full" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Format</span></label>
+                    <select name="format" class="select select-bordered select-sm w-full">
+                        <option value="pdf">pdf</option>
+                        <option value="markdown">markdown</option>
+                        <option value="html">html</option>
+                        <option value="docx">docx</option>
+                        <option value="ics">ics</option>
+                        <option value="eml">eml</option>
+                    </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Payload style</span></label>
+                    <select name="payload_style" class="select select-bordered select-sm w-full">
+                        <option value="obvious">obvious</option>
+                        <option value="subtle">subtle</option>
+                        <option value="invisible">invisible</option>
+                    </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Payload type</span></label>
+                    <select name="payload_type" class="select select-bordered select-sm w-full">
+                        <option value="callback">callback</option>
+                        <option value="exfil">exfil</option>
+                    </select>
+                </div>
+
+                {% if not rxp_available %}
+                <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="text-sm mb-4">
+                    <span>RXP pre-validation requires additional dependencies.</span><br>
+                    <code style="color: #06b6d4; margin-top: 0.25rem; display: inline-block;">pip install "q-uestionable-ai[rxp]"</code>
+                </div>
+                {% endif %}
+                <div class="form-control">
+                    <label class="label cursor-pointer">
+                        <span class="label-text">Pre-validate retrieval rank with RXP</span>
+                        <input type="checkbox" name="rxp_enabled" value="true"
+                               class="toggle toggle-sm"
+                               onchange="toggleRxpSection('{{ wf.id }}')"
+                               {% if not rxp_available %}disabled{% endif %} />
+                    </label>
+                </div>
+
+                <div id="rxp-section-{{ wf.id }}" class="space-y-4 hidden">
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Embedding model</span></label>
+                        <input type="text" name="rxp_model_id"
+                               placeholder="all-MiniLM-L6-v2"
+                               class="input input-bordered input-sm w-full" />
+                    </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Profile</span></label>
+                        <input type="text" name="rxp_profile_id"
+                               placeholder="leave blank for custom"
+                               class="input input-bordered input-sm w-full" />
+                    </div>
+                </div>
+
+                {% elif wf.id == 'test_assistant' %}
+                {# ---- TEST ASSISTANT FORM ---- #}
+                {{ target_name_field(wf.id, "coding-assistant") }}
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Format</span></label>
+                    <select name="format_id" class="select select-bordered select-sm w-full">
+                        <option value="python">python</option>
+                        <option value="javascript">javascript</option>
+                        <option value="typescript">typescript</option>
+                        <option value="go">go</option>
+                        <option value="rust">rust</option>
+                    </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Repo name (optional)</span></label>
+                    <input type="text" name="repo_name"
+                           placeholder="cxp-python"
+                           class="input input-bordered input-sm w-full" />
+                </div>
+
+                {% elif wf.id == 'trace_path' %}
+                {# ---- TRACE PATH FORM ---- #}
+                {{ target_name_field(wf.id, "target-server") }}
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Chain template</span></label>
+                    <select name="chain_template_id" class="select select-bordered select-sm w-full">
+                        <option value="">Select a template...</option>
+                    </select>
+                </div>
+
+                {{ transport_fields(wf.id) }}
+                {{ model_dropdown() }}
+
+                {% elif wf.id == 'blast_radius' %}
+                {# ---- BLAST RADIUS FORM ---- #}
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Chain execution</span></label>
+                    <select name="chain_execution_id" class="select select-bordered select-sm w-full">
+                        <option value="">Select an execution...</option>
+                    </select>
+                </div>
+                <div id="blast-radius-gate-{{ wf.id }}" style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; color: #fbbf24; display: none;" class="text-sm">
+                    <span>No successful chain executions found. Run Trace an Attack Path first.</span>
+                </div>
+
+                {% elif wf.id == 'generate_report' %}
+                {# ---- GENERATE REPORT FORM ---- #}
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Target</span></label>
+                    <select name="target_id" class="select select-bordered select-sm w-full">
+                        <option value="">Select a target...</option>
+                    </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">From date (optional)</span></label>
+                    <input type="date" name="from_date"
+                           class="input input-bordered input-sm w-full" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">To date (optional)</span></label>
+                    <input type="date" name="to_date"
+                           class="input input-bordered input-sm w-full" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label cursor-pointer">
+                        <span class="label-text">Include evidence pack</span>
+                        <input type="checkbox" name="include_evidence_pack" value="true"
+                               class="toggle toggle-sm" />
+                    </label>
+                </div>
+
+                {% endif %}
+
+                <div id="error-{{ wf.id }}" class="text-error text-sm hidden"></div>
+
+                <div class="modal-action">
+                    <button type="submit" class="btn btn-sm btn-launch">Launch</button>
+                    <button type="button" class="btn btn-sm btn-cancel"
+                            onclick="document.getElementById('modal-{{ wf.id }}').close()">Cancel</button>
+                </div>
+            </form>
+            {% endif %}
+            {% else %}
+            <h3 class="text-lg font-bold" style="color: #f1f5f9;">Coming Soon</h3>
+            <p class="py-4" style="color: #94a3b8;">
+                This workflow is not yet implemented.
+            </p>
+            <div class="modal-action">
+                <form method="dialog">
+                    <button class="btn btn-sm btn-cancel">Close</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+        <form method="dialog" class="modal-backdrop">
+            <button>close</button>
+        </form>
+    </dialog>
+    {% endfor %}
+
+    {# ---- Quick Action modals ---- #}
+    <dialog id="modal-qa_scan" class="modal launcher-modal">
+        <div class="modal-box">
+            <h3 class="text-lg font-bold mb-4">Scan</h3>
+            {% if providers|length == 0 %}
+            <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="mb-4">
+                <p class="text-sm">Scanning requires an LLM provider for check execution.</p>
+                <a href="/settings#providers" style="color: #06b6d4;" class="text-sm">Configure one now</a>
+            </div>
+            {% else %}
+            <form id="form-qa_scan" class="space-y-4" onsubmit="return launchQuickAction(event, 'qa_scan')">
+                <input type="hidden" name="action" value="scan" />
+                {{ target_name_field('qa_scan', "my-mcp-server") }}
+                {{ transport_fields('qa_scan') }}
+                <div id="error-qa_scan" class="text-error text-sm hidden"></div>
+                <div class="modal-action">
+                    <button type="submit" class="btn btn-sm btn-launch">Scan</button>
+                    <button type="button" class="btn btn-sm btn-cancel"
+                            onclick="document.getElementById('modal-qa_scan').close()">Cancel</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <dialog id="modal-qa_intercept" class="modal launcher-modal">
+        <div class="modal-box">
+            <h3 class="text-lg font-bold mb-4">Intercept</h3>
+            <form id="form-qa_intercept" class="space-y-4" onsubmit="return launchQuickAction(event, 'qa_intercept')">
+                <input type="hidden" name="action" value="intercept" />
+                {{ target_name_field('qa_intercept', "my-mcp-server") }}
+                {{ transport_fields('qa_intercept') }}
+                <div id="error-qa_intercept" class="text-error text-sm hidden"></div>
+                <div class="modal-action">
+                    <button type="submit" class="btn btn-sm btn-launch">Intercept</button>
+                    <button type="button" class="btn btn-sm btn-cancel"
+                            onclick="document.getElementById('modal-qa_intercept').close()">Cancel</button>
+                </div>
+            </form>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <dialog id="modal-qa_campaign" class="modal launcher-modal">
+        <div class="modal-box">
+            <h3 class="text-lg font-bold mb-4">Campaign</h3>
+            {% if providers|length == 0 %}
+            <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="mb-4">
+                <p class="text-sm">Campaigns require an LLM provider.</p>
+                <a href="/settings#providers" style="color: #06b6d4;" class="text-sm">Configure one now</a>
+            </div>
+            {% else %}
+            <form id="form-qa_campaign" class="space-y-4" onsubmit="return launchQuickAction(event, 'qa_campaign')">
+                <input type="hidden" name="action" value="campaign" />
+                {{ target_name_field('qa_campaign', "my-mcp-server") }}
+                {{ transport_fields('qa_campaign') }}
+                {{ model_dropdown() }}
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Rounds</span></label>
+                    <input type="number" name="rounds" value="1" min="1" max="10"
+                           class="input input-bordered input-sm w-24" />
+                </div>
+
+                <div id="error-qa_campaign" class="text-error text-sm hidden"></div>
+                <div class="modal-action">
+                    <button type="submit" class="btn btn-sm btn-launch">Launch</button>
+                    <button type="button" class="btn btn-sm btn-cancel"
+                            onclick="document.getElementById('modal-qa_campaign').close()">Cancel</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
 </div>
 
 <script>
+var _targetCheckTimers = {};
+var _URL_PLACEHOLDERS = {
+    'sse': 'http://localhost:3000/sse',
+    'streamable-http': 'http://localhost:3000/mcp'
+};
+
 function toggleTransport(wfId) {
-    const form = document.getElementById('form-' + wfId);
-    const val = form.querySelector('input[name="transport"]:checked').value;
-    const cmd = document.getElementById('cmd-' + wfId);
-    const url = document.getElementById('url-' + wfId);
+    var form = document.getElementById('form-' + wfId);
+    var val = form.querySelector('input[name="transport"]:checked').value;
+    var cmd = document.getElementById('cmd-' + wfId);
+    var url = document.getElementById('url-' + wfId);
     cmd.classList.toggle('hidden', val !== 'stdio');
     url.classList.toggle('hidden', val === 'stdio');
+    /* Update URL placeholder per transport type */
+    var urlInput = url.querySelector('input[name="url"]');
+    if (urlInput) {
+        urlInput.placeholder = _URL_PLACEHOLDERS[val] || 'http://localhost:3000/sse';
+    }
 }
 
 function toggleRxpSection(wfId) {
-    const form = document.getElementById('form-' + wfId);
-    const cb = form.querySelector('input[name="rxp_enabled"]');
-    const section = document.getElementById('rxp-section-' + wfId);
+    var form = document.getElementById('form-' + wfId);
+    var cb = form.querySelector('input[name="rxp_enabled"]');
+    var section = document.getElementById('rxp-section-' + wfId);
     section.classList.toggle('hidden', !cb.checked);
 }
 
+function checkTargetName(input, wfId) {
+    var warn = document.getElementById('target-warn-' + wfId);
+    warn.classList.add('hidden');
+    clearTimeout(_targetCheckTimers[wfId]);
+    var name = input.value.trim();
+    if (!name) return;
+    _targetCheckTimers[wfId] = setTimeout(function() {
+        fetch('/api/targets/check-name?name=' + encodeURIComponent(name))
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.exists) warn.classList.remove('hidden');
+                else warn.classList.add('hidden');
+            })
+            .catch(function() {});
+    }, 400);
+}
+
+function autoSuffixTarget(wfId) {
+    var form = document.getElementById('form-' + wfId);
+    var input = form.querySelector('input[name="target_name"]');
+    var base = input.value.replace(/-\d+$/, '');
+    input.value = base + '-' + Math.floor(Date.now() / 1000 % 100000);
+    var warn = document.getElementById('target-warn-' + wfId);
+    warn.classList.add('hidden');
+    checkTargetName(input, wfId);
+}
+
 async function loadChainTemplates(wfId) {
-    const sel = document.querySelector('#modal-' + wfId + ' select[name="chain_template_id"]');
+    var sel = document.querySelector('#modal-' + wfId + ' select[name="chain_template_id"]');
     if (!sel || sel.options.length > 1) return;
     try {
-        const resp = await fetch('/api/chain/templates');
-        const data = await resp.json();
+        var resp = await fetch('/api/chain/templates');
+        var data = await resp.json();
         data.templates.forEach(function(t) {
-            const opt = document.createElement('option');
+            var opt = document.createElement('option');
             opt.value = t.id;
             opt.textContent = t.name + ' (' + t.category + ')';
             sel.appendChild(opt);
@@ -453,32 +636,32 @@ async function loadChainTemplates(wfId) {
 }
 
 async function loadChainExecutions(wfId) {
-    const sel = document.querySelector('#modal-' + wfId + ' select[name="chain_execution_id"]');
+    var sel = document.querySelector('#modal-' + wfId + ' select[name="chain_execution_id"]');
     if (!sel || sel.options.length > 1) return;
     try {
-        const resp = await fetch('/api/chain/executions/recent');
-        const data = await resp.json();
+        var resp = await fetch('/api/chain/executions/recent');
+        var data = await resp.json();
         data.executions.forEach(function(e) {
-            const opt = document.createElement('option');
+            var opt = document.createElement('option');
             opt.value = e.id;
             opt.textContent = e.chain_name + ' \u2014 ' + e.created_at;
             sel.appendChild(opt);
         });
         if (data.executions.length === 0) {
-            const gate = document.getElementById('blast-radius-gate-' + wfId);
+            var gate = document.getElementById('blast-radius-gate-' + wfId);
             if (gate) gate.style.display = 'block';
         }
     } catch (err) { /* silently fail */ }
 }
 
 async function loadTargets(wfId) {
-    const sel = document.querySelector('#modal-' + wfId + ' select[name="target_id"]');
+    var sel = document.querySelector('#modal-' + wfId + ' select[name="target_id"]');
     if (!sel || sel.options.length > 1) return;
     try {
-        const resp = await fetch('/api/targets/list');
-        const data = await resp.json();
+        var resp = await fetch('/api/targets/list');
+        var data = await resp.json();
         data.targets.forEach(function(t) {
-            const opt = document.createElement('option');
+            var opt = document.createElement('option');
             opt.value = t.id;
             opt.textContent = t.name + ' (' + t.type + ')';
             sel.appendChild(opt);
@@ -495,19 +678,39 @@ function openWorkflowModal(wfId) {
 
 async function launchWorkflow(e, wfId) {
     e.preventDefault();
-    const form = document.getElementById('form-' + wfId);
-    const errEl = document.getElementById('error-' + wfId);
+    var form = document.getElementById('form-' + wfId);
+    var errEl = document.getElementById('error-' + wfId);
     errEl.classList.add('hidden');
-    const data = Object.fromEntries(new FormData(form));
+    var data = Object.fromEntries(new FormData(form));
     if (data.rounds) data.rounds = parseInt(data.rounds, 10);
     if (data.include_evidence_pack) data.include_evidence_pack = true;
     try {
-        const resp = await fetch('/api/workflows/launch', {
+        var resp = await fetch('/api/workflows/launch', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(data),
         });
-        const result = await resp.json();
+        var result = await resp.json();
+        if (resp.ok) { window.location.href = result.redirect; }
+        else { errEl.textContent = result.detail || 'Launch failed'; errEl.classList.remove('hidden'); }
+    } catch (err) { errEl.textContent = err.message; errEl.classList.remove('hidden'); }
+    return false;
+}
+
+async function launchQuickAction(e, wfId) {
+    e.preventDefault();
+    var form = document.getElementById('form-' + wfId);
+    var errEl = document.getElementById('error-' + wfId);
+    errEl.classList.add('hidden');
+    var data = Object.fromEntries(new FormData(form));
+    if (data.rounds) data.rounds = parseInt(data.rounds, 10);
+    try {
+        var resp = await fetch('/api/quick-actions/launch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+        });
+        var result = await resp.json();
         if (resp.ok) { window.location.href = result.redirect; }
         else { errEl.textContent = result.detail || 'Launch failed'; errEl.classList.remove('hidden'); }
     } catch (err) { errEl.textContent = err.message; errEl.classList.remove('hidden'); }
