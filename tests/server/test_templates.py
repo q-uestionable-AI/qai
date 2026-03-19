@@ -37,9 +37,11 @@ class TestWorkflowAccordion:
         assert "wf-panel" in resp.text
         assert "wf-row" in resp.text
 
-    def test_assess_expanded_by_default(self, client: TestClient) -> None:
+    def test_all_rows_collapsed_by_default(self, client: TestClient) -> None:
         resp = client.get("/")
         assert 'id="wf-row-assess"' in resp.text
+        # No row should have the expanded class in the server-rendered HTML
+        assert 'class="wf-row expanded' not in resp.text
 
     def test_inline_forms_present(self, client: TestClient) -> None:
         resp = client.get("/")

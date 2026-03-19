@@ -19,11 +19,16 @@ class TestAccordionLayout:
         assert resp.status_code == 200
         assert "wf-panel" in resp.text
 
-    def test_assess_is_first_and_expanded(self, client: TestClient) -> None:
-        """Assess workflow row is present and expanded by default."""
+    def test_assess_is_first_row(self, client: TestClient) -> None:
+        """Assess workflow row is present as the first row."""
         resp = client.get("/")
         assert "Assess an MCP Server" in resp.text
         assert 'id="wf-row-assess"' in resp.text
+
+    def test_all_rows_collapsed_by_default(self, client: TestClient) -> None:
+        """No row is expanded in the server-rendered HTML."""
+        resp = client.get("/")
+        assert 'class="wf-row expanded' not in resp.text
 
     def test_all_workflow_rows_present(self, client: TestClient) -> None:
         """All visible workflows render as accordion rows."""

@@ -74,16 +74,8 @@
 </div>
 {% endmacro %}
 
-{# ---- Workflow color config ---- #}
-{# cyan workflows: assess, test_docs, test_assistant #}
-{# violet workflows: trace_path, blast_radius #}
-{% set wf_colors = {
-    'assess':         {'color': '#22d3ee', 'border': 'rgba(6,182,212,0.35)', 'bg': 'rgba(6,182,212,0.06)'},
-    'test_docs':      {'color': '#22d3ee', 'border': 'rgba(6,182,212,0.35)', 'bg': 'rgba(6,182,212,0.06)'},
-    'test_assistant': {'color': '#22d3ee', 'border': 'rgba(6,182,212,0.35)', 'bg': 'rgba(6,182,212,0.06)'},
-    'trace_path':     {'color': '#a78bfa', 'border': 'rgba(139,92,246,0.35)', 'bg': 'rgba(139,92,246,0.06)'},
-    'blast_radius':   {'color': '#a78bfa', 'border': 'rgba(139,92,246,0.35)', 'bg': 'rgba(139,92,246,0.06)'}
-} %}
+{# ---- Workflow color config — unified violet for all rows ---- #}
+{% set wf_color_default = {'color': '#a78bfa', 'border': 'rgba(139,92,246,0.35)', 'bg': 'rgba(139,92,246,0.06)'} %}
 
 {% block content %}
 
@@ -101,14 +93,14 @@
         {% endfor %}
 
         {% for wf in all_workflows %}
-        {% set colors = wf_colors.get(wf.id, {'color': '#22d3ee', 'border': 'rgba(6,182,212,0.35)', 'bg': 'rgba(6,182,212,0.06)'}) %}
+        {% set colors = wf_color_default %}
 
         {# Connector between rows #}
         {% if not loop.first %}
         <div class="wf-connector"></div>
         {% endif %}
 
-        <div class="wf-row{% if wf.id == 'assess' %} expanded{% endif %}{% if not wf.implemented %} wf-unimplemented{% endif %}"
+        <div class="wf-row{% if not wf.implemented %} wf-unimplemented{% endif %}"
              id="wf-row-{{ wf.id }}"
              style="--wf-bg: {{ colors.bg }}; --wf-border: {{ colors.border }}; --wf-color: {{ colors.color }};">
 
@@ -307,7 +299,7 @@
     </div>
 
     {# ---- Quick Action capsule buttons ---- #}
-    <div class="qa-capsules mt-8">
+    <div class="qa-capsules mt-3">
         <button class="qa-capsule" onclick="openQuickActionModal('qa_scan')"
                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openQuickActionModal('qa_scan');}"
                 aria-label="Quick Scan">
