@@ -8,6 +8,13 @@
     var socket;
     var elapsedInterval = null;
 
+    // --- Reconnect state ---
+    var RECONNECT_BASE_MS = 1000;
+    var RECONNECT_MAX_MS = 30000;
+    var reconnectDelay = RECONNECT_BASE_MS;
+    var reconnectTimer = null;
+    var intentionalClose = false;
+
     var TERMINAL_STATUSES = [2, 3, 4, 6]; // COMPLETED, FAILED, CANCELLED, PARTIAL
 
     var STATUS_LABELS = {
@@ -23,6 +30,24 @@
 
     function getStatusBar() {
         return document.getElementById('operations-status-bar');
+    }
+
+    // --- Reconnect indicator ---
+
+    function showReconnecting(show) {
+        var indicator = document.getElementById('ws-reconnect-indicator');
+        if (!indicator) {
+            // Create indicator if it doesn't exist
+            var bar = getStatusBar();
+            if (!bar) return;
+            indicator = document.createElement('span');
+            indicator.id = 'ws-reconnect-indicator';
+            indicator.className = 'badge badge-sm badge-warning animate-pulse ml-2';
+            indicator.textContent = 'Reconnecting\u2026';
+            indicator.style.display = 'none';
+            bar.appendChild(indicator);
+        }
+        indicator.style.display = show ? 'inline-flex' : 'none';
     }
 
     // --- Elapsed timer ---
@@ -107,17 +132,38 @@
 
     // --- WebSocket handlers ---
 
+    function scheduleReconnect() {
+        if (intentionalClose) return;
+        showReconnecting(true);
+        reconnectTimer = setTimeout(function () {
+            reconnectTimer = null;
+            connect();
+        }, reconnectDelay);
+        // Exponential backoff: double delay, cap at max
+        reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS);
+    }
+
     function connect() {
+        if (socket && (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN)) {
+            return;
+        }
         socket = new WebSocket(wsUrl);
 
         socket.onopen = function () {
-            // Re-fetch status bar to catch terminal events that fired before
-            // the WebSocket connected (race between page load and run completion).
+            // Reset reconnect state on successful connection
+            reconnectDelay = RECONNECT_BASE_MS;
+            showReconnecting(false);
+
+            // Re-fetch status bar to catch events that fired while disconnected
             if (runId) {
                 htmx.ajax('GET', '/api/operations/workflow-status-bar?run_id=' + runId,
                           {target: '#operations-status-bar', swap: 'outerHTML'}).then(function () {
                     initElapsedTimer();
                 });
+                htmx.ajax('GET', '/api/operations/status-bar?run_id=' + runId,
+                          {target: '#child-run-badges', swap: 'innerHTML'});
+                htmx.ajax('GET', '/api/operations/findings-sidebar?run_id=' + runId,
+                          {target: '#findings-sidebar-content', swap: 'innerHTML'});
             }
         };
 
@@ -127,7 +173,11 @@
         };
 
         socket.onclose = function () {
-            // Passive disconnect — no auto-reconnect for MVP.
+            scheduleReconnect();
+        };
+
+        socket.onerror = function () {
+            // onclose will fire after onerror, which triggers reconnect
         };
     }
 
@@ -224,6 +274,18 @@
             }
         }, 100);
     };
+
+    // Clean up on page unload to prevent reconnect attempts
+    window.addEventListener('beforeunload', function () {
+        intentionalClose = true;
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
+        if (socket) {
+            socket.close();
+        }
+    });
 
     initElapsedTimer();
     connect();
