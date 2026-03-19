@@ -1402,7 +1402,13 @@ def _check_provider_credential(body: dict[str, Any], db_path: Path | None) -> JS
     Returns:
         A JSONResponse with 422 status if validation fails, or None on success.
     """
-    model = body.get("model", "").strip()
+    try:
+        model = _str_field(body, "model")
+    except TypeError:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Invalid provider model parameter"},
+        )
     if not model or "/" not in model:
         return JSONResponse(
             status_code=422,
@@ -1791,8 +1797,9 @@ async def launch_quick_action(request: Request) -> JSONResponse:
 
     try:
         result = _validate_quick_action(body, db_path)
-    except TypeError as exc:
-        return JSONResponse(status_code=422, content={"detail": str(exc)})
+    except TypeError:
+        logger.warning("Invalid request parameters in quick action", exc_info=True)
+        return JSONResponse(status_code=422, content={"detail": "Invalid request parameters"})
     if isinstance(result, JSONResponse):
         return result
     action, target_name = result
@@ -1802,8 +1809,9 @@ async def launch_quick_action(request: Request) -> JSONResponse:
 
     try:
         config = _build_quick_action_config(action, body, target_id)
-    except TypeError as exc:
-        return JSONResponse(status_code=422, content={"detail": str(exc)})
+    except TypeError:
+        logger.warning("Invalid action configuration in quick action", exc_info=True)
+        return JSONResponse(status_code=422, content={"detail": "Invalid action configuration"})
 
     runner = WorkflowRunner(
         workflow_id=_QUICK_ACTION_WORKFLOW_MAP[action],

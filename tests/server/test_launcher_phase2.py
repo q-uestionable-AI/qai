@@ -197,7 +197,7 @@ class TestQuickActionLaunch:
             },
         )
         assert resp.status_code == 422
-        assert "must be a string" in resp.json()["detail"]
+        assert resp.json()["detail"] == "Invalid request parameters"
 
     def test_non_object_body_rejected(self, client: TestClient) -> None:
         """Non-object JSON body (e.g. array) returns 422."""
