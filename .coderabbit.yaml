@@ -13,14 +13,15 @@ reviews:
   high_level_summary_in_walkthrough: true
   poem: false
   in_progress_fortune: false
-  sequence_diagrams: false
+  sequence_diagrams: true
   collapse_walkthrough: true
   changed_files_summary: true
   review_status: true
+  review_details: true
   commit_status: true
   assess_linked_issues: true
   related_issues: true
-  related_prs: false
+  related_prs: true
   suggested_labels: false
   suggested_reviewers: false
   auto_apply_labels: false
@@ -143,7 +144,7 @@ reviews:
 
   finishing_touches:
     docstrings:
-      enabled: false
+      enabled: true
     unit_tests:
       enabled: true
 
@@ -161,13 +162,19 @@ reviews:
     actionlint:
       enabled: true
     shellcheck:
-      enabled: false
+      enabled: true
     yamllint:
-      enabled: false
+      enabled: true
     markdownlint:
       enabled: false
     github-checks:
-      enabled: false
+      enabled: true
+    pylint:
+      enabled: true
+    semgrep:
+      enabled: true
+    osv-scanner:
+      enabled: true
 
 chat:
   auto_reply: true
