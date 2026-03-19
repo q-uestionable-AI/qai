@@ -1676,3 +1676,70 @@ async def api_proxy_session_detail(request: Request, run_id: str) -> HTMLRespons
         "partials/proxy_tab.html",
         {"session_detail": session_data, "messages_summary": messages_summary},
     )
+
+
+@router.get("/api/runs/proxy-messages/{run_id}")
+async def api_runs_proxy_messages(
+    request: Request,
+    run_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    direction: str | None = Query(None),
+) -> HTMLResponse:
+    """Return paginated proxy messages as an HTMX partial."""
+    import json as _json
+
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT session_file FROM proxy_sessions WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+
+    messages: list[dict[str, Any]] = []
+    total = 0
+    if row and row["session_file"]:
+        artifacts_dir = Path.home() / ".qai" / "artifacts"
+        session_file = row["session_file"]
+        session_path = (artifacts_dir / session_file).resolve()
+        if str(session_path).startswith(str(artifacts_dir.resolve())) and session_path.exists():
+            try:
+                raw = _json.loads(session_path.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                raw = {}
+            all_msgs = raw.get("messages", [])
+            if direction:
+                all_msgs = [m for m in all_msgs if m.get("direction") == direction]
+            total = len(all_msgs)
+            start = (page - 1) * per_page
+            page_msgs = all_msgs[start : start + per_page]
+            for msg in page_msgs:
+                d = msg.get("direction", "")
+                arrow = "\u2192" if d == "client_to_server" else "\u2190"
+                messages.append(
+                    {
+                        "sequence": msg.get("sequence"),
+                        "direction": arrow,
+                        "direction_raw": d,
+                        "method": msg.get("method") or "(response)",
+                        "timestamp": msg.get("timestamp", ""),
+                        "body": _json.dumps(msg.get("body", msg.get("params", {})), indent=2),
+                    }
+                )
+
+    has_next = (page * per_page) < total
+    return templates.TemplateResponse(
+        request,
+        "partials/proxy_messages.html",
+        {
+            "messages": messages,
+            "run_id": run_id,
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "has_next": has_next,
+            "direction_filter": direction,
+        },
+    )

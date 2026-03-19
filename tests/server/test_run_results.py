@@ -65,6 +65,34 @@ def _setup_completed_assess_run(
         conn.close()
 
 
+def _setup_completed_assess_with_proxy(
+    tmp_db: Path,
+) -> tuple[str, str]:
+    """Create completed assess with proxy child run + proxy_session.
+
+    Returns (parent_run_id, proxy_child_id).
+    """
+    conn = sqlite3.connect(str(tmp_db))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        parent_id = create_run(conn, module="workflow", name="assess")
+        update_run_status(conn, parent_id, RunStatus.RUNNING)
+        proxy_child = create_run(conn, module="proxy", name="proxy-child", parent_run_id=parent_id)
+        update_run_status(conn, proxy_child, RunStatus.COMPLETED)
+        conn.execute(
+            "INSERT INTO proxy_sessions"
+            " (run_id, transport, server_name, message_count, duration_seconds)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (proxy_child, "stdio", "test-server", 42, 12.5),
+        )
+        update_run_status(conn, parent_id, RunStatus.COMPLETED)
+        conn.commit()
+        return parent_id, proxy_child
+    finally:
+        conn.close()
+
+
 def _setup_completed_assess_with_inject(
     tmp_db: Path,
 ) -> tuple[str, str, str]:
@@ -392,3 +420,25 @@ class TestInjectResultsTab:
         parent_id, _, _ = _setup_completed_assess_with_inject(tmp_db)
         resp = client.get(f"/runs?run_id={parent_id}")
         assert "3" in resp.text
+
+
+class TestProxyResultsTab:
+    def test_proxy_tab_shows_session_summary(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _ = _setup_completed_assess_with_proxy(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "test-server" in resp.text
+        assert "stdio" in resp.text
+        assert "42" in resp.text
+
+    def test_proxy_tab_shows_duration(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _ = _setup_completed_assess_with_proxy(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "12.5" in resp.text
+
+    def test_proxy_messages_endpoint_no_session_file(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        _, proxy_child = _setup_completed_assess_with_proxy(tmp_db)
+        resp = client.get(f"/api/runs/proxy-messages/{proxy_child}?page=1")
+        assert resp.status_code == 200
+        assert "No messages captured" in resp.text
