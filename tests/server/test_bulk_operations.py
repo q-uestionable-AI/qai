@@ -101,6 +101,24 @@ class TestBulkDelete:
         )
         assert resp.status_code == 400
 
+    def test_bulk_delete_non_dict_body(self, client: TestClient) -> None:
+        resp = client.request(
+            "DELETE",
+            "/api/runs/bulk",
+            json=["id1", "id2"],
+        )
+        assert resp.status_code == 422
+        assert "JSON object" in resp.json()["detail"]
+
+    def test_bulk_delete_non_string_ids(self, client: TestClient) -> None:
+        resp = client.request(
+            "DELETE",
+            "/api/runs/bulk",
+            json={"run_ids": [1, 2, 3]},
+        )
+        assert resp.status_code == 422
+        assert "string" in resp.json()["detail"]
+
 
 class TestBulkExport:
     """Tests for POST /api/runs/bulk-export."""
@@ -145,6 +163,14 @@ class TestBulkExport:
             json={"run_ids": ["nonexistent"]},
         )
         assert resp.status_code == 404
+
+    def test_bulk_export_non_dict_body(self, client: TestClient) -> None:
+        resp = client.post("/api/runs/bulk-export", json=[1, 2])
+        assert resp.status_code == 422
+
+    def test_bulk_export_non_string_ids(self, client: TestClient) -> None:
+        resp = client.post("/api/runs/bulk-export", json={"run_ids": [123]})
+        assert resp.status_code == 422
 
     def test_bulk_export_skips_invalid_includes_valid(
         self, client: TestClient, tmp_db: Path
@@ -228,6 +254,37 @@ class TestRunComparison:
         assert "Right Only Finding" in resp.text
         assert "Common" in resp.text
         assert "Shared Finding" in resp.text
+
+    def test_compare_severity_change_not_common(self, client: TestClient, tmp_db: Path) -> None:
+        """Same title+module+category but different severity should not be common."""
+        with get_connection(tmp_db) as conn:
+            target_id = create_target(conn, type="server", name="sev-target")
+            r1 = create_run(conn, module="workflow", name="assess", target_id=target_id)
+            r2 = create_run(conn, module="workflow", name="assess", target_id=target_id)
+            update_run_status(conn, r1, RunStatus.COMPLETED)
+            update_run_status(conn, r2, RunStatus.COMPLETED)
+            create_finding(
+                conn,
+                run_id=r1,
+                module="audit",
+                category="info_leak",
+                severity=Severity.LOW,
+                title="Sev Change",
+            )
+            create_finding(
+                conn,
+                run_id=r2,
+                module="audit",
+                category="info_leak",
+                severity=Severity.HIGH,
+                title="Sev Change",
+            )
+
+        resp = client.get(f"/runs/compare?left={r1}&right={r2}")
+        assert resp.status_code == 200
+        # Both should appear as non-common since severity differs
+        assert "Left Only" in resp.text
+        assert "Right Only" in resp.text
 
 
 class TestTargetGrouping:

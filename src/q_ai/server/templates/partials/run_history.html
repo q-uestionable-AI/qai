@@ -216,7 +216,7 @@ function confirmDeleteRun(runId, displayName) {
             .then(function(resp) {
                 if (resp.ok) {
                     modal.close();
-                    htmx.ajax('GET', '/api/runs/history', {target: '#run-history-tbody'});
+                    htmx.ajax('GET', buildHistoryUrl(), {target: '#run-history-tbody'});
                     return;
                 }
                 return resp.json()
@@ -230,6 +230,20 @@ function confirmDeleteRun(runId, displayName) {
             });
     };
     modal.showModal();
+}
+
+// --- Filter-aware history refresh ---
+function buildHistoryUrl() {
+    var params = [];
+    var wf = document.getElementById('filter-workflow');
+    var tgt = document.getElementById('filter-target');
+    var st = document.getElementById('filter-status');
+    var grp = document.getElementById('filter-group-target');
+    if (wf && wf.value) params.push('workflow=' + encodeURIComponent(wf.value));
+    if (tgt && tgt.value) params.push('target_id=' + encodeURIComponent(tgt.value));
+    if (st && st.value) params.push('status=' + encodeURIComponent(st.value));
+    if (grp && grp.checked) params.push('group_by_target=1');
+    return '/api/runs/history' + (params.length ? '?' + params.join('&') : '');
 }
 
 // --- Bulk delete ---
@@ -253,7 +267,7 @@ function confirmBulkDelete() {
                 modal.close();
                 selectedRunIds = new Set();
                 updateBulkBar();
-                htmx.ajax('GET', '/api/runs/history', {target: '#run-history-tbody'});
+                htmx.ajax('GET', buildHistoryUrl(), {target: '#run-history-tbody'});
                 return;
             }
             return resp.json()

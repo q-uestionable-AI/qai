@@ -639,6 +639,43 @@ def _sync_bulk_delete(
     return deleted, failed, all_files
 
 
+def _validate_bulk_run_ids(
+    body: object,
+    verb: str = "process",
+) -> list[str] | JSONResponse:
+    """Parse and validate a bulk run_ids payload.
+
+    Args:
+        body: The parsed JSON body (may not be a dict).
+        verb: Action verb for error messages (e.g. "delete", "export").
+
+    Returns:
+        A validated list of run ID strings, or a JSONResponse on error.
+    """
+    if not isinstance(body, dict):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Request body must be a JSON object"},
+        )
+    run_ids = body.get("run_ids")
+    if not isinstance(run_ids, list) or not run_ids:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "run_ids must be a non-empty list"},
+        )
+    if not all(isinstance(rid, str) for rid in run_ids):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Every run_id must be a string"},
+        )
+    if len(run_ids) > _MAX_BULK_RUNS:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": f"Cannot {verb} more than {_MAX_BULK_RUNS} runs at once"},
+        )
+    return run_ids
+
+
 @router.delete("/api/runs/bulk", response_model=None)
 async def api_bulk_delete_runs(request: Request) -> Response:
     """Delete multiple runs and all related data."""
@@ -647,17 +684,10 @@ async def api_bulk_delete_runs(request: Request) -> Response:
     except Exception:
         return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
 
-    run_ids = body.get("run_ids", [])
-    if not isinstance(run_ids, list) or not run_ids:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "run_ids must be a non-empty list"},
-        )
-    if len(run_ids) > _MAX_BULK_RUNS:
-        return JSONResponse(
-            status_code=400,
-            content={"detail": f"Cannot delete more than {_MAX_BULK_RUNS} runs at once"},
-        )
+    result = _validate_bulk_run_ids(body, verb="delete")
+    if isinstance(result, JSONResponse):
+        return result
+    run_ids: list[str] = result
 
     db_path = _get_db_path(request)
     deleted, failed, files_to_delete = await asyncio.to_thread(_sync_bulk_delete, db_path, run_ids)
@@ -720,28 +750,37 @@ def _sync_bulk_export(
     return bundles
 
 
-@router.post("/api/runs/bulk-export", response_model=None)
-async def api_bulk_export_runs(request: Request) -> Response:
-    """Export multiple runs as a ZIP of JSON bundles."""
+def _build_zip(bundles: list[tuple[str, bytes]]) -> bytes:
+    """Build a ZIP archive from named byte entries (blocking).
+
+    Args:
+        bundles: List of (filename, data) tuples to include.
+
+    Returns:
+        The complete ZIP archive as bytes.
+    """
     import io
     import zipfile
 
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for filename, data in bundles:
+            zf.writestr(filename, data)
+    return buf.getvalue()
+
+
+@router.post("/api/runs/bulk-export", response_model=None)
+async def api_bulk_export_runs(request: Request) -> Response:
+    """Export multiple runs as a ZIP of JSON bundles."""
     try:
         body = await request.json()
     except Exception:
         return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
 
-    run_ids = body.get("run_ids", [])
-    if not isinstance(run_ids, list) or not run_ids:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "run_ids must be a non-empty list"},
-        )
-    if len(run_ids) > _MAX_BULK_RUNS:
-        return JSONResponse(
-            status_code=400,
-            content={"detail": f"Cannot export more than {_MAX_BULK_RUNS} runs at once"},
-        )
+    result = _validate_bulk_run_ids(body, verb="export")
+    if isinstance(result, JSONResponse):
+        return result
+    run_ids: list[str] = result
 
     db_path = _get_db_path(request)
     bundles = await asyncio.to_thread(_sync_bulk_export, db_path, run_ids)
@@ -749,14 +788,10 @@ async def api_bulk_export_runs(request: Request) -> Response:
     if not bundles:
         return JSONResponse(status_code=404, content={"detail": "No valid runs found"})
 
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for filename, data in bundles:
-            zf.writestr(filename, data)
-    buf.seek(0)
+    zip_bytes = await asyncio.to_thread(_build_zip, bundles)
 
     return Response(
-        content=buf.getvalue(),
+        content=zip_bytes,
         media_type="application/zip",
         headers={
             "Content-Disposition": 'attachment; filename="runs-export.zip"',
@@ -799,17 +834,20 @@ def _build_compare_context(
     left_wf = get_workflow(left_run.name) if left_run.name else None
     right_wf = get_workflow(right_run.name) if right_run.name else None
 
-    # Diff findings by (title, module, category) exact match
-    left_keys = {(f.title, f.module, f.category) for f in left_findings}
-    right_keys = {(f.title, f.module, f.category) for f in right_findings}
-    common_keys = left_keys & right_keys
-    left_only = [f for f in left_findings if (f.title, f.module, f.category) not in right_keys]
-    right_only = [f for f in right_findings if (f.title, f.module, f.category) not in left_keys]
-    common = [f for f in left_findings if (f.title, f.module, f.category) in common_keys]
+    # Diff findings by (title, module, category, severity) exact match
+    def _fkey(f: Any) -> tuple[str, str, str, int]:
+        return (f.title, f.module, f.category, f.severity.value)
 
-    # Module coverage
-    left_modules = sorted({c.module for c in left_children})
-    right_modules = sorted({c.module for c in right_children})
+    left_keys = {_fkey(f) for f in left_findings}
+    right_keys = {_fkey(f) for f in right_findings}
+    common_keys = left_keys & right_keys
+    left_only = [f for f in left_findings if _fkey(f) not in right_keys]
+    right_only = [f for f in right_findings if _fkey(f) not in left_keys]
+    common = [f for f in left_findings if _fkey(f) in common_keys]
+
+    # Module coverage — include child run modules and finding-level modules
+    left_modules = sorted({c.module for c in left_children} | {f.module for f in left_findings})
+    right_modules = sorted({c.module for c in right_children} | {f.module for f in right_findings})
 
     return {
         "left_run": left_run,
