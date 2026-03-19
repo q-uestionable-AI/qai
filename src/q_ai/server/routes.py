@@ -69,6 +69,8 @@ async def launcher(request: Request) -> HTMLResponse:
     hero_workflow: dict[str, Any] | None = None
     workflows: list[dict[str, Any]] = []
     for wf in list_workflows():
+        if not wf.visible_in_launcher:
+            continue
         entry = {
             "id": wf.id,
             "name": wf.name,
@@ -277,6 +279,15 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
             if report_row:
                 report_run_id = report_row["id"]
 
+        # For generate_report runs: render report markdown as HTML
+        report_html = ""
+        is_report_run = workflow_run.name == "generate_report"
+        has_evidence_zip = False
+        if is_report_run:
+            report_html, has_evidence_zip = _load_report_html(run_id)
+            # For report runs, the run itself is the report_run_id
+            report_run_id = run_id
+
         result: dict[str, Any] = {
             "workflow_run": workflow_run,
             "child_runs": child_runs,
@@ -290,6 +301,9 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
             "child_by_module": child_by_module,
             "target": target,
             "report_run_id": report_run_id,
+            "report_html": report_html,
+            "is_report_run": is_report_run,
+            "has_evidence_zip": has_evidence_zip,
         }
         result.update(module_data)
         return result
@@ -450,6 +464,9 @@ async def runs(
         "inject_results_data": [],
         "proxy_session": None,
         "report_run_id": None,
+        "report_html": "",
+        "is_report_run": False,
+        "has_evidence_zip": False,
     }
 
     if run_id:
@@ -701,10 +718,86 @@ async def operations_findings_sidebar(
 # Report export route
 # ---------------------------------------------------------------------------
 
-_EXPORTS_BASE = Path.home() / ".qai" / "exports"
 _ARTIFACTS_BASE = Path.home() / ".qai" / "artifacts"
 
-_REPORT_ROOT = (_EXPORTS_BASE / "generate_report").resolve()
+
+def _get_exports_base() -> Path:
+    """Return the exports base directory, resolved at call time.
+
+    Uses ``Path.home()`` at call time so monkeypatching works in tests.
+    """
+    return Path.home() / ".qai" / "exports"
+
+
+def _get_report_root() -> Path:
+    """Return the resolved report root for path-traversal checks."""
+    return (_get_exports_base() / "generate_report").resolve()
+
+
+def _load_report_html(run_id: str) -> tuple[str, bool]:
+    """Load and render a generate_report's report.md as sanitized HTML.
+
+    Computes paths dynamically from ``Path.home()`` so that monkeypatching
+    works in tests.
+
+    Args:
+        run_id: The generate_report run ID.
+
+    Returns:
+        Tuple of (rendered HTML string, whether evidence ZIP exists).
+        Returns empty string for HTML if report file is missing.
+    """
+    # Deferred: only needed for report rendering, not on every request
+    import markdown  # type: ignore[import-untyped]
+    import nh3
+
+    exports_base = _get_exports_base()
+    report_root = _get_report_root()
+
+    report_path = (exports_base / "generate_report" / run_id / "report.md").resolve()
+    if not report_path.is_relative_to(report_root) or not report_path.is_file():
+        return "", False
+
+    md_content = report_path.read_text(encoding="utf-8")
+    raw_html = markdown.markdown(
+        md_content,
+        extensions=["fenced_code", "tables"],
+    )
+    clean_html = nh3.clean(
+        raw_html,
+        tags={
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "p",
+            "br",
+            "hr",
+            "ul",
+            "ol",
+            "li",
+            "strong",
+            "em",
+            "code",
+            "pre",
+            "table",
+            "thead",
+            "tbody",
+            "tr",
+            "th",
+            "td",
+            "blockquote",
+            "a",
+        },
+        attributes={"a": {"href"}, "td": {"align"}, "th": {"align"}},
+    )
+
+    zip_path = (exports_base / "generate_report" / run_id / "report.zip").resolve()
+    has_zip = zip_path.is_relative_to(report_root) and zip_path.is_file()
+
+    return clean_html, has_zip
 
 
 @router.get("/api/exports/{run_id}/report", response_model=None)
@@ -720,8 +813,11 @@ def export_report(request: Request, run_id: str) -> Response:
     if run is None:
         return JSONResponse(status_code=404, content={"detail": "Run not found"})
 
-    report_path = (_EXPORTS_BASE / "generate_report" / run_id / "report.md").resolve()
-    if not report_path.is_relative_to(_REPORT_ROOT):
+    exports_base = _get_exports_base()
+    report_root = _get_report_root()
+
+    report_path = (exports_base / "generate_report" / run_id / "report.md").resolve()
+    if not report_path.is_relative_to(report_root):
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
 
     if not report_path.is_file():
@@ -731,6 +827,36 @@ def export_report(request: Request, run_id: str) -> Response:
         path=report_path,
         media_type="text/markdown; charset=utf-8",
         filename=f"report-{run_id[:12]}.md",
+    )
+
+
+@router.get("/api/exports/{run_id}/evidence", response_model=None)
+def export_evidence(request: Request, run_id: str) -> Response:
+    """Serve a generated report.zip evidence pack for the given run.
+
+    Validates that the run_id exists in the database and that the ZIP
+    file is within the expected exports directory (path traversal prevention).
+    """
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        run = get_run(conn, run_id)
+    if run is None:
+        return JSONResponse(status_code=404, content={"detail": "Run not found"})
+
+    exports_base = _get_exports_base()
+    report_root = _get_report_root()
+
+    zip_path = (exports_base / "generate_report" / run_id / "report.zip").resolve()
+    if not zip_path.is_relative_to(report_root):
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+
+    if not zip_path.is_file():
+        return JSONResponse(status_code=404, content={"detail": "Evidence pack not found"})
+
+    return FileResponse(
+        path=zip_path,
+        media_type="application/zip",
+        filename=f"evidence-{run_id[:12]}.zip",
     )
 
 

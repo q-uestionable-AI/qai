@@ -29,6 +29,9 @@ class WorkflowEntry:
             the launch API skips credential validation. Defaults to True.
         is_hero: Whether this workflow should render as the hero card in the
             launcher grid. Only one workflow should have this set to True.
+        visible_in_launcher: Whether to show this workflow in the launcher grid.
+            Defaults to True. Set False to hide from the launcher while keeping
+            the workflow available via CLI and run history.
     """
 
     id: str
@@ -40,6 +43,7 @@ class WorkflowEntry:
     failure_mode: str = "best_effort"
     requires_provider: bool = True
     is_hero: bool = False
+    visible_in_launcher: bool = True
 
 
 WORKFLOWS: dict[str, WorkflowEntry] = {}
@@ -140,6 +144,7 @@ _DEFAULT_WORKFLOWS = [
         ),
         modules=[],
         requires_provider=False,
+        visible_in_launcher=False,
     ),
 ]
 

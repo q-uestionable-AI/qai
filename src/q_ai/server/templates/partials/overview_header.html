@@ -16,13 +16,19 @@
         <div class="flex items-center gap-2">
             {% if report_run_id %}
             <a href="/api/exports/{{ report_run_id }}/report"
-               class="btn btn-sm btn-outline btn-primary" target="_blank">
+               class="btn btn-sm btn-outline btn-primary" download>
                 Download Report
             </a>
             {% elif workflow_run.status.value in (2, 3, 6) %}
             <a href="/"
                class="btn btn-sm btn-outline btn-primary">
                 Generate Report
+            </a>
+            {% endif %}
+            {% if has_evidence_zip and report_run_id %}
+            <a href="/api/exports/{{ report_run_id }}/evidence"
+               class="btn btn-sm btn-outline btn-accent" download>
+                Download Evidence Pack
             </a>
             {% endif %}
             <a href="/api/runs/{{ workflow_run.id }}/export"

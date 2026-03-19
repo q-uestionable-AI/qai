@@ -21,7 +21,8 @@ class TestLauncherRoute:
         assert "Test a Coding Assistant" in resp.text
         assert "Trace an Attack Path" in resp.text
         assert "Measure Blast Radius" in resp.text
-        assert "Generate Report" in resp.text
+        # Generate Report is hidden from launcher (visible_in_launcher=False)
+        assert "Generate Report" not in resp.text
 
     def test_contains_nav_links(self, client: TestClient) -> None:
         resp = client.get("/")
