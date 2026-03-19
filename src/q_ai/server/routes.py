@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import datetime as _dt
 import logging
 from collections.abc import Callable
 from functools import partial
@@ -21,6 +22,8 @@ from q_ai.core.db import (
     get_connection,
     get_run,
     get_setting,
+    get_target,
+    list_evidence,
     list_findings,
     list_runs,
     list_targets,
@@ -97,6 +100,94 @@ async def operations_redirect(request: Request) -> RedirectResponse:
     return RedirectResponse(url=url, status_code=301)
 
 
+_TERMINAL_STATUSES = {
+    RunStatus.COMPLETED,
+    RunStatus.FAILED,
+    RunStatus.CANCELLED,
+    RunStatus.PARTIAL,
+}
+
+_SEV_MAP = {4: "Critical", 3: "High", 2: "Medium", 1: "Low", 0: "Info"}
+
+
+def _compute_duration(run: Any) -> str:
+    """Compute human-readable duration from a run's timestamps."""
+    if not run.started_at:
+        return ""
+    end = run.finished_at or _dt.datetime.now(_dt.UTC)
+    total_s = int((end - run.started_at).total_seconds())
+    mins, secs = divmod(total_s, 60)
+    hours, mins = divmod(mins, 60)
+    if hours > 0:
+        return f"{hours}h {mins}m {secs}s"
+    if mins > 0:
+        return f"{mins}m {secs}s"
+    return f"{secs}s"
+
+
+def _count_findings_by_severity(findings: list[Any]) -> dict[str, int]:
+    """Count findings grouped by severity label, omitting zeros."""
+    counts: dict[str, int] = dict.fromkeys(["Critical", "High", "Medium", "Low", "Info"], 0)
+    for f in findings:
+        label = _SEV_MAP.get(f.severity.value, "Info")
+        counts[label] += 1
+    return {k: v for k, v in counts.items() if v > 0}
+
+
+def _load_module_data(
+    conn: Any,
+    child_by_module: dict[str, Any],
+) -> tuple[
+    dict[str, Any] | None,
+    list[Any],
+    dict[str, list[Any]],
+    list[dict[str, Any]],
+    dict[str, Any] | None,
+]:
+    """Load module-specific data for audit, inject, and proxy child runs.
+
+    Returns:
+        (audit_scan, audit_findings, audit_evidence_map, inject_results_data, proxy_session)
+    """
+    audit_scan: dict[str, Any] | None = None
+    audit_findings: list[Any] = []
+    audit_evidence_map: dict[str, list[Any]] = {}
+    inject_results_data: list[dict[str, Any]] = []
+    proxy_session: dict[str, Any] | None = None
+
+    audit_child = child_by_module.get("audit")
+    if audit_child:
+        row = conn.execute(
+            "SELECT * FROM audit_scans WHERE run_id = ? LIMIT 1",
+            (audit_child.id,),
+        ).fetchone()
+        audit_scan = dict(row) if row else None
+        audit_findings = list_findings(conn, run_id=audit_child.id)
+        for af in audit_findings:
+            audit_evidence_map[af.id] = list_evidence(conn, finding_id=af.id)
+
+    inject_child = child_by_module.get("inject")
+    if inject_child:
+        rows = conn.execute(
+            """SELECT id, payload_name, technique, outcome,
+                      target_agent, evidence, created_at
+               FROM inject_results WHERE run_id = ?
+               ORDER BY created_at""",
+            (inject_child.id,),
+        ).fetchall()
+        inject_results_data = [dict(r) for r in rows]
+
+    proxy_child = child_by_module.get("proxy")
+    if proxy_child:
+        row = conn.execute(
+            "SELECT * FROM proxy_sessions WHERE run_id = ? LIMIT 1",
+            (proxy_child.id,),
+        ).fetchone()
+        proxy_session = dict(row) if row else None
+
+    return audit_scan, audit_findings, audit_evidence_map, inject_results_data, proxy_session
+
+
 @router.get("/runs")
 async def runs(
     request: Request,
@@ -106,32 +197,68 @@ async def runs(
     templates = _get_templates(request)
     db_path = _get_db_path(request)
 
-    workflow_run = None
-    child_runs: list[Any] = []
-    findings: list[Any] = []
+    ctx: dict[str, Any] = {
+        "active": "runs",
+        "run_id": run_id,
+        "workflow_run": None,
+        "child_runs": [],
+        "findings": [],
+        "scan_status": None,
+        "campaign_status": None,
+        "results_mode": False,
+        "is_terminal": False,
+        "workflow_display_name": "",
+        "target": None,
+        "duration_display": "",
+        "finding_counts": {},
+        "workflow_modules": [],
+        "child_by_module": {},
+        "audit_scan": None,
+        "audit_findings": [],
+        "audit_evidence_map": {},
+        "inject_results_data": [],
+        "proxy_session": None,
+    }
 
     if run_id:
         with get_connection(db_path) as conn:
             workflow_run = get_run(conn, run_id)
             if workflow_run:
                 child_runs = list_runs(conn, parent_run_id=run_id)
+                all_ids = [run_id] + [c.id for c in child_runs]
+                findings = list_findings(conn, run_ids=all_ids)
+                child_by_module = {c.module: c for c in child_runs}
 
-                all_run_ids = [run_id] + [child.id for child in child_runs]
-                findings = list_findings(conn, run_ids=all_run_ids)
+                workflow = get_workflow(workflow_run.name) if workflow_run.name else None
+                wf_name = workflow.name if workflow else (workflow_run.name or "Workflow")
+                wf_modules = list(workflow.modules) if workflow else []
 
-    return templates.TemplateResponse(
-        request,
-        "runs.html",
-        {
-            "active": "runs",
-            "run_id": run_id,
-            "workflow_run": workflow_run,
-            "child_runs": child_runs,
-            "findings": findings,
-            "scan_status": None,
-            "campaign_status": None,
-        },
-    )
+                module_data = _load_module_data(conn, child_by_module)
+
+                if workflow_run.target_id:
+                    ctx["target"] = get_target(conn, workflow_run.target_id)
+
+                ctx.update(
+                    {
+                        "workflow_run": workflow_run,
+                        "child_runs": child_runs,
+                        "findings": findings,
+                        "results_mode": True,
+                        "is_terminal": workflow_run.status in _TERMINAL_STATUSES,
+                        "workflow_display_name": wf_name,
+                        "duration_display": _compute_duration(workflow_run),
+                        "finding_counts": _count_findings_by_severity(findings),
+                        "workflow_modules": wf_modules,
+                        "child_by_module": child_by_module,
+                        "audit_scan": module_data[0],
+                        "audit_findings": module_data[1],
+                        "audit_evidence_map": module_data[2],
+                        "inject_results_data": module_data[3],
+                        "proxy_session": module_data[4],
+                    }
+                )
+
+    return templates.TemplateResponse(request, "runs.html", ctx)
 
 
 @router.get("/research")
