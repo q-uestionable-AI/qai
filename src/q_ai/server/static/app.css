@@ -438,8 +438,9 @@ select.select:focus {
 .qa-capsule .qa-badge {
     font-family: 'Fira Code', monospace;
     font-size: 0.6rem;
-    color: #06b6d4;
-    border: 1px solid rgba(6, 182, 212, 0.35);
+    color: #e2e8f0;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 9999px;
     padding: 0.05rem 0.4rem;
 }
