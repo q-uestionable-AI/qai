@@ -353,6 +353,7 @@ def _build_history_context(
     workflow_filter: str | None,
     target_filter: str | None,
     status_filter: str | None,
+    group_by_target: bool = False,
 ) -> dict[str, Any]:
     """Load context for the run history view (blocking, run off event loop)."""
     parsed_status = _parse_status(status_filter)
@@ -427,6 +428,7 @@ def _build_history_context(
         "current_workflow": workflow_filter or "",
         "current_target": target_filter or "",
         "current_status": status_filter or "",
+        "group_by_target": group_by_target,
     }
 
 
@@ -437,6 +439,7 @@ async def runs(
     workflow: str | None = Query(None),
     target_id: str | None = Query(None),
     status: str | None = Query(None),
+    group_by_target: str | None = Query(None),
 ) -> HTMLResponse:
     """Render the runs view — history list or single-run results."""
     templates = _get_templates(request)
@@ -473,8 +476,9 @@ async def runs(
         run_ctx = await asyncio.to_thread(_build_runs_context, db_path, run_id)
         ctx.update(run_ctx)
     else:
+        do_group = group_by_target in ("1", "true", "on")
         history_ctx = await asyncio.to_thread(
-            _build_history_context, db_path, workflow, target_id, status
+            _build_history_context, db_path, workflow, target_id, status, do_group
         )
         ctx.update(history_ctx)
 
@@ -560,12 +564,14 @@ async def api_runs_history(
     workflow: str | None = Query(None),
     target_id: str | None = Query(None),
     status: str | None = Query(None),
+    group_by_target: str | None = Query(None),
 ) -> HTMLResponse:
     """Return the run history table partial for HTMX swap."""
     templates = _get_templates(request)
     db_path = _get_db_path(request)
+    do_group = group_by_target in ("1", "true", "on")
     history_ctx = await asyncio.to_thread(
-        _build_history_context, db_path, workflow, target_id, status
+        _build_history_context, db_path, workflow, target_id, status, do_group
     )
     return templates.TemplateResponse(request, "partials/run_history_table.html", history_ctx)
 
@@ -594,6 +600,74 @@ async def api_export_run(request: Request, run_id: str) -> Response:
     )
 
 
+def _cleanup_files(files: list[str]) -> None:
+    """Delete files from disk, logging failures."""
+    for file_path in files:
+        try:
+            Path(file_path).unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Failed to delete file: %s", file_path)
+
+
+_MAX_BULK_RUNS = 50
+
+
+def _sync_bulk_delete(
+    db_path: Path | None,
+    run_ids: list[str],
+) -> tuple[int, list[str], list[str]]:
+    """Delete multiple runs in a single transaction (blocking).
+
+    Args:
+        db_path: Path to the SQLite database.
+        run_ids: List of run IDs to delete.
+
+    Returns:
+        Tuple of (deleted count, list of failed run IDs, files to clean up).
+    """
+    deleted = 0
+    failed: list[str] = []
+    all_files: list[str] = []
+    with get_connection(db_path) as conn:
+        for rid in run_ids:
+            try:
+                files = delete_run_cascade(conn, rid)
+                all_files.extend(files)
+                deleted += 1
+            except ValueError:
+                failed.append(rid)
+    return deleted, failed, all_files
+
+
+@router.delete("/api/runs/bulk", response_model=None)
+async def api_bulk_delete_runs(request: Request) -> Response:
+    """Delete multiple runs and all related data."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
+
+    run_ids = body.get("run_ids", [])
+    if not isinstance(run_ids, list) or not run_ids:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "run_ids must be a non-empty list"},
+        )
+    if len(run_ids) > _MAX_BULK_RUNS:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": f"Cannot delete more than {_MAX_BULK_RUNS} runs at once"},
+        )
+
+    db_path = _get_db_path(request)
+    deleted, failed, files_to_delete = await asyncio.to_thread(_sync_bulk_delete, db_path, run_ids)
+
+    if files_to_delete:
+        await asyncio.to_thread(_cleanup_files, files_to_delete)
+
+    return JSONResponse(content={"deleted": deleted, "failed": failed})
+
+
 def _sync_delete_run(db_path: Path | None, run_id: str) -> list[str]:
     """Delete a run cascade (blocking, run off event loop).
 
@@ -602,15 +676,6 @@ def _sync_delete_run(db_path: Path | None, run_id: str) -> list[str]:
     """
     with get_connection(db_path) as conn:
         return delete_run_cascade(conn, run_id)
-
-
-def _cleanup_files(files: list[str]) -> None:
-    """Delete files from disk, logging failures."""
-    for file_path in files:
-        try:
-            Path(file_path).unlink(missing_ok=True)
-        except OSError:
-            logger.warning("Failed to delete file: %s", file_path)
 
 
 @router.delete("/api/runs/{run_id}", response_model=None)
@@ -627,6 +692,158 @@ async def api_delete_run(request: Request, run_id: str) -> Response:
         await asyncio.to_thread(_cleanup_files, files_to_delete)
 
     return JSONResponse(content={"detail": "Run deleted"})
+
+
+def _sync_bulk_export(
+    db_path: Path | None,
+    run_ids: list[str],
+) -> list[tuple[str, bytes]]:
+    """Export multiple runs as JSON bundles (blocking).
+
+    Args:
+        db_path: Path to the SQLite database.
+        run_ids: List of run IDs to export.
+
+    Returns:
+        List of (filename, json_bytes) tuples for ZIP assembly.
+    """
+    bundles: list[tuple[str, bytes]] = []
+    with get_connection(db_path) as conn:
+        for rid in run_ids:
+            run = get_run(conn, rid)
+            if run is None:
+                continue
+            bundle = export_run_bundle(conn, rid)
+            wf_name = run.name or "workflow"
+            filename = f"{rid[:12]}_{wf_name}.json"
+            bundles.append((filename, _json.dumps(bundle, indent=2).encode("utf-8")))
+    return bundles
+
+
+@router.post("/api/runs/bulk-export", response_model=None)
+async def api_bulk_export_runs(request: Request) -> Response:
+    """Export multiple runs as a ZIP of JSON bundles."""
+    import io
+    import zipfile
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
+
+    run_ids = body.get("run_ids", [])
+    if not isinstance(run_ids, list) or not run_ids:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "run_ids must be a non-empty list"},
+        )
+    if len(run_ids) > _MAX_BULK_RUNS:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": f"Cannot export more than {_MAX_BULK_RUNS} runs at once"},
+        )
+
+    db_path = _get_db_path(request)
+    bundles = await asyncio.to_thread(_sync_bulk_export, db_path, run_ids)
+
+    if not bundles:
+        return JSONResponse(status_code=404, content={"detail": "No valid runs found"})
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for filename, data in bundles:
+            zf.writestr(filename, data)
+    buf.seek(0)
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="runs-export.zip"',
+        },
+    )
+
+
+def _build_compare_context(
+    db_path: Path | None,
+    left_id: str,
+    right_id: str,
+) -> dict[str, Any]:
+    """Load context for the side-by-side run comparison (blocking).
+
+    Args:
+        db_path: Path to the SQLite database.
+        left_id: ID of the left run.
+        right_id: ID of the right run.
+
+    Returns:
+        Dict with left/right run data and finding diff.
+    """
+    with get_connection(db_path) as conn:
+        left_run = get_run(conn, left_id)
+        right_run = get_run(conn, right_id)
+        if left_run is None or right_run is None:
+            return {}
+
+        left_children = list_runs(conn, parent_run_id=left_id)
+        right_children = list_runs(conn, parent_run_id=right_id)
+        left_all_ids = [left_id] + [c.id for c in left_children]
+        right_all_ids = [right_id] + [c.id for c in right_children]
+
+        left_findings = list_findings(conn, run_ids=left_all_ids) if left_all_ids else []
+        right_findings = list_findings(conn, run_ids=right_all_ids) if right_all_ids else []
+
+        left_target = get_target(conn, left_run.target_id) if left_run.target_id else None
+        right_target = get_target(conn, right_run.target_id) if right_run.target_id else None
+
+    left_wf = get_workflow(left_run.name) if left_run.name else None
+    right_wf = get_workflow(right_run.name) if right_run.name else None
+
+    # Diff findings by (title, module, category) exact match
+    left_keys = {(f.title, f.module, f.category) for f in left_findings}
+    right_keys = {(f.title, f.module, f.category) for f in right_findings}
+    common_keys = left_keys & right_keys
+    left_only = [f for f in left_findings if (f.title, f.module, f.category) not in right_keys]
+    right_only = [f for f in right_findings if (f.title, f.module, f.category) not in left_keys]
+    common = [f for f in left_findings if (f.title, f.module, f.category) in common_keys]
+
+    # Module coverage
+    left_modules = sorted({c.module for c in left_children})
+    right_modules = sorted({c.module for c in right_children})
+
+    return {
+        "left_run": left_run,
+        "right_run": right_run,
+        "left_display": left_wf.name if left_wf else (left_run.name or "Workflow"),
+        "right_display": right_wf.name if right_wf else (right_run.name or "Workflow"),
+        "left_target": left_target,
+        "right_target": right_target,
+        "left_duration": _compute_duration(left_run),
+        "right_duration": _compute_duration(right_run),
+        "left_only": left_only,
+        "right_only": right_only,
+        "common": common,
+        "left_modules": left_modules,
+        "right_modules": right_modules,
+    }
+
+
+@router.get("/runs/compare")
+async def runs_compare(
+    request: Request,
+    left: str = Query(...),
+    right: str = Query(...),
+) -> HTMLResponse:
+    """Render the side-by-side run comparison view."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+
+    ctx = await asyncio.to_thread(_build_compare_context, db_path, left, right)
+    if not ctx:
+        return HTMLResponse(status_code=404, content="One or both runs not found")
+
+    ctx["active"] = "runs"
+    return templates.TemplateResponse(request, "runs_compare.html", ctx)
 
 
 @router.get("/api/findings")
