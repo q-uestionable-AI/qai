@@ -90,6 +90,29 @@ See [v1.0 Exit Criteria](#v10-exit-criteria) below.
 
 ---
 
+## Planned Directions (Post-v1.0)
+
+### Public API & MCP Server
+
+Expose qai's capabilities programmatically. Enables CI/CD security gates, SIEM/ticketing integration, scripted research campaigns, lab automation, and AI agent access.
+
+**Sequence:** Service layer extraction → API v1 (read) → API v1 (write + auth) → Headless mode → MCP server v1 → Dogfooding.
+
+The API is a versioned `/api/v1/` JSON surface backed by a shared service layer that all interfaces (UI, CLI, API, MCP) call. The MCP server is a thin adapter over the API — it does not invent new semantics. stdio transport first. Read-only by default with opt-in scan capability behind full guardrail set (target allowlist, wait_for_user with canonical approval summary, parameter normalization, audit logging).
+
+**Plan:** `Plans/api-mcp-server-plan.md`
+**RFC:** `Plans/api-mcp-server-rfc.md`
+**Concept:** `Plans/api-mcp-server-concept.md`
+
+### Desktop Application Packaging
+
+Package qai as a double-clickable desktop app on Windows, macOS, and Linux. pywebview native window + PyInstaller. No terminal, proper lifecycle management, single-instance behavior, localhost session hardening.
+
+**Plan:** `Plans/desktop-packaging-plan.md`
+**RFC:** `Plans/desktop-packaging-rfc.md`
+
+---
+
 ## v1.0 Exit Criteria
 
 SemVer 1.0 is a public commitment to interface stability. After 1.0, breaking changes to CLI
@@ -159,7 +182,7 @@ Framework mappings are maintained in `src/q_ai/core/data/frameworks.yaml` and ke
 ## Out of Scope (for now)
 
 - **Cloud-hosted version.** {q-AI} is a local lab tool. No SaaS, no multi-tenant, no hosted scanning.
-- **GUI installer.** Target audience is security researchers comfortable with Python tooling.
+- **GUI installer.** ~~Target audience is security researchers comfortable with Python tooling.~~ Desktop application packaging is now a planned direction — see `Plans/desktop-packaging-plan.md`.
 - **Real-time collaboration.** Single-operator tool. Research sharing happens via exported findings and published reports.
 - **LLM output testing.** That's Garak's problem. {q-AI} tests infrastructure and agent behaviour, not model outputs.
 
