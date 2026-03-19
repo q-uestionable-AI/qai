@@ -1,8 +1,8 @@
 <div id="inject-results-panel" class="space-y-4">
     {% if inject_results_data %}
     {% set total = inject_results_data | length %}
-    {% set success_count = inject_results_data | selectattr('outcome', 'equalto', 'FULL_COMPLIANCE') | list | length %}
-    {% set partial_count = inject_results_data | selectattr('outcome', 'equalto', 'PARTIAL_COMPLIANCE') | list | length %}
+    {% set success_count = inject_results_data | selectattr('outcome', 'equalto', 'full_compliance') | list | length %}
+    {% set partial_count = inject_results_data | selectattr('outcome', 'equalto', 'partial_compliance') | list | length %}
     {% set refusal_count = total - success_count - partial_count %}
     {% set model_name = inject_results_data[0].target_agent if inject_results_data else 'Unknown' %}
     <div class="grid grid-cols-2 md:grid-cols-5 gap-3 p-3 bg-base-300/30 rounded-lg text-sm">
@@ -23,8 +23,8 @@
                         <td class="font-mono text-xs">{{ r.payload_name }}</td>
                         <td><span class="badge badge-ghost badge-xs">{{ r.technique }}</span></td>
                         <td>
-                            {% if r.outcome == 'FULL_COMPLIANCE' %}<span class="badge badge-xs badge-error">{{ r.outcome }}</span>
-                            {% elif r.outcome == 'PARTIAL_COMPLIANCE' %}<span class="badge badge-xs badge-warning">{{ r.outcome }}</span>
+                            {% if r.outcome == 'full_compliance' %}<span class="badge badge-xs badge-error">{{ r.outcome }}</span>
+                            {% elif r.outcome == 'partial_compliance' %}<span class="badge badge-xs badge-warning">{{ r.outcome }}</span>
                             {% else %}<span class="badge badge-xs badge-success">{{ r.outcome }}</span>{% endif %}
                         </td>
                         <td><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation(); showInjectEvidence('{{ r.id }}')">View</button></td>

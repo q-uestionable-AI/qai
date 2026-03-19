@@ -211,7 +211,10 @@
         }
         // 2. Wait for tab to render, then scroll + highlight
         setTimeout(function () {
-            var row = document.getElementById('finding-' + findingId);
+            var row = document.querySelector('#tab-' + module + ' [data-finding-id="' + findingId + '"]');
+            if (!row) {
+                row = document.getElementById('finding-' + findingId);
+            }
             if (row) {
                 row.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 row.classList.remove('finding-highlight');

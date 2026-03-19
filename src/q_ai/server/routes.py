@@ -190,6 +190,58 @@ def _load_module_data(
     }
 
 
+def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
+    """Load all data for the runs results view (blocking, run off event loop)."""
+    with get_connection(db_path) as conn:
+        workflow_run = get_run(conn, run_id)
+        if not workflow_run:
+            return {}
+        child_runs = list_runs(conn, parent_run_id=run_id)
+        all_ids = [run_id] + [c.id for c in child_runs]
+        findings = list_findings(conn, run_ids=all_ids)
+        child_by_module = {c.module: c for c in child_runs}
+
+        workflow = get_workflow(workflow_run.name) if workflow_run.name else None
+        wf_name = workflow.name if workflow else (workflow_run.name or "Workflow")
+        wf_modules = list(workflow.modules) if workflow else []
+
+        module_data = _load_module_data(conn, child_by_module)
+
+        target = None
+        if workflow_run.target_id:
+            target = get_target(conn, workflow_run.target_id)
+
+        # Look for existing generate_report run for this target
+        report_run_id = None
+        if workflow_run.target_id:
+            report_row = conn.execute(
+                """SELECT id FROM runs
+                   WHERE name = 'generate_report' AND target_id = ?
+                   AND status IN (?, ?)
+                   ORDER BY finished_at DESC LIMIT 1""",
+                (workflow_run.target_id, int(RunStatus.COMPLETED), int(RunStatus.PARTIAL)),
+            ).fetchone()
+            if report_row:
+                report_run_id = report_row["id"]
+
+        result: dict[str, Any] = {
+            "workflow_run": workflow_run,
+            "child_runs": child_runs,
+            "findings": findings,
+            "results_mode": True,
+            "is_terminal": workflow_run.status in _TERMINAL_STATUSES,
+            "workflow_display_name": wf_name,
+            "duration_display": _compute_duration(workflow_run),
+            "finding_counts": _count_findings_by_severity(findings),
+            "workflow_modules": wf_modules,
+            "child_by_module": child_by_module,
+            "target": target,
+            "report_run_id": report_run_id,
+        }
+        result.update(module_data)
+        return result
+
+
 @router.get("/runs")
 async def runs(
     request: Request,
@@ -220,41 +272,12 @@ async def runs(
         "audit_evidence_map": {},
         "inject_results_data": [],
         "proxy_session": None,
+        "report_run_id": None,
     }
 
     if run_id:
-        with get_connection(db_path) as conn:
-            workflow_run = get_run(conn, run_id)
-            if workflow_run:
-                child_runs = list_runs(conn, parent_run_id=run_id)
-                all_ids = [run_id] + [c.id for c in child_runs]
-                findings = list_findings(conn, run_ids=all_ids)
-                child_by_module = {c.module: c for c in child_runs}
-
-                workflow = get_workflow(workflow_run.name) if workflow_run.name else None
-                wf_name = workflow.name if workflow else (workflow_run.name or "Workflow")
-                wf_modules = list(workflow.modules) if workflow else []
-
-                module_data = _load_module_data(conn, child_by_module)
-
-                if workflow_run.target_id:
-                    ctx["target"] = get_target(conn, workflow_run.target_id)
-
-                ctx.update(module_data)
-                ctx.update(
-                    {
-                        "workflow_run": workflow_run,
-                        "child_runs": child_runs,
-                        "findings": findings,
-                        "results_mode": True,
-                        "is_terminal": workflow_run.status in _TERMINAL_STATUSES,
-                        "workflow_display_name": wf_name,
-                        "duration_display": _compute_duration(workflow_run),
-                        "finding_counts": _count_findings_by_severity(findings),
-                        "workflow_modules": wf_modules,
-                        "child_by_module": child_by_module,
-                    }
-                )
+        run_ctx = await asyncio.to_thread(_build_runs_context, db_path, run_id)
+        ctx.update(run_ctx)
 
     return templates.TemplateResponse(request, "runs.html", ctx)
 
@@ -1645,13 +1668,13 @@ async def api_proxy_session_detail(request: Request, run_id: str) -> HTMLRespons
     # Load message summary from session JSON if available
     messages_summary: list[dict[str, Any]] = []
     if session_data.get("session_file"):
-        artifacts_dir = Path.home() / ".qai" / "artifacts"
+        artifacts_dir = _ARTIFACTS_BASE.resolve()
         session_file = session_data["session_file"]
         # Reject path traversal attempts
         session_path = (artifacts_dir / session_file).resolve()
-        if not str(session_path).startswith(str(artifacts_dir.resolve())):
+        if not session_path.is_relative_to(artifacts_dir):
             session_path = None  # type: ignore[assignment]
-        if session_path and session_path.exists():
+        if session_path and session_path.is_file():
             try:
                 raw = _json.loads(session_path.read_text(encoding="utf-8"))
             except (_json.JSONDecodeError, OSError):
@@ -1698,9 +1721,9 @@ def _read_proxy_messages(
     """
     artifacts_dir = _ARTIFACTS_BASE.resolve()
     session_path = (artifacts_dir / session_file).resolve()
-    if not str(session_path).startswith(str(artifacts_dir)):
+    if not session_path.is_relative_to(artifacts_dir):
         return [], 0
-    if not session_path.exists():
+    if not session_path.is_file():
         return [], 0
 
     try:
@@ -1713,8 +1736,8 @@ def _read_proxy_messages(
         all_msgs = [m for m in all_msgs if m.get("direction") == direction]
 
     total = len(all_msgs)
-    start = (page - 1) * per_page
-    page_msgs = all_msgs[start : start + per_page]
+    end = page * per_page
+    page_msgs = all_msgs[:end]
 
     messages: list[dict[str, Any]] = []
     for msg in page_msgs:
@@ -1734,6 +1757,20 @@ def _read_proxy_messages(
     return messages, total
 
 
+def _fetch_proxy_messages(
+    db_path: Path | None, run_id: str, direction: str | None, page: int, per_page: int
+) -> tuple[list[dict[str, Any]], int]:
+    """Fetch proxy messages for the given run (blocking, run off event loop)."""
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT session_file FROM proxy_sessions WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+    if not row or not row["session_file"]:
+        return [], 0
+    return _read_proxy_messages(row["session_file"], direction, page, per_page)
+
+
 @router.get("/api/runs/proxy-messages/{run_id}")
 async def api_runs_proxy_messages(
     request: Request,
@@ -1746,16 +1783,9 @@ async def api_runs_proxy_messages(
     templates = _get_templates(request)
     db_path = _get_db_path(request)
 
-    with get_connection(db_path) as conn:
-        row = conn.execute(
-            "SELECT session_file FROM proxy_sessions WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
-
-    messages: list[dict[str, Any]] = []
-    total = 0
-    if row and row["session_file"]:
-        messages, total = _read_proxy_messages(row["session_file"], direction, page, per_page)
+    messages, total = await asyncio.to_thread(
+        _fetch_proxy_messages, db_path, run_id, direction, page, per_page
+    )
 
     has_next = (page * per_page) < total
     return templates.TemplateResponse(

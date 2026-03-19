@@ -14,9 +14,14 @@
             <span class="text-lg font-semibold">{{ workflow_display_name }}</span>
         </div>
         <div class="flex items-center gap-2">
-            {% if workflow_run.status.value in (2, 3, 6) %}
-            <a href="/api/exports/{{ workflow_run.id }}/report"
+            {% if report_run_id %}
+            <a href="/api/exports/{{ report_run_id }}/report"
                class="btn btn-sm btn-outline btn-primary" target="_blank">
+                Download Report
+            </a>
+            {% elif workflow_run.status.value in (2, 3, 6) %}
+            <a href="/"
+               class="btn btn-sm btn-outline btn-primary">
                 Generate Report
             </a>
             {% endif %}

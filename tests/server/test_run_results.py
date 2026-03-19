@@ -114,9 +114,9 @@ def _setup_completed_assess_with_inject(
         )
         update_run_status(conn, inject_child, RunStatus.COMPLETED)
         for payload, technique, outcome in [
-            ("exfil_via_fetch", "description_poisoning", "FULL_COMPLIANCE"),
-            ("shadow_tool_call", "cross_tool_escalation", "REFUSAL"),
-            ("data_leak_prompt", "output_injection", "PARTIAL_COMPLIANCE"),
+            ("exfil_via_fetch", "description_poisoning", "full_compliance"),
+            ("shadow_tool_call", "cross_tool_escalation", "refusal"),
+            ("data_leak_prompt", "output_injection", "partial_compliance"),
         ]:
             conn.execute(
                 "INSERT INTO inject_results"
@@ -189,7 +189,6 @@ class TestOverviewHeader:
         parent_id, _, _ = _setup_completed_assess_run(tmp_db)
         resp = client.get(f"/runs?run_id={parent_id}")
         assert "Generate Report" in resp.text
-        assert f"/api/exports/{parent_id}/report" in resp.text
 
     def test_overview_header_export_json_placeholder(
         self, client: TestClient, tmp_db: Path
@@ -408,8 +407,8 @@ class TestInjectResultsTab:
     def test_inject_tab_shows_outcomes(self, client: TestClient, tmp_db: Path) -> None:
         parent_id, _, _ = _setup_completed_assess_with_inject(tmp_db)
         resp = client.get(f"/runs?run_id={parent_id}")
-        assert "FULL_COMPLIANCE" in resp.text
-        assert "REFUSAL" in resp.text
+        assert "full_compliance" in resp.text
+        assert "refusal" in resp.text
 
     def test_inject_tab_shows_model(self, client: TestClient, tmp_db: Path) -> None:
         parent_id, _, _ = _setup_completed_assess_with_inject(tmp_db)
@@ -541,7 +540,7 @@ class TestContentSanitization:
                     inject_child,
                     "xss_payload",
                     "description_poisoning",
-                    "FULL_COMPLIANCE",
+                    "full_compliance",
                     "test-model",
                     '<script>alert("xss")</script>',
                 ),

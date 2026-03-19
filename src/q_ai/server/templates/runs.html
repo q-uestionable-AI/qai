@@ -67,6 +67,23 @@
                 </div>
                 {% endfor %}
             </div>
+            {% elif results_mode %}
+            {# Results mode but no module tabs (e.g. generate_report workflow) #}
+            <div class="panel p-4 min-h-[200px]">
+                <p class="text-sm text-base-content/40">
+                    This workflow has no module results to display.
+                </p>
+                {% if child_by_module %}
+                <div class="mt-4 space-y-2">
+                    {% for mod, child in child_by_module.items() %}
+                    <div class="text-sm">
+                        <span class="badge badge-ghost badge-xs">{{ mod }}</span>
+                        <span class="text-base-content/60 ml-1">{{ child.status.name.lower() }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
             {% else %}
             {# Default: all 7 tabs with form partials #}
             <div role="tablist" class="tabs tabs-bordered mb-4">
