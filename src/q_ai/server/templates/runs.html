@@ -3,6 +3,11 @@
 
 {% block content %}
 <div id="operations-root" data-run-id="{{ run_id or '' }}" class="max-w-7xl mx-auto px-6 py-6">
+    {% if not results_mode and not workflow_run %}
+    {# Run history view — no active run #}
+    {% include "partials/run_history.html" %}
+    {% else %}
+
     {% if results_mode and is_terminal %}
         {% include "partials/overview_header.html" %}
     {% else %}
@@ -84,41 +89,6 @@
                 </div>
                 {% endif %}
             </div>
-            {% else %}
-            {# Default: all 7 tabs with form partials #}
-            <div role="tablist" class="tabs tabs-bordered mb-4">
-                <button type="button" role="tab" class="tab tab-active" aria-selected="true" tabindex="0" onclick="switchTab(this, 'audit')">audit</button>
-                <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'proxy')">proxy</button>
-                <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'inject')">inject</button>
-                <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'chain')">chain</button>
-                <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'ipi')">ipi</button>
-                <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'cxp')">cxp</button>
-                <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'rxp')">rxp</button>
-            </div>
-
-            <div class="panel p-4 min-h-[200px]">
-                <div id="tab-audit">
-                    {% include "partials/audit_tab.html" %}
-                </div>
-                <div id="tab-inject" class="hidden">
-                    {% include "partials/inject_tab.html" %}
-                </div>
-                <div id="tab-proxy" class="hidden">
-                    {% include "partials/proxy_tab.html" %}
-                </div>
-                <div id="tab-chain" class="hidden">
-                    {% include "partials/chain_tab.html" %}
-                </div>
-                <div id="tab-ipi" class="hidden">
-                    {% include "partials/ipi_tab.html" %}
-                </div>
-                <div id="tab-cxp" class="hidden">
-                    {% include "partials/cxp_tab.html" %}
-                </div>
-                <div id="tab-rxp" class="hidden">
-                    {% include "partials/rxp_tab.html" %}
-                </div>
-            </div>
             {% endif %}
 
             <script>
@@ -149,6 +119,8 @@
             </div>
         </div>
     </div>
+
+    {% endif %}
 </div>
 <script src="/static/ws.js"></script>
 {% endblock %}

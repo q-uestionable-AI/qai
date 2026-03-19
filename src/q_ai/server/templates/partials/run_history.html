@@ -1,0 +1,120 @@
+<div class="space-y-4">
+    <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Run History</h2>
+    </div>
+
+    <!-- Filters -->
+    <div class="flex gap-3 items-end flex-wrap">
+        <div class="form-control w-48">
+            <label class="label py-1"><span class="label-text text-xs">Workflow</span></label>
+            <select id="filter-workflow" class="select select-bordered select-sm"
+                    hx-get="/api/runs/history"
+                    hx-include="#filter-workflow, #filter-target, #filter-status"
+                    hx-target="#run-history-tbody"
+                    hx-trigger="change"
+                    hx-push-url="true"
+                    name="workflow">
+                <option value="">All workflows</option>
+                {% for wf in workflows %}
+                <option value="{{ wf.id }}" {% if current_workflow == wf.id %}selected{% endif %}>
+                    {{ wf.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-control w-48">
+            <label class="label py-1"><span class="label-text text-xs">Target</span></label>
+            <select id="filter-target" class="select select-bordered select-sm"
+                    hx-get="/api/runs/history"
+                    hx-include="#filter-workflow, #filter-target, #filter-status"
+                    hx-target="#run-history-tbody"
+                    hx-trigger="change"
+                    hx-push-url="true"
+                    name="target_id">
+                <option value="">All targets</option>
+                {% for t in targets %}
+                <option value="{{ t.id }}" {% if current_target == t.id %}selected{% endif %}>
+                    {{ t.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-control w-48">
+            <label class="label py-1"><span class="label-text text-xs">Status</span></label>
+            <select id="filter-status" class="select select-bordered select-sm"
+                    hx-get="/api/runs/history"
+                    hx-include="#filter-workflow, #filter-target, #filter-status"
+                    hx-target="#run-history-tbody"
+                    hx-trigger="change"
+                    hx-push-url="true"
+                    name="status">
+                <option value="">All statuses</option>
+                {% for s in statuses %}
+                <option value="{{ s }}" {% if current_status == s %}selected{% endif %}>
+                    {{ s }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="overflow-x-auto">
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Workflow</th>
+                    <th>Target</th>
+                    <th>Status</th>
+                    <th>Findings</th>
+                    <th>Duration</th>
+                    <th>Started</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="run-history-tbody">
+                {% include "partials/run_history_table.html" %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Delete confirmation modal -->
+<dialog id="delete-run-modal" class="modal">
+    <div class="modal-box">
+        <h3 class="text-lg font-bold">Delete Run</h3>
+        <p class="py-4" id="delete-run-message"></p>
+        <div class="modal-action">
+            <form method="dialog">
+                <button class="btn btn-ghost">Cancel</button>
+            </form>
+            <button id="delete-run-confirm" class="btn btn-error">Delete</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<script>
+function confirmDeleteRun(runId, displayName) {
+    var modal = document.getElementById('delete-run-modal');
+    document.getElementById('delete-run-message').textContent =
+        'Delete run ' + runId.substring(0, 8) + ' (' + displayName + ')? ' +
+        'This will permanently remove the run, all child runs, findings, and evidence. ' +
+        'This cannot be undone.';
+    var btn = document.getElementById('delete-run-confirm');
+    btn.onclick = function() {
+        fetch('/api/runs/' + runId, { method: 'DELETE' })
+            .then(function(resp) {
+                if (resp.ok) {
+                    modal.close();
+                    htmx.ajax('GET', '/api/runs/history', {target: '#run-history-tbody'});
+                } else {
+                    resp.json().then(function(data) {
+                        alert('Delete failed: ' + (data.detail || 'Unknown error'));
+                    });
+                }
+            });
+    };
+    modal.showModal();
+}
+</script>

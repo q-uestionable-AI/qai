@@ -4,19 +4,18 @@ from fastapi.testclient import TestClient
 
 
 class TestAuditOperationsTab:
-    """Tests for the audit tab in the operations page."""
+    """Tests for the audit tab — accessible via API partial."""
 
-    def test_operations_has_audit_tab(self, client: TestClient) -> None:
-        """Verify operations page includes the transport selector."""
+    def test_audit_tab_api_returns_200(self, client: TestClient) -> None:
+        """Verify audit tab partial endpoint works."""
+        resp = client.get("/api/audit/scan/nonexistent/status")
+        assert resp.status_code == 200
+
+    def test_operations_redirects_to_runs(self, client: TestClient) -> None:
+        """GET /operations redirects to /runs (run history view)."""
         resp = client.get("/operations")
         assert resp.status_code == 200
-        assert "transport" in resp.text.lower()
-
-    def test_audit_tab_has_form(self, client: TestClient) -> None:
-        """Verify operations page includes the scan form."""
-        resp = client.get("/operations")
-        assert resp.status_code == 200
-        assert "scan" in resp.text.lower()
+        assert "Run History" in resp.text
 
 
 class TestAuditApiRoutes:

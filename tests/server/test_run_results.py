@@ -220,7 +220,7 @@ class TestRunsPage:
     def test_runs_no_run_id_returns_200(self, client: TestClient) -> None:
         resp = client.get("/runs")
         assert resp.status_code == 200
-        assert "IDLE" in resp.text
+        assert "Run History" in resp.text
 
     def test_runs_nav_shows_runs_label(self, client: TestClient) -> None:
         resp = client.get("/runs")
@@ -247,11 +247,12 @@ class TestScopedModuleTabs:
         assert "onclick=\"switchTab(this, 'cxp')\"" not in text
         assert "onclick=\"switchTab(this, 'rxp')\"" not in text
 
-    def test_no_run_id_shows_all_tabs(self, client: TestClient) -> None:
+    def test_no_run_id_shows_history(self, client: TestClient) -> None:
         resp = client.get("/runs")
         text = resp.text
-        for mod in ["audit", "proxy", "inject", "chain", "ipi", "cxp", "rxp"]:
-            assert f"onclick=\"switchTab(this, '{mod}')\"" in text
+        assert "Run History" in text
+        # Legacy 7-tab view replaced by run history in Phase 3
+        assert "switchTab" not in text
 
     def test_module_did_not_execute_message(self, client: TestClient, tmp_db: Path) -> None:
         conn = sqlite3.connect(str(tmp_db))

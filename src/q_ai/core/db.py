@@ -172,6 +172,7 @@ def list_runs(
     status: RunStatus | None = None,
     target_id: str | None = None,
     parent_run_id: str | None = None,
+    name: str | None = None,
 ) -> list[Run]:
     """List runs with optional filters.
 
@@ -181,6 +182,7 @@ def list_runs(
         status: Filter by run status.
         target_id: Filter by target ID.
         parent_run_id: Filter by parent run ID.
+        name: Filter by run name (workflow ID for parent runs).
 
     Returns:
         List of Run objects ordered by started_at descending.
@@ -201,6 +203,9 @@ def list_runs(
     if parent_run_id is not None:
         conditions.append("parent_run_id = ?")
         params.append(parent_run_id)
+    if name is not None:
+        conditions.append("name = ?")
+        params.append(name)
 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
@@ -208,6 +213,408 @@ def list_runs(
 
     rows = conn.execute(query, params).fetchall()
     return [Run.from_row(dict(row)) for row in rows]
+
+
+# Module-specific tables that have a direct run_id FK
+_MODULE_TABLES_WITH_RUN_ID = (
+    "audit_scans",
+    "inject_results",
+    "proxy_sessions",
+    "ipi_payloads",
+    "cxp_test_results",
+    "rxp_validations",
+)
+
+
+def delete_run_cascade(
+    conn: sqlite3.Connection,
+    run_id: str,
+) -> list[str]:
+    """Delete a parent run and all related data in cascade order.
+
+    Deletes child runs, findings, evidence, and module-specific data within
+    the current transaction. Returns a list of file paths that should be
+    deleted after the transaction commits.
+
+    Args:
+        conn: Active database connection (caller manages transaction).
+        run_id: ID of the parent run to delete.
+
+    Returns:
+        List of file paths to clean up after commit.
+
+    Raises:
+        ValueError: If run_id does not exist.
+    """
+    parent = conn.execute("SELECT id FROM runs WHERE id = ?", (run_id,)).fetchone()
+    if parent is None:
+        raise ValueError(f"Run {run_id!r} not found")
+
+    child_rows = conn.execute("SELECT id FROM runs WHERE parent_run_id = ?", (run_id,)).fetchall()
+    child_ids = [r["id"] for r in child_rows]
+    all_run_ids = [run_id, *child_ids]
+
+    files_to_delete = _collect_files_for_cleanup(conn, all_run_ids)
+    _delete_ipi_hits_for_runs(conn, all_run_ids)
+    _delete_chain_data_for_runs(conn, all_run_ids)
+    _delete_module_tables_for_runs(conn, all_run_ids)
+    _delete_evidence_for_runs(conn, all_run_ids)
+    _delete_findings_for_runs(conn, all_run_ids)
+    _delete_run_rows(conn, child_ids, run_id)
+
+    return files_to_delete
+
+
+def _collect_files_for_cleanup(
+    conn: sqlite3.Connection,
+    run_ids: list[str],
+) -> list[str]:
+    """Collect file paths from evidence and proxy sessions before deletion.
+
+    Args:
+        conn: Active database connection.
+        run_ids: Run IDs to collect files for.
+
+    Returns:
+        List of file paths to delete after commit.
+    """
+    if not run_ids:
+        return []
+
+    files: list[str] = []
+    placeholders = ", ".join("?" for _ in run_ids)
+
+    # Evidence file paths (directly linked to runs)
+    rows = conn.execute(
+        f"SELECT path FROM evidence WHERE run_id IN ({placeholders}) "  # noqa: S608
+        "AND path IS NOT NULL",
+        run_ids,
+    ).fetchall()
+    files.extend(r["path"] for r in rows)
+
+    # Evidence linked via findings for these runs
+    rows = conn.execute(
+        f"SELECT e.path FROM evidence e JOIN findings f ON e.finding_id = f.id WHERE f.run_id IN ({placeholders}) AND e.path IS NOT NULL",  # noqa: S608, E501
+        run_ids,
+    ).fetchall()
+    files.extend(r["path"] for r in rows)
+
+    # Proxy session files
+    rows = conn.execute(
+        f"SELECT session_file FROM proxy_sessions WHERE run_id IN ({placeholders}) AND session_file IS NOT NULL",  # noqa: S608, E501
+        run_ids,
+    ).fetchall()
+    files.extend(r["session_file"] for r in rows)
+
+    return files
+
+
+def _delete_ipi_hits_for_runs(
+    conn: sqlite3.Connection,
+    run_ids: list[str],
+) -> None:
+    """Delete IPI hits linked via payload UUIDs for the given runs.
+
+    Args:
+        conn: Active database connection.
+        run_ids: Run IDs whose IPI payload UUIDs to match.
+    """
+    if not run_ids:
+        return
+    placeholders = ", ".join("?" for _ in run_ids)
+    uuid_rows = conn.execute(
+        f"SELECT uuid FROM ipi_payloads WHERE run_id IN ({placeholders})",  # noqa: S608
+        run_ids,
+    ).fetchall()
+    uuids = [r["uuid"] for r in uuid_rows]
+    if not uuids:
+        return
+    uuid_ph = ", ".join("?" for _ in uuids)
+    conn.execute(
+        f"DELETE FROM ipi_hits WHERE uuid IN ({uuid_ph})",  # noqa: S608
+        uuids,
+    )
+
+
+def _delete_chain_data_for_runs(
+    conn: sqlite3.Connection,
+    run_ids: list[str],
+) -> None:
+    """Delete chain step outputs and executions for the given runs.
+
+    Step outputs must be deleted before executions due to FK constraint.
+
+    Args:
+        conn: Active database connection.
+        run_ids: Run IDs to delete chain data for.
+    """
+    if not run_ids:
+        return
+    placeholders = ", ".join("?" for _ in run_ids)
+    exec_rows = conn.execute(
+        f"SELECT id FROM chain_executions WHERE run_id IN ({placeholders})",  # noqa: S608
+        run_ids,
+    ).fetchall()
+    exec_ids = [r["id"] for r in exec_rows]
+    if exec_ids:
+        exec_ph = ", ".join("?" for _ in exec_ids)
+        conn.execute(
+            f"DELETE FROM chain_step_outputs WHERE execution_id IN ({exec_ph})",  # noqa: S608
+            exec_ids,
+        )
+    conn.execute(
+        f"DELETE FROM chain_executions WHERE run_id IN ({placeholders})",  # noqa: S608
+        run_ids,
+    )
+
+
+def _delete_module_tables_for_runs(
+    conn: sqlite3.Connection,
+    run_ids: list[str],
+) -> None:
+    """Delete module-specific data from all direct-FK tables.
+
+    Args:
+        conn: Active database connection.
+        run_ids: Run IDs to delete data for.
+    """
+    if not run_ids:
+        return
+    placeholders = ", ".join("?" for _ in run_ids)
+    for table in _MODULE_TABLES_WITH_RUN_ID:
+        conn.execute(
+            f"DELETE FROM {table} WHERE run_id IN ({placeholders})",  # noqa: S608
+            run_ids,
+        )
+
+
+def _delete_evidence_for_runs(
+    conn: sqlite3.Connection,
+    run_ids: list[str],
+) -> None:
+    """Delete evidence linked to runs directly or via findings.
+
+    Args:
+        conn: Active database connection.
+        run_ids: Run IDs to delete evidence for.
+    """
+    if not run_ids:
+        return
+    placeholders = ", ".join("?" for _ in run_ids)
+    # Evidence linked via findings
+    conn.execute(
+        f"DELETE FROM evidence WHERE finding_id IN (SELECT id FROM findings WHERE run_id IN ({placeholders}))",  # noqa: S608, E501
+        run_ids,
+    )
+    # Evidence linked directly to runs
+    conn.execute(
+        f"DELETE FROM evidence WHERE run_id IN ({placeholders})",  # noqa: S608
+        run_ids,
+    )
+
+
+def _delete_findings_for_runs(
+    conn: sqlite3.Connection,
+    run_ids: list[str],
+) -> None:
+    """Delete all findings for the given runs.
+
+    Args:
+        conn: Active database connection.
+        run_ids: Run IDs to delete findings for.
+    """
+    if not run_ids:
+        return
+    placeholders = ", ".join("?" for _ in run_ids)
+    conn.execute(
+        f"DELETE FROM findings WHERE run_id IN ({placeholders})",  # noqa: S608
+        run_ids,
+    )
+
+
+def _delete_run_rows(
+    conn: sqlite3.Connection,
+    child_ids: list[str],
+    parent_id: str,
+) -> None:
+    """Delete child run rows then the parent run row.
+
+    Args:
+        conn: Active database connection.
+        child_ids: IDs of child runs to delete first.
+        parent_id: ID of the parent run to delete after children.
+    """
+    if child_ids:
+        placeholders = ", ".join("?" for _ in child_ids)
+        conn.execute(
+            f"DELETE FROM runs WHERE id IN ({placeholders})",  # noqa: S608
+            child_ids,
+        )
+    conn.execute("DELETE FROM runs WHERE id = ?", (parent_id,))
+
+
+def export_run_bundle(
+    conn: sqlite3.Connection,
+    run_id: str,
+) -> dict:
+    """Export a complete run as a schema-versioned dict.
+
+    Includes parent run metadata, child runs, findings, evidence references
+    (without inline content), module-specific data, and target record.
+
+    Args:
+        conn: Active database connection.
+        run_id: ID of the parent run to export.
+
+    Returns:
+        Dict ready for JSON serialization with schema_version key.
+
+    Raises:
+        ValueError: If run_id does not exist.
+    """
+    parent = get_run(conn, run_id)
+    if parent is None:
+        raise ValueError(f"Run {run_id!r} not found")
+
+    children = list_runs(conn, parent_run_id=run_id)
+    all_ids = [run_id] + [c.id for c in children]
+    findings = list_findings(conn, run_ids=all_ids) if all_ids else []
+    evidence_rows = _export_evidence_refs(conn, all_ids)
+    module_data = _export_module_data(conn, all_ids)
+
+    target = None
+    target_id = parent.target_id or (parent.config or {}).get("target_id")
+    if target_id:
+        t = get_target(conn, target_id)
+        if t is not None:
+            target = t.to_dict()
+
+    bundle: dict = {
+        "schema_version": "run-bundle-v1",
+        "run": parent.to_dict(),
+        "child_runs": [c.to_dict() for c in children],
+        "findings": [f.to_dict() for f in findings],
+        "evidence": evidence_rows,
+        "target": target,
+    }
+    bundle.update(module_data)
+    return bundle
+
+
+def _export_evidence_refs(
+    conn: sqlite3.Connection,
+    run_ids: list[str],
+) -> list[dict]:
+    """Export evidence references without inline content.
+
+    Args:
+        conn: Active database connection.
+        run_ids: Run IDs to collect evidence for.
+
+    Returns:
+        List of evidence dicts with metadata but no content blobs.
+    """
+    if not run_ids:
+        return []
+    placeholders = ", ".join("?" for _ in run_ids)
+    ev_cols = "id, type, mime_type, storage, path, finding_id, run_id, hash, created_at"
+    rows = conn.execute(
+        f"SELECT {ev_cols} FROM evidence WHERE run_id IN ({placeholders})",  # noqa: S608
+        run_ids,
+    ).fetchall()
+    # Also evidence linked via findings (where run_id is NULL on evidence)
+    finding_rows = conn.execute(
+        f"SELECT e.id, e.type, e.mime_type, e.storage, e.path, e.finding_id, e.run_id, e.hash, e.created_at FROM evidence e JOIN findings f ON e.finding_id = f.id WHERE f.run_id IN ({placeholders}) AND e.run_id IS NULL",  # noqa: S608, E501
+        run_ids,
+    ).fetchall()
+    all_rows = list(rows) + list(finding_rows)
+    return [
+        {
+            "id": r["id"],
+            "type": r["type"],
+            "mime_type": r["mime_type"],
+            "storage": r["storage"],
+            "path": r["path"],
+            "finding_id": r["finding_id"],
+            "run_id": r["run_id"],
+            "hash": r["hash"],
+            "created_at": r["created_at"],
+        }
+        for r in all_rows
+    ]
+
+
+def _export_module_data(
+    conn: sqlite3.Connection,
+    run_ids: list[str],
+) -> dict:
+    """Export module-specific data for all run IDs.
+
+    Args:
+        conn: Active database connection.
+        run_ids: Run IDs to export module data for.
+
+    Returns:
+        Dict with keys for each module table containing list of row dicts.
+    """
+    empty: dict[str, list[dict]] = {
+        "audit_scans": [],
+        "inject_results": [],
+        "proxy_sessions": [],
+        "chain_executions": [],
+        "chain_step_outputs": [],
+        "ipi_payloads": [],
+        "cxp_test_results": [],
+        "rxp_validations": [],
+    }
+    if not run_ids:
+        return empty
+    placeholders = ", ".join("?" for _ in run_ids)
+    result: dict[str, list[dict]] = {}
+
+    for table in (
+        "audit_scans",
+        "inject_results",
+        "cxp_test_results",
+        "rxp_validations",
+        "ipi_payloads",
+    ):
+        rows = conn.execute(
+            f"SELECT * FROM {table} WHERE run_id IN ({placeholders})",  # noqa: S608
+            run_ids,
+        ).fetchall()
+        result[table] = [dict(r) for r in rows]
+
+    # Proxy sessions metadata
+    proxy_cols = (
+        "id, run_id, transport, server_name, message_count, "
+        "duration_seconds, session_file, created_at"
+    )
+    rows = conn.execute(
+        f"SELECT {proxy_cols} FROM proxy_sessions WHERE run_id IN ({placeholders})",  # noqa: S608
+        run_ids,
+    ).fetchall()
+    result["proxy_sessions"] = [dict(r) for r in rows]
+
+    # Chain executions + step outputs
+    exec_rows = conn.execute(
+        f"SELECT * FROM chain_executions WHERE run_id IN ({placeholders})",  # noqa: S608
+        run_ids,
+    ).fetchall()
+    result["chain_executions"] = [dict(r) for r in exec_rows]
+    exec_ids = [r["id"] for r in exec_rows]
+    if exec_ids:
+        exec_ph = ", ".join("?" for _ in exec_ids)
+        step_rows = conn.execute(
+            f"SELECT * FROM chain_step_outputs "  # noqa: S608
+            f"WHERE execution_id IN ({exec_ph})",
+            exec_ids,
+        ).fetchall()
+        result["chain_step_outputs"] = [dict(r) for r in step_rows]
+    else:
+        result["chain_step_outputs"] = []
+
+    return result
 
 
 # ---------------------------------------------------------------------------

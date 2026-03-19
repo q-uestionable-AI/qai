@@ -25,10 +25,10 @@
                 Generate Report
             </a>
             {% endif %}
-            <button class="btn btn-sm btn-outline btn-secondary" disabled
-                    title="Coming in a future release">
+            <a href="/api/runs/{{ workflow_run.id }}/export"
+               class="btn btn-sm btn-outline btn-secondary" download>
                 Export JSON
-            </button>
+            </a>
         </div>
     </div>
     <div class="flex items-center gap-6 text-sm text-base-content/60">

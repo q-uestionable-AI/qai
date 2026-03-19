@@ -20,6 +20,8 @@ from starlette.websockets import WebSocketDisconnect
 from q_ai.core.config import delete_credential, get_credential, set_credential
 from q_ai.core.db import (
     create_target,
+    delete_run_cascade,
+    export_run_bundle,
     get_connection,
     get_run,
     get_setting,
@@ -38,6 +40,8 @@ from q_ai.rxp._deps import is_available as rxp_is_available
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_STATUS_NAMES = [s.name for s in RunStatus]
 
 
 def _get_templates(request: Request) -> Jinja2Templates:
@@ -291,12 +295,136 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
         return result
 
 
+class _HistoryRow:
+    """Enriched run data for the history table template."""
+
+    __slots__ = (
+        "display_name",
+        "duration",
+        "finding_count",
+        "id",
+        "report_run_id",
+        "started_at",
+        "status",
+        "target_id",
+        "target_name",
+    )
+
+    def __init__(
+        self,
+        *,
+        run_id: str,
+        display_name: str,
+        target_name: str | None,
+        target_id: str | None,
+        status: RunStatus,
+        finding_count: int,
+        duration: str,
+        started_at: _dt.datetime | None,
+        report_run_id: str | None = None,
+    ) -> None:
+        self.id = run_id
+        self.display_name = display_name
+        self.target_name = target_name
+        self.target_id = target_id
+        self.status = status
+        self.finding_count = finding_count
+        self.duration = duration
+        self.started_at = started_at
+        self.report_run_id = report_run_id
+
+
+def _build_history_context(
+    db_path: Path | None,
+    workflow_filter: str | None,
+    target_filter: str | None,
+    status_filter: str | None,
+) -> dict[str, Any]:
+    """Load context for the run history view (blocking, run off event loop)."""
+    parsed_status = _parse_status(status_filter)
+    with get_connection(db_path) as conn:
+        parent_runs = list_runs(
+            conn,
+            module="workflow",
+            name=workflow_filter or None,
+            status=parsed_status,
+            target_id=target_filter or None,
+        )
+        targets = list_targets(conn)
+        target_map = {t.id: t for t in targets}
+
+        history_runs: list[_HistoryRow] = []
+        for run in parent_runs:
+            child_rows = conn.execute(
+                "SELECT id FROM runs WHERE parent_run_id = ?", (run.id,)
+            ).fetchall()
+            child_ids = [r["id"] for r in child_rows]
+            all_ids = [run.id, *child_ids]
+            finding_count = 0
+            if all_ids:
+                ph = ", ".join("?" for _ in all_ids)
+                row = conn.execute(
+                    f"SELECT COUNT(*) FROM findings WHERE run_id IN ({ph})",  # noqa: S608
+                    all_ids,
+                ).fetchone()
+                finding_count = row[0]
+
+            wf = get_workflow(run.name) if run.name else None
+            display_name = wf.name if wf else (run.name or "Workflow")
+
+            eff_target_id = run.target_id or (run.config or {}).get("target_id")
+            target = target_map.get(eff_target_id) if eff_target_id else None
+            target_name = target.name if target else None
+
+            duration = _compute_duration(run)
+
+            # Check for existing report run for this target
+            report_run_id = None
+            if eff_target_id:
+                report_row = conn.execute(
+                    """SELECT id FROM runs
+                       WHERE name = 'generate_report' AND target_id = ?
+                       AND status IN (?, ?)
+                       ORDER BY finished_at DESC LIMIT 1""",
+                    (eff_target_id, int(RunStatus.COMPLETED), int(RunStatus.PARTIAL)),
+                ).fetchone()
+                if report_row:
+                    report_run_id = report_row["id"]
+
+            history_runs.append(
+                _HistoryRow(
+                    run_id=run.id,
+                    display_name=display_name,
+                    target_name=target_name,
+                    target_id=eff_target_id,
+                    status=run.status,
+                    finding_count=finding_count,
+                    duration=duration,
+                    started_at=run.started_at,
+                    report_run_id=report_run_id,
+                )
+            )
+
+    return {
+        "history_runs": history_runs,
+        "workflows": list_workflows(),
+        "targets": targets,
+        "statuses": _STATUS_NAMES,
+        "current_workflow": workflow_filter or "",
+        "current_target": target_filter or "",
+        "current_status": status_filter or "",
+    }
+
+
 @router.get("/runs")
 async def runs(
     request: Request,
     run_id: str | None = Query(None),
+    workflow: str | None = Query(None),
+    target_id: str | None = Query(None),
+    status: str | None = Query(None),
 ) -> HTMLResponse:
-    """Render the runs view with optional workflow state."""
+    """Render the runs view — history list or single-run results."""
     templates = _get_templates(request)
     db_path = _get_db_path(request)
 
@@ -327,6 +455,11 @@ async def runs(
     if run_id:
         run_ctx = await asyncio.to_thread(_build_runs_context, db_path, run_id)
         ctx.update(run_ctx)
+    else:
+        history_ctx = await asyncio.to_thread(
+            _build_history_context, db_path, workflow, target_id, status
+        )
+        ctx.update(history_ctx)
 
     return templates.TemplateResponse(request, "runs.html", ctx)
 
@@ -402,6 +535,59 @@ async def api_runs(
             conn, module=module or None, status=parsed_status, target_id=target_id or None
         )
     return templates.TemplateResponse(request, "partials/runs_table.html", {"runs": runs})
+
+
+@router.get("/api/runs/history")
+async def api_runs_history(
+    request: Request,
+    workflow: str | None = Query(None),
+    target_id: str | None = Query(None),
+    status: str | None = Query(None),
+) -> HTMLResponse:
+    """Return the run history table partial for HTMX swap."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    history_ctx = await asyncio.to_thread(
+        _build_history_context, db_path, workflow, target_id, status
+    )
+    return templates.TemplateResponse(request, "partials/run_history_table.html", history_ctx)
+
+
+@router.get("/api/runs/{run_id}/export", response_model=None)
+def api_export_run(request: Request, run_id: str) -> Response:
+    """Export a run as a schema-versioned JSON bundle."""
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        run = get_run(conn, run_id)
+        if run is None:
+            return JSONResponse(status_code=404, content={"detail": "Run not found"})
+        bundle = export_run_bundle(conn, run_id)
+    return JSONResponse(
+        content=bundle,
+        headers={
+            "Content-Disposition": f'attachment; filename="run-{run_id[:12]}.json"',
+        },
+    )
+
+
+@router.delete("/api/runs/{run_id}", response_model=None)
+def api_delete_run(request: Request, run_id: str) -> Response:
+    """Delete a run and all related data."""
+    db_path = _get_db_path(request)
+    try:
+        with get_connection(db_path) as conn:
+            files_to_delete = delete_run_cascade(conn, run_id)
+    except ValueError:
+        return JSONResponse(status_code=404, content={"detail": "Run not found"})
+
+    # Clean up files after DB commit — log failures but don't fail the request
+    for file_path in files_to_delete:
+        try:
+            Path(file_path).unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Failed to delete file: %s", file_path)
+
+    return JSONResponse(content={"detail": "Run deleted"})
 
 
 @router.get("/api/findings")
