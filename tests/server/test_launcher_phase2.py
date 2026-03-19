@@ -96,6 +96,14 @@ class TestModelOptions:
         # All providers should render as provider/default in the dropdown
         assert "anthropic/default" in resp.text
 
+    def test_local_providers_included_without_config(self, client: TestClient) -> None:
+        """ollama/lmstudio appear in the dropdown even without explicit config."""
+        resp = client.get("/")
+        assert resp.status_code == 200
+        # These have default URLs and should be available
+        assert "ollama/default" in resp.text
+        assert "lmstudio/default" in resp.text
+
 
 class TestUrlPlaceholder:
     """URL placeholder text is present in the template."""
@@ -161,6 +169,25 @@ class TestQuickActionsSection:
 
 class TestQuickActionLaunch:
     """POST /api/quick-actions/launch validates and creates runs."""
+
+    def test_invalid_json_rejected(self, client: TestClient) -> None:
+        """Malformed JSON body returns 400."""
+        resp = client.post(
+            "/api/quick-actions/launch",
+            content=b"not json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 400
+        assert "Invalid JSON" in resp.json()["detail"]
+
+    def test_non_object_body_rejected(self, client: TestClient) -> None:
+        """Non-object JSON body (e.g. array) returns 422."""
+        resp = client.post(
+            "/api/quick-actions/launch",
+            json=[1, 2, 3],
+        )
+        assert resp.status_code == 422
+        assert "JSON object" in resp.json()["detail"]
 
     def test_unknown_action_rejected(self, client: TestClient) -> None:
         """Unknown action returns 422."""

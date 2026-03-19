@@ -123,7 +123,7 @@
     }
     .wf-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
         gap: 1.5rem;
         justify-items: center;
     }
@@ -223,21 +223,27 @@
     <div class="mt-10 lg:mt-12">
         <h2 class="text-sm font-semibold uppercase tracking-wider mb-4" style="color: #64748b; font-family: 'Fira Code', monospace;">Quick Actions</h2>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div class="qa-card" onclick="openWorkflowModal('qa_scan')" role="button" tabindex="0" aria-label="Quick Scan">
+            <div class="qa-card" onclick="openWorkflowModal('qa_scan')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openWorkflowModal('qa_scan');}"
+                 role="button" tabindex="0" aria-label="Quick Scan">
                 <div class="flex items-center gap-2">
                     <span class="text-sm font-medium" style="color: #f1f5f9;">Scan</span>
                     <span style="font-family: 'Fira Code', monospace; font-size: 0.65rem; color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 9999px; padding: 0.05rem 0.4rem;">audit</span>
                 </div>
                 <p class="text-xs mt-1" style="color: #64748b;">Run a standalone audit scan</p>
             </div>
-            <div class="qa-card" onclick="openWorkflowModal('qa_intercept')" role="button" tabindex="0" aria-label="Quick Intercept">
+            <div class="qa-card" onclick="openWorkflowModal('qa_intercept')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openWorkflowModal('qa_intercept');}"
+                 role="button" tabindex="0" aria-label="Quick Intercept">
                 <div class="flex items-center gap-2">
                     <span class="text-sm font-medium" style="color: #f1f5f9;">Intercept</span>
                     <span style="font-family: 'Fira Code', monospace; font-size: 0.65rem; color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 9999px; padding: 0.05rem 0.4rem;">proxy</span>
                 </div>
                 <p class="text-xs mt-1" style="color: #64748b;">Capture MCP traffic</p>
             </div>
-            <div class="qa-card" onclick="openWorkflowModal('qa_campaign')" role="button" tabindex="0" aria-label="Quick Campaign">
+            <div class="qa-card" onclick="openWorkflowModal('qa_campaign')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openWorkflowModal('qa_campaign');}"
+                 role="button" tabindex="0" aria-label="Quick Campaign">
                 <div class="flex items-center gap-2">
                     <span class="text-sm font-medium" style="color: #f1f5f9;">Campaign</span>
                     <span style="font-family: 'Fira Code', monospace; font-size: 0.65rem; color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 9999px; padding: 0.05rem 0.4rem;">inject</span>

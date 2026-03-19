@@ -79,7 +79,10 @@ async def launcher(request: Request) -> HTMLResponse:
             workflows.append(entry)
 
     all_providers = _get_providers_status(request)
-    providers = [p for p in all_providers if p["configured"]]
+    # Include providers that are explicitly configured OR have built-in
+    # default URLs (ollama, lmstudio) — matching _check_provider_credential.
+    _default_url_providers = {"ollama", "lmstudio"}
+    providers = [p for p in all_providers if p["configured"] or p["name"] in _default_url_providers]
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
         default_model = get_setting(conn, "default_model") or ""
@@ -1048,16 +1051,41 @@ async def api_targets_list(request: Request) -> JSONResponse:
     return JSONResponse(content={"targets": [dict(r) for r in rows]})
 
 
-@router.get("/api/targets/check-name")
-async def api_check_target_name(request: Request, name: str = Query(...)) -> JSONResponse:
-    """Check if a target with the given name already exists.
+def _check_target_name_exists(db_path: Path | None, name: str) -> bool:
+    """Check whether a target with the given name exists in the database.
 
-    Returns a simple boolean response for the launcher duplicate-name warning.
+    Args:
+        db_path: Path to the SQLite database.
+        name: Target name to look up.
+
+    Returns:
+        True if a target with the name exists, False otherwise.
     """
-    db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
         row = conn.execute("SELECT 1 FROM targets WHERE name = ? LIMIT 1", (name,)).fetchone()
-    return JSONResponse(content={"exists": row is not None})
+    return row is not None
+
+
+@router.get("/api/targets/check-name")
+async def api_check_target_name(
+    request: Request,
+    name: str = Query(...),
+) -> JSONResponse:
+    """Check if a target with the given name already exists.
+
+    Runs the database lookup off the event loop via ``asyncio.to_thread``
+    to avoid blocking on synchronous SQLite I/O.
+
+    Args:
+        request: The incoming HTTP request.
+        name: Target name to check (query parameter).
+
+    Returns:
+        JSONResponse with ``{"exists": true}`` or ``{"exists": false}``.
+    """
+    db_path = _get_db_path(request)
+    exists = await asyncio.to_thread(_check_target_name_exists, db_path, name)
+    return JSONResponse(content={"exists": exists})
 
 
 @router.get("/api/chain/templates")
@@ -1566,6 +1594,24 @@ async def launch_workflow(request: Request) -> JSONResponse:
 # Quick Actions launch API
 # ---------------------------------------------------------------------------
 
+
+def _str_field(body: dict[str, Any], key: str, default: str = "") -> str:
+    """Extract a string field from a request body, coercing non-strings safely.
+
+    Args:
+        body: The parsed request body dict.
+        key: The field name to extract.
+        default: Default value if key is missing.
+
+    Returns:
+        The stripped string value.
+    """
+    val = body.get(key, default)
+    if not isinstance(val, str):
+        return str(val).strip() if val is not None else default
+    return val.strip()
+
+
 _QUICK_ACTIONS = {"scan", "intercept", "campaign"}
 
 _QUICK_ACTION_PROVIDER_REQUIRED = {"campaign"}
@@ -1586,7 +1632,7 @@ def _validate_campaign_fields(body: dict[str, Any]) -> JSONResponse | None:
     Returns:
         A JSONResponse with 422 status if validation fails, or None on success.
     """
-    model = body.get("model", "").strip()
+    model = _str_field(body, "model")
     if not model or "/" not in model:
         return JSONResponse(
             status_code=422,
@@ -1620,7 +1666,7 @@ def _validate_quick_action(
         A JSONResponse on validation error, or a (action, target_name) tuple
         on success.
     """
-    action = body.get("action", "").strip()
+    action = _str_field(body, "action")
     if action not in _QUICK_ACTIONS:
         return JSONResponse(
             status_code=422,
@@ -1632,7 +1678,7 @@ def _validate_quick_action(
         if cred_error is not None:
             return cred_error
 
-    target_name = body.get("target_name", "").strip()
+    target_name = _str_field(body, "target_name")
     if not target_name:
         return JSONResponse(
             status_code=422,
@@ -1660,7 +1706,7 @@ def _validate_transport_and_command(body: dict[str, Any]) -> JSONResponse | None
     Returns:
         A JSONResponse with 422 status if validation fails, or None on success.
     """
-    transport = body.get("transport", "").strip()
+    transport = _str_field(body, "transport")
     if transport not in _VALID_TRANSPORTS:
         return JSONResponse(
             status_code=422,
@@ -1670,8 +1716,8 @@ def _validate_transport_and_command(body: dict[str, Any]) -> JSONResponse | None
                 ),
             },
         )
-    command = body.get("command", "").strip() or None
-    url = body.get("url", "").strip() or None
+    command = _str_field(body, "command") or None
+    url = _str_field(body, "url") or None
     if transport == "stdio" and not command:
         return JSONResponse(
             status_code=422,
@@ -1698,12 +1744,12 @@ def _build_quick_action_config(action: str, body: dict[str, Any], target_id: str
     """
     config: dict[str, Any] = {
         "target_id": target_id,
-        "transport": body.get("transport", "").strip(),
-        "command": body.get("command", "").strip() or None,
-        "url": body.get("url", "").strip() or None,
+        "transport": _str_field(body, "transport"),
+        "command": _str_field(body, "command") or None,
+        "url": _str_field(body, "url") or None,
     }
     if action == "campaign":
-        config["model"] = body.get("model", "").strip()
+        config["model"] = _str_field(body, "model")
         config["rounds"] = int(body.get("rounds", 1))
     return config
 
@@ -1712,10 +1758,29 @@ def _build_quick_action_config(action: str, body: dict[str, Any], target_id: str
 async def launch_quick_action(request: Request) -> JSONResponse:
     """Launch a single-module quick action.
 
-    Creates a target and run, then executes the module operation
-    in the background. Returns run_id and redirect URL.
+    Validates the request body, creates a target and run, then executes
+    the module operation in the background.
+
+    Args:
+        request: The incoming HTTP request with a JSON body containing
+            action, target_name, transport, and action-specific fields.
+
+    Returns:
+        JSONResponse with 201 status containing run_id and redirect URL
+        on success, or 400/422 on validation failure.
     """
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Invalid JSON in request body"},
+        )
+    if not isinstance(body, dict):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Request body must be a JSON object"},
+        )
     db_path = _get_db_path(request)
 
     result = _validate_quick_action(body, db_path)
