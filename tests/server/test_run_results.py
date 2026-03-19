@@ -157,3 +157,42 @@ class TestRunsPage:
         resp = client.get("/runs?run_id=abc")
         assert resp.status_code == 200
         assert 'data-run-id="abc"' in resp.text
+
+
+class TestScopedModuleTabs:
+    """Only tabs for the workflow's modules should appear."""
+
+    def test_assess_shows_only_audit_proxy_inject(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _, _ = _setup_completed_assess_run(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}")
+        text = resp.text
+        assert "onclick=\"switchTab(this, 'audit')\"" in text
+        assert "onclick=\"switchTab(this, 'proxy')\"" in text
+        assert "onclick=\"switchTab(this, 'inject')\"" in text
+        assert "onclick=\"switchTab(this, 'chain')\"" not in text
+        assert "onclick=\"switchTab(this, 'ipi')\"" not in text
+        assert "onclick=\"switchTab(this, 'cxp')\"" not in text
+        assert "onclick=\"switchTab(this, 'rxp')\"" not in text
+
+    def test_no_run_id_shows_all_tabs(self, client: TestClient) -> None:
+        resp = client.get("/runs")
+        text = resp.text
+        for mod in ["audit", "proxy", "inject", "chain", "ipi", "cxp", "rxp"]:
+            assert f"onclick=\"switchTab(this, '{mod}')\"" in text
+
+    def test_module_did_not_execute_message(self, client: TestClient, tmp_db: Path) -> None:
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            parent_id = create_run(conn, module="workflow", name="assess")
+            update_run_status(conn, parent_id, RunStatus.PARTIAL)
+            audit_child = create_run(
+                conn, module="audit", name="audit-child", parent_run_id=parent_id
+            )
+            update_run_status(conn, audit_child, RunStatus.COMPLETED)
+            conn.commit()
+        finally:
+            conn.close()
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "Module did not execute in this run" in resp.text

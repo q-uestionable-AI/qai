@@ -35,6 +35,40 @@
     <div class="flex gap-6">
         <!-- Main panel area -->
         <div class="flex-1">
+            {% if results_mode and workflow_modules %}
+            <div role="tablist" class="tabs tabs-bordered mb-4">
+                {% for mod in workflow_modules %}
+                <button type="button" role="tab"
+                        class="tab {% if loop.first %}tab-active{% endif %}"
+                        aria-selected="{{ 'true' if loop.first else 'false' }}"
+                        tabindex="{{ '0' if loop.first else '-1' }}"
+                        onclick="switchTab(this, '{{ mod }}')">{{ mod }}</button>
+                {% endfor %}
+            </div>
+
+            <div class="panel p-4 min-h-[200px]">
+                {% for mod in workflow_modules %}
+                <div id="tab-{{ mod }}" {% if not loop.first %}class="hidden"{% endif %}>
+                    {% if mod == 'audit' and mod in child_by_module %}
+                        {% include "partials/audit_results_tab.html" %}
+                    {% elif mod == 'inject' and mod in child_by_module %}
+                        {% include "partials/inject_results_tab.html" %}
+                    {% elif mod == 'proxy' and mod in child_by_module %}
+                        {% include "partials/proxy_results_tab.html" %}
+                    {% elif mod in child_by_module %}
+                        <p class="text-sm text-base-content/40">
+                            Results view for {{ mod }} coming soon.
+                        </p>
+                    {% else %}
+                        <p class="text-sm text-base-content/40">
+                            Module did not execute in this run.
+                        </p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            {# Default: all 7 tabs with form partials #}
             <div role="tablist" class="tabs tabs-bordered mb-4">
                 <button type="button" role="tab" class="tab tab-active" aria-selected="true" tabindex="0" onclick="switchTab(this, 'audit')">audit</button>
                 <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" onclick="switchTab(this, 'proxy')">proxy</button>
@@ -68,6 +102,7 @@
                     {% include "partials/rxp_tab.html" %}
                 </div>
             </div>
+            {% endif %}
 
             <script>
             function switchTab(el, name) {
