@@ -298,8 +298,8 @@ class TestProgressSeparateFromWorkflowName:
         # The workflow-name span should contain "assess"
         assert ">assess</span>" in resp.text
 
-    def test_idle_status_bar_has_progress_element(self, client: TestClient) -> None:
-        """Even the IDLE status bar has a workflow-progress element."""
+    def test_idle_operations_shows_history(self, client: TestClient) -> None:
+        """GET /operations without run_id shows run history (no status bar)."""
         resp = client.get("/operations")
         assert resp.status_code == 200
-        assert 'id="workflow-progress"' in resp.text
+        assert "Run History" in resp.text

@@ -12,13 +12,13 @@ from q_ai.core.models import RunStatus, Severity
 
 
 class TestOperationsNoRunId:
-    """Operations page without a run_id parameter."""
+    """Operations page without a run_id parameter shows run history."""
 
     def test_operations_no_run_id(self, client: TestClient) -> None:
-        """GET /operations without run_id -> 200, shows IDLE."""
+        """GET /operations without run_id -> 200, shows run history."""
         resp = client.get("/operations")
         assert resp.status_code == 200
-        assert "IDLE" in resp.text
+        assert "Run History" in resp.text
 
 
 class TestOperationsWithRunId:
@@ -68,10 +68,9 @@ class TestOperationsUnknownRunId:
     """Operations page with an unknown run_id."""
 
     def test_operations_unknown_run_id(self, client: TestClient) -> None:
-        """GET /operations?run_id=nonexistent -> 200, graceful fallback (IDLE)."""
+        """GET /operations?run_id=nonexistent -> 200, graceful fallback."""
         resp = client.get("/operations?run_id=nonexistent")
         assert resp.status_code == 200
-        assert "IDLE" in resp.text
 
 
 class TestOperationsPassesRunId:
