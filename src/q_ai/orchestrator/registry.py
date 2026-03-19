@@ -27,6 +27,8 @@ class WorkflowEntry:
         requires_provider: Whether the workflow requires a configured LLM provider.
             When False, the launcher shows the form without a provider check and
             the launch API skips credential validation. Defaults to True.
+        is_hero: Whether this workflow should render as the hero card in the
+            launcher grid. Only one workflow should have this set to True.
     """
 
     id: str
@@ -37,6 +39,7 @@ class WorkflowEntry:
     executor: Callable[..., Any] | None = None
     failure_mode: str = "best_effort"
     requires_provider: bool = True
+    is_hero: bool = False
 
 
 WORKFLOWS: dict[str, WorkflowEntry] = {}
@@ -48,7 +51,18 @@ def register_workflow(entry: WorkflowEntry) -> None:
     Args:
         entry: WorkflowEntry to register. Overwrites any existing entry with
             the same id.
+
+    Raises:
+        ValueError: If entry has is_hero=True and another workflow (with a
+            different id) is already registered as the hero.
     """
+    if entry.is_hero:
+        for existing in WORKFLOWS.values():
+            if existing.is_hero and existing.id != entry.id:
+                raise ValueError(
+                    f"Cannot register '{entry.id}' as hero: "
+                    f"'{existing.id}' is already the hero workflow"
+                )
     WORKFLOWS[entry.id] = entry
 
 
@@ -85,6 +99,7 @@ _DEFAULT_WORKFLOWS = [
             "Scan, intercept, and test tool trust boundaries in Model Context Protocol servers."
         ),
         modules=["audit", "proxy", "inject"],
+        is_hero=True,
     ),
     WorkflowEntry(
         id="test_docs",

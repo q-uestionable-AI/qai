@@ -61,8 +61,11 @@ def _get_db_path(request: Request) -> Path | None:
 async def launcher(request: Request) -> HTMLResponse:
     """Render the workflow launcher page."""
     templates = _get_templates(request)
-    workflows: list[dict[str, Any]] = [
-        {
+
+    hero_workflow: dict[str, Any] | None = None
+    workflows: list[dict[str, Any]] = []
+    for wf in list_workflows():
+        entry = {
             "id": wf.id,
             "name": wf.name,
             "description": wf.description,
@@ -70,26 +73,72 @@ async def launcher(request: Request) -> HTMLResponse:
             "implemented": wf.executor is not None,
             "requires_provider": wf.requires_provider,
         }
-        for wf in list_workflows()
-    ]
+        if wf.is_hero:
+            hero_workflow = entry
+        else:
+            workflows.append(entry)
+
     all_providers = _get_providers_status(request)
-    providers = [p for p in all_providers if p["configured"]]
+    # Include providers that are explicitly configured OR have built-in
+    # default URLs (ollama, lmstudio) — matching _check_provider_credential.
+    _default_url_providers = {"ollama", "lmstudio"}
+    providers = [p for p in all_providers if p["configured"] or p["name"] in _default_url_providers]
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
+        default_model = get_setting(conn, "default_model") or ""
+        default_transport = get_setting(conn, "audit.default_transport") or "stdio"
         defaults = {
             "ipi_callback_url": get_setting(conn, "ipi.default_callback_url") or "",
+            "default_model": default_model,
+            "audit_default_transport": default_transport,
         }
+
+    # Build model options: show actual model name from settings where possible
+    model_options = _build_model_options(providers, default_model)
+
     return templates.TemplateResponse(
         request,
         "launcher.html",
         {
             "active": "launcher",
+            "hero_workflow": hero_workflow,
             "workflows": workflows,
             "providers": providers,
+            "model_options": model_options,
             "rxp_available": rxp_is_available(),
             "defaults": defaults,
         },
     )
+
+
+def _build_model_options(
+    providers: list[dict[str, Any]], default_model: str
+) -> list[dict[str, str]]:
+    """Build model dropdown options from configured providers and default_model.
+
+    If default_model is set (e.g. "lmstudio/qwen2.5-7b-instruct"), the option
+    for that provider shows the actual model name. Other providers fall back to
+    "provider/default".
+
+    Args:
+        providers: List of configured provider dicts (must have "name" key).
+        default_model: The default_model setting value (may be empty).
+
+    Returns:
+        List of dicts with "value" and "label" keys for each option.
+    """
+    default_provider = ""
+    if default_model and "/" in default_model:
+        default_provider = default_model.split("/", 1)[0]
+
+    options: list[dict[str, str]] = []
+    for p in providers:
+        name = p["name"]
+        if name == default_provider:
+            options.append({"value": default_model, "label": default_model})
+        else:
+            options.append({"value": f"{name}/default", "label": f"{name}/default"})
+    return options
 
 
 @router.get("/operations")
@@ -1002,6 +1051,55 @@ async def api_targets_list(request: Request) -> JSONResponse:
     return JSONResponse(content={"targets": [dict(r) for r in rows]})
 
 
+def _check_target_name_exists(db_path: Path | None, name: str) -> bool:
+    """Check whether a target with the given name exists in the database.
+
+    Args:
+        db_path: Path to the SQLite database.
+        name: Target name to look up.
+
+    Returns:
+        True if a target with the name exists, False otherwise.
+    """
+    normalized = name.strip()
+    if not normalized:
+        return False
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM targets WHERE name = ? LIMIT 1",
+            (normalized,),
+        ).fetchone()
+    return row is not None
+
+
+@router.get("/api/targets/check-name")
+async def api_check_target_name(
+    request: Request,
+    name: str = Query(...),
+) -> JSONResponse:
+    """Check if a target with the given name already exists.
+
+    Runs the database lookup off the event loop via ``asyncio.to_thread``
+    to avoid blocking on synchronous SQLite I/O.
+
+    Args:
+        request: The incoming HTTP request.
+        name: Target name to check (query parameter).
+
+    Returns:
+        JSONResponse with ``{"exists": true}`` or ``{"exists": false}``.
+    """
+    normalized = name.strip()
+    if not normalized:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "name is required"},
+        )
+    db_path = _get_db_path(request)
+    exists = await asyncio.to_thread(_check_target_name_exists, db_path, normalized)
+    return JSONResponse(content={"exists": exists})
+
+
 @router.get("/api/chain/templates")
 async def api_chain_templates(request: Request) -> JSONResponse:
     """Return chain templates for the launcher dropdown."""
@@ -1101,13 +1199,13 @@ def _build_assess_config(body: dict[str, Any], target_id: str) -> dict[str, Any]
     url = body.get("url", "").strip() or None
     model = body.get("model", "").strip()
 
-    try:
-        rounds = int(body.get("rounds", 1))
-    except (ValueError, TypeError):
+    raw_rounds = body.get("rounds", 1)
+    if isinstance(raw_rounds, bool) or not isinstance(raw_rounds, int):
         return JSONResponse(
             status_code=422,
             content={"detail": "rounds must be an integer"},
         )
+    rounds = raw_rounds
     if not 1 <= rounds <= 10:
         return JSONResponse(
             status_code=422,
@@ -1316,7 +1414,13 @@ def _check_provider_credential(body: dict[str, Any], db_path: Path | None) -> JS
     Returns:
         A JSONResponse with 422 status if validation fails, or None on success.
     """
-    model = body.get("model", "").strip()
+    try:
+        model = _str_field(body, "model")
+    except TypeError:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Invalid provider model parameter"},
+        )
     if not model or "/" not in model:
         return JSONResponse(
             status_code=422,
@@ -1500,6 +1604,260 @@ async def launch_workflow(request: Request) -> JSONResponse:
         content={
             "run_id": runner.run_id,
             "redirect": f"/operations?run_id={runner.run_id}",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Quick Actions launch API
+# ---------------------------------------------------------------------------
+
+
+def _str_field(body: dict[str, Any], key: str, default: str = "") -> str:
+    """Extract a string field from a request body, rejecting non-string values.
+
+    Args:
+        body: The parsed request body dict.
+        key: The field name to extract.
+        default: Default value if key is missing or None.
+
+    Returns:
+        The stripped string value.
+
+    Raises:
+        TypeError: If the value is present but not a string (e.g. number,
+            array, object).
+    """
+    val = body.get(key, default)
+    if val is None:
+        return default
+    if not isinstance(val, str):
+        raise TypeError(f"'{key}' must be a string")
+    return val.strip()
+
+
+_QUICK_ACTIONS = {"scan", "intercept", "campaign"}
+
+_QUICK_ACTION_PROVIDER_REQUIRED = {"campaign"}
+
+_QUICK_ACTION_WORKFLOW_MAP = {
+    "scan": "qa_scan",
+    "intercept": "qa_intercept",
+    "campaign": "qa_campaign",
+}
+
+
+def _validate_campaign_fields(body: dict[str, Any]) -> JSONResponse | None:
+    """Validate campaign-specific fields (model and rounds).
+
+    Args:
+        body: The parsed request body dict.
+
+    Returns:
+        A JSONResponse with 422 status if validation fails, or None on success.
+    """
+    model = _str_field(body, "model")
+    if not model or "/" not in model:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "model must be non-empty and in provider/model format"},
+        )
+    raw_rounds = body.get("rounds", 1)
+    if isinstance(raw_rounds, bool) or not isinstance(raw_rounds, int):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "rounds must be an integer"},
+        )
+    rounds = raw_rounds
+    if not 1 <= rounds <= 10:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "rounds must be an integer between 1 and 10"},
+        )
+    return None
+
+
+def _validate_quick_action(
+    body: dict[str, Any], db_path: Path | None
+) -> JSONResponse | tuple[str, str]:
+    """Validate quick action request fields.
+
+    Args:
+        body: The parsed request body dict.
+        db_path: Path to the SQLite database.
+
+    Returns:
+        A JSONResponse on validation error, or a (action, target_name) tuple
+        on success.
+    """
+    action = _str_field(body, "action")
+    if action not in _QUICK_ACTIONS:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"Unknown action: {action}"},
+        )
+
+    if action in _QUICK_ACTION_PROVIDER_REQUIRED:
+        cred_error = _check_provider_credential(body, db_path)
+        if cred_error is not None:
+            return cred_error
+
+    target_name = _str_field(body, "target_name")
+    if not target_name:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "target_name is required"},
+        )
+
+    transport_error = _validate_transport_and_command(body)
+    if transport_error is not None:
+        return transport_error
+
+    if action == "campaign":
+        campaign_error = _validate_campaign_fields(body)
+        if campaign_error is not None:
+            return campaign_error
+
+    return action, target_name
+
+
+def _validate_transport_and_command(body: dict[str, Any]) -> JSONResponse | None:
+    """Validate transport and command/url fields from a request body.
+
+    Args:
+        body: The parsed request body dict.
+
+    Returns:
+        A JSONResponse with 422 status if validation fails, or None on success.
+    """
+    transport = _str_field(body, "transport")
+    if transport not in _VALID_TRANSPORTS:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": (
+                    f"Invalid transport. Must be one of: {', '.join(sorted(_VALID_TRANSPORTS))}"
+                ),
+            },
+        )
+    command = _str_field(body, "command") or None
+    url = _str_field(body, "url") or None
+    if transport == "stdio" and not command:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "command is required for stdio transport"},
+        )
+    if transport in ("sse", "streamable-http") and not url:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "url is required for sse/streamable-http transport"},
+        )
+    return None
+
+
+def _build_quick_action_config(action: str, body: dict[str, Any], target_id: str) -> dict[str, Any]:
+    """Build config dict for a quick action.
+
+    Args:
+        action: The quick action name (scan, intercept, campaign).
+        body: The parsed request body dict.
+        target_id: The created target ID.
+
+    Returns:
+        Configuration dict for the quick action executor.
+    """
+    config: dict[str, Any] = {
+        "target_id": target_id,
+        "transport": _str_field(body, "transport"),
+        "command": _str_field(body, "command") or None,
+        "url": _str_field(body, "url") or None,
+    }
+    if action == "campaign":
+        config["model"] = _str_field(body, "model")
+        config["rounds"] = int(body.get("rounds", 1))
+    return config
+
+
+@router.post("/api/quick-actions/launch")
+async def launch_quick_action(request: Request) -> JSONResponse:
+    """Launch a single-module quick action.
+
+    Validates the request body, creates a target and run, then executes
+    the module operation in the background.
+
+    Args:
+        request: The incoming HTTP request with a JSON body containing
+            action, target_name, transport, and action-specific fields.
+
+    Returns:
+        JSONResponse with 201 status containing run_id and redirect URL
+        on success, or 400/422 on validation failure.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Invalid JSON in request body"},
+        )
+    if not isinstance(body, dict):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Request body must be a JSON object"},
+        )
+    db_path = _get_db_path(request)
+
+    try:
+        result = await asyncio.to_thread(_validate_quick_action, body, db_path)
+    except TypeError:
+        logger.warning("Invalid request parameters in quick action", exc_info=True)
+        return JSONResponse(status_code=422, content={"detail": "Invalid request parameters"})
+    if isinstance(result, JSONResponse):
+        return result
+    action, target_name = result
+
+    def _create_target_sync() -> str:
+        with get_connection(db_path) as conn:
+            return create_target(conn, type="server", name=target_name)
+
+    target_id = await asyncio.to_thread(_create_target_sync)
+
+    try:
+        config = _build_quick_action_config(action, body, target_id)
+    except TypeError:
+        logger.warning("Invalid action configuration in quick action", exc_info=True)
+        return JSONResponse(status_code=422, content={"detail": "Invalid action configuration"})
+
+    runner = WorkflowRunner(
+        workflow_id=_QUICK_ACTION_WORKFLOW_MAP[action],
+        config=config,
+        ws_manager=request.app.state.ws_manager,
+        active_workflows=request.app.state.active_workflows,
+        db_path=db_path,
+    )
+    await runner.start()
+
+    from q_ai.orchestrator.workflows.quick_actions import (
+        quick_campaign,
+        quick_intercept,
+        quick_scan,
+    )
+
+    executors = {
+        "scan": quick_scan,
+        "intercept": quick_intercept,
+        "campaign": quick_campaign,
+    }
+
+    task = asyncio.create_task(_run_workflow(runner, executors[action], config))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "run_id": runner.run_id,
+            "redirect": f"/runs?run_id={runner.run_id}",
         },
     )
 
