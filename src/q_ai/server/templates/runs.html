@@ -72,6 +72,11 @@
                 </div>
                 {% endfor %}
             </div>
+            {% elif results_mode and is_report_run and report_html %}
+            {# Generate report workflow — render report markdown as HTML #}
+            <div class="panel p-6 min-h-[200px] prose prose-sm max-w-none">
+                {{ report_html | safe }}
+            </div>
             {% elif results_mode %}
             {# Results mode but no module tabs (e.g. generate_report workflow) #}
             <div class="panel p-4 min-h-[200px]">

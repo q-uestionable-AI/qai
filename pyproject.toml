@@ -41,6 +41,8 @@ dependencies = [
     "python-multipart>=0.0.20",
     "requests>=2.32.0",
     "icalendar>=6.1.0",
+    "markdown>=3.5",
+    "nh3>=0.2",
 ]
 
 [project.optional-dependencies]

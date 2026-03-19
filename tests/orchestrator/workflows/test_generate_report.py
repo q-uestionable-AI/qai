@@ -14,7 +14,15 @@ from q_ai.core.models import RunStatus, Severity
 if TYPE_CHECKING:
     import pytest
 from q_ai.core.schema import migrate
-from q_ai.orchestrator.workflows.generate_report import generate_report
+from q_ai.orchestrator.workflows.generate_report import (
+    _config_to_cli,
+    _parse_framework_ids,
+    _render_audit_section,
+    _render_inject_section,
+    _render_negative_results_section,
+    _render_proxy_section,
+    generate_report,
+)
 
 _GET_CONN_PATCH = "q_ai.orchestrator.workflows.generate_report.get_connection"
 _GET_TARGET_PATCH = "q_ai.orchestrator.workflows.generate_report.get_target"
@@ -109,14 +117,23 @@ def _seed_child_run(
     child_id: str = "child-run-1",
     parent_id: str = "parent-run-1",
     module: str = "audit",
+    config: dict | None = None,
 ) -> str:
     """Insert a child run."""
+    config_json = json.dumps(config) if config else None
     conn = sqlite3.connect(str(db_path))
     try:
         conn.execute(
-            "INSERT INTO runs (id, module, parent_run_id, status, started_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (child_id, module, parent_id, int(RunStatus.COMPLETED), "2026-03-10T10:01:00"),
+            "INSERT INTO runs (id, module, parent_run_id, config, status, started_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                child_id,
+                module,
+                parent_id,
+                config_json,
+                int(RunStatus.COMPLETED),
+                "2026-03-10T10:01:00",
+            ),
         )
         conn.commit()
     finally:
@@ -129,20 +146,60 @@ def _seed_finding(
     run_id: str = "child-run-1",
     severity: int = int(Severity.HIGH),
     title: str = "Test finding",
+    finding_id: str | None = None,
+    module: str = "audit",
+    description: str | None = None,
+    framework_ids: str | None = None,
+    source_ref: str | None = None,
 ) -> str:
     """Insert a finding."""
-    finding_id = f"finding-{run_id}"
+    fid = finding_id or f"finding-{run_id}"
     conn = sqlite3.connect(str(db_path))
     try:
         conn.execute(
-            "INSERT INTO findings (id, run_id, module, category, severity, title, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (finding_id, run_id, "audit", "test_cat", severity, title, "2026-03-10"),
+            "INSERT INTO findings "
+            "(id, run_id, module, category, severity, title, description, "
+            "framework_ids, source_ref, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                fid,
+                run_id,
+                module,
+                "test_cat",
+                severity,
+                title,
+                description,
+                framework_ids,
+                source_ref,
+                "2026-03-10",
+            ),
         )
         conn.commit()
     finally:
         conn.close()
-    return finding_id
+    return fid
+
+
+def _seed_evidence_for_finding(
+    db_path: Path,
+    finding_id: str,
+    ev_id: str = "ev-f-1",
+    ev_type: str = "file",
+    mime_type: str = "text/plain",
+) -> str:
+    """Insert an evidence record linked to a finding."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            "INSERT INTO evidence "
+            "(id, finding_id, run_id, type, mime_type, storage, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ev_id, finding_id, "child-run-1", ev_type, mime_type, "file", "2026-03-10"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return ev_id
 
 
 def _seed_ipi_payload(db_path: Path, run_id: str = "child-run-1") -> None:
@@ -259,6 +316,70 @@ def _seed_evidence(
     return ev_id
 
 
+def _seed_audit_scan(
+    db_path: Path,
+    run_id: str = "child-run-1",
+    transport: str = "stdio",
+    scanners_run: str | None = None,
+    scan_duration: float = 5.0,
+) -> None:
+    """Insert an audit scan record."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            "INSERT INTO audit_scans "
+            "(run_id, transport, scanners_run, scan_duration_seconds) "
+            "VALUES (?, ?, ?, ?)",
+            (run_id, transport, scanners_run, scan_duration),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _seed_inject_result(
+    db_path: Path,
+    run_id: str = "child-run-1",
+    result_id: str = "inj-1",
+    technique: str = "tool_poisoning",
+    outcome: str = "success",
+    target_agent: str = "test-agent",
+) -> None:
+    """Insert an inject result record."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            "INSERT INTO inject_results "
+            "(id, run_id, payload_name, technique, outcome, target_agent, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (result_id, run_id, "payload-1", technique, outcome, target_agent, "2026-03-10"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _seed_proxy_session(
+    db_path: Path,
+    run_id: str = "child-run-1",
+    transport: str = "stdio",
+    message_count: int = 10,
+    duration_seconds: float = 3.5,
+) -> None:
+    """Insert a proxy session record."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            "INSERT INTO proxy_sessions "
+            "(run_id, transport, message_count, duration_seconds) "
+            "VALUES (?, ?, ?, ?)",
+            (run_id, transport, message_count, duration_seconds),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # =====================================================================
 # Tests
 # =====================================================================
@@ -309,6 +430,12 @@ class TestNoRuns:
         assert "## RXP Validation Summary" in content
         assert "## Chain Execution Summary" in content
         assert "## Analyst Notes" in content
+        # New sections
+        assert "## Audit Summary" in content
+        assert "## Inject Summary" in content
+        assert "## Proxy Summary" in content
+        assert "## What Was Tested" in content
+        assert "## Reproduction" in content
 
         # Empty sections show the empty message
         assert "No data in scope." in content
@@ -362,7 +489,6 @@ class TestRunsAndFindings:
         assert "technique-a" in content
         assert "all-MiniLM-L6-v2" in content
         assert "Trust boundaries crossed:" in content
-        assert "No data in scope." not in content
 
 
 class TestDateFilter:
@@ -622,3 +748,495 @@ class TestOutputDirCreationFailure:
             assert len(rows) == 0
         finally:
             conn.close()
+
+
+# =====================================================================
+# New tests for Phase 4
+# =====================================================================
+
+
+class TestRicherFindings:
+    """Findings section shows full detail: description, frameworks, evidence."""
+
+    async def test_findings_grouped_by_module_then_severity(self, tmp_path: Path) -> None:
+        """Findings are grouped by module first, then by severity."""
+        db_path = tmp_path / "test.db"
+        _setup_db(db_path)
+        _seed_target(db_path)
+        _seed_workflow_run(db_path)
+        _seed_child_run(db_path, child_id="child-audit", module="audit")
+        _seed_child_run(db_path, child_id="child-inject", module="inject")
+        _seed_finding(
+            db_path,
+            run_id="child-audit",
+            finding_id="f-audit-high",
+            module="audit",
+            severity=int(Severity.HIGH),
+            title="Audit High Finding",
+        )
+        _seed_finding(
+            db_path,
+            run_id="child-inject",
+            finding_id="f-inject-crit",
+            module="inject",
+            severity=int(Severity.CRITICAL),
+            title="Inject Critical Finding",
+        )
+
+        runner = _make_runner(db_path=db_path)
+        config = _base_config(tmp_path)
+        await generate_report(runner, config)
+
+        content = (Path(config["output_dir"]) / "report.md").read_text(encoding="utf-8")
+        # Both module headers present
+        assert "### audit" in content
+        assert "### inject" in content
+        # Severity subheadings present
+        assert "#### HIGH" in content
+        assert "#### CRITICAL" in content
+
+    async def test_finding_detail_includes_description_and_frameworks(self, tmp_path: Path) -> None:
+        """Finding detail shows description, framework IDs, source_ref."""
+        db_path = tmp_path / "test.db"
+        _setup_db(db_path)
+        _seed_target(db_path)
+        _seed_workflow_run(db_path)
+        _seed_child_run(db_path)
+        _seed_finding(
+            db_path,
+            finding_id="f-detail",
+            description="A detailed description of the vulnerability.",
+            framework_ids='["OWASP-LLM-01", "MITRE-T1234"]',
+            source_ref="scanner:tool_poisoning",
+        )
+
+        runner = _make_runner(db_path=db_path)
+        config = _base_config(tmp_path)
+        await generate_report(runner, config)
+
+        content = (Path(config["output_dir"]) / "report.md").read_text(encoding="utf-8")
+        assert "A detailed description" in content
+        assert "OWASP-LLM-01" in content
+        assert "MITRE-T1234" in content
+        assert "scanner:tool_poisoning" in content
+
+    async def test_finding_evidence_pointers(self, tmp_path: Path) -> None:
+        """Findings with evidence show evidence IDs in the report."""
+        db_path = tmp_path / "test.db"
+        _setup_db(db_path)
+        _seed_target(db_path)
+        _seed_workflow_run(db_path)
+        _seed_child_run(db_path)
+        fid = _seed_finding(db_path, finding_id="f-ev")
+        _seed_evidence_for_finding(db_path, fid, ev_id="ev-for-finding", mime_type="text/plain")
+
+        runner = _make_runner(db_path=db_path)
+        config = _base_config(tmp_path)
+        await generate_report(runner, config)
+
+        content = (Path(config["output_dir"]) / "report.md").read_text(encoding="utf-8")
+        assert "ev-for-finding" in content
+        assert "text/plain" in content
+
+
+class TestParseFrameworkIds:
+    """Unit tests for _parse_framework_ids."""
+
+    def test_valid_json_array(self) -> None:
+        assert _parse_framework_ids('["A", "B"]') == ["A", "B"]
+
+    def test_none_returns_empty(self) -> None:
+        assert _parse_framework_ids(None) == []
+
+    def test_empty_string_returns_empty(self) -> None:
+        assert _parse_framework_ids("") == []
+
+    def test_invalid_json_returns_empty(self) -> None:
+        assert _parse_framework_ids("not json") == []
+
+    def test_json_object_returns_empty(self) -> None:
+        assert _parse_framework_ids('{"a": 1}') == []
+
+
+class TestAuditSection:
+    """Audit summary section with scan stats."""
+
+    async def test_audit_section_populated(self, tmp_path: Path) -> None:
+        """Audit summary shows scan count, transports, scanner categories."""
+        db_path = tmp_path / "test.db"
+        _setup_db(db_path)
+        _seed_target(db_path)
+        _seed_workflow_run(db_path)
+        _seed_child_run(db_path, module="audit")
+        _seed_audit_scan(
+            db_path,
+            transport="stdio",
+            scanners_run='["tool_poisoning", "rug_pull"]',
+            scan_duration=12.5,
+        )
+
+        runner = _make_runner(db_path=db_path)
+        config = _base_config(tmp_path)
+        await generate_report(runner, config)
+
+        content = (Path(config["output_dir"]) / "report.md").read_text(encoding="utf-8")
+        assert "## Audit Summary" in content
+        assert "Scans:" in content
+        assert "stdio" in content
+        assert "tool_poisoning" in content
+        assert "rug_pull" in content
+        assert "12.5s" in content
+
+    def test_render_audit_section_empty(self) -> None:
+        """Empty audit scans -> empty message."""
+        result = _render_audit_section([])
+        assert _EMPTY_MSG in result
+
+
+class TestInjectSection:
+    """Inject summary section with technique x outcome matrix."""
+
+    async def test_inject_section_matrix(self, tmp_path: Path) -> None:
+        """Inject summary shows technique x outcome table."""
+        db_path = tmp_path / "test.db"
+        _setup_db(db_path)
+        _seed_target(db_path)
+        _seed_workflow_run(db_path)
+        _seed_child_run(db_path, module="inject")
+        _seed_inject_result(db_path, result_id="i1", technique="tp", outcome="success")
+        _seed_inject_result(db_path, result_id="i2", technique="tp", outcome="failed")
+        _seed_inject_result(db_path, result_id="i3", technique="rug_pull", outcome="success")
+
+        runner = _make_runner(db_path=db_path)
+        config = _base_config(tmp_path)
+        await generate_report(runner, config)
+
+        content = (Path(config["output_dir"]) / "report.md").read_text(encoding="utf-8")
+        assert "## Inject Summary" in content
+        assert "Total results:" in content
+        assert "tp" in content
+        assert "rug_pull" in content
+        # Table structure
+        assert "| Technique |" in content
+
+    def test_render_inject_section_empty(self) -> None:
+        """Empty inject results -> empty message."""
+        result = _render_inject_section([])
+        assert _EMPTY_MSG in result
+
+
+class TestProxySection:
+    """Proxy summary section with session stats."""
+
+    async def test_proxy_section_populated(self, tmp_path: Path) -> None:
+        """Proxy summary shows session count, messages, duration."""
+        db_path = tmp_path / "test.db"
+        _setup_db(db_path)
+        _seed_target(db_path)
+        _seed_workflow_run(db_path)
+        _seed_child_run(db_path, module="proxy")
+        _seed_proxy_session(db_path, message_count=15, duration_seconds=8.3)
+
+        runner = _make_runner(db_path=db_path)
+        config = _base_config(tmp_path)
+        await generate_report(runner, config)
+
+        content = (Path(config["output_dir"]) / "report.md").read_text(encoding="utf-8")
+        assert "## Proxy Summary" in content
+        assert "Sessions:" in content
+        assert "15" in content
+        assert "8.3s" in content
+
+    def test_render_proxy_section_empty(self) -> None:
+        """Empty proxy sessions -> empty message."""
+        result = _render_proxy_section([])
+        assert _EMPTY_MSG in result
+
+
+class TestNegativeResults:
+    """Negative results section: modules that ran with zero findings."""
+
+    async def test_negative_results_lists_modules(self, tmp_path: Path) -> None:
+        """Negative results section shows all modules that ran."""
+        db_path = tmp_path / "test.db"
+        _setup_db(db_path)
+        _seed_target(db_path)
+        _seed_workflow_run(db_path)
+        # audit ran with a finding, proxy ran with no findings
+        _seed_child_run(db_path, child_id="c-audit", module="audit")
+        _seed_child_run(db_path, child_id="c-proxy", module="proxy")
+        _seed_finding(db_path, run_id="c-audit", finding_id="f-a")
+
+        runner = _make_runner(db_path=db_path)
+        config = _base_config(tmp_path)
+        await generate_report(runner, config)
+
+        content = (Path(config["output_dir"]) / "report.md").read_text(encoding="utf-8")
+        assert "## What Was Tested" in content
+        assert "**audit:** 1 findings" in content
+        assert "**proxy:** 0 findings" in content
+
+    def test_render_negative_results_empty(self) -> None:
+        """No child runs -> empty message."""
+        result = _render_negative_results_section([], [], [])
+        assert _EMPTY_MSG in result
+
+
+class TestReproductionSection:
+    """Reproduction section: CLI commands per child run."""
+
+    async def test_reproduction_cli_commands(self, tmp_path: Path) -> None:
+        """Reproduction section generates CLI commands from child run configs."""
+        db_path = tmp_path / "test.db"
+        _setup_db(db_path)
+        _seed_target(db_path)
+        _seed_workflow_run(db_path)
+        _seed_child_run(
+            db_path,
+            child_id="c-audit",
+            module="audit",
+            config={"transport": "stdio", "command": "npx @mcp/server"},
+        )
+        _seed_child_run(
+            db_path,
+            child_id="c-inject",
+            module="inject",
+            config={"model": "openai/gpt-4o", "rounds": 3},
+        )
+
+        runner = _make_runner(db_path=db_path)
+        config = _base_config(tmp_path)
+        await generate_report(runner, config)
+
+        content = (Path(config["output_dir"]) / "report.md").read_text(encoding="utf-8")
+        assert "## Reproduction" in content
+        assert "qai audit scan" in content
+        assert "--transport stdio" in content
+        assert "qai inject campaign" in content
+        assert "--model openai/gpt-4o" in content
+        assert "--rounds 3" in content
+        # Raw config JSON backup
+        assert "### Raw Config" in content
+
+    async def test_reproduction_includes_raw_json(self, tmp_path: Path) -> None:
+        """Reproduction section includes raw config JSON for machine parsing."""
+        db_path = tmp_path / "test.db"
+        _setup_db(db_path)
+        _seed_target(db_path)
+        _seed_workflow_run(db_path)
+        _seed_child_run(
+            db_path,
+            child_id="c-proxy",
+            module="proxy",
+            config={"transport": "sse", "url": "http://example.com/mcp"},
+        )
+
+        runner = _make_runner(db_path=db_path)
+        config = _base_config(tmp_path)
+        await generate_report(runner, config)
+
+        content = (Path(config["output_dir"]) / "report.md").read_text(encoding="utf-8")
+        assert "```json" in content
+        assert '"transport": "sse"' in content
+
+
+class TestConfigToCli:
+    """Unit tests for _config_to_cli mapping."""
+
+    def test_audit_cli(self) -> None:
+        result = _config_to_cli("audit", {"transport": "stdio", "command": "npx mcp"})
+        assert result == 'qai audit scan --transport stdio --command "npx mcp"'
+
+    def test_inject_cli(self) -> None:
+        result = _config_to_cli("inject", {"model": "openai/gpt-4o", "rounds": 3})
+        assert result == "qai inject campaign --model openai/gpt-4o --rounds 3"
+
+    def test_proxy_cli(self) -> None:
+        result = _config_to_cli("proxy", {"transport": "stdio", "command": "npx mcp"})
+        assert result == 'qai proxy start --transport stdio --target-command "npx mcp"'
+
+    def test_unknown_module(self) -> None:
+        assert _config_to_cli("unknown_mod", {}) is None
+
+    def test_empty_config(self) -> None:
+        result = _config_to_cli("audit", {})
+        assert result == "qai audit scan"
+
+
+class TestVisibleInLauncher:
+    """visible_in_launcher flag on WorkflowEntry."""
+
+    def test_generate_report_hidden_from_launcher(self) -> None:
+        """generate_report workflow has visible_in_launcher=False."""
+        from q_ai.orchestrator.registry import get_workflow
+
+        wf = get_workflow("generate_report")
+        assert wf is not None
+        assert wf.visible_in_launcher is False
+
+    def test_other_workflows_visible(self) -> None:
+        """Other workflows default to visible_in_launcher=True."""
+        from q_ai.orchestrator.registry import get_workflow
+
+        for wf_id in ("assess", "test_docs", "test_assistant", "trace_path", "blast_radius"):
+            wf = get_workflow(wf_id)
+            assert wf is not None
+            assert wf.visible_in_launcher is True, f"{wf_id} should be visible"
+
+    def test_launcher_excludes_generate_report(self, tmp_path: Path) -> None:
+        """Launcher route does not include generate_report workflow."""
+        from fastapi.testclient import TestClient
+
+        from q_ai.core.schema import migrate as _migrate
+        from q_ai.server.app import create_app
+
+        tmp_db = tmp_path / "launcher_test.db"
+        conn = sqlite3.connect(str(tmp_db))
+        try:
+            _migrate(conn)
+            conn.commit()
+        finally:
+            conn.close()
+
+        app = create_app(db_path=tmp_db)
+        with TestClient(app) as client:
+            resp = client.get("/")
+        assert resp.status_code == 200
+        html = resp.text
+        # Generate Report should not appear as a workflow card
+        assert "Generate Report" not in html or "generate_report" not in html
+
+
+class TestReportHtmlRendering:
+    """Report markdown rendered as sanitized HTML in run results view."""
+
+    def test_load_report_html(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """_load_report_html converts markdown to sanitized HTML."""
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+
+        from q_ai.server.routes import _load_report_html
+
+        # Create the report file structure
+        report_dir = tmp_path / ".qai" / "exports" / "generate_report" / "test-run-1"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        report_md = report_dir / "report.md"
+        report_md.write_text(
+            "# Test Report\n\n**Bold text** and `code`\n\n<script>alert('xss')</script>\n",
+            encoding="utf-8",
+        )
+
+        html, has_zip = _load_report_html("test-run-1")
+
+        # HTML is rendered
+        assert "<h1>" in html or "Test Report" in html
+        assert "<strong>" in html
+        assert "<code>" in html
+        # Script tag is sanitized
+        assert "<script>" not in html
+        assert "alert" not in html
+        # No ZIP
+        assert has_zip is False
+
+    def test_load_report_html_with_zip(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_load_report_html detects evidence ZIP existence."""
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+
+        from q_ai.server.routes import _load_report_html
+
+        report_dir = tmp_path / ".qai" / "exports" / "generate_report" / "test-run-2"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / "report.md").write_text("# Report", encoding="utf-8")
+        (report_dir / "report.zip").write_bytes(b"PK\x03\x04")
+
+        html, has_zip = _load_report_html("test-run-2")
+        assert html  # non-empty
+        assert has_zip is True
+
+
+class TestEvidenceDownload:
+    """Download Evidence Pack endpoint."""
+
+    def test_evidence_download_serves_zip(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GET /api/exports/{run_id}/evidence returns the ZIP file."""
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+
+        import q_ai.server.routes as routes_mod
+
+        exports_base = tmp_path / ".qai" / "exports"
+        report_root = (exports_base / "generate_report").resolve()
+        monkeypatch.setattr(routes_mod, "_EXPORTS_BASE", exports_base)
+        monkeypatch.setattr(routes_mod, "_REPORT_ROOT", report_root)
+
+        from fastapi.testclient import TestClient
+
+        from q_ai.core.schema import migrate as _migrate
+        from q_ai.server.app import create_app
+
+        tmp_db = tmp_path / "ev_test.db"
+        conn = sqlite3.connect(str(tmp_db))
+        try:
+            _migrate(conn)
+            conn.execute(
+                "INSERT INTO runs (id, module, name, status, started_at) VALUES (?, ?, ?, ?, ?)",
+                ("run-ev-1", "workflow", "generate_report", int(RunStatus.COMPLETED), "2026-03-10"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Create ZIP file
+        report_dir = exports_base / "generate_report" / "run-ev-1"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        zip_path = report_dir / "report.zip"
+        import zipfile
+
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("report.md", "# Test")
+
+        app = create_app(db_path=tmp_db)
+        with TestClient(app) as client:
+            resp = client.get("/api/exports/run-ev-1/evidence")
+        assert resp.status_code == 200
+        assert "application/zip" in resp.headers.get("content-type", "")
+
+    def test_evidence_download_404_no_zip(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GET /api/exports/{run_id}/evidence returns 404 when no ZIP exists."""
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+
+        import q_ai.server.routes as routes_mod
+
+        exports_base = tmp_path / ".qai" / "exports"
+        report_root = (exports_base / "generate_report").resolve()
+        monkeypatch.setattr(routes_mod, "_EXPORTS_BASE", exports_base)
+        monkeypatch.setattr(routes_mod, "_REPORT_ROOT", report_root)
+
+        from fastapi.testclient import TestClient
+
+        from q_ai.core.schema import migrate as _migrate
+        from q_ai.server.app import create_app
+
+        tmp_db = tmp_path / "ev_test2.db"
+        conn = sqlite3.connect(str(tmp_db))
+        try:
+            _migrate(conn)
+            conn.execute(
+                "INSERT INTO runs (id, module, name, status, started_at) VALUES (?, ?, ?, ?, ?)",
+                ("run-ev-2", "workflow", "generate_report", int(RunStatus.COMPLETED), "2026-03-10"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        app = create_app(db_path=tmp_db)
+        with TestClient(app) as client:
+            resp = client.get("/api/exports/run-ev-2/evidence")
+        assert resp.status_code == 404
+
+
+_EMPTY_MSG = "No data in scope."

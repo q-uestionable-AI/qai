@@ -14,7 +14,7 @@ from q_ai.core.models import Severity
 class TestWorkflowCards:
     """Launcher renders all six workflow cards."""
 
-    def test_all_six_cards_present(self, client: TestClient) -> None:
+    def test_all_visible_cards_present(self, client: TestClient) -> None:
         resp = client.get("/")
         for name in [
             "Assess an MCP Server",
@@ -22,9 +22,10 @@ class TestWorkflowCards:
             "Test a Coding Assistant",
             "Trace an Attack Path",
             "Measure Blast Radius",
-            "Generate Report",
         ]:
             assert name in resp.text
+        # Generate Report hidden from launcher (visible_in_launcher=False)
+        assert "Generate Report" not in resp.text
 
     def test_module_pills_present(self, client: TestClient) -> None:
         resp = client.get("/")
@@ -34,7 +35,8 @@ class TestWorkflowCards:
     def test_modal_present(self, client: TestClient) -> None:
         resp = client.get("/")
         assert "modal-assess" in resp.text
-        assert "modal-generate_report" in resp.text
+        # generate_report is hidden from launcher, no modal expected
+        assert "modal-generate_report" not in resp.text
 
 
 class TestEmptyStates:
