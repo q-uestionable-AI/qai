@@ -16,6 +16,8 @@ from q_ai.core.models import RunStatus
 
 
 class TestRunHistoryPage:
+    """Tests for the /runs page rendering run history vs single-run results."""
+
     def test_runs_page_renders_history_when_no_run_id(self, client: TestClient) -> None:
         resp = client.get("/runs")
         assert resp.status_code == 200

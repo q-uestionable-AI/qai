@@ -108,11 +108,16 @@ function confirmDeleteRun(runId, displayName) {
                 if (resp.ok) {
                     modal.close();
                     htmx.ajax('GET', '/api/runs/history', {target: '#run-history-tbody'});
-                } else {
-                    resp.json().then(function(data) {
+                    return;
+                }
+                return resp.json()
+                    .catch(function() { return { detail: 'Unexpected server response' }; })
+                    .then(function(data) {
                         alert('Delete failed: ' + (data.detail || 'Unknown error'));
                     });
-                }
+            })
+            .catch(function() {
+                alert('Delete failed: network error or server unreachable');
             });
     };
     modal.showModal();

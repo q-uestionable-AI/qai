@@ -553,15 +553,22 @@ async def api_runs_history(
     return templates.TemplateResponse(request, "partials/run_history_table.html", history_ctx)
 
 
-@router.get("/api/runs/{run_id}/export", response_model=None)
-def api_export_run(request: Request, run_id: str) -> Response:
-    """Export a run as a schema-versioned JSON bundle."""
-    db_path = _get_db_path(request)
+def _sync_export_run(db_path: Path | None, run_id: str) -> dict | None:
+    """Load and export a run bundle (blocking, run off event loop)."""
     with get_connection(db_path) as conn:
         run = get_run(conn, run_id)
         if run is None:
-            return JSONResponse(status_code=404, content={"detail": "Run not found"})
-        bundle = export_run_bundle(conn, run_id)
+            return None
+        return export_run_bundle(conn, run_id)
+
+
+@router.get("/api/runs/{run_id}/export", response_model=None)
+async def api_export_run(request: Request, run_id: str) -> Response:
+    """Export a run as a schema-versioned JSON bundle."""
+    db_path = _get_db_path(request)
+    bundle = await asyncio.to_thread(_sync_export_run, db_path, run_id)
+    if bundle is None:
+        return JSONResponse(status_code=404, content={"detail": "Run not found"})
     return JSONResponse(
         content=bundle,
         headers={
@@ -570,22 +577,37 @@ def api_export_run(request: Request, run_id: str) -> Response:
     )
 
 
-@router.delete("/api/runs/{run_id}", response_model=None)
-def api_delete_run(request: Request, run_id: str) -> Response:
-    """Delete a run and all related data."""
-    db_path = _get_db_path(request)
-    try:
-        with get_connection(db_path) as conn:
-            files_to_delete = delete_run_cascade(conn, run_id)
-    except ValueError:
-        return JSONResponse(status_code=404, content={"detail": "Run not found"})
+def _sync_delete_run(db_path: Path | None, run_id: str) -> list[str]:
+    """Delete a run cascade (blocking, run off event loop).
 
-    # Clean up files after DB commit — log failures but don't fail the request
-    for file_path in files_to_delete:
+    Raises:
+        ValueError: If run_id does not exist.
+    """
+    with get_connection(db_path) as conn:
+        return delete_run_cascade(conn, run_id)
+
+
+def _cleanup_files(files: list[str]) -> None:
+    """Delete files from disk, logging failures."""
+    for file_path in files:
         try:
             Path(file_path).unlink(missing_ok=True)
         except OSError:
             logger.warning("Failed to delete file: %s", file_path)
+
+
+@router.delete("/api/runs/{run_id}", response_model=None)
+async def api_delete_run(request: Request, run_id: str) -> Response:
+    """Delete a run and all related data."""
+    db_path = _get_db_path(request)
+    try:
+        files_to_delete = await asyncio.to_thread(_sync_delete_run, db_path, run_id)
+    except ValueError:
+        return JSONResponse(status_code=404, content={"detail": "Run not found"})
+
+    # Clean up files after DB commit — run off event loop
+    if files_to_delete:
+        await asyncio.to_thread(_cleanup_files, files_to_delete)
 
     return JSONResponse(content={"detail": "Run deleted"})
 

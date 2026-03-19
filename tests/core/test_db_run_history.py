@@ -22,6 +22,8 @@ from q_ai.core.models import RunStatus, Severity
 
 
 class TestListRunsNameFilter:
+    """Verify list_runs filtering by name and combinations with module."""
+
     def test_filter_by_name(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"
         with get_connection(db_path) as conn:
@@ -240,7 +242,10 @@ class TestDeleteRunCascade:
 
             assert conn.execute("SELECT COUNT(*) FROM ipi_hits").fetchone()[0] == 0
 
-    def test_cleans_up_evidence_files(self, tmp_path: Path) -> None:
+    def test_cleans_up_evidence_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("q_ai.core.db._QAI_DATA_DIR", tmp_path)
         db_path = tmp_path / "qai.db"
         evidence_file = tmp_path / "evidence" / "capture.png"
         evidence_file.parent.mkdir(parents=True, exist_ok=True)
@@ -264,7 +269,10 @@ class TestDeleteRunCascade:
 
         assert not evidence_file.exists()
 
-    def test_cleans_up_proxy_session_files(self, tmp_path: Path) -> None:
+    def test_cleans_up_proxy_session_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("q_ai.core.db._QAI_DATA_DIR", tmp_path)
         db_path = tmp_path / "qai.db"
         session_file = tmp_path / "sessions" / "session.json"
         session_file.parent.mkdir(parents=True, exist_ok=True)
@@ -281,6 +289,32 @@ class TestDeleteRunCascade:
             Path(f).unlink(missing_ok=True)
 
         assert not session_file.exists()
+
+    def test_skips_paths_outside_data_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        data_dir = tmp_path / "safe"
+        data_dir.mkdir()
+        monkeypatch.setattr("q_ai.core.db._QAI_DATA_DIR", data_dir)
+        db_path = tmp_path / "qai.db"
+        outside_file = tmp_path / "outside" / "secret.txt"
+        outside_file.parent.mkdir(parents=True, exist_ok=True)
+        outside_file.write_text("sensitive")
+
+        with get_connection(db_path) as conn:
+            parent_id = create_run(conn, module="workflow", name="assess")
+            create_evidence(
+                conn,
+                type="file",
+                run_id=parent_id,
+                storage="file",
+                path=str(outside_file),
+            )
+
+            files_to_delete = delete_run_cascade(conn, parent_id)
+
+        assert files_to_delete == []
+        assert outside_file.exists()
 
     def test_returns_empty_list_for_no_files(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"

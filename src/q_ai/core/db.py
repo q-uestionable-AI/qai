@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import sqlite3
 import uuid
 from collections.abc import Generator
@@ -19,6 +20,8 @@ from q_ai.core.models import (
     _dump_json,
 )
 from q_ai.core.schema import migrate
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_DB_PATH = Path.home() / ".qai" / "qai.db"
 
@@ -265,23 +268,29 @@ def delete_run_cascade(
     return files_to_delete
 
 
+_QAI_DATA_DIR = Path.home() / ".qai"
+
+
 def _collect_files_for_cleanup(
     conn: sqlite3.Connection,
     run_ids: list[str],
 ) -> list[str]:
     """Collect file paths from evidence and proxy sessions before deletion.
 
+    Only returns paths that resolve to locations inside ~/.qai to prevent
+    deletion of files outside the application data directory.
+
     Args:
         conn: Active database connection.
         run_ids: Run IDs to collect files for.
 
     Returns:
-        List of file paths to delete after commit.
+        List of validated file paths to delete after commit.
     """
     if not run_ids:
         return []
 
-    files: list[str] = []
+    candidates: list[str] = []
     placeholders = ", ".join("?" for _ in run_ids)
 
     # Evidence file paths (directly linked to runs)
@@ -290,23 +299,47 @@ def _collect_files_for_cleanup(
         "AND path IS NOT NULL",
         run_ids,
     ).fetchall()
-    files.extend(r["path"] for r in rows)
+    candidates.extend(r["path"] for r in rows)
 
     # Evidence linked via findings for these runs
     rows = conn.execute(
         f"SELECT e.path FROM evidence e JOIN findings f ON e.finding_id = f.id WHERE f.run_id IN ({placeholders}) AND e.path IS NOT NULL",  # noqa: S608, E501
         run_ids,
     ).fetchall()
-    files.extend(r["path"] for r in rows)
+    candidates.extend(r["path"] for r in rows)
 
     # Proxy session files
     rows = conn.execute(
         f"SELECT session_file FROM proxy_sessions WHERE run_id IN ({placeholders}) AND session_file IS NOT NULL",  # noqa: S608, E501
         run_ids,
     ).fetchall()
-    files.extend(r["session_file"] for r in rows)
+    candidates.extend(r["session_file"] for r in rows)
 
-    return files
+    return _validate_file_paths(candidates)
+
+
+def _validate_file_paths(candidates: list[str]) -> list[str]:
+    """Filter file paths to only those inside the application data directory.
+
+    Args:
+        candidates: Raw file paths from the database.
+
+    Returns:
+        Paths that resolve inside ~/.qai.
+    """
+    allowed_base = _QAI_DATA_DIR.resolve()
+    safe: list[str] = []
+    for raw in candidates:
+        try:
+            resolved = Path(raw).resolve()
+        except (OSError, ValueError):
+            logger.warning("Skipping unresolvable cleanup path: %s", raw)
+            continue
+        if resolved.is_relative_to(allowed_base):
+            safe.append(str(resolved))
+        else:
+            logger.warning("Skipping cleanup path outside data dir: %s", raw)
+    return safe
 
 
 def _delete_ipi_hits_for_runs(
