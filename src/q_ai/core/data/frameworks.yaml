@@ -1,6 +1,6 @@
 # Framework mapping data for q-ai
 # Maps internal categories to external security framework identifiers
-# Updated: 2026-03-14
+# Updated: 2026-03-19
 
 frameworks:
   owasp_mcp_top10:
@@ -74,7 +74,7 @@ frameworks:
         - "AML.T0007"
 
   cwe:
-    version: "4.15"
+    version: "4.19"
     mappings:
       command_injection:
         - "CWE-78"
@@ -86,21 +86,26 @@ frameworks:
       permissions:
         - "CWE-269"
         - "CWE-732"
+        - "CWE-1434"
       auth:
         - "CWE-287"
         - "CWE-306"
       prompt_injection:
         - "CWE-94"
         - "CWE-74"
+        - "CWE-1427"
       tool_poisoning:
         - "CWE-94"
         - "CWE-74"
+        - "CWE-1426"
+        - "CWE-1427"
       supply_chain:
         - "CWE-1104"
         - "CWE-829"
       context_sharing:
         - "CWE-200"
         - "CWE-359"
+        - "CWE-1426"
       shadow_servers:
         - "CWE-345"
         - "CWE-346"
