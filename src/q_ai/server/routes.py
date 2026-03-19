@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import datetime as _dt
+import json as _json
 import logging
 from collections.abc import Callable
 from functools import partial
@@ -11,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.websockets import WebSocketDisconnect
 
@@ -21,6 +23,8 @@ from q_ai.core.db import (
     get_connection,
     get_run,
     get_setting,
+    get_target,
+    list_evidence,
     list_findings,
     list_runs,
     list_targets,
@@ -89,43 +93,193 @@ async def launcher(request: Request) -> HTMLResponse:
 
 
 @router.get("/operations")
-async def operations(
-    request: Request,
-    run_id: str | None = Query(None),
-) -> HTMLResponse:
-    """Render the operations view with optional workflow state."""
-    templates = _get_templates(request)
-    db_path = _get_db_path(request)
+async def operations_redirect(request: Request) -> RedirectResponse:
+    """Redirect /operations to /runs (backward compat for one release)."""
+    url = "/runs"
+    if request.url.query:
+        url += f"?{request.url.query}"
+    return RedirectResponse(url=url, status_code=301)
 
-    workflow_run = None
-    child_runs: list[Any] = []
-    findings: list[Any] = []
 
-    if run_id:
-        with get_connection(db_path) as conn:
-            workflow_run = get_run(conn, run_id)
-            if workflow_run:
-                child_runs = list_runs(conn, parent_run_id=run_id)
+_TERMINAL_STATUSES = {
+    RunStatus.COMPLETED,
+    RunStatus.FAILED,
+    RunStatus.CANCELLED,
+    RunStatus.PARTIAL,
+}
 
-                # OPTIMIZATION: Fix N+1 query. Instead of looping through child_runs
-                # and querying list_findings for each, we gather all run IDs and fetch
-                # findings in a single query reducing O(N) queries to O(1).
-                all_run_ids = [run_id] + [child.id for child in child_runs]
-                findings = list_findings(conn, run_ids=all_run_ids)
+_SEV_MAP = {4: "Critical", 3: "High", 2: "Medium", 1: "Low", 0: "Info"}
 
-    return templates.TemplateResponse(
-        request,
-        "operations.html",
-        {
-            "active": "operations",
-            "run_id": run_id,
+
+def _compute_duration(run: Any) -> str:
+    """Compute human-readable duration from a run's timestamps."""
+    if not run.started_at:
+        return ""
+    end = run.finished_at or _dt.datetime.now(_dt.UTC)
+    total_s = int((end - run.started_at).total_seconds())
+    mins, secs = divmod(total_s, 60)
+    hours, mins = divmod(mins, 60)
+    if hours > 0:
+        return f"{hours}h {mins}m {secs}s"
+    if mins > 0:
+        return f"{mins}m {secs}s"
+    return f"{secs}s"
+
+
+def _count_findings_by_severity(findings: list[Any]) -> dict[str, int]:
+    """Count findings grouped by severity label, omitting zeros."""
+    counts: dict[str, int] = dict.fromkeys(["Critical", "High", "Medium", "Low", "Info"], 0)
+    for f in findings:
+        label = _SEV_MAP.get(f.severity.value, "Info")
+        counts[label] += 1
+    return {k: v for k, v in counts.items() if v > 0}
+
+
+def _load_module_data(
+    conn: Any,
+    child_by_module: dict[str, Any],
+) -> dict[str, Any]:
+    """Load module-specific data for audit, inject, and proxy child runs.
+
+    Returns:
+        Dict with keys: audit_scan, audit_findings, audit_evidence_map,
+        inject_results_data, proxy_session.
+    """
+    audit_scan: dict[str, Any] | None = None
+    audit_findings: list[Any] = []
+    audit_evidence_map: dict[str, list[Any]] = {}
+    inject_results_data: list[dict[str, Any]] = []
+    proxy_session: dict[str, Any] | None = None
+
+    audit_child = child_by_module.get("audit")
+    if audit_child:
+        row = conn.execute(
+            "SELECT * FROM audit_scans WHERE run_id = ? LIMIT 1",
+            (audit_child.id,),
+        ).fetchone()
+        audit_scan = dict(row) if row else None
+        audit_findings = list_findings(conn, run_id=audit_child.id)
+        for af in audit_findings:
+            audit_evidence_map[af.id] = list_evidence(conn, finding_id=af.id)
+
+    inject_child = child_by_module.get("inject")
+    if inject_child:
+        rows = conn.execute(
+            """SELECT id, payload_name, technique, outcome,
+                      target_agent, evidence, created_at
+               FROM inject_results WHERE run_id = ?
+               ORDER BY created_at""",
+            (inject_child.id,),
+        ).fetchall()
+        inject_results_data = [dict(r) for r in rows]
+
+    proxy_child = child_by_module.get("proxy")
+    if proxy_child:
+        row = conn.execute(
+            "SELECT * FROM proxy_sessions WHERE run_id = ? LIMIT 1",
+            (proxy_child.id,),
+        ).fetchone()
+        proxy_session = dict(row) if row else None
+
+    return {
+        "audit_scan": audit_scan,
+        "audit_findings": audit_findings,
+        "audit_evidence_map": audit_evidence_map,
+        "inject_results_data": inject_results_data,
+        "proxy_session": proxy_session,
+    }
+
+
+def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
+    """Load all data for the runs results view (blocking, run off event loop)."""
+    with get_connection(db_path) as conn:
+        workflow_run = get_run(conn, run_id)
+        if not workflow_run:
+            return {}
+        child_runs = list_runs(conn, parent_run_id=run_id)
+        all_ids = [run_id] + [c.id for c in child_runs]
+        findings = list_findings(conn, run_ids=all_ids)
+        child_by_module = {c.module: c for c in child_runs}
+
+        workflow = get_workflow(workflow_run.name) if workflow_run.name else None
+        wf_name = workflow.name if workflow else (workflow_run.name or "Workflow")
+        wf_modules = list(workflow.modules) if workflow else []
+
+        module_data = _load_module_data(conn, child_by_module)
+
+        target = None
+        if workflow_run.target_id:
+            target = get_target(conn, workflow_run.target_id)
+
+        # Look for existing generate_report run for this target
+        report_run_id = None
+        if workflow_run.target_id:
+            report_row = conn.execute(
+                """SELECT id FROM runs
+                   WHERE name = 'generate_report' AND target_id = ?
+                   AND status IN (?, ?)
+                   ORDER BY finished_at DESC LIMIT 1""",
+                (workflow_run.target_id, int(RunStatus.COMPLETED), int(RunStatus.PARTIAL)),
+            ).fetchone()
+            if report_row:
+                report_run_id = report_row["id"]
+
+        result: dict[str, Any] = {
             "workflow_run": workflow_run,
             "child_runs": child_runs,
             "findings": findings,
-            "scan_status": None,
-            "campaign_status": None,
-        },
-    )
+            "results_mode": True,
+            "is_terminal": workflow_run.status in _TERMINAL_STATUSES,
+            "workflow_display_name": wf_name,
+            "duration_display": _compute_duration(workflow_run),
+            "finding_counts": _count_findings_by_severity(findings),
+            "workflow_modules": wf_modules,
+            "child_by_module": child_by_module,
+            "target": target,
+            "report_run_id": report_run_id,
+        }
+        result.update(module_data)
+        return result
+
+
+@router.get("/runs")
+async def runs(
+    request: Request,
+    run_id: str | None = Query(None),
+) -> HTMLResponse:
+    """Render the runs view with optional workflow state."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+
+    ctx: dict[str, Any] = {
+        "active": "runs",
+        "run_id": run_id,
+        "workflow_run": None,
+        "child_runs": [],
+        "findings": [],
+        "scan_status": None,
+        "campaign_status": None,
+        "results_mode": False,
+        "is_terminal": False,
+        "workflow_display_name": "",
+        "target": None,
+        "duration_display": "",
+        "finding_counts": {},
+        "workflow_modules": [],
+        "child_by_module": {},
+        "audit_scan": None,
+        "audit_findings": [],
+        "audit_evidence_map": {},
+        "inject_results_data": [],
+        "proxy_session": None,
+        "report_run_id": None,
+    }
+
+    if run_id:
+        run_ctx = await asyncio.to_thread(_build_runs_context, db_path, run_id)
+        ctx.update(run_ctx)
+
+    return templates.TemplateResponse(request, "runs.html", ctx)
 
 
 @router.get("/research")
@@ -291,7 +445,7 @@ async def operations_findings_sidebar(
 # ---------------------------------------------------------------------------
 
 _EXPORTS_BASE = Path.home() / ".qai" / "exports"
-
+_ARTIFACTS_BASE = Path.home() / ".qai" / "artifacts"
 
 _REPORT_ROOT = (_EXPORTS_BASE / "generate_report").resolve()
 
@@ -1505,8 +1659,6 @@ async def api_proxy_sessions(request: Request) -> HTMLResponse:
 @router.get("/api/proxy/sessions/{run_id}")
 async def api_proxy_session_detail(request: Request, run_id: str) -> HTMLResponse:
     """Return proxy session detail partial."""
-    import json
-
     templates = _get_templates(request)
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
@@ -1516,16 +1668,16 @@ async def api_proxy_session_detail(request: Request, run_id: str) -> HTMLRespons
     # Load message summary from session JSON if available
     messages_summary: list[dict[str, Any]] = []
     if session_data.get("session_file"):
-        artifacts_dir = Path.home() / ".qai" / "artifacts"
+        artifacts_dir = _ARTIFACTS_BASE.resolve()
         session_file = session_data["session_file"]
         # Reject path traversal attempts
         session_path = (artifacts_dir / session_file).resolve()
-        if not str(session_path).startswith(str(artifacts_dir.resolve())):
+        if not session_path.is_relative_to(artifacts_dir):
             session_path = None  # type: ignore[assignment]
-        if session_path and session_path.exists():
+        if session_path and session_path.is_file():
             try:
-                raw = json.loads(session_path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
+                raw = _json.loads(session_path.read_text(encoding="utf-8"))
+            except (_json.JSONDecodeError, OSError):
                 raw = {}
             for msg in raw.get("messages", [])[:100]:
                 direction = msg.get("direction", "")
@@ -1542,4 +1694,110 @@ async def api_proxy_session_detail(request: Request, run_id: str) -> HTMLRespons
         request,
         "partials/proxy_tab.html",
         {"session_detail": session_data, "messages_summary": messages_summary},
+    )
+
+
+def _read_proxy_messages(
+    session_file: str,
+    direction: str | None,
+    page: int,
+    per_page: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """Read, filter, and paginate proxy messages from a session file.
+
+    Resolves the session file path with a path-traversal guard, parses the
+    JSON, optionally filters by direction, and returns a page of transformed
+    message dicts together with the total filtered count.
+
+    Args:
+        session_file: Relative path stored in the proxy_sessions row.
+        direction: Optional direction filter (e.g. ``"client_to_server"``).
+        page: 1-based page number.
+        per_page: Number of messages per page.
+
+    Returns:
+        A tuple of ``(messages, total)`` where *messages* is the current page
+        and *total* is the count after filtering.
+    """
+    artifacts_dir = _ARTIFACTS_BASE.resolve()
+    session_path = (artifacts_dir / session_file).resolve()
+    if not session_path.is_relative_to(artifacts_dir):
+        return [], 0
+    if not session_path.is_file():
+        return [], 0
+
+    try:
+        raw = _json.loads(session_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        raw = {}
+
+    all_msgs: list[dict[str, Any]] = raw.get("messages", [])
+    if direction:
+        all_msgs = [m for m in all_msgs if m.get("direction") == direction]
+
+    total = len(all_msgs)
+    end = page * per_page
+    page_msgs = all_msgs[:end]
+
+    messages: list[dict[str, Any]] = []
+    for msg in page_msgs:
+        d = msg.get("direction", "")
+        arrow = "\u2192" if d == "client_to_server" else "\u2190"
+        messages.append(
+            {
+                "sequence": msg.get("sequence"),
+                "direction": arrow,
+                "direction_raw": d,
+                "method": msg.get("method") or "(response)",
+                "timestamp": msg.get("timestamp", ""),
+                "body": _json.dumps(msg.get("body", msg.get("params", {})), indent=2),
+            }
+        )
+
+    return messages, total
+
+
+def _fetch_proxy_messages(
+    db_path: Path | None, run_id: str, direction: str | None, page: int, per_page: int
+) -> tuple[list[dict[str, Any]], int]:
+    """Fetch proxy messages for the given run (blocking, run off event loop)."""
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT session_file FROM proxy_sessions WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+    if not row or not row["session_file"]:
+        return [], 0
+    return _read_proxy_messages(row["session_file"], direction, page, per_page)
+
+
+@router.get("/api/runs/proxy-messages/{run_id}")
+async def api_runs_proxy_messages(
+    request: Request,
+    run_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    direction: str | None = Query(None),
+) -> HTMLResponse:
+    """Return paginated proxy messages as an HTMX partial."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+
+    messages, total = await asyncio.to_thread(
+        _fetch_proxy_messages, db_path, run_id, direction, page, per_page
+    )
+
+    has_next = (page * per_page) < total
+    return templates.TemplateResponse(
+        request,
+        "partials/proxy_messages.html",
+        {
+            "messages": messages,
+            "run_id": run_id,
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "has_next": has_next,
+            "direction_filter": direction,
+        },
     )

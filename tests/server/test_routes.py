@@ -26,7 +26,7 @@ class TestLauncherRoute:
     def test_contains_nav_links(self, client: TestClient) -> None:
         resp = client.get("/")
         assert 'href="/"' in resp.text
-        assert 'href="/operations"' in resp.text
+        assert 'href="/runs"' in resp.text
         assert 'href="/research"' in resp.text
 
 

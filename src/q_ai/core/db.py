@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from q_ai.core.models import (
+    Evidence,
     Finding,
     Run,
     RunStatus,
@@ -456,6 +457,40 @@ def create_evidence(
         ),
     )
     return evidence_id
+
+
+def list_evidence(
+    conn: sqlite3.Connection,
+    finding_id: str | None = None,
+    run_id: str | None = None,
+) -> list[Evidence]:
+    """List evidence records with optional filters.
+
+    Args:
+        conn: Active database connection.
+        finding_id: Filter by associated finding ID.
+        run_id: Filter by associated run ID.
+
+    Returns:
+        List of Evidence objects ordered by created_at descending.
+    """
+    query = "SELECT * FROM evidence"
+    conditions: list[str] = []
+    params: list[object] = []
+
+    if finding_id is not None:
+        conditions.append("finding_id = ?")
+        params.append(finding_id)
+    if run_id is not None:
+        conditions.append("run_id = ?")
+        params.append(run_id)
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY created_at DESC"
+
+    rows = conn.execute(query, params).fetchall()
+    return [Evidence.from_row(dict(row)) for row in rows]
 
 
 # ---------------------------------------------------------------------------
