@@ -14,7 +14,7 @@ class TestLauncherRoute:
         resp = client.get("/")
         assert resp.status_code == 200
 
-    def test_contains_workflow_cards(self, client: TestClient) -> None:
+    def test_contains_workflow_rows(self, client: TestClient) -> None:
         resp = client.get("/")
         assert "Assess an MCP Server" in resp.text
         assert "Test Document Ingestion" in resp.text
@@ -29,6 +29,11 @@ class TestLauncherRoute:
         assert 'href="/"' in resp.text
         assert 'href="/runs"' in resp.text
         assert 'href="/research"' in resp.text
+
+    def test_contains_docs_pill(self, client: TestClient) -> None:
+        resp = client.get("/")
+        assert "docs.q-uestionable.ai" in resp.text
+        assert "docs-pill" in resp.text
 
 
 class TestOperationsRoute:

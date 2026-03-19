@@ -11,10 +11,10 @@ from q_ai.core.db import create_finding, create_run, create_target
 from q_ai.core.models import Severity
 
 
-class TestWorkflowCards:
-    """Launcher renders all six workflow cards."""
+class TestWorkflowAccordion:
+    """Launcher renders accordion rows for all visible workflows."""
 
-    def test_all_visible_cards_present(self, client: TestClient) -> None:
+    def test_all_visible_rows_present(self, client: TestClient) -> None:
         resp = client.get("/")
         for name in [
             "Assess an MCP Server",
@@ -32,11 +32,22 @@ class TestWorkflowCards:
         for mod in ["audit", "proxy", "inject", "ipi", "cxp", "rxp", "chain"]:
             assert mod in resp.text
 
-    def test_modal_present(self, client: TestClient) -> None:
+    def test_accordion_panel_present(self, client: TestClient) -> None:
         resp = client.get("/")
-        assert "modal-assess" in resp.text
-        # generate_report is hidden from launcher, no modal expected
-        assert "modal-generate_report" not in resp.text
+        assert "wf-panel" in resp.text
+        assert "wf-row" in resp.text
+
+    def test_all_rows_collapsed_by_default(self, client: TestClient) -> None:
+        resp = client.get("/")
+        assert 'id="wf-row-assess"' in resp.text
+        # No row should have the expanded class in the server-rendered HTML
+        assert 'class="wf-row expanded' not in resp.text
+
+    def test_inline_forms_present(self, client: TestClient) -> None:
+        resp = client.get("/")
+        assert "form-assess" in resp.text
+        # generate_report is hidden from launcher, no form expected
+        assert "form-generate_report" not in resp.text
 
 
 class TestEmptyStates:
