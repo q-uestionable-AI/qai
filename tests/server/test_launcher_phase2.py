@@ -10,30 +10,32 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 
-class TestHeroCard:
-    """Hero workflow card renders at the top of the launcher grid."""
+class TestAccordionLayout:
+    """Accordion panel renders with all workflow rows."""
 
-    def test_hero_card_present(self, client: TestClient) -> None:
-        """Launcher page contains the hero card with wf-hero class."""
+    def test_accordion_panel_present(self, client: TestClient) -> None:
+        """Launcher page contains the accordion panel."""
         resp = client.get("/")
         assert resp.status_code == 200
-        assert "wf-hero" in resp.text
+        assert "wf-panel" in resp.text
 
-    def test_hero_is_assess(self, client: TestClient) -> None:
-        """The hero card is the Assess workflow."""
+    def test_assess_is_first_and_expanded(self, client: TestClient) -> None:
+        """Assess workflow row is present and expanded by default."""
         resp = client.get("/")
         assert "Assess an MCP Server" in resp.text
+        assert 'id="wf-row-assess"' in resp.text
 
-    def test_non_hero_workflows_in_grid(self, client: TestClient) -> None:
-        """Non-hero workflows still render in the grid."""
+    def test_all_workflow_rows_present(self, client: TestClient) -> None:
+        """All visible workflows render as accordion rows."""
         resp = client.get("/")
         assert "Test Document Ingestion" in resp.text
         assert "Trace an Attack Path" in resp.text
+        assert "wf-row-header" in resp.text
 
-    def test_autofit_grid_class(self, client: TestClient) -> None:
-        """Grid container uses auto-fit CSS class."""
+    def test_connectors_between_rows(self, client: TestClient) -> None:
+        """Connector elements exist between accordion rows."""
         resp = client.get("/")
-        assert "wf-grid" in resp.text
+        assert "wf-connector" in resp.text
 
 
 class TestLauncherDefaults:
@@ -150,22 +152,22 @@ class TestTargetNameCheck:
         assert resp.status_code == 422
 
 
-class TestQuickActionsSection:
-    """Quick Actions section appears in the launcher."""
+class TestQuickActionCapsules:
+    """Quick Action capsule buttons appear below the accordion."""
 
-    def test_quick_actions_present(self, client: TestClient) -> None:
-        """Launcher page contains the Quick Actions heading."""
+    def test_capsule_buttons_present(self, client: TestClient) -> None:
+        """Launcher page contains Quick Action capsule buttons."""
         resp = client.get("/")
         assert resp.status_code == 200
-        assert "Quick Actions" in resp.text
+        assert "qa-capsule" in resp.text
 
     def test_launch_has_inflight_guard(self, client: TestClient) -> None:
         """Launch JS includes in-flight duplicate-submit guard."""
         resp = client.get("/")
         assert "_launchInFlight" in resp.text
 
-    def test_quick_action_buttons(self, client: TestClient) -> None:
-        """Quick Action buttons for Scan, Intercept, Campaign are present."""
+    def test_quick_action_modals(self, client: TestClient) -> None:
+        """Quick Action modals for Scan, Intercept, Campaign are present."""
         resp = client.get("/")
         assert "qa_scan" in resp.text
         assert "qa_intercept" in resp.text

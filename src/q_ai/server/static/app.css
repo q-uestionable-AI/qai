@@ -22,6 +22,28 @@ body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
+/* ── Docs pill (navbar left) ──────────────────────────────── */
+.docs-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9999px;
+    font-family: 'Fira Code', ui-monospace, monospace;
+    font-size: 0.8rem;
+    color: #64748b;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+.docs-pill:hover {
+    color: #94a3b8;
+    border-color: rgba(255, 255, 255, 0.25);
+}
+.docs-pill svg {
+    opacity: 0.6;
+}
+
 /* ── Nav link overrides ─────────────────────────────────────── */
 .menu-horizontal a {
     border: 1px solid transparent;
@@ -78,38 +100,6 @@ dialog:focus-visible {
     color: #c4b5fd;
 }
 
-/* ── Workflow card styling ─────────────────────────────────── */
-.workflow-card {
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 10px;
-}
-
-.workflow-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, #a78bfa80, transparent);
-    opacity: 0;
-    transition: opacity 0.3s;
-}
-
-.workflow-card:hover {
-    transform: translateY(-2px);
-    border-color: rgba(139, 92, 246, 0.3);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-}
-
-.workflow-card:hover::before {
-    opacity: 1;
-}
-
 /* ── Stat box overrides ─────────────────────────────────────── */
 .stats {
     background: rgba(255, 255, 255, 0.03) !important;
@@ -157,14 +147,6 @@ dialog:focus-visible {
     width: 3rem;
     height: 3rem;
     margin-bottom: 1rem;
-}
-
-/* ── Launcher vertical centering ───────────────────────────── */
-.launcher-centered {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    min-height: calc(100vh - 64px);  /* full viewport minus navbar */
 }
 
 /* ── Alert warning override ────────────────────────────────────────── */
@@ -221,4 +203,298 @@ select.select:focus {
 }
 .finding-highlight {
     animation: finding-highlight 1.5s ease-out;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Accordion Launcher
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Outer panel ──────────────────────────────────────────── */
+.wf-panel {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    padding: 1.25rem;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+/* ── Accordion row ────────────────────────────────────────── */
+.wf-row {
+    width: 100%;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition: all 0.2s ease;
+    overflow: hidden;
+}
+
+.wf-row.expanded {
+    background: var(--wf-bg);
+    border-color: var(--wf-border);
+}
+
+.wf-row.wf-unimplemented {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* ── Row header ───────────────────────────────────────────── */
+.wf-row-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1.25rem;
+    cursor: pointer;
+}
+
+.wf-row.wf-unimplemented .wf-row-header {
+    cursor: default;
+}
+
+.wf-row-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.wf-row-bar {
+    width: 4px;
+    height: 20px;
+    border-radius: 2px;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.wf-row-name {
+    font-family: 'Fira Code', monospace;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+}
+
+/* Compact module pills shown in collapsed header */
+.wf-row-modules {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-left: 12px;
+}
+
+.wf-row-modules .wf-module-pill-sm {
+    font-family: 'Fira Code', monospace;
+    font-size: 0.6rem;
+    color: #475569;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 9999px;
+    padding: 0.05rem 0.4rem;
+}
+
+.wf-row.expanded .wf-row-modules {
+    display: none;
+}
+
+/* ── Chevron ──────────────────────────────────────────────── */
+.wf-row-chevron {
+    font-size: 0.7rem;
+    color: #475569;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.wf-row.expanded .wf-row-chevron {
+    transform: rotate(90deg);
+}
+
+/* ── Row body (expanded content) ──────────────────────────── */
+.wf-row-body {
+    display: none;
+    padding: 0 1.25rem 1.25rem;
+}
+
+.wf-row.expanded .wf-row-body {
+    display: block;
+}
+
+.wf-row-desc {
+    color: #64748b;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    margin-bottom: 12px;
+    padding-left: 14px;
+}
+
+/* Full module pills in expanded body */
+.wf-row-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-left: 14px;
+    margin-bottom: 1rem;
+}
+
+.wf-module-pill {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 7px;
+    padding: 6px 12px;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.875rem;
+    color: #94a3b8;
+    transition: all 0.15s ease;
+}
+
+.wf-module-pill:hover {
+    border-color: var(--wf-border);
+    color: var(--wf-color);
+}
+
+/* ── Connector between rows ───────────────────────────────── */
+.wf-connector {
+    width: 1px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 0 auto;
+}
+
+/* ── Inline form styling (reuse launcher-modal patterns) ── */
+.wf-row-form {
+    padding-left: 14px;
+    padding-right: 14px;
+}
+
+.wf-row-form label span,
+.wf-row-form .label-text {
+    font-family: 'Fira Code', ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.wf-row-form select {
+    background: #0a0a0f !important;
+    color: #f1f5f9 !important;
+    border-color: rgba(139, 92, 246, 0.25) !important;
+}
+
+.wf-row-form input[type="text"]:focus,
+.wf-row-form input[type="number"]:focus,
+.wf-row-form select:focus {
+    border-color: rgba(139, 92, 246, 0.5);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+    outline: none;
+}
+
+.wf-row-form .btn-launch {
+    background: transparent;
+    color: #06b6d4;
+    border: 1px solid rgba(6, 182, 212, 0.4);
+    font-weight: 600;
+}
+
+.wf-row-form .btn-launch:hover {
+    background: rgba(6, 182, 212, 0.1);
+    border-color: #22d3ee;
+    color: #22d3ee;
+}
+
+/* ── Quick Action capsule buttons ─────────────────────────── */
+.qa-capsules {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.qa-capsule {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(6, 182, 212, 0.08);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+    color: #06b6d4;
+    border-radius: 10px;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.925rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.qa-capsule:hover {
+    background: rgba(6, 182, 212, 0.12);
+    border-color: rgba(6, 182, 212, 0.5);
+    color: #22d3ee;
+}
+
+.qa-capsule .qa-badge {
+    font-family: 'Fira Code', monospace;
+    font-size: 0.6rem;
+    color: #8b5cf6;
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    border-radius: 9999px;
+    padding: 0.05rem 0.4rem;
+}
+
+/* ── Launcher modal (Quick Action modals) ─────────────────── */
+.launcher-modal .modal-box {
+    background: #0f1219;
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.1);
+}
+.launcher-modal .modal-box h3 {
+    color: #f1f5f9;
+}
+.launcher-modal label span,
+.launcher-modal .label-text {
+    font-family: 'Fira Code', ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+.launcher-modal select {
+    background: #0a0a0f !important;
+    color: #f1f5f9 !important;
+    border-color: rgba(139, 92, 246, 0.25) !important;
+}
+.launcher-modal select option {
+    background: #0a0a0f !important;
+    color: #e2e8f0 !important;
+}
+.launcher-modal select:focus {
+    border-color: rgba(139, 92, 246, 0.5) !important;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15) !important;
+}
+.launcher-modal input[type="text"]:focus,
+.launcher-modal input[type="number"]:focus,
+.launcher-modal select:focus {
+    border-color: rgba(139, 92, 246, 0.5);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+    outline: none;
+}
+.launcher-modal a:focus {
+    outline: none;
+}
+.launcher-modal .btn-launch {
+    background: transparent;
+    color: #06b6d4;
+    border: 1px solid rgba(6, 182, 212, 0.4);
+    font-weight: 600;
+}
+.launcher-modal .btn-launch:hover {
+    background: rgba(6, 182, 212, 0.1);
+    border-color: #22d3ee;
+    color: #22d3ee;
+}
+.launcher-modal .btn-cancel {
+    background: transparent;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    color: #a78bfa;
+}
+.launcher-modal .btn-cancel:hover {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: #a78bfa;
+    color: #c4b5fd;
 }
