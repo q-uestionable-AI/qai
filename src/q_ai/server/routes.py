@@ -1596,19 +1596,25 @@ async def launch_workflow(request: Request) -> JSONResponse:
 
 
 def _str_field(body: dict[str, Any], key: str, default: str = "") -> str:
-    """Extract a string field from a request body, coercing non-strings safely.
+    """Extract a string field from a request body, rejecting non-string values.
 
     Args:
         body: The parsed request body dict.
         key: The field name to extract.
-        default: Default value if key is missing.
+        default: Default value if key is missing or None.
 
     Returns:
         The stripped string value.
+
+    Raises:
+        TypeError: If the value is present but not a string (e.g. number,
+            array, object).
     """
     val = body.get(key, default)
+    if val is None:
+        return default
     if not isinstance(val, str):
-        return str(val).strip() if val is not None else default
+        raise TypeError(f"'{key}' must be a string")
     return val.strip()
 
 
@@ -1783,7 +1789,10 @@ async def launch_quick_action(request: Request) -> JSONResponse:
         )
     db_path = _get_db_path(request)
 
-    result = _validate_quick_action(body, db_path)
+    try:
+        result = _validate_quick_action(body, db_path)
+    except TypeError as exc:
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
     if isinstance(result, JSONResponse):
         return result
     action, target_name = result
@@ -1791,7 +1800,10 @@ async def launch_quick_action(request: Request) -> JSONResponse:
     with get_connection(db_path) as conn:
         target_id = create_target(conn, type="server", name=target_name)
 
-    config = _build_quick_action_config(action, body, target_id)
+    try:
+        config = _build_quick_action_config(action, body, target_id)
+    except TypeError as exc:
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
 
     runner = WorkflowRunner(
         workflow_id=_QUICK_ACTION_WORKFLOW_MAP[action],

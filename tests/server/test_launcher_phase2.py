@@ -159,6 +159,11 @@ class TestQuickActionsSection:
         assert resp.status_code == 200
         assert "Quick Actions" in resp.text
 
+    def test_launch_has_inflight_guard(self, client: TestClient) -> None:
+        """Launch JS includes in-flight duplicate-submit guard."""
+        resp = client.get("/")
+        assert "_launchInFlight" in resp.text
+
     def test_quick_action_buttons(self, client: TestClient) -> None:
         """Quick Action buttons for Scan, Intercept, Campaign are present."""
         resp = client.get("/")
@@ -179,6 +184,20 @@ class TestQuickActionLaunch:
         )
         assert resp.status_code == 400
         assert "Invalid JSON" in resp.json()["detail"]
+
+    def test_non_string_field_rejected(self, client: TestClient) -> None:
+        """Non-string value for action field returns 422."""
+        resp = client.post(
+            "/api/quick-actions/launch",
+            json={
+                "action": 123,
+                "target_name": "x",
+                "transport": "stdio",
+                "command": "echo hi",
+            },
+        )
+        assert resp.status_code == 422
+        assert "must be a string" in resp.json()["detail"]
 
     def test_non_object_body_rejected(self, client: TestClient) -> None:
         """Non-object JSON body (e.g. array) returns 422."""

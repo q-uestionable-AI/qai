@@ -677,16 +677,22 @@ function openWorkflowModal(wfId) {
     document.getElementById('modal-' + wfId).showModal();
 }
 
-async function launchWorkflow(e, wfId) {
+var _launchInFlight = {};
+
+async function _doLaunch(e, wfId, url) {
     e.preventDefault();
+    if (_launchInFlight[wfId]) return false;
     var form = document.getElementById('form-' + wfId);
     var errEl = document.getElementById('error-' + wfId);
+    var btn = form.querySelector('button[type="submit"]');
     errEl.classList.add('hidden');
-    var data = Object.fromEntries(new FormData(form));
-    if (data.rounds) data.rounds = parseInt(data.rounds, 10);
-    if (data.include_evidence_pack) data.include_evidence_pack = true;
+    _launchInFlight[wfId] = true;
+    if (btn) btn.disabled = true;
     try {
-        var resp = await fetch('/api/workflows/launch', {
+        var data = Object.fromEntries(new FormData(form));
+        if (data.rounds) data.rounds = parseInt(data.rounds, 10);
+        if (data.include_evidence_pack) data.include_evidence_pack = true;
+        var resp = await fetch(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(data),
@@ -695,27 +701,11 @@ async function launchWorkflow(e, wfId) {
         if (resp.ok) { window.location.href = result.redirect; }
         else { errEl.textContent = result.detail || 'Launch failed'; errEl.classList.remove('hidden'); }
     } catch (err) { errEl.textContent = err.message; errEl.classList.remove('hidden'); }
+    finally { _launchInFlight[wfId] = false; if (btn) btn.disabled = false; }
     return false;
 }
 
-async function launchQuickAction(e, wfId) {
-    e.preventDefault();
-    var form = document.getElementById('form-' + wfId);
-    var errEl = document.getElementById('error-' + wfId);
-    errEl.classList.add('hidden');
-    var data = Object.fromEntries(new FormData(form));
-    if (data.rounds) data.rounds = parseInt(data.rounds, 10);
-    try {
-        var resp = await fetch('/api/quick-actions/launch', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data),
-        });
-        var result = await resp.json();
-        if (resp.ok) { window.location.href = result.redirect; }
-        else { errEl.textContent = result.detail || 'Launch failed'; errEl.classList.remove('hidden'); }
-    } catch (err) { errEl.textContent = err.message; errEl.classList.remove('hidden'); }
-    return false;
-}
+function launchWorkflow(e, wfId) { return _doLaunch(e, wfId, '/api/workflows/launch'); }
+function launchQuickAction(e, wfId) { return _doLaunch(e, wfId, '/api/quick-actions/launch'); }
 </script>
 {% endblock %}
