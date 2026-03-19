@@ -442,3 +442,19 @@ class TestProxyResultsTab:
         resp = client.get(f"/api/runs/proxy-messages/{proxy_child}?page=1")
         assert resp.status_code == 200
         assert "No messages captured" in resp.text
+
+
+class TestFindingsSidebarNavigation:
+    """Findings sidebar entries should have navigation data attributes."""
+
+    def test_sidebar_findings_have_data_attributes(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _audit_child, _ = _setup_completed_assess_run(tmp_db)
+        resp = client.get(f"/api/operations/findings-sidebar?run_id={parent_id}")
+        assert 'data-module="audit"' in resp.text
+        assert "data-finding-id=" in resp.text
+        assert "cursor-pointer" in resp.text
+
+    def test_sidebar_findings_have_onclick(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _, _ = _setup_completed_assess_run(tmp_db)
+        resp = client.get(f"/api/operations/findings-sidebar?run_id={parent_id}")
+        assert "switchToFinding" in resp.text

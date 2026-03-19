@@ -1,11 +1,19 @@
 {% if findings %}
   <ul class="space-y-2">
   {% for f in findings %}
-    <li class="text-sm border-l-2 pl-2
-        {% if f.severity.value >= 3 %}border-error text-error
-        {% elif f.severity.value == 2 %}border-warning text-warning
-        {% else %}border-base-content/20{% endif %}">
-        <span class="font-medium">{{ f.title }}</span>
+    <li class="text-sm border-l-2 pl-2 cursor-pointer hover:bg-base-300/20 rounded-r transition-colors"
+        data-module="{{ f.module }}"
+        data-finding-id="{{ f.id }}"
+        onclick="switchToFinding('{{ f.module }}', '{{ f.id }}')"
+        {% if f.severity.value >= 3 %}
+            style="border-color: var(--er, #ef4444);"
+        {% elif f.severity.value == 2 %}
+            style="border-color: var(--wa, #eab308);"
+        {% endif %}>
+        <span class="font-medium
+            {% if f.severity.value >= 3 %}text-error
+            {% elif f.severity.value == 2 %}text-warning
+            {% endif %}">{{ f.title }}</span>
         <span class="text-xs text-base-content/40 ml-1">{{ f.module }}</span>
         {% if f.framework_ids %}
         <div class="flex flex-wrap gap-0.5 mt-0.5">

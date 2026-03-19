@@ -213,3 +213,12 @@ select.select:focus {
     box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15) !important;
     outline: none !important;
 }
+
+/* ── Finding highlight flash (sidebar navigation) ──────────── */
+@keyframes finding-highlight {
+    0%   { background-color: rgba(139, 92, 246, 0.25); }
+    100% { background-color: transparent; }
+}
+.finding-highlight {
+    animation: finding-highlight 1.5s ease-out;
+}
