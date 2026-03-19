@@ -30,7 +30,7 @@
     </div>
     <div class="text-sm text-base-content/40 ml-auto flex items-center gap-3">
         {% if workflow_run %}
-        <a href="/operations?run_id={{ workflow_run.id }}" class="btn btn-outline btn-secondary btn-xs">Refresh</a>
+        <a href="/runs?run_id={{ workflow_run.id }}" class="btn btn-outline btn-secondary btn-xs">Refresh</a>
         {% endif %}
         Elapsed: <span id="workflow-elapsed">--:--</span>
         {% if workflow_run and workflow_run.name == 'generate_report' and workflow_run.status.name in ('COMPLETED', 'PARTIAL') %}

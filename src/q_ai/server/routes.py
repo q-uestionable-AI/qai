@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.websockets import WebSocketDisconnect
 
@@ -89,11 +89,20 @@ async def launcher(request: Request) -> HTMLResponse:
 
 
 @router.get("/operations")
-async def operations(
+async def operations_redirect(request: Request) -> RedirectResponse:
+    """Redirect /operations to /runs (backward compat for one release)."""
+    url = "/runs"
+    if request.url.query:
+        url += f"?{request.url.query}"
+    return RedirectResponse(url=url, status_code=301)
+
+
+@router.get("/runs")
+async def runs(
     request: Request,
     run_id: str | None = Query(None),
 ) -> HTMLResponse:
-    """Render the operations view with optional workflow state."""
+    """Render the runs view with optional workflow state."""
     templates = _get_templates(request)
     db_path = _get_db_path(request)
 
@@ -107,17 +116,14 @@ async def operations(
             if workflow_run:
                 child_runs = list_runs(conn, parent_run_id=run_id)
 
-                # OPTIMIZATION: Fix N+1 query. Instead of looping through child_runs
-                # and querying list_findings for each, we gather all run IDs and fetch
-                # findings in a single query reducing O(N) queries to O(1).
                 all_run_ids = [run_id] + [child.id for child in child_runs]
                 findings = list_findings(conn, run_ids=all_run_ids)
 
     return templates.TemplateResponse(
         request,
-        "operations.html",
+        "runs.html",
         {
-            "active": "operations",
+            "active": "runs",
             "run_id": run_id,
             "workflow_run": workflow_run,
             "child_runs": child_runs,
