@@ -1,3 +1,69 @@
 <div id="inject-results-panel" class="space-y-4">
-    <p class="text-sm text-base-content/40">Inject results loading...</p>
+    {% if inject_results_data %}
+    {% set total = inject_results_data | length %}
+    {% set success_count = inject_results_data | selectattr('outcome', 'equalto', 'FULL_COMPLIANCE') | list | length %}
+    {% set partial_count = inject_results_data | selectattr('outcome', 'equalto', 'PARTIAL_COMPLIANCE') | list | length %}
+    {% set refusal_count = total - success_count - partial_count %}
+    {% set model_name = inject_results_data[0].target_agent if inject_results_data else 'Unknown' %}
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 p-3 bg-base-300/30 rounded-lg text-sm">
+        <div><span class="text-base-content/50">Model:</span> <span class="ml-1 font-medium">{{ model_name }}</span></div>
+        <div><span class="text-base-content/50">Total Payloads:</span> <span class="ml-1">{{ total }}</span></div>
+        <div><span class="text-base-content/50">Full Compliance:</span> <span class="ml-1 text-error">{{ success_count }}</span></div>
+        <div><span class="text-base-content/50">Partial:</span> <span class="ml-1 text-warning">{{ partial_count }}</span></div>
+        <div><span class="text-base-content/50">Refused:</span> <span class="ml-1 text-success">{{ refusal_count }}</span></div>
+    </div>
+
+    <div class="flex gap-4">
+        <div class="flex-1">
+            <table class="table table-xs w-full">
+                <thead><tr><th>Payload</th><th>Technique</th><th>Outcome</th><th></th></tr></thead>
+                <tbody>
+                    {% for r in inject_results_data %}
+                    <tr class="finding-row hover:bg-base-300/30 cursor-pointer" onclick="showInjectEvidence('{{ r.id }}')">
+                        <td class="font-mono text-xs">{{ r.payload_name }}</td>
+                        <td><span class="badge badge-ghost badge-xs">{{ r.technique }}</span></td>
+                        <td>
+                            {% if r.outcome == 'FULL_COMPLIANCE' %}<span class="badge badge-xs badge-error">{{ r.outcome }}</span>
+                            {% elif r.outcome == 'PARTIAL_COMPLIANCE' %}<span class="badge badge-xs badge-warning">{{ r.outcome }}</span>
+                            {% else %}<span class="badge badge-xs badge-success">{{ r.outcome }}</span>{% endif %}
+                        </td>
+                        <td><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation(); showInjectEvidence('{{ r.id }}')">View</button></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div id="inject-evidence-panel" class="w-80 shrink-0 hidden">
+            <div class="panel p-3 text-sm">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="font-semibold text-base-content/60">Model Response</span>
+                    <button class="btn btn-ghost btn-xs" onclick="hideInjectEvidence()">Close</button>
+                </div>
+                <pre id="inject-evidence-content" class="whitespace-pre-wrap break-words text-xs text-base-content/70 max-h-[400px] overflow-y-auto"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    var _injectEvidence = {
+        {% for r in inject_results_data %}
+        '{{ r.id }}': {{ r.evidence | tojson }},
+        {% endfor %}
+    };
+    function showInjectEvidence(id) {
+        var panel = document.getElementById('inject-evidence-panel');
+        var content = document.getElementById('inject-evidence-content');
+        if (panel && content && _injectEvidence[id] !== undefined) {
+            content.textContent = _injectEvidence[id] || '(no evidence)';
+            panel.classList.remove('hidden');
+        }
+    }
+    function hideInjectEvidence() {
+        var panel = document.getElementById('inject-evidence-panel');
+        if (panel) panel.classList.add('hidden');
+    }
+    </script>
+    {% else %}
+    <p class="text-sm text-base-content/40">No inject results.</p>
+    {% endif %}
 </div>

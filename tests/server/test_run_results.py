@@ -65,6 +65,52 @@ def _setup_completed_assess_run(
         conn.close()
 
 
+def _setup_completed_assess_with_inject(
+    tmp_db: Path,
+) -> tuple[str, str, str]:
+    """Create completed assess with inject child run + inject_results.
+
+    Returns (parent_run_id, inject_child_id, target_id).
+    """
+    import uuid
+
+    conn = sqlite3.connect(str(tmp_db))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        target_id = create_target(conn, type="server", name="Test Server", uri="stdio://test")
+        parent_id = create_run(conn, module="workflow", name="assess", target_id=target_id)
+        update_run_status(conn, parent_id, RunStatus.RUNNING)
+        inject_child = create_run(
+            conn, module="inject", name="inject-child", parent_run_id=parent_id
+        )
+        update_run_status(conn, inject_child, RunStatus.COMPLETED)
+        for payload, technique, outcome in [
+            ("exfil_via_fetch", "description_poisoning", "FULL_COMPLIANCE"),
+            ("shadow_tool_call", "cross_tool_escalation", "REFUSAL"),
+            ("data_leak_prompt", "output_injection", "PARTIAL_COMPLIANCE"),
+        ]:
+            conn.execute(
+                "INSERT INTO inject_results"
+                " (id, run_id, payload_name, technique, outcome, target_agent, evidence)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    uuid.uuid4().hex,
+                    inject_child,
+                    payload,
+                    technique,
+                    outcome,
+                    "claude-sonnet-4-6",
+                    f"Model response for {payload}",
+                ),
+            )
+        update_run_status(conn, parent_id, RunStatus.COMPLETED)
+        conn.commit()
+        return parent_id, inject_child, target_id
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Rename: Operations → Runs
 # ---------------------------------------------------------------------------
@@ -313,3 +359,36 @@ class TestAuditResultsTab:
             conn.close()
         resp = client.get(f"/runs?run_id={parent_id}")
         assert "failed" in resp.text.lower() or "error" in resp.text.lower()
+
+
+class TestInjectResultsTab:
+    """Inject results tab renders campaign summary and per-payload outcomes."""
+
+    def test_inject_tab_shows_payload_names(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _, _ = _setup_completed_assess_with_inject(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "exfil_via_fetch" in resp.text
+        assert "shadow_tool_call" in resp.text
+        assert "data_leak_prompt" in resp.text
+
+    def test_inject_tab_shows_techniques(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _, _ = _setup_completed_assess_with_inject(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "description_poisoning" in resp.text
+        assert "cross_tool_escalation" in resp.text
+
+    def test_inject_tab_shows_outcomes(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _, _ = _setup_completed_assess_with_inject(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "FULL_COMPLIANCE" in resp.text
+        assert "REFUSAL" in resp.text
+
+    def test_inject_tab_shows_model(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _, _ = _setup_completed_assess_with_inject(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "claude-sonnet-4-6" in resp.text
+
+    def test_inject_tab_shows_campaign_summary(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _, _ = _setup_completed_assess_with_inject(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "3" in resp.text
