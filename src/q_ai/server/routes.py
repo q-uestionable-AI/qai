@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime as _dt
+import json as _json
 import logging
 from collections.abc import Callable
 from functools import partial
@@ -137,17 +138,12 @@ def _count_findings_by_severity(findings: list[Any]) -> dict[str, int]:
 def _load_module_data(
     conn: Any,
     child_by_module: dict[str, Any],
-) -> tuple[
-    dict[str, Any] | None,
-    list[Any],
-    dict[str, list[Any]],
-    list[dict[str, Any]],
-    dict[str, Any] | None,
-]:
+) -> dict[str, Any]:
     """Load module-specific data for audit, inject, and proxy child runs.
 
     Returns:
-        (audit_scan, audit_findings, audit_evidence_map, inject_results_data, proxy_session)
+        Dict with keys: audit_scan, audit_findings, audit_evidence_map,
+        inject_results_data, proxy_session.
     """
     audit_scan: dict[str, Any] | None = None
     audit_findings: list[Any] = []
@@ -185,7 +181,13 @@ def _load_module_data(
         ).fetchone()
         proxy_session = dict(row) if row else None
 
-    return audit_scan, audit_findings, audit_evidence_map, inject_results_data, proxy_session
+    return {
+        "audit_scan": audit_scan,
+        "audit_findings": audit_findings,
+        "audit_evidence_map": audit_evidence_map,
+        "inject_results_data": inject_results_data,
+        "proxy_session": proxy_session,
+    }
 
 
 @router.get("/runs")
@@ -238,6 +240,7 @@ async def runs(
                 if workflow_run.target_id:
                     ctx["target"] = get_target(conn, workflow_run.target_id)
 
+                ctx.update(module_data)
                 ctx.update(
                     {
                         "workflow_run": workflow_run,
@@ -250,11 +253,6 @@ async def runs(
                         "finding_counts": _count_findings_by_severity(findings),
                         "workflow_modules": wf_modules,
                         "child_by_module": child_by_module,
-                        "audit_scan": module_data[0],
-                        "audit_findings": module_data[1],
-                        "audit_evidence_map": module_data[2],
-                        "inject_results_data": module_data[3],
-                        "proxy_session": module_data[4],
                     }
                 )
 
@@ -424,7 +422,7 @@ async def operations_findings_sidebar(
 # ---------------------------------------------------------------------------
 
 _EXPORTS_BASE = Path.home() / ".qai" / "exports"
-
+_ARTIFACTS_BASE = Path.home() / ".qai" / "artifacts"
 
 _REPORT_ROOT = (_EXPORTS_BASE / "generate_report").resolve()
 
@@ -1638,8 +1636,6 @@ async def api_proxy_sessions(request: Request) -> HTMLResponse:
 @router.get("/api/proxy/sessions/{run_id}")
 async def api_proxy_session_detail(request: Request, run_id: str) -> HTMLResponse:
     """Return proxy session detail partial."""
-    import json
-
     templates = _get_templates(request)
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
@@ -1657,8 +1653,8 @@ async def api_proxy_session_detail(request: Request, run_id: str) -> HTMLRespons
             session_path = None  # type: ignore[assignment]
         if session_path and session_path.exists():
             try:
-                raw = json.loads(session_path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
+                raw = _json.loads(session_path.read_text(encoding="utf-8"))
+            except (_json.JSONDecodeError, OSError):
                 raw = {}
             for msg in raw.get("messages", [])[:100]:
                 direction = msg.get("direction", "")
@@ -1678,6 +1674,66 @@ async def api_proxy_session_detail(request: Request, run_id: str) -> HTMLRespons
     )
 
 
+def _read_proxy_messages(
+    session_file: str,
+    direction: str | None,
+    page: int,
+    per_page: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """Read, filter, and paginate proxy messages from a session file.
+
+    Resolves the session file path with a path-traversal guard, parses the
+    JSON, optionally filters by direction, and returns a page of transformed
+    message dicts together with the total filtered count.
+
+    Args:
+        session_file: Relative path stored in the proxy_sessions row.
+        direction: Optional direction filter (e.g. ``"client_to_server"``).
+        page: 1-based page number.
+        per_page: Number of messages per page.
+
+    Returns:
+        A tuple of ``(messages, total)`` where *messages* is the current page
+        and *total* is the count after filtering.
+    """
+    artifacts_dir = _ARTIFACTS_BASE.resolve()
+    session_path = (artifacts_dir / session_file).resolve()
+    if not str(session_path).startswith(str(artifacts_dir)):
+        return [], 0
+    if not session_path.exists():
+        return [], 0
+
+    try:
+        raw = _json.loads(session_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        raw = {}
+
+    all_msgs: list[dict[str, Any]] = raw.get("messages", [])
+    if direction:
+        all_msgs = [m for m in all_msgs if m.get("direction") == direction]
+
+    total = len(all_msgs)
+    start = (page - 1) * per_page
+    page_msgs = all_msgs[start : start + per_page]
+
+    messages: list[dict[str, Any]] = []
+    for msg in page_msgs:
+        d = msg.get("direction", "")
+        arrow = "\u2192" if d == "client_to_server" else "\u2190"
+        messages.append(
+            {
+                "sequence": msg.get("sequence"),
+                "direction": arrow,
+                "direction_raw": d,
+                "method": msg.get("method") or "(response)",
+                "timestamp": msg.get("timestamp", ""),
+                "body": _json.dumps(msg.get("body", msg.get("params", {})), indent=2),
+            }
+        )
+
+    return messages, total
+
+
 @router.get("/api/runs/proxy-messages/{run_id}")
 async def api_runs_proxy_messages(
     request: Request,
@@ -1687,8 +1743,6 @@ async def api_runs_proxy_messages(
     direction: str | None = Query(None),
 ) -> HTMLResponse:
     """Return paginated proxy messages as an HTMX partial."""
-    import json as _json
-
     templates = _get_templates(request)
     db_path = _get_db_path(request)
 
@@ -1701,33 +1755,7 @@ async def api_runs_proxy_messages(
     messages: list[dict[str, Any]] = []
     total = 0
     if row and row["session_file"]:
-        artifacts_dir = Path.home() / ".qai" / "artifacts"
-        session_file = row["session_file"]
-        session_path = (artifacts_dir / session_file).resolve()
-        if str(session_path).startswith(str(artifacts_dir.resolve())) and session_path.exists():
-            try:
-                raw = _json.loads(session_path.read_text(encoding="utf-8"))
-            except (ValueError, OSError):
-                raw = {}
-            all_msgs = raw.get("messages", [])
-            if direction:
-                all_msgs = [m for m in all_msgs if m.get("direction") == direction]
-            total = len(all_msgs)
-            start = (page - 1) * per_page
-            page_msgs = all_msgs[start : start + per_page]
-            for msg in page_msgs:
-                d = msg.get("direction", "")
-                arrow = "\u2192" if d == "client_to_server" else "\u2190"
-                messages.append(
-                    {
-                        "sequence": msg.get("sequence"),
-                        "direction": arrow,
-                        "direction_raw": d,
-                        "method": msg.get("method") or "(response)",
-                        "timestamp": msg.get("timestamp", ""),
-                        "body": _json.dumps(msg.get("body", msg.get("params", {})), indent=2),
-                    }
-                )
+        messages, total = _read_proxy_messages(row["session_file"], direction, page, per_page)
 
     has_next = (page * per_page) < total
     return templates.TemplateResponse(
