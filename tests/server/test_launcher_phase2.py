@@ -92,8 +92,9 @@ class TestModelOptions:
         """Without default_model, providers show provider/default."""
         with patch("q_ai.server.routes.get_credential", return_value="test-key"):
             resp = client.get("/")
-        # Should contain provider/default for configured providers
         assert resp.status_code == 200
+        # All providers should render as provider/default in the dropdown
+        assert "anthropic/default" in resp.text
 
 
 class TestUrlPlaceholder:
@@ -231,6 +232,40 @@ class TestQuickActionLaunch:
         )
         assert resp.status_code == 422
         assert "model" in resp.json()["detail"]
+
+    def test_campaign_rejects_invalid_rounds(self, client: TestClient) -> None:
+        """Campaign with non-integer rounds returns 422."""
+        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+            resp = client.post(
+                "/api/quick-actions/launch",
+                json={
+                    "action": "campaign",
+                    "target_name": "x",
+                    "transport": "stdio",
+                    "command": "echo hi",
+                    "model": "openai/gpt-4",
+                    "rounds": "abc",
+                },
+            )
+        assert resp.status_code == 422
+        assert "rounds" in resp.json()["detail"]
+
+    def test_campaign_rejects_out_of_range_rounds(self, client: TestClient) -> None:
+        """Campaign with rounds > 10 returns 422."""
+        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+            resp = client.post(
+                "/api/quick-actions/launch",
+                json={
+                    "action": "campaign",
+                    "target_name": "x",
+                    "transport": "stdio",
+                    "command": "echo hi",
+                    "model": "openai/gpt-4",
+                    "rounds": 20,
+                },
+            )
+        assert resp.status_code == 422
+        assert "rounds" in resp.json()["detail"]
 
     def test_campaign_requires_provider_credential(self, client: TestClient) -> None:
         """Campaign action checks for provider credentials."""

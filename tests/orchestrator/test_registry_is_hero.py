@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from q_ai.orchestrator.registry import WorkflowEntry, get_workflow, list_workflows
+import pytest
+
+from q_ai.orchestrator.registry import (
+    WorkflowEntry,
+    get_workflow,
+    list_workflows,
+    register_workflow,
+)
 
 
 class TestIsHeroField:
@@ -31,3 +38,26 @@ class TestIsHeroField:
             if wf.id == "assess":
                 continue
             assert wf.is_hero is False, f"{wf.id} should have is_hero=False"
+
+    def test_duplicate_hero_rejected(self) -> None:
+        """Registering a second hero raises ValueError."""
+        duplicate = WorkflowEntry(
+            id="second_hero", name="Second Hero", description="X", is_hero=True
+        )
+        with pytest.raises(ValueError, match="already the hero"):
+            register_workflow(duplicate)
+
+    def test_re_registering_same_hero_allowed(self) -> None:
+        """Re-registering the existing hero (same id) does not raise."""
+        original = get_workflow("assess")
+        assert original is not None
+        updated = WorkflowEntry(
+            id="assess",
+            name=original.name,
+            description=original.description,
+            modules=list(original.modules),
+            is_hero=True,
+        )
+        register_workflow(updated)
+        # Restore original
+        register_workflow(original)

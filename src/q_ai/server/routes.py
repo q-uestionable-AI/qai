@@ -1577,6 +1577,36 @@ _QUICK_ACTION_WORKFLOW_MAP = {
 }
 
 
+def _validate_campaign_fields(body: dict[str, Any]) -> JSONResponse | None:
+    """Validate campaign-specific fields (model and rounds).
+
+    Args:
+        body: The parsed request body dict.
+
+    Returns:
+        A JSONResponse with 422 status if validation fails, or None on success.
+    """
+    model = body.get("model", "").strip()
+    if not model or "/" not in model:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "model must be non-empty and in provider/model format"},
+        )
+    try:
+        rounds = int(body.get("rounds", 1))
+    except (ValueError, TypeError):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "rounds must be an integer"},
+        )
+    if not 1 <= rounds <= 10:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "rounds must be an integer between 1 and 10"},
+        )
+    return None
+
+
 def _validate_quick_action(
     body: dict[str, Any], db_path: Path | None
 ) -> JSONResponse | tuple[str, str]:
@@ -1614,12 +1644,9 @@ def _validate_quick_action(
         return transport_error
 
     if action == "campaign":
-        model = body.get("model", "").strip()
-        if not model or "/" not in model:
-            return JSONResponse(
-                status_code=422,
-                content={"detail": "model must be non-empty and in provider/model format"},
-            )
+        campaign_error = _validate_campaign_fields(body)
+        if campaign_error is not None:
+            return campaign_error
 
     return action, target_name
 
@@ -1677,10 +1704,7 @@ def _build_quick_action_config(action: str, body: dict[str, Any], target_id: str
     }
     if action == "campaign":
         config["model"] = body.get("model", "").strip()
-        try:
-            config["rounds"] = int(body.get("rounds", 1))
-        except (ValueError, TypeError):
-            config["rounds"] = 1
+        config["rounds"] = int(body.get("rounds", 1))
     return config
 
 

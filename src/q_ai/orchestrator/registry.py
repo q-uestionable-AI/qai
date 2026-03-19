@@ -51,7 +51,18 @@ def register_workflow(entry: WorkflowEntry) -> None:
     Args:
         entry: WorkflowEntry to register. Overwrites any existing entry with
             the same id.
+
+    Raises:
+        ValueError: If entry has is_hero=True and another workflow (with a
+            different id) is already registered as the hero.
     """
+    if entry.is_hero:
+        for existing in WORKFLOWS.values():
+            if existing.is_hero and existing.id != entry.id:
+                raise ValueError(
+                    f"Cannot register '{entry.id}' as hero: "
+                    f"'{existing.id}' is already the hero workflow"
+                )
     WORKFLOWS[entry.id] = entry
 
 

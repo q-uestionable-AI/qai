@@ -4,8 +4,10 @@
 {# ---- Reusable macro for a workflow card ---- #}
 {% macro workflow_card(wf, is_hero=false) %}
 <div class="wf-card {% if not wf.implemented %}wf-disabled{% endif %}{% if is_hero %} wf-hero{% endif %} p-6 lg:p-8"
-     {% if wf.implemented %}onclick="openWorkflowModal('{{ wf.id }}')"{% endif %}
-     role="button" tabindex="0" aria-label="Launch {{ wf.name }}">
+     {% if wf.implemented %}onclick="openWorkflowModal('{{ wf.id }}')"
+     onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openWorkflowModal('{{ wf.id }}');}"
+     role="button" tabindex="0" aria-label="Launch {{ wf.name }}"
+     {% else %}aria-disabled="true"{% endif %}>
     <h3 class="{% if is_hero %}text-lg lg:text-xl{% else %}text-base lg:text-lg{% endif %} font-semibold mb-1" style="color: #f1f5f9;">{{ wf.name }}</h3>
     <p class="text-sm lg:text-base mb-3" style="color: #94a3b8;">{{ wf.description }}</p>
     <div class="wf-modules">
@@ -491,12 +493,6 @@
     <dialog id="modal-qa_scan" class="modal launcher-modal">
         <div class="modal-box">
             <h3 class="text-lg font-bold mb-4">Scan</h3>
-            {% if providers|length == 0 %}
-            <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="mb-4">
-                <p class="text-sm">Scanning requires an LLM provider for check execution.</p>
-                <a href="/settings#providers" style="color: #06b6d4;" class="text-sm">Configure one now</a>
-            </div>
-            {% else %}
             <form id="form-qa_scan" class="space-y-4" onsubmit="return launchQuickAction(event, 'qa_scan')">
                 <input type="hidden" name="action" value="scan" />
                 {{ target_name_field('qa_scan', "my-mcp-server") }}
@@ -508,7 +504,6 @@
                             onclick="document.getElementById('modal-qa_scan').close()">Cancel</button>
                 </div>
             </form>
-            {% endif %}
         </div>
         <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>

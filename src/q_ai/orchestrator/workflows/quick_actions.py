@@ -71,16 +71,24 @@ async def quick_intercept(runner: WorkflowRunner, config: dict[str, Any]) -> Non
         "intercept": False,
     }
 
+    adapter = ProxyAdapter(runner, proxy_config)
+    started = False
     try:
-        adapter = ProxyAdapter(runner, proxy_config)
         await adapter.start()
+        started = True
         await runner.emit_progress(runner.run_id, "Proxy running — stop when ready")
         await runner.wait_for_user("Click Resume to stop the proxy and save the session")
         await adapter.stop()
+        started = False
         await runner.emit_progress(runner.run_id, "Proxy stopped")
         await runner.complete(RunStatus.COMPLETED)
     except Exception:
         logger.exception("Quick intercept failed")
+        if started:
+            try:
+                await adapter.stop()
+            except Exception:
+                logger.exception("Failed to stop proxy during cleanup")
         await runner.fail(error="Intercept failed")
 
 
