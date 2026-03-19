@@ -458,3 +458,118 @@ class TestFindingsSidebarNavigation:
         parent_id, _, _ = _setup_completed_assess_run(tmp_db)
         resp = client.get(f"/api/operations/findings-sidebar?run_id={parent_id}")
         assert "switchToFinding" in resp.text
+
+
+class TestContentSanitization:
+    """XSS regression: adversarial content must be HTML-escaped."""
+
+    def test_xss_in_finding_title(self, client: TestClient, tmp_db: Path) -> None:
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            parent_id = create_run(conn, module="workflow", name="assess")
+            update_run_status(conn, parent_id, RunStatus.RUNNING)
+            audit_child = create_run(
+                conn, module="audit", name="audit-child", parent_run_id=parent_id
+            )
+            update_run_status(conn, audit_child, RunStatus.COMPLETED)
+            create_finding(
+                conn,
+                run_id=audit_child,
+                module="audit",
+                category="xss_test",
+                severity=Severity.HIGH,
+                title='<script>alert("xss")</script>',
+                description='<img src=x onerror="alert(1)">',
+            )
+            update_run_status(conn, parent_id, RunStatus.COMPLETED)
+            conn.commit()
+        finally:
+            conn.close()
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "<script>alert" not in resp.text
+        assert "&lt;script&gt;" in resp.text or "\\u003c" in resp.text.lower()
+
+    def test_xss_in_finding_description(self, client: TestClient, tmp_db: Path) -> None:
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            parent_id = create_run(conn, module="workflow", name="assess")
+            update_run_status(conn, parent_id, RunStatus.RUNNING)
+            audit_child = create_run(
+                conn, module="audit", name="audit-child", parent_run_id=parent_id
+            )
+            update_run_status(conn, audit_child, RunStatus.COMPLETED)
+            create_finding(
+                conn,
+                run_id=audit_child,
+                module="audit",
+                category="xss_test",
+                severity=Severity.MEDIUM,
+                title="Safe title",
+                description='<iframe src="javascript:alert(1)">',
+            )
+            update_run_status(conn, parent_id, RunStatus.COMPLETED)
+            conn.commit()
+        finally:
+            conn.close()
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "<iframe" not in resp.text
+        assert "&lt;iframe" in resp.text or "\\u003c" in resp.text.lower()
+
+    def test_xss_in_inject_evidence(self, client: TestClient, tmp_db: Path) -> None:
+        import uuid
+
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            parent_id = create_run(conn, module="workflow", name="assess")
+            update_run_status(conn, parent_id, RunStatus.RUNNING)
+            inject_child = create_run(
+                conn, module="inject", name="inject-child", parent_run_id=parent_id
+            )
+            update_run_status(conn, inject_child, RunStatus.COMPLETED)
+            conn.execute(
+                "INSERT INTO inject_results"
+                " (id, run_id, payload_name, technique, outcome, target_agent, evidence)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    uuid.uuid4().hex,
+                    inject_child,
+                    "xss_payload",
+                    "description_poisoning",
+                    "FULL_COMPLIANCE",
+                    "test-model",
+                    '<script>alert("xss")</script>',
+                ),
+            )
+            update_run_status(conn, parent_id, RunStatus.COMPLETED)
+            conn.commit()
+        finally:
+            conn.close()
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert '<script>alert("xss")</script>' not in resp.text
+
+    def test_xss_in_sidebar_finding_title(self, client: TestClient, tmp_db: Path) -> None:
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            run_id = create_run(conn, module="audit", name="audit-run")
+            create_finding(
+                conn,
+                run_id=run_id,
+                module="audit",
+                category="xss_test",
+                severity=Severity.HIGH,
+                title='<script>alert("xss")</script>',
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        resp = client.get(f"/api/operations/findings-sidebar?run_id={run_id}")
+        assert "<script>alert" not in resp.text
+        assert "&lt;script&gt;" in resp.text
