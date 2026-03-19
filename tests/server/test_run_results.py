@@ -196,3 +196,120 @@ class TestScopedModuleTabs:
             conn.close()
         resp = client.get(f"/runs?run_id={parent_id}")
         assert "Module did not execute in this run" in resp.text
+
+
+class TestAuditResultsTab:
+    """Audit results tab renders findings, server info, and evidence."""
+
+    def test_audit_tab_shows_findings(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _, _ = _setup_completed_assess_run(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "Shell command injection" in resp.text
+        assert "Verbose error leaks" in resp.text
+
+    def test_audit_tab_shows_severity_badges(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _, _ = _setup_completed_assess_run(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "badge-critical" in resp.text
+        assert "badge-high" in resp.text
+
+    def test_audit_tab_shows_description(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _, _ = _setup_completed_assess_run(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "The server executes unvalidated input" in resp.text
+
+    def test_audit_tab_shows_framework_ids(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _, _ = _setup_completed_assess_run(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "MCP-01" in resp.text
+        assert "CWE-78" in resp.text
+
+    def test_audit_tab_shows_server_info(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, audit_child, _ = _setup_completed_assess_run(tmp_db)
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            conn.execute(
+                """INSERT INTO audit_scans
+                   (run_id, transport, server_name, server_version,
+                    scanners_run, finding_count, scan_duration_seconds)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (audit_child, "stdio", "my-mcp-server", "1.2.0", "tool_poisoning,rug_pull", 2, 4.5),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "my-mcp-server" in resp.text
+        assert "stdio" in resp.text
+
+    def test_audit_tab_expandable_evidence(self, client: TestClient, tmp_db: Path) -> None:
+        from q_ai.core.db import create_evidence
+
+        parent_id, audit_child, _ = _setup_completed_assess_run(tmp_db)
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            row = conn.execute(
+                "SELECT id FROM findings WHERE run_id = ? LIMIT 1",
+                (audit_child,),
+            ).fetchone()
+            finding_id = row["id"]
+            create_evidence(
+                conn,
+                type="response",
+                finding_id=finding_id,
+                content="Raw model response payload here",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "Evidence" in resp.text
+        assert "Raw model response payload here" in resp.text
+
+    def test_audit_tab_shows_source_ref(self, client: TestClient, tmp_db: Path) -> None:
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            parent_id = create_run(conn, module="workflow", name="assess")
+            update_run_status(conn, parent_id, RunStatus.RUNNING)
+            audit_child = create_run(
+                conn, module="audit", name="audit-child", parent_run_id=parent_id
+            )
+            update_run_status(conn, audit_child, RunStatus.COMPLETED)
+            create_finding(
+                conn,
+                run_id=audit_child,
+                module="audit",
+                category="test",
+                severity=Severity.MEDIUM,
+                title="Test finding",
+                source_ref="scanner:tool_poisoning",
+            )
+            update_run_status(conn, parent_id, RunStatus.COMPLETED)
+            conn.commit()
+        finally:
+            conn.close()
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "scanner:tool_poisoning" in resp.text
+
+    def test_audit_tab_scanner_errors(self, client: TestClient, tmp_db: Path) -> None:
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            parent_id = create_run(conn, module="workflow", name="assess")
+            update_run_status(conn, parent_id, RunStatus.FAILED)
+            audit_child = create_run(
+                conn, module="audit", name="audit-child", parent_run_id=parent_id
+            )
+            update_run_status(conn, audit_child, RunStatus.FAILED)
+            conn.commit()
+        finally:
+            conn.close()
+        resp = client.get(f"/runs?run_id={parent_id}")
+        assert "failed" in resp.text.lower() or "error" in resp.text.lower()

@@ -1,3 +1,95 @@
 <div id="audit-results-panel" class="space-y-4">
-    <p class="text-sm text-base-content/40">Audit results loading...</p>
+    {% if audit_scan %}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 bg-base-300/30 rounded-lg text-sm">
+        <div>
+            <span class="text-base-content/50">Transport:</span>
+            <span class="badge badge-ghost badge-xs ml-1">{{ audit_scan.transport }}</span>
+        </div>
+        <div>
+            <span class="text-base-content/50">Server:</span>
+            <span class="ml-1">{{ audit_scan.server_name or '\u2014' }}</span>
+        </div>
+        {% if audit_scan.server_version %}
+        <div>
+            <span class="text-base-content/50">Version:</span>
+            <span class="ml-1">{{ audit_scan.server_version }}</span>
+        </div>
+        {% endif %}
+        {% if audit_scan.scan_duration_seconds %}
+        <div>
+            <span class="text-base-content/50">Duration:</span>
+            <span class="ml-1">{{ '%.1f' | format(audit_scan.scan_duration_seconds) }}s</span>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if child_by_module.get('audit') and child_by_module['audit'].status.value in (3, 6) %}
+    <div class="alert alert-warning text-sm">
+        <span>Audit scanner {{ 'failed' if child_by_module['audit'].status.value == 3 else 'partially completed' }}.
+        Some checks may not have executed.</span>
+    </div>
+    {% endif %}
+
+    {% if audit_findings %}
+    <table class="table table-xs w-full">
+        <thead>
+            <tr>
+                <th>Severity</th>
+                <th>Title</th>
+                <th>Description</th>
+                <th>Frameworks</th>
+                <th>Source</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in audit_findings %}
+            <tr id="finding-{{ f.id }}" class="finding-row hover:bg-base-300/30">
+                <td><span class="badge badge-xs badge-{{ f.severity.name | lower }}">{{ f.severity.name }}</span></td>
+                <td class="font-medium">{{ f.title }}</td>
+                <td class="text-xs text-base-content/60 max-w-[300px]">{{ f.description or '' }}</td>
+                <td>
+                    {% if f.framework_ids %}
+                    <div class="flex flex-wrap gap-0.5">
+                        {% for fw, ids in f.framework_ids.items() %}
+                            {% if ids is string %}
+                        <span class="badge badge-xs badge-ghost font-mono">{{ ids }}</span>
+                            {% else %}
+                                {% for fid in ids %}
+                        <span class="badge badge-xs badge-ghost font-mono">{{ fid }}</span>
+                                {% endfor %}
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </td>
+                <td class="text-xs text-base-content/40 font-mono">{{ f.source_ref or '' }}</td>
+                <td>
+                    {% if audit_evidence_map.get(f.id) %}
+                    <button class="btn btn-ghost btn-xs"
+                            onclick="this.closest('tr').nextElementSibling.classList.toggle('hidden')">
+                        Evidence
+                    </button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% if audit_evidence_map.get(f.id) %}
+            <tr class="hidden">
+                <td colspan="6" class="bg-base-300/20 p-3">
+                    {% for ev in audit_evidence_map[f.id] %}
+                    <div class="mb-2 last:mb-0">
+                        <span class="badge badge-xs badge-ghost mb-1">{{ ev.type }}</span>
+                        <pre class="text-xs whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto bg-base-300/30 p-2 rounded">{{ ev.content or '(file-based evidence)' }}</pre>
+                    </div>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-sm text-base-content/40">No audit findings.</p>
+    {% endif %}
 </div>
