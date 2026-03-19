@@ -21,6 +21,7 @@ import contextlib
 import datetime as dt
 import json
 import logging
+import shlex
 import shutil
 import zipfile
 from pathlib import Path
@@ -41,8 +42,6 @@ _SEVERITY_LABELS = {
     Severity.LOW: "LOW",
     Severity.INFO: "INFO",
 }
-
-_SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
 
 _EMPTY_MSG = "No data in scope."
 
@@ -756,18 +755,15 @@ def _config_to_cli(module: str, config: dict[str, Any]) -> str | None:
 
 
 def _shell_quote(value: str) -> str:
-    """Quote a value for shell display if it contains spaces.
+    """Quote a value for safe shell display using POSIX quoting.
 
     Args:
         value: String value to potentially quote.
 
     Returns:
-        Quoted string if it contains spaces, otherwise original.
+        Shell-safe quoted string.
     """
-    if " " in value or '"' in value or "'" in value:
-        escaped = value.replace('"', '\\"')
-        return f'"{escaped}"'
-    return value
+    return shlex.quote(value)
 
 
 def _render_reproduction_section(

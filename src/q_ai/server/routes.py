@@ -718,10 +718,20 @@ async def operations_findings_sidebar(
 # Report export route
 # ---------------------------------------------------------------------------
 
-_EXPORTS_BASE = Path.home() / ".qai" / "exports"
 _ARTIFACTS_BASE = Path.home() / ".qai" / "artifacts"
 
-_REPORT_ROOT = (_EXPORTS_BASE / "generate_report").resolve()
+
+def _get_exports_base() -> Path:
+    """Return the exports base directory, resolved at call time.
+
+    Uses ``Path.home()`` at call time so monkeypatching works in tests.
+    """
+    return Path.home() / ".qai" / "exports"
+
+
+def _get_report_root() -> Path:
+    """Return the resolved report root for path-traversal checks."""
+    return (_get_exports_base() / "generate_report").resolve()
 
 
 def _load_report_html(run_id: str) -> tuple[str, bool]:
@@ -737,11 +747,12 @@ def _load_report_html(run_id: str) -> tuple[str, bool]:
         Tuple of (rendered HTML string, whether evidence ZIP exists).
         Returns empty string for HTML if report file is missing.
     """
+    # Deferred: only needed for report rendering, not on every request
     import markdown  # type: ignore[import-untyped]
     import nh3
 
-    exports_base = Path.home() / ".qai" / "exports"
-    report_root = (exports_base / "generate_report").resolve()
+    exports_base = _get_exports_base()
+    report_root = _get_report_root()
 
     report_path = (exports_base / "generate_report" / run_id / "report.md").resolve()
     if not report_path.is_relative_to(report_root) or not report_path.is_file():
@@ -802,8 +813,11 @@ def export_report(request: Request, run_id: str) -> Response:
     if run is None:
         return JSONResponse(status_code=404, content={"detail": "Run not found"})
 
-    report_path = (_EXPORTS_BASE / "generate_report" / run_id / "report.md").resolve()
-    if not report_path.is_relative_to(_REPORT_ROOT):
+    exports_base = _get_exports_base()
+    report_root = _get_report_root()
+
+    report_path = (exports_base / "generate_report" / run_id / "report.md").resolve()
+    if not report_path.is_relative_to(report_root):
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
 
     if not report_path.is_file():
@@ -829,8 +843,11 @@ def export_evidence(request: Request, run_id: str) -> Response:
     if run is None:
         return JSONResponse(status_code=404, content={"detail": "Run not found"})
 
-    zip_path = (_EXPORTS_BASE / "generate_report" / run_id / "report.zip").resolve()
-    if not zip_path.is_relative_to(_REPORT_ROOT):
+    exports_base = _get_exports_base()
+    report_root = _get_report_root()
+
+    zip_path = (exports_base / "generate_report" / run_id / "report.zip").resolve()
+    if not zip_path.is_relative_to(report_root):
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
 
     if not zip_path.is_file():

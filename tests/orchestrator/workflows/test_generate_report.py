@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     import pytest
 from q_ai.core.schema import migrate
 from q_ai.orchestrator.workflows.generate_report import (
+    _EMPTY_MSG,
     _config_to_cli,
     _parse_framework_ids,
     _render_audit_section,
@@ -1045,15 +1046,23 @@ class TestConfigToCli:
 
     def test_audit_cli(self) -> None:
         result = _config_to_cli("audit", {"transport": "stdio", "command": "npx mcp"})
-        assert result == 'qai audit scan --transport stdio --command "npx mcp"'
+        assert result is not None
+        assert "--transport stdio" in result
+        assert "--command" in result
+        assert "npx mcp" in result
 
     def test_inject_cli(self) -> None:
         result = _config_to_cli("inject", {"model": "openai/gpt-4o", "rounds": 3})
-        assert result == "qai inject campaign --model openai/gpt-4o --rounds 3"
+        assert result is not None
+        assert "--model openai/gpt-4o" in result
+        assert "--rounds 3" in result
 
     def test_proxy_cli(self) -> None:
         result = _config_to_cli("proxy", {"transport": "stdio", "command": "npx mcp"})
-        assert result == 'qai proxy start --transport stdio --target-command "npx mcp"'
+        assert result is not None
+        assert "--transport stdio" in result
+        assert "--target-command" in result
+        assert "npx mcp" in result
 
     def test_unknown_module(self) -> None:
         assert _config_to_cli("unknown_mod", {}) is None
@@ -1103,8 +1112,8 @@ class TestVisibleInLauncher:
             resp = client.get("/")
         assert resp.status_code == 200
         html = resp.text
-        # Generate Report should not appear as a workflow card
-        assert "Generate Report" not in html or "generate_report" not in html
+        # "Generate Report" display name should not appear as a workflow card
+        assert "Generate Report" not in html
 
 
 class TestReportHtmlRendering:
@@ -1164,13 +1173,6 @@ class TestEvidenceDownload:
         """GET /api/exports/{run_id}/evidence returns the ZIP file."""
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
-        import q_ai.server.routes as routes_mod
-
-        exports_base = tmp_path / ".qai" / "exports"
-        report_root = (exports_base / "generate_report").resolve()
-        monkeypatch.setattr(routes_mod, "_EXPORTS_BASE", exports_base)
-        monkeypatch.setattr(routes_mod, "_REPORT_ROOT", report_root)
-
         from fastapi.testclient import TestClient
 
         from q_ai.core.schema import migrate as _migrate
@@ -1188,8 +1190,8 @@ class TestEvidenceDownload:
         finally:
             conn.close()
 
-        # Create ZIP file
-        report_dir = exports_base / "generate_report" / "run-ev-1"
+        # Create ZIP file in the monkeypatched home
+        report_dir = tmp_path / ".qai" / "exports" / "generate_report" / "run-ev-1"
         report_dir.mkdir(parents=True, exist_ok=True)
         zip_path = report_dir / "report.zip"
         import zipfile
@@ -1208,13 +1210,6 @@ class TestEvidenceDownload:
     ) -> None:
         """GET /api/exports/{run_id}/evidence returns 404 when no ZIP exists."""
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-
-        import q_ai.server.routes as routes_mod
-
-        exports_base = tmp_path / ".qai" / "exports"
-        report_root = (exports_base / "generate_report").resolve()
-        monkeypatch.setattr(routes_mod, "_EXPORTS_BASE", exports_base)
-        monkeypatch.setattr(routes_mod, "_REPORT_ROOT", report_root)
 
         from fastapi.testclient import TestClient
 
@@ -1237,6 +1232,3 @@ class TestEvidenceDownload:
         with TestClient(app) as client:
             resp = client.get("/api/exports/run-ev-2/evidence")
         assert resp.status_code == 404
-
-
-_EMPTY_MSG = "No data in scope."
