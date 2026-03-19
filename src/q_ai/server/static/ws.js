@@ -110,6 +110,17 @@
     function connect() {
         socket = new WebSocket(wsUrl);
 
+        socket.onopen = function () {
+            // Re-fetch status bar to catch terminal events that fired before
+            // the WebSocket connected (race between page load and run completion).
+            if (runId) {
+                htmx.ajax('GET', '/api/operations/workflow-status-bar?run_id=' + runId,
+                          {target: '#operations-status-bar', swap: 'outerHTML'}).then(function () {
+                    initElapsedTimer();
+                });
+            }
+        };
+
         socket.onmessage = function (e) {
             var event = JSON.parse(e.data);
             dispatch(event);
@@ -156,7 +167,7 @@
 
     function handleProgress(event) {
         if (!runId || event.run_id !== runId) return;
-        var el = document.getElementById('workflow-name');
+        var el = document.getElementById('workflow-progress');
         if (el) el.textContent = event.message;
     }
 
