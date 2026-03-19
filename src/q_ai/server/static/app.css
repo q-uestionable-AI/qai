@@ -215,17 +215,17 @@ select.select:focus {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 16px;
-    padding: 1.5rem;
+    padding: 2rem;
     width: fit-content;
-    min-width: min(100%, 600px);
-    max-width: 1100px;
+    min-width: min(100%, 700px);
+    max-width: 1400px;
     margin: 0 auto;
 }
 
 /* ── Accordion row ────────────────────────────────────────── */
 .wf-row {
     width: 100%;
-    border-radius: 10px;
+    border-radius: 12px;
     background: rgba(255, 255, 255, 0.015);
     border: 1px solid rgba(255, 255, 255, 0.06);
     transition: all 0.2s ease;
@@ -242,12 +242,12 @@ select.select:focus {
     cursor: default;
 }
 
-/* ── Row header ───────────────────────────────────────────── */
+/* ── Row header (two-line layout) ─────────────────────────── */
 .wf-row-header {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.85rem 1.5rem;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 1rem 2rem;
     cursor: pointer;
 }
 
@@ -255,15 +255,23 @@ select.select:focus {
     cursor: default;
 }
 
+/* Top line: bar + title ... chevron */
+.wf-row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
 .wf-row-left {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
 }
 
 .wf-row-bar {
     width: 4px;
-    height: 24px;
+    height: 28px;
     border-radius: 2px;
     opacity: 0.7;
     flex-shrink: 0;
@@ -271,29 +279,30 @@ select.select:focus {
 
 .wf-row-name {
     font-family: 'Fira Code', monospace;
-    font-size: 0.9rem;
+    font-size: 1.05rem;
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     white-space: nowrap;
 }
 
-/* Compact module pills shown in collapsed header */
+/* Second line: compact module pills below title */
 .wf-row-modules {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    margin-left: 12px;
+    gap: 6px;
+    /* indent to align under title (bar 4px + gap 14px = 18px) */
+    margin-left: 18px;
 }
 
 .wf-row-modules .wf-module-pill-sm {
     font-family: 'Fira Code', monospace;
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     color: #e2e8f0;
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 9999px;
-    padding: 0.1rem 0.5rem;
+    padding: 0.15rem 0.6rem;
 }
 
 .wf-row.expanded .wf-row-modules {
@@ -302,11 +311,11 @@ select.select:focus {
 
 /* ── Chevron ──────────────────────────────────────────────── */
 .wf-row-chevron {
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     color: #64748b;
     transition: transform 0.2s ease;
     flex-shrink: 0;
-    margin-left: 8px;
+    margin-left: 12px;
 }
 
 .wf-row.expanded .wf-row-chevron {
@@ -316,7 +325,7 @@ select.select:focus {
 /* ── Row body (expanded content) ──────────────────────────── */
 .wf-row-body {
     display: none;
-    padding: 0 1.5rem 1.5rem;
+    padding: 0 2rem 2rem;
 }
 
 .wf-row.expanded .wf-row-body {
@@ -325,26 +334,26 @@ select.select:focus {
 
 .wf-row-desc {
     color: #64748b;
-    font-size: 0.9rem;
-    line-height: 1.5;
-    margin-bottom: 14px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin-bottom: 1rem;
 }
 
 /* Full module pills in expanded body */
 .wf-row-pills {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 1.25rem;
+    gap: 10px;
+    margin-bottom: 1.5rem;
 }
 
 .wf-module-pill {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 7px;
-    padding: 7px 14px;
+    border-radius: 8px;
+    padding: 8px 16px;
     font-family: 'Fira Code', monospace;
-    font-size: 0.9rem;
+    font-size: 1rem;
     color: #e2e8f0;
     transition: all 0.15s ease;
 }
@@ -357,19 +366,15 @@ select.select:focus {
 /* ── Connector between rows ───────────────────────────────── */
 .wf-connector {
     width: 1px;
-    height: 6px;
+    height: 8px;
     background: rgba(255, 255, 255, 0.08);
     margin: 0 auto;
 }
 
-/* ── Inline form styling (reuse launcher-modal patterns) ── */
-.wf-row-form {
-}
-
-.wf-row-form label span,
+/* ── Inline form styling ──────────────────────────────────── */
 .wf-row-form .label-text {
     font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     color: #94a3b8;
 }
 

@@ -113,18 +113,20 @@
                  {% else %}
                  aria-disabled="true"
                  {% endif %}>
-                <div class="wf-row-left">
-                    <div class="wf-row-bar" style="background: {{ colors.color }};"></div>
-                    <span class="wf-row-name" style="color: {{ colors.color }};">{{ wf.name }}</span>
-                    <div class="wf-row-modules">
-                        {% for mod in wf.modules %}
-                        <span class="wf-module-pill-sm">{{ mod }}</span>
-                        {% endfor %}
+                <div class="wf-row-top">
+                    <div class="wf-row-left">
+                        <div class="wf-row-bar" style="background: {{ colors.color }};"></div>
+                        <span class="wf-row-name" style="color: {{ colors.color }};">{{ wf.name }}</span>
                     </div>
+                    {% if wf.implemented %}
+                    <span class="wf-row-chevron">&#9654;</span>
+                    {% endif %}
                 </div>
-                {% if wf.implemented %}
-                <span class="wf-row-chevron">&#9654;</span>
-                {% endif %}
+                <div class="wf-row-modules">
+                    {% for mod in wf.modules %}
+                    <span class="wf-module-pill-sm">{{ mod }}</span>
+                    {% endfor %}
+                </div>
             </div>
 
             {# ---- Row body (expanded content) ---- #}
