@@ -282,9 +282,13 @@ class TestRunComparison:
 
         resp = client.get(f"/runs/compare?left={r1}&right={r2}")
         assert resp.status_code == 200
-        # Both should appear as non-common since severity differs
-        assert "Left Only" in resp.text
-        assert "Right Only" in resp.text
+        # The finding title must appear (rendered in the diff tables)
+        assert "Sev Change" in resp.text
+        # Each side gets 1 finding, 0 common (severity differs)
+        assert "Left Only (1)" in resp.text
+        assert "Right Only (1)" in resp.text
+        # Common section should not render (0 common findings)
+        assert "Common (" not in resp.text
 
 
 class TestTargetGrouping:

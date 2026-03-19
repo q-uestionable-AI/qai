@@ -66,7 +66,8 @@
                        hx-get="/api/runs/history"
                        hx-include="#filter-workflow, #filter-target, #filter-status, #filter-group-target"
                        hx-target="#run-history-tbody"
-                       hx-trigger="change">
+                       hx-trigger="change"
+                       hx-push-url="true">
             </label>
         </div>
     </div>
@@ -263,18 +264,29 @@ function confirmBulkDelete() {
             body: JSON.stringify({run_ids: ids})
         })
         .then(function(resp) {
-            if (resp.ok) {
-                modal.close();
-                selectedRunIds = new Set();
+            if (!resp.ok) {
+                return resp.json()
+                    .catch(function() { return { detail: 'Unexpected server response' }; })
+                    .then(function(data) {
+                        alert('Bulk delete failed: ' + (data.detail || 'Unknown error'));
+                    });
+            }
+            return resp.json().then(function(data) {
+                var failedIds = data.failed || [];
+                if (failedIds.length > 0) {
+                    // Keep failed IDs selected, remove only successful ones
+                    selectedRunIds = new Set(failedIds.filter(function(id) {
+                        return selectedRunIds.has(id);
+                    }));
+                    alert('Deleted ' + data.deleted + ' run(s). ' +
+                          failedIds.length + ' failed: ' + failedIds.join(', '));
+                } else {
+                    selectedRunIds = new Set();
+                    modal.close();
+                }
                 updateBulkBar();
                 htmx.ajax('GET', buildHistoryUrl(), {target: '#run-history-tbody'});
-                return;
-            }
-            return resp.json()
-                .catch(function() { return { detail: 'Unexpected server response' }; })
-                .then(function(data) {
-                    alert('Bulk delete failed: ' + (data.detail || 'Unknown error'));
-                });
+            });
         })
         .catch(function() {
             alert('Bulk delete failed: network error or server unreachable');
