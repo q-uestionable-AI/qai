@@ -1061,8 +1061,14 @@ def _check_target_name_exists(db_path: Path | None, name: str) -> bool:
     Returns:
         True if a target with the name exists, False otherwise.
     """
+    normalized = name.strip()
+    if not normalized:
+        return False
     with get_connection(db_path) as conn:
-        row = conn.execute("SELECT 1 FROM targets WHERE name = ? LIMIT 1", (name,)).fetchone()
+        row = conn.execute(
+            "SELECT 1 FROM targets WHERE name = ? LIMIT 1",
+            (normalized,),
+        ).fetchone()
     return row is not None
 
 
@@ -1083,8 +1089,14 @@ async def api_check_target_name(
     Returns:
         JSONResponse with ``{"exists": true}`` or ``{"exists": false}``.
     """
+    normalized = name.strip()
+    if not normalized:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "name is required"},
+        )
     db_path = _get_db_path(request)
-    exists = await asyncio.to_thread(_check_target_name_exists, db_path, name)
+    exists = await asyncio.to_thread(_check_target_name_exists, db_path, normalized)
     return JSONResponse(content={"exists": exists})
 
 
@@ -1187,13 +1199,13 @@ def _build_assess_config(body: dict[str, Any], target_id: str) -> dict[str, Any]
     url = body.get("url", "").strip() or None
     model = body.get("model", "").strip()
 
-    try:
-        rounds = int(body.get("rounds", 1))
-    except (ValueError, TypeError):
+    raw_rounds = body.get("rounds", 1)
+    if isinstance(raw_rounds, bool) or not isinstance(raw_rounds, int):
         return JSONResponse(
             status_code=422,
             content={"detail": "rounds must be an integer"},
         )
+    rounds = raw_rounds
     if not 1 <= rounds <= 10:
         return JSONResponse(
             status_code=422,
@@ -1650,13 +1662,13 @@ def _validate_campaign_fields(body: dict[str, Any]) -> JSONResponse | None:
             status_code=422,
             content={"detail": "model must be non-empty and in provider/model format"},
         )
-    try:
-        rounds = int(body.get("rounds", 1))
-    except (ValueError, TypeError):
+    raw_rounds = body.get("rounds", 1)
+    if isinstance(raw_rounds, bool) or not isinstance(raw_rounds, int):
         return JSONResponse(
             status_code=422,
             content={"detail": "rounds must be an integer"},
         )
+    rounds = raw_rounds
     if not 1 <= rounds <= 10:
         return JSONResponse(
             status_code=422,
@@ -1796,7 +1808,7 @@ async def launch_quick_action(request: Request) -> JSONResponse:
     db_path = _get_db_path(request)
 
     try:
-        result = _validate_quick_action(body, db_path)
+        result = await asyncio.to_thread(_validate_quick_action, body, db_path)
     except TypeError:
         logger.warning("Invalid request parameters in quick action", exc_info=True)
         return JSONResponse(status_code=422, content={"detail": "Invalid request parameters"})
@@ -1804,8 +1816,11 @@ async def launch_quick_action(request: Request) -> JSONResponse:
         return result
     action, target_name = result
 
-    with get_connection(db_path) as conn:
-        target_id = create_target(conn, type="server", name=target_name)
+    def _create_target_sync() -> str:
+        with get_connection(db_path) as conn:
+            return create_target(conn, type="server", name=target_name)
+
+    target_id = await asyncio.to_thread(_create_target_sync)
 
     try:
         config = _build_quick_action_config(action, body, target_id)
