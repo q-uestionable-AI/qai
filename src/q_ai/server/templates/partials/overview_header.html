@@ -22,7 +22,7 @@
             {% elif workflow_run.status.value in (2, 3, 6) and target %}
             <button id="generate-report-btn"
                     class="btn btn-sm btn-outline btn-primary"
-                    onclick="generateReport(this, '{{ target.id }}')">
+                    onclick="generateReport(this, {{ target.id | tojson }})">
                 Generate Report
             </button>
             {% endif %}
@@ -98,7 +98,7 @@ function generateReport(btn, targetId) {
     }).then(function (data) {
         if (data.run_id) {
             btn.textContent = 'Report started';
-            window.location.href = '/runs?run_id=' + data.run_id;
+            window.location.href = data.redirect || '/runs?run_id=' + data.run_id;
         }
     }).catch(function (err) {
         btn.disabled = false;
