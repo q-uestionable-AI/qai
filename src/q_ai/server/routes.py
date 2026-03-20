@@ -262,19 +262,20 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
 
         module_data = _load_module_data(conn, child_by_module)
 
+        eff_target_id = workflow_run.target_id or (workflow_run.config or {}).get("target_id")
         target = None
-        if workflow_run.target_id:
-            target = get_target(conn, workflow_run.target_id)
+        if eff_target_id:
+            target = get_target(conn, eff_target_id)
 
         # Look for existing generate_report run for this target
         report_run_id = None
-        if workflow_run.target_id:
+        if eff_target_id:
             report_row = conn.execute(
                 """SELECT id FROM runs
                    WHERE name = 'generate_report' AND target_id = ?
                    AND status IN (?, ?)
                    ORDER BY finished_at DESC LIMIT 1""",
-                (workflow_run.target_id, int(RunStatus.COMPLETED), int(RunStatus.PARTIAL)),
+                (eff_target_id, int(RunStatus.COMPLETED), int(RunStatus.PARTIAL)),
             ).fetchone()
             if report_row:
                 report_run_id = report_row["id"]
@@ -804,8 +805,10 @@ def _build_compare_context(
         left_findings = list_findings(conn, run_ids=left_all_ids) if left_all_ids else []
         right_findings = list_findings(conn, run_ids=right_all_ids) if right_all_ids else []
 
-        left_target = get_target(conn, left_run.target_id) if left_run.target_id else None
-        right_target = get_target(conn, right_run.target_id) if right_run.target_id else None
+        left_eff_target_id = left_run.target_id or (left_run.config or {}).get("target_id")
+        right_eff_target_id = right_run.target_id or (right_run.config or {}).get("target_id")
+        left_target = get_target(conn, left_eff_target_id) if left_eff_target_id else None
+        right_target = get_target(conn, right_eff_target_id) if right_eff_target_id else None
 
     left_wf = get_workflow(left_run.name) if left_run.name else None
     right_wf = get_workflow(right_run.name) if right_run.name else None
