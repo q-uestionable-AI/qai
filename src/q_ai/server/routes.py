@@ -805,8 +805,10 @@ def _build_compare_context(
         left_findings = list_findings(conn, run_ids=left_all_ids) if left_all_ids else []
         right_findings = list_findings(conn, run_ids=right_all_ids) if right_all_ids else []
 
-        left_target = get_target(conn, left_run.target_id) if left_run.target_id else None
-        right_target = get_target(conn, right_run.target_id) if right_run.target_id else None
+        left_eff_target_id = left_run.target_id or (left_run.config or {}).get("target_id")
+        right_eff_target_id = right_run.target_id or (right_run.config or {}).get("target_id")
+        left_target = get_target(conn, left_eff_target_id) if left_eff_target_id else None
+        right_target = get_target(conn, right_eff_target_id) if right_eff_target_id else None
 
     left_wf = get_workflow(left_run.name) if left_run.name else None
     right_wf = get_workflow(right_run.name) if right_run.name else None
