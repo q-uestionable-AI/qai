@@ -104,8 +104,11 @@ function generateReport(btn, targetId) {
         btn.disabled = false;
         btn.classList.remove('btn-disabled');
         btn.textContent = 'Generate Report';
+        // Remove any prior error span before adding a new one
+        var prev = btn.parentNode.querySelector('.generate-report-error');
+        if (prev) prev.remove();
         var msg = document.createElement('span');
-        msg.className = 'text-error text-xs ml-2';
+        msg.className = 'generate-report-error text-error text-xs ml-2';
         msg.textContent = err.message || 'Report generation failed';
         btn.parentNode.appendChild(msg);
         setTimeout(function () { msg.remove(); }, 5000);
