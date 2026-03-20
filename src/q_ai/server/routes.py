@@ -262,19 +262,20 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
 
         module_data = _load_module_data(conn, child_by_module)
 
+        eff_target_id = workflow_run.target_id or (workflow_run.config or {}).get("target_id")
         target = None
-        if workflow_run.target_id:
-            target = get_target(conn, workflow_run.target_id)
+        if eff_target_id:
+            target = get_target(conn, eff_target_id)
 
         # Look for existing generate_report run for this target
         report_run_id = None
-        if workflow_run.target_id:
+        if eff_target_id:
             report_row = conn.execute(
                 """SELECT id FROM runs
                    WHERE name = 'generate_report' AND target_id = ?
                    AND status IN (?, ?)
                    ORDER BY finished_at DESC LIMIT 1""",
-                (workflow_run.target_id, int(RunStatus.COMPLETED), int(RunStatus.PARTIAL)),
+                (eff_target_id, int(RunStatus.COMPLETED), int(RunStatus.PARTIAL)),
             ).fetchone()
             if report_row:
                 report_run_id = report_row["id"]
