@@ -19,11 +19,12 @@
                class="btn btn-sm btn-outline btn-primary" download>
                 Download Report
             </a>
-            {% elif workflow_run.status.value in (2, 3, 6) %}
-            <a href="/"
-               class="btn btn-sm btn-outline btn-primary">
+            {% elif workflow_run.status.value in (2, 3, 6) and target %}
+            <button id="generate-report-btn"
+                    class="btn btn-sm btn-outline btn-primary"
+                    onclick="generateReport(this, '{{ target.id }}')">
                 Generate Report
-            </a>
+            </button>
             {% endif %}
             {% if has_evidence_zip and report_run_id %}
             <a href="/api/exports/{{ report_run_id }}/evidence"
@@ -82,3 +83,35 @@
     </div>
     {% endif %}
 </div>
+<script>
+function generateReport(btn, targetId) {
+    btn.disabled = true;
+    btn.textContent = 'Generating\u2026';
+    btn.classList.add('btn-disabled');
+    fetch('/api/workflows/launch', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({workflow_id: 'generate_report', target_id: targetId})
+    }).then(function (resp) {
+        if (!resp.ok) return resp.json().then(function (d) { throw new Error(d.detail || 'Failed'); });
+        return resp.json();
+    }).then(function (data) {
+        if (data.run_id) {
+            btn.textContent = 'Report started';
+            window.location.href = '/runs?run_id=' + data.run_id;
+        }
+    }).catch(function (err) {
+        btn.disabled = false;
+        btn.classList.remove('btn-disabled');
+        btn.textContent = 'Generate Report';
+        // Remove any prior error span before adding a new one
+        var prev = btn.parentNode.querySelector('.generate-report-error');
+        if (prev) prev.remove();
+        var msg = document.createElement('span');
+        msg.className = 'generate-report-error text-error text-xs ml-2';
+        msg.textContent = err.message || 'Report generation failed';
+        btn.parentNode.appendChild(msg);
+        setTimeout(function () { msg.remove(); }, 5000);
+    });
+}
+</script>

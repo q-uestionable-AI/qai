@@ -295,8 +295,8 @@ class TestProgressSeparateFromWorkflowName:
 
         resp = client.get(f"/api/operations/workflow-status-bar?run_id={run_id}")
         assert resp.status_code == 200
-        # The workflow-name span should contain "assess"
-        assert ">assess</span>" in resp.text
+        # The workflow-name span should contain the display name, not the ID
+        assert ">Assess an MCP Server</span>" in resp.text
 
     def test_idle_operations_shows_history(self, client: TestClient) -> None:
         """GET /operations without run_id shows run history (no status bar)."""
