@@ -61,11 +61,12 @@
 </div>
 {% endmacro %}
 
-{# ---- Reusable macro for model dropdown ---- #}
+{# ---- Reusable macro for provider dropdown ---- #}
 {% macro model_dropdown() %}
 <div class="form-control">
-    <label class="label"><span class="label-text">Model</span></label>
-    <select name="model" class="select select-bordered select-sm w-full">
+    <label class="label"><span class="label-text">Provider</span></label>
+    <select name="model" required class="select select-bordered select-sm w-full">
+        <option value="" disabled selected>Select a provider...</option>
         {% for opt in model_options %}
         <option value="{{ opt.value }}"
                 {% if opt.value == defaults.default_model %}selected{% endif %}>{{ opt.label }}</option>
