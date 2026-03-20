@@ -485,30 +485,6 @@ async def runs(
     return templates.TemplateResponse(request, "runs.html", ctx)
 
 
-@router.get("/research")
-async def research(request: Request) -> HTMLResponse:
-    """Render the research workspace page."""
-    templates = _get_templates(request)
-    db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        runs = list_runs(conn)
-        findings = list_findings(conn)
-        targets = list_targets(conn)
-    return templates.TemplateResponse(
-        request,
-        "research.html",
-        {
-            "active": "research",
-            "runs": runs,
-            "findings": findings,
-            "targets": targets,
-            "modules": ["audit", "proxy", "inject", "ipi", "cxp", "rxp", "chain"],
-            "severities": [s.name for s in Severity],
-            "statuses": [s.name for s in RunStatus],
-        },
-    )
-
-
 # ---------------------------------------------------------------------------
 # HTMX partial routes
 # ---------------------------------------------------------------------------
@@ -944,10 +920,12 @@ async def operations_workflow_status_bar(
     templates = _get_templates(request)
     with get_connection(db_path) as conn:
         workflow_run = get_run(conn, run_id)
+    wf = get_workflow(workflow_run.name) if workflow_run and workflow_run.name else None
+    display_name = wf.name if wf else (workflow_run.name if workflow_run else "Workflow")
     return templates.TemplateResponse(
         request,
         "partials/status_bar.html",
-        {"workflow_run": workflow_run},
+        {"workflow_run": workflow_run, "workflow_display_name": display_name},
     )
 
 

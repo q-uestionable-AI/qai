@@ -28,7 +28,6 @@ class TestLauncherRoute:
         resp = client.get("/")
         assert 'href="/"' in resp.text
         assert 'href="/runs"' in resp.text
-        assert 'href="/research"' in resp.text
 
     def test_contains_docs_pill(self, client: TestClient) -> None:
         resp = client.get("/")
@@ -52,22 +51,16 @@ class TestOperationsRoute:
         assert "tab" in resp.text.lower()
 
 
-class TestResearchRoute:
-    """GET /research returns the research workspace."""
+class TestResearchRouteRemoved:
+    """GET /research is removed — returns 404."""
 
-    def test_returns_200(self, client: TestClient) -> None:
+    def test_returns_404(self, client: TestClient) -> None:
         resp = client.get("/research")
-        assert resp.status_code == 200
-
-    def test_contains_table_sections(self, client: TestClient) -> None:
-        resp = client.get("/research")
-        assert "Runs" in resp.text
-        assert "Findings" in resp.text
-        assert "Targets" in resp.text
+        assert resp.status_code == 404
 
 
-class TestResearchAPIRoutes:
-    """HTMX partial endpoints for research table filtering."""
+class TestTableAPIRoutes:
+    """HTMX partial endpoints for table filtering."""
 
     def test_api_runs_returns_200(self, client: TestClient) -> None:
         resp = client.get("/api/runs")

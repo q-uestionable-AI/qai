@@ -16,6 +16,7 @@
     var intentionalClose = false;
 
     var TERMINAL_STATUSES = [2, 3, 4, 6]; // COMPLETED, FAILED, CANCELLED, PARTIAL
+    var parentTerminal = false; // true once parent reaches terminal status
 
     var STATUS_LABELS = {
         0: 'PENDING', 1: 'RUNNING', 2: 'COMPLETED',
@@ -195,11 +196,18 @@
         if (event.run_id === runId && TERMINAL_STATUSES.indexOf(event.status) !== -1) {
             // Terminal parent status — re-fetch full status bar partial so
             // badge, elapsed, and report link all render from fresh DB state
+            parentTerminal = true;
             stopElapsedTimer();
+            // Clear progress text so it doesn't linger over the final state
+            var prog = document.getElementById('workflow-progress');
+            if (prog) prog.textContent = '';
             htmx.ajax('GET', '/api/operations/workflow-status-bar?run_id=' + runId,
                       {target: '#operations-status-bar', swap: 'outerHTML'}).then(function () {
                 initElapsedTimer();
             });
+            // Refresh findings sidebar for final state
+            htmx.ajax('GET', '/api/operations/findings-sidebar?run_id=' + runId,
+                      {target: '#findings-sidebar-content', swap: 'innerHTML'});
         } else if (event.run_id === runId) {
             // Non-terminal parent update — just update the badge inline
             var badge = document.getElementById('workflow-status-badge');
@@ -217,6 +225,8 @@
 
     function handleProgress(event) {
         if (!runId || event.run_id !== runId) return;
+        // Ignore late progress events after parent reached terminal status
+        if (parentTerminal) return;
         var el = document.getElementById('workflow-progress');
         if (el) el.textContent = event.message;
     }
