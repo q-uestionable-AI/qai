@@ -103,13 +103,13 @@ class TestModelOptions:
         # All providers should render as provider/default in the dropdown
         assert "anthropic/default" in resp.text
 
-    def test_local_providers_included_without_config(self, client: TestClient) -> None:
-        """ollama/lmstudio appear in the dropdown even without explicit config."""
+    def test_unconfigured_providers_excluded(self, client: TestClient) -> None:
+        """ollama/lmstudio do NOT appear in the dropdown without explicit config."""
         resp = client.get("/")
         assert resp.status_code == 200
-        # These have default URLs and should be available
-        assert "ollama/default" in resp.text
-        assert "lmstudio/default" in resp.text
+        # Without configuration, local providers should not be selectable
+        assert "ollama/default" not in resp.text
+        assert "lmstudio/default" not in resp.text
 
 
 class TestUrlPlaceholder:

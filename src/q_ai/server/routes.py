@@ -85,10 +85,8 @@ async def launcher(request: Request) -> HTMLResponse:
             workflows.append(entry)
 
     all_providers = _get_providers_status(request)
-    # Include providers that are explicitly configured OR have built-in
-    # default URLs (ollama, lmstudio) — matching _check_provider_credential.
-    _default_url_providers = {"ollama", "lmstudio"}
-    providers = [p for p in all_providers if p["configured"] or p["name"] in _default_url_providers]
+    # Only show providers the user has explicitly configured in Settings.
+    providers = [p for p in all_providers if p["configured"]]
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
         default_model = get_setting(conn, "default_model") or ""

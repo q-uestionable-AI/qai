@@ -155,10 +155,24 @@
             reconnectDelay = RECONNECT_BASE_MS;
             showReconnecting(false);
 
-            // Re-fetch status bar to catch events that fired while disconnected
-            if (runId) {
+            // Re-fetch status to catch events that fired while disconnected.
+            // If the status bar element doesn't exist the page is already in
+            // results mode (terminal) — nothing to update.
+            if (runId && getStatusBar()) {
                 htmx.ajax('GET', '/api/operations/workflow-status-bar?run_id=' + runId,
                           {target: '#operations-status-bar', swap: 'outerHTML'}).then(function () {
+                    var bar = getStatusBar();
+                    if (bar) {
+                        var status = parseInt(bar.dataset.workflowStatus, 10);
+                        if (TERMINAL_STATUSES.indexOf(status) !== -1) {
+                            // Workflow finished while disconnected — reload
+                            // to show the full results view.
+                            parentTerminal = true;
+                            stopElapsedTimer();
+                            window.location.reload();
+                            return;
+                        }
+                    }
                     initElapsedTimer();
                 });
                 htmx.ajax('GET', '/api/operations/status-bar?run_id=' + runId,
@@ -194,20 +208,13 @@
 
     function handleRunStatus(event) {
         if (event.run_id === runId && TERMINAL_STATUSES.indexOf(event.status) !== -1) {
-            // Terminal parent status — re-fetch full status bar partial so
-            // badge, elapsed, and report link all render from fresh DB state
+            // Terminal parent status — reload page to transition from
+            // monitoring view to full results view (overview header,
+            // module tabs, Export JSON / Generate Report buttons).
             parentTerminal = true;
             stopElapsedTimer();
-            // Clear progress text so it doesn't linger over the final state
-            var prog = document.getElementById('workflow-progress');
-            if (prog) prog.textContent = '';
-            htmx.ajax('GET', '/api/operations/workflow-status-bar?run_id=' + runId,
-                      {target: '#operations-status-bar', swap: 'outerHTML'}).then(function () {
-                initElapsedTimer();
-            });
-            // Refresh findings sidebar for final state
-            htmx.ajax('GET', '/api/operations/findings-sidebar?run_id=' + runId,
-                      {target: '#findings-sidebar-content', swap: 'innerHTML'});
+            window.location.reload();
+            return;
         } else if (event.run_id === runId) {
             // Non-terminal parent update — just update the badge inline
             var badge = document.getElementById('workflow-status-badge');

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -44,7 +45,9 @@ class TestWorkflowAccordion:
         assert 'class="wf-row expanded' not in resp.text
 
     def test_inline_forms_present(self, client: TestClient) -> None:
-        resp = client.get("/")
+        # A configured provider is required for the Assess form to render
+        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+            resp = client.get("/")
         assert "form-assess" in resp.text
         # generate_report is hidden from launcher, no form expected
         assert "form-generate_report" not in resp.text
