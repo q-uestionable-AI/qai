@@ -40,7 +40,6 @@
                 <th>Description</th>
                 <th>Frameworks</th>
                 <th>Source</th>
-                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -68,22 +67,18 @@
                     {% endif %}
                 </td>
                 <td class="text-xs text-base-content/40 font-mono">{{ f.source_ref or '' }}</td>
-                <td class="flex gap-0.5">
-                    {% if audit_evidence_map.get(f.id) %}
-                    <button class="btn btn-ghost btn-xs"
+            </tr>
+            {% if audit_evidence_map.get(f.id) %}
+            <tr>
+                <td colspan="5" class="pt-1 pb-0 border-none">
+                    <button class="btn btn-ghost btn-xs rounded-full"
                             onclick="document.getElementById('evidence-{{ f.id }}').classList.toggle('hidden')">
                         Evidence
                     </button>
-                    {% endif %}
-                    <button class="btn btn-ghost btn-xs"
-                            onclick="document.getElementById('mitigation-{{ f.id }}').classList.toggle('hidden')">
-                        Mitigation
-                    </button>
                 </td>
             </tr>
-            {% if audit_evidence_map.get(f.id) %}
             <tr id="evidence-{{ f.id }}" class="hidden">
-                <td colspan="6" class="bg-base-300/20 p-3">
+                <td colspan="5" class="bg-base-300/20 p-3">
                     {% for ev in audit_evidence_map[f.id] %}
                     <div class="mb-2 last:mb-0">
                         <span class="badge badge-xs badge-ghost mb-1">{{ ev.type }}</span>
@@ -93,8 +88,16 @@
                 </td>
             </tr>
             {% endif %}
+            <tr>
+                <td colspan="5" class="pt-1 pb-0 border-none">
+                    <button class="btn btn-ghost btn-xs rounded-full"
+                            onclick="document.getElementById('mitigation-{{ f.id }}').classList.toggle('hidden')">
+                        Mitigation
+                    </button>
+                </td>
+            </tr>
             <tr id="mitigation-{{ f.id }}" class="hidden">
-                <td colspan="6" class="bg-base-300/20 p-3">
+                <td colspan="5" class="bg-base-300/20 p-3">
                     {% if f.mitigation_guidance %}
                         {% for section in f.mitigation_guidance.sections %}
                             {% if section.items %}
