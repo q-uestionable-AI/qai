@@ -103,7 +103,10 @@ class TestModelOptions:
 
     def test_configured_provider_in_dropdown(self, client: TestClient) -> None:
         """Configured provider appears in provider dropdown."""
-        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+        with (
+            patch("q_ai.server.routes.get_credential", return_value="test-key"),
+            patch("q_ai.core.providers.get_credential", return_value="test-key"),
+        ):
             resp = client.get("/")
         assert resp.status_code == 200
         # Provider should appear in the selector dropdown by label
