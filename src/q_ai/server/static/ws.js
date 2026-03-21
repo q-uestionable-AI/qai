@@ -269,29 +269,6 @@
         if (btn) btn.classList.add('hidden');
     };
 
-    // --- Findings sidebar navigation ---
-    window.switchToFinding = function (module, findingId) {
-        // 1. Switch to the correct module tab
-        var tabBtn = document.querySelector('[role="tab"][onclick*="switchTab(this, \'' + module + '\')"]');
-        if (tabBtn) {
-            tabBtn.click();
-        }
-        // 2. Wait for tab to render, then scroll + highlight
-        setTimeout(function () {
-            var row = document.querySelector('#tab-' + module + ' [data-finding-id="' + findingId + '"]');
-            if (!row) {
-                row = document.getElementById('finding-' + findingId);
-            }
-            if (row) {
-                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                row.classList.remove('finding-highlight');
-                // Force reflow to restart animation
-                void row.offsetWidth;
-                row.classList.add('finding-highlight');
-            }
-        }, 100);
-    };
-
     // Clean up on page unload to prevent reconnect attempts
     window.addEventListener('beforeunload', function () {
         intentionalClose = true;

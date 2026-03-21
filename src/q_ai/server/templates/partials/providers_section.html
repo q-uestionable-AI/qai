@@ -12,19 +12,14 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for p in providers %}
+                    {% for p in providers if p.configured %}
                     <tr>
                         <td class="font-mono text-sm">{{ p.name }}</td>
                         <td>
-                            {% if p.configured %}
                             <span class="badge badge-success badge-sm gap-1">configured</span>
-                            {% else %}
-                            <span class="badge badge-ghost badge-sm gap-1">not configured</span>
-                            {% endif %}
                         </td>
                         <td class="text-right">
                             <span id="test-result-{{ p.name }}" class="text-xs mr-2"></span>
-                            {% if p.configured %}
                             <div class="inline-flex gap-1">
                                 <button class="btn btn-xs btn-outline btn-secondary btn-square" title="Edit"
                                         onclick="editProvider('{{ p.name }}')">
@@ -45,7 +40,12 @@
                                     </svg>
                                 </button>
                             </div>
-                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" class="text-sm text-base-content/50 text-center py-4">
+                            No providers configured yet. Use the form below to add one.
                         </td>
                     </tr>
                     {% endfor %}

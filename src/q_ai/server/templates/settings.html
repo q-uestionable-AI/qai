@@ -7,11 +7,13 @@
 
     <!-- Providers Section -->
     <section id="providers" class="mb-8">
+        {% set providers = providers_status %}
         {% include "partials/providers_section.html" %}
     </section>
 
     <!-- Defaults Section -->
     <section id="defaults" class="mb-8">
+        {% set providers = configured_providers %}
         {% include "partials/defaults_section.html" %}
     </section>
 

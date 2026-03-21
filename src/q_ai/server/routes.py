@@ -256,7 +256,13 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
         child_by_module = {c.module: c for c in child_runs}
 
         workflow = get_workflow(workflow_run.name) if workflow_run.name else None
-        wf_name = workflow.name if workflow else (workflow_run.name or "Workflow")
+        wf_name = (
+            workflow.name
+            if workflow
+            else _QUICK_ACTION_DISPLAY_NAMES.get(
+                workflow_run.name or "", workflow_run.name or "Workflow"
+            )
+        )
         wf_modules = list(workflow.modules) if workflow else []
 
         module_data = _load_module_data(conn, child_by_module)
@@ -395,7 +401,11 @@ def _build_history_context(
                 finding_count = row[0]
 
             wf = get_workflow(run.name) if run.name else None
-            display_name = wf.name if wf else (run.name or "Workflow")
+            display_name = (
+                wf.name
+                if wf
+                else _QUICK_ACTION_DISPLAY_NAMES.get(run.name or "", run.name or "Workflow")
+            )
 
             eff_target_id = run.target_id or (run.config or {}).get("target_id")
             target = target_map.get(eff_target_id) if eff_target_id else None
@@ -1444,6 +1454,10 @@ async def settings_page(request: Request) -> HTMLResponse:
     providers_status = _get_providers_status(request)
     db_path = _get_db_path(request)
     migrate_default_model(db_path)
+
+    all_providers = get_configured_providers(db_path)
+    configured_providers = [p for p in all_providers if p["configured"]]
+
     with get_connection(db_path) as conn:
         defaults = {
             "default_provider": get_setting(conn, "default_provider") or "",
@@ -1451,15 +1465,31 @@ async def settings_page(request: Request) -> HTMLResponse:
             "audit.default_transport": (get_setting(conn, "audit.default_transport") or "stdio"),
             "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
         }
+
+    # Resolve display labels for saved defaults
+    default_provider_label = ""
+    default_model_label = ""
+    if defaults["default_provider"]:
+        provider_cfg = get_provider(defaults["default_provider"])
+        if provider_cfg:
+            default_provider_label = provider_cfg.label
+        if defaults["default_model_id"]:
+            # Model ID format is "provider/model-name"; use the part after "/"
+            parts = defaults["default_model_id"].split("/", 1)
+            default_model_label = parts[1] if len(parts) > 1 else parts[0]
+
     return templates.TemplateResponse(
         request,
         "settings.html",
         {
             "active": "settings",
-            "providers": providers_status,
+            "providers_status": providers_status,
+            "configured_providers": configured_providers,
             "defaults": defaults,
             "default_provider": defaults["default_provider"],
             "default_model_id": defaults["default_model_id"],
+            "default_provider_label": default_provider_label,
+            "default_model_label": default_model_label,
         },
     )
 
@@ -1643,6 +1673,23 @@ async def api_save_defaults(request: Request) -> JSONResponse:
             if value is not None:
                 set_setting(conn, key, str(value))
     return JSONResponse(content={"status": "saved"})
+
+
+@router.delete("/api/settings/defaults")
+async def api_clear_defaults(request: Request) -> JSONResponse:
+    """Clear default provider and model settings.
+
+    Args:
+        request: The incoming HTTP request, used to resolve the database path.
+
+    Returns:
+        JSONResponse with ``{"status": "cleared"}`` on success.
+    """
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        set_setting(conn, "default_provider", "")
+        set_setting(conn, "default_model_id", "")
+    return JSONResponse(content={"status": "cleared"})
 
 
 @router.get("/api/settings/infrastructure")
@@ -2343,6 +2390,12 @@ def _str_field(body: dict[str, Any], key: str, default: str = "") -> str:
         raise TypeError(f"'{key}' must be a string")
     return val.strip()
 
+
+_QUICK_ACTION_DISPLAY_NAMES = {
+    "qa_scan": "Quick Audit Run",
+    "qa_intercept": "Quick Proxy Run",
+    "qa_campaign": "Quick Inject Run",
+}
 
 _QUICK_ACTIONS = {"scan", "intercept", "campaign"}
 

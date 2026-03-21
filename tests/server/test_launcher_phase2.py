@@ -173,7 +173,7 @@ class TestQuickActionCapsules:
         """Launcher page contains Quick Action capsule buttons."""
         resp = client.get("/")
         assert resp.status_code == 200
-        assert "qa-capsule" in resp.text
+        assert "wf-row-qa_scan" in resp.text
 
     def test_launch_has_inflight_guard(self, client: TestClient) -> None:
         """Launch JS includes in-flight duplicate-submit guard."""

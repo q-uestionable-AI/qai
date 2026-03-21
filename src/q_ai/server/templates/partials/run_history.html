@@ -1,6 +1,13 @@
 <div class="space-y-4">
     <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold">Run History</h2>
+        <button class="btn btn-sm btn-outline btn-secondary"
+                hx-get="/api/runs/history"
+                hx-include="#filter-workflow, #filter-target, #filter-status, #filter-group-target"
+                hx-target="#run-history-tbody"
+                title="Refresh">
+            &#x21bb; Refresh
+        </button>
     </div>
 
     <!-- Filters -->
@@ -91,7 +98,7 @@
     </div>
 
     <!-- Table -->
-    <div class="overflow-x-auto">
+    <div class="panel p-4 overflow-x-auto">
         <table class="table table-sm">
             <thead>
                 <tr>

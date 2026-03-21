@@ -35,23 +35,22 @@
     <table class="table table-xs w-full">
         <thead>
             <tr>
-                <th>Severity</th>
-                <th>Title</th>
+                <th class="w-24">Severity</th>
+                <th class="w-[30%]">Title</th>
                 <th>Description</th>
-                <th>Frameworks</th>
-                <th>Source</th>
-                <th></th>
+                <th class="w-28">Frameworks</th>
+                <th class="w-20">Source</th>
             </tr>
         </thead>
-        <tbody>
             {% for f in audit_findings %}
+            <tbody class="finding-group">
             <tr id="finding-{{ f.id }}" data-finding-id="{{ f.id }}" class="finding-row hover:bg-base-300/30">
-                <td><span class="badge badge-xs badge-{{ f.severity.name | lower }}">{{ f.severity.name }}</span></td>
+                <td><span class="badge badge-sm badge-{{ f.severity.name | lower }}">{{ f.severity.name | capitalize }}</span></td>
                 <td class="font-medium">{{ f.title }}</td>
-                <td class="text-xs text-base-content/60 max-w-[300px]">{{ f.description or '' }}</td>
+                <td class="text-xs text-base-content/60">{{ f.description or '' }}</td>
                 <td>
                     {% if f.framework_ids %}
-                    <div class="flex flex-wrap gap-0.5">
+                    <div class="flex flex-col gap-0.5">
                         {% for fw, ids in f.framework_ids.items() %}
                             {% if ids is string %}
                         <span class="badge badge-xs badge-ghost font-mono">{{ ids }}</span>
@@ -68,22 +67,18 @@
                     {% endif %}
                 </td>
                 <td class="text-xs text-base-content/40 font-mono">{{ f.source_ref or '' }}</td>
-                <td class="flex gap-0.5">
-                    {% if audit_evidence_map.get(f.id) %}
-                    <button class="btn btn-ghost btn-xs"
+            </tr>
+            {% if audit_evidence_map.get(f.id) %}
+            <tr>
+                <td colspan="5" class="pt-1 pb-0 border-none">
+                    <button class="btn btn-outline btn-xs rounded-full"
                             onclick="document.getElementById('evidence-{{ f.id }}').classList.toggle('hidden')">
                         Evidence
                     </button>
-                    {% endif %}
-                    <button class="btn btn-ghost btn-xs"
-                            onclick="document.getElementById('mitigation-{{ f.id }}').classList.toggle('hidden')">
-                        Mitigation
-                    </button>
                 </td>
             </tr>
-            {% if audit_evidence_map.get(f.id) %}
             <tr id="evidence-{{ f.id }}" class="hidden">
-                <td colspan="6" class="bg-base-300/20 p-3">
+                <td colspan="5" class="bg-base-300/20 p-3">
                     {% for ev in audit_evidence_map[f.id] %}
                     <div class="mb-2 last:mb-0">
                         <span class="badge badge-xs badge-ghost mb-1">{{ ev.type }}</span>
@@ -93,8 +88,15 @@
                 </td>
             </tr>
             {% endif %}
+            <tr>
+                <td colspan="5" class="pt-1 pb-0 border-none">
+                    <span class="text-xs cursor-pointer select-none"
+                          style="color: #a78bfa;"
+                          onclick="var el=document.getElementById('mitigation-{{ f.id }}');el.classList.toggle('hidden');this.querySelector('.mit-arrow').textContent=el.classList.contains('hidden')?'▼':'▲'">Mitigation <span class="mit-arrow" style="color: #fff;">▼</span></span>
+                </td>
+            </tr>
             <tr id="mitigation-{{ f.id }}" class="hidden">
-                <td colspan="6" class="bg-base-300/20 p-3">
+                <td colspan="5" class="bg-base-300/20 p-3">
                     {% if f.mitigation_guidance %}
                         {% for section in f.mitigation_guidance.sections %}
                             {% if section.items %}
@@ -128,8 +130,8 @@
                     {% endif %}
                 </td>
             </tr>
+            </tbody>
             {% endfor %}
-        </tbody>
     </table>
     {% else %}
     <p class="text-sm text-base-content/40">No audit findings.</p>
