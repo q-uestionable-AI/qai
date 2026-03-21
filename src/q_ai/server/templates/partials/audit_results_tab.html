@@ -42,8 +42,8 @@
                 <th>Source</th>
             </tr>
         </thead>
-        <tbody>
             {% for f in audit_findings %}
+            <tbody class="finding-group">
             <tr id="finding-{{ f.id }}" data-finding-id="{{ f.id }}" class="finding-row hover:bg-base-300/30">
                 <td><span class="badge badge-xs badge-{{ f.severity.name | lower }}">{{ f.severity.name }}</span></td>
                 <td class="font-medium">{{ f.title }}</td>
@@ -131,11 +131,8 @@
                     {% endif %}
                 </td>
             </tr>
-            {% if not loop.last %}
-            <tr><td colspan="5" class="p-0 border-b border-base-content/10"></td></tr>
-            {% endif %}
+            </tbody>
             {% endfor %}
-        </tbody>
     </table>
     {% else %}
     <p class="text-sm text-base-content/40">No audit findings.</p>

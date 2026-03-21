@@ -41,9 +41,8 @@
         </div>
     {% endif %}
 
-    <div class="flex gap-6">
         <!-- Main panel area -->
-        <div class="flex-1">
+        <div>
             {% if results_mode and workflow_modules %}
             <div role="tablist" class="tabs tabs-bordered mb-4">
                 {% for mod in workflow_modules %}
@@ -115,19 +114,6 @@
             }
             </script>
         </div>
-
-        <!-- Findings sidebar -->
-        <div class="w-72 shrink-0">
-            <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50 mb-3">
-                Findings
-            </h3>
-            <div class="panel min-h-[200px] p-4">
-                <div id="findings-sidebar-content">
-                    {% include "partials/findings_sidebar.html" %}
-                </div>
-            </div>
-        </div>
-    </div>
 
     {% endif %}
 </div>
