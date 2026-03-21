@@ -274,7 +274,7 @@ async def _fetch_local_models(
     return ModelListResponse(models=models, supports_custom=config.supports_custom)
 
 
-def get_configured_providers(db_path: Path) -> list[dict[str, Any]]:
+def get_configured_providers(db_path: Path | None) -> list[dict[str, Any]]:
     """Check which providers are configured (credentials or base_url present).
 
     Args:
@@ -302,7 +302,7 @@ def get_configured_providers(db_path: Path) -> list[dict[str, Any]]:
     return result
 
 
-def migrate_default_model(db_path: Path) -> None:
+def migrate_default_model(db_path: Path | None) -> None:
     """Migrate the legacy ``default_model`` setting to ``default_provider`` + ``default_model_id``.
 
     Reads ``default_model`` from the settings table and, when present, splits
