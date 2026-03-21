@@ -62,13 +62,9 @@
                 <select id="provider-select" class="select select-bordered select-sm"
                         onchange="toggleProviderFields()">
                     <option value="" disabled selected>Select provider</option>
-                    <option value="anthropic">anthropic</option>
-                    <option value="openai">openai</option>
-                    <option value="groq">groq</option>
-                    <option value="openrouter">openrouter</option>
-                    <option value="ollama">ollama</option>
-                    <option value="lmstudio">lmstudio</option>
-                    <option value="custom">custom</option>
+                    {% for p in providers %}
+                    <option value="{{ p.name }}">{{ p.name }}</option>
+                    {% endfor %}
                 </select>
             </div>
 
