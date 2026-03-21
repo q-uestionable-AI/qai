@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
+
+import httpx
 
 
 class ProviderType(Enum):
@@ -64,6 +67,9 @@ class ModelListResponse:
     error: str | None = None
     message: str | None = None
 
+
+_FETCH_TIMEOUT_S = 3.0
+_log = logging.getLogger(__name__)
 
 PROVIDERS: dict[str, ProviderConfig] = {
     "anthropic": ProviderConfig(
@@ -144,3 +150,120 @@ def get_provider(name: str) -> ProviderConfig | None:
         ProviderConfig if found, None otherwise.
     """
     return PROVIDERS.get(name)
+
+
+def _parse_model_list(provider_name: str, data: dict) -> list[ModelInfo]:  # type: ignore[type-arg]
+    """Parse a JSON response body into a list of ModelInfo objects.
+
+    Handles both Ollama (`models[].name`) and LM Studio (`data[].id`) shapes.
+    Each model ID is prefixed with `provider_name/`.
+
+    Args:
+        provider_name: Provider key used as the ID prefix.
+        data: Parsed JSON response body from the provider's models endpoint.
+
+    Returns:
+        List of ModelInfo objects; empty list if the shape is unrecognised.
+    """
+    if "models" in data:
+        raw_names = [m.get("name", "") for m in data["models"] if m.get("name")]
+    elif "data" in data:
+        raw_names = [m.get("id", "") for m in data["data"] if m.get("id")]
+    else:
+        _log.warning("Unrecognised model list shape from %s: %s", provider_name, list(data.keys()))
+        return []
+
+    return [ModelInfo(id=f"{provider_name}/{name}", label=name) for name in raw_names]
+
+
+async def fetch_models(provider_name: str, base_url: str | None) -> ModelListResponse:
+    """Fetch the list of models available from a provider.
+
+    For CLOUD providers the curated registry list is returned with no network
+    call.  For CUSTOM providers an empty list is returned with
+    ``supports_custom=True``.  For LOCAL providers (Ollama, LM Studio) the
+    provider's API endpoint is queried with a 3-second timeout.
+
+    Args:
+        provider_name: Provider key (e.g. "anthropic", "ollama").
+        base_url: Override base URL for local providers.  When ``None`` the
+            registry ``default_base_url`` is used.
+
+    Returns:
+        ModelListResponse describing the available models and any error state.
+    """
+    config = get_provider(provider_name)
+    if config is None:
+        return ModelListResponse(
+            models=[],
+            supports_custom=False,
+            error=f"Unknown provider: {provider_name!r}",
+        )
+
+    if config.type == ProviderType.CLOUD:
+        return ModelListResponse(
+            models=list(config.curated_models),
+            supports_custom=config.supports_custom,
+        )
+
+    if config.type == ProviderType.CUSTOM:
+        return ModelListResponse(models=[], supports_custom=True)
+
+    # LOCAL provider — hit the live endpoint
+    return await _fetch_local_models(provider_name, config, base_url)
+
+
+async def _fetch_local_models(
+    provider_name: str,
+    config: ProviderConfig,
+    base_url: str | None,
+) -> ModelListResponse:
+    """Query a local provider's API endpoint for available models.
+
+    Args:
+        provider_name: Provider key used for ID prefixing and log messages.
+        config: Provider configuration from the registry.
+        base_url: Caller-supplied base URL override; falls back to
+            ``config.default_base_url`` when ``None``.
+
+    Returns:
+        ModelListResponse with enumerated models, an empty-but-reachable
+        message, or an error message if the endpoint is unreachable.
+    """
+    resolved_url = base_url or config.default_base_url or ""
+    endpoint = f"{resolved_url}{config.models_endpoint}"
+
+    try:
+        async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT_S) as client:
+            response = await client.get(endpoint)
+        response.raise_for_status()
+    except httpx.TimeoutException as exc:
+        _log.debug("Timeout fetching models from %s: %s", provider_name, exc)
+        return ModelListResponse(
+            models=[],
+            supports_custom=config.supports_custom,
+            error=f"Request to {config.label} timed out after {_FETCH_TIMEOUT_S:.0f}s.",
+        )
+    except httpx.ConnectError as exc:
+        _log.debug("Cannot connect to %s: %s", provider_name, exc)
+        return ModelListResponse(
+            models=[],
+            supports_custom=config.supports_custom,
+            error=f"Cannot connect to {config.label} at {resolved_url}.",
+        )
+    except httpx.HTTPStatusError as exc:
+        _log.debug("HTTP error from %s: %s", provider_name, exc)
+        return ModelListResponse(
+            models=[],
+            supports_custom=config.supports_custom,
+            error=f"{config.label} returned HTTP {exc.response.status_code}.",
+        )
+
+    models = _parse_model_list(provider_name, response.json())
+    if not models:
+        return ModelListResponse(
+            models=[],
+            supports_custom=config.supports_custom,
+            message=f"No models loaded in {config.label}. Pull a model to get started.",
+        )
+    return ModelListResponse(models=models, supports_custom=config.supports_custom)
