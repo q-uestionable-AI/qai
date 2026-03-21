@@ -45,7 +45,7 @@
             {% for f in audit_findings %}
             <tbody class="finding-group">
             <tr id="finding-{{ f.id }}" data-finding-id="{{ f.id }}" class="finding-row hover:bg-base-300/30">
-                <td><span class="badge badge-xs badge-{{ f.severity.name | lower }}">{{ f.severity.name }}</span></td>
+                <td><span class="badge badge-sm badge-{{ f.severity.name | lower }}">{{ f.severity.name }}</span></td>
                 <td class="font-medium">{{ f.title }}</td>
                 <td class="text-xs text-base-content/60">{{ f.description or '' }}</td>
                 <td>

@@ -256,7 +256,13 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
         child_by_module = {c.module: c for c in child_runs}
 
         workflow = get_workflow(workflow_run.name) if workflow_run.name else None
-        wf_name = workflow.name if workflow else (workflow_run.name or "Workflow")
+        wf_name = (
+            workflow.name
+            if workflow
+            else _QUICK_ACTION_DISPLAY_NAMES.get(
+                workflow_run.name or "", workflow_run.name or "Workflow"
+            )
+        )
         wf_modules = list(workflow.modules) if workflow else []
 
         module_data = _load_module_data(conn, child_by_module)
@@ -395,7 +401,11 @@ def _build_history_context(
                 finding_count = row[0]
 
             wf = get_workflow(run.name) if run.name else None
-            display_name = wf.name if wf else (run.name or "Workflow")
+            display_name = (
+                wf.name
+                if wf
+                else _QUICK_ACTION_DISPLAY_NAMES.get(run.name or "", run.name or "Workflow")
+            )
 
             eff_target_id = run.target_id or (run.config or {}).get("target_id")
             target = target_map.get(eff_target_id) if eff_target_id else None
@@ -2373,6 +2383,12 @@ def _str_field(body: dict[str, Any], key: str, default: str = "") -> str:
         raise TypeError(f"'{key}' must be a string")
     return val.strip()
 
+
+_QUICK_ACTION_DISPLAY_NAMES = {
+    "qa_scan": "Quick Audit Run",
+    "qa_intercept": "Quick Proxy Run",
+    "qa_campaign": "Quick Inject Run",
+}
 
 _QUICK_ACTIONS = {"scan", "intercept", "campaign"}
 
