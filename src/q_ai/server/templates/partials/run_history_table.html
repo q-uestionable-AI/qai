@@ -33,7 +33,14 @@
                    onchange="onRunSelectChange()">
         </td>
         <td class="font-medium pl-8">{{ run.display_name }}</td>
-        <td>{{ run.target_name or "—" }}</td>
+        <td>
+            {{ run.target_name or "—" }}
+            {% if prior_run_counts.get(run.target_id, 0) > 0 %}
+            <span class="badge badge-ghost badge-xs ml-1">
+                {{ prior_run_counts[run.target_id] }} prior run{{ "s" if prior_run_counts[run.target_id] != 1 }}
+            </span>
+            {% endif %}
+        </td>
         <td>
             <span class="badge badge-sm
                 {% if run.status.name == 'COMPLETED' %}badge-success
@@ -114,7 +121,14 @@
                    onchange="onRunSelectChange()">
         </td>
         <td class="font-medium">{{ run.display_name }}</td>
-        <td>{{ run.target_name or "—" }}</td>
+        <td>
+            {{ run.target_name or "—" }}
+            {% if prior_run_counts.get(run.target_id, 0) > 0 %}
+            <span class="badge badge-ghost badge-xs ml-1">
+                {{ prior_run_counts[run.target_id] }} prior run{{ "s" if prior_run_counts[run.target_id] != 1 }}
+            </span>
+            {% endif %}
+        </td>
         <td>
             <span class="badge badge-sm
                 {% if run.status.name == 'COMPLETED' %}badge-success

@@ -26,6 +26,7 @@ from q_ai.core.db import (
     export_run_bundle,
     get_connection,
     get_previously_seen_finding_keys,
+    get_prior_run_counts_by_target,
     get_run,
     get_setting,
     get_target,
@@ -428,6 +429,11 @@ def _build_history_context(
                 )
             )
 
+        target_ids_on_page = [r.target_id for r in history_runs if r.target_id]
+        prior_run_counts = (
+            get_prior_run_counts_by_target(conn, target_ids_on_page) if target_ids_on_page else {}
+        )
+
     return {
         "history_runs": history_runs,
         "workflows": list_workflows(),
@@ -437,6 +443,7 @@ def _build_history_context(
         "current_target": target_filter or "",
         "current_status": status_filter or "",
         "group_by_target": group_by_target,
+        "prior_run_counts": prior_run_counts,
     }
 
 
