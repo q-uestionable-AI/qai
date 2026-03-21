@@ -243,6 +243,52 @@ class TestSarifReport:
             results = data["runs"][0]["results"]
             assert len(results) == 2
 
+    def test_sarif_result_includes_mitigation(self) -> None:
+        """Verify SARIF result properties include mitigation when present."""
+        from q_ai.core.mitigation import (
+            GuidanceSection,
+            MitigationGuidance,
+            SectionKind,
+            SourceType,
+        )
+
+        guidance = MitigationGuidance(
+            sections=[
+                GuidanceSection(
+                    kind=SectionKind.ACTIONS,
+                    source_type=SourceType.TAXONOMY,
+                    source_ids=["owasp_mcp_top10"],
+                    items=["Validate inputs"],
+                ),
+            ],
+        )
+        finding = _make_finding(mitigation=guidance)
+        scan_result = FakeScanResult(
+            findings=[finding],
+            server_info={"name": "test-server"},
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output = generate_sarif_report(scan_result, Path(tmp_dir) / "report.sarif")
+            data = json.loads(output.read_text())
+            props = data["runs"][0]["results"][0]["properties"]
+            assert "mitigation" in props
+            assert props["mitigation"]["sections"][0]["kind"] == "actions"
+
+    def test_sarif_result_omits_mitigation_when_none(self) -> None:
+        """Verify SARIF result omits mitigation key when None."""
+        finding = _make_finding(mitigation=None)
+        scan_result = FakeScanResult(
+            findings=[finding],
+            server_info={"name": "test-server"},
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output = generate_sarif_report(scan_result, Path(tmp_dir) / "report.sarif")
+            data = json.loads(output.read_text())
+            props = data["runs"][0]["results"][0]["properties"]
+            assert "mitigation" not in props
+
 
 class TestSeverityFromCvss:
     def test_critical(self) -> None:

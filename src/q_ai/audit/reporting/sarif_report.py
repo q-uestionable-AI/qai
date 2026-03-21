@@ -124,6 +124,8 @@ def _build_results(
                 "metadata": finding.metadata,
             },
         }
+        if finding.mitigation is not None:
+            result["properties"]["mitigation"] = finding.mitigation.to_dict()
         results.append(result)
 
     return results
