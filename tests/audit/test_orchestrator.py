@@ -9,6 +9,7 @@ import pytest
 from q_ai.audit.orchestrator import ScanResult, run_scan
 from q_ai.audit.scanner.base import BaseScanner
 from q_ai.core.frameworks import FrameworkResolver
+from q_ai.core.mitigation import MitigationGuidance
 from q_ai.mcp.models import ScanContext, ScanFinding, Severity
 
 
@@ -82,6 +83,10 @@ class TestRunScan:
         # command_injection should map to MCP05 in owasp_mcp_top10
         assert "owasp_mcp_top10" in f.framework_ids
         assert f.framework_ids["owasp_mcp_top10"] == "MCP05"
+        # Mitigation should also be populated after framework mapping
+        assert f.mitigation is not None
+        assert isinstance(f.mitigation, MitigationGuidance)
+        assert len(f.mitigation.sections) >= 2
 
     @pytest.mark.asyncio
     async def test_run_scan_with_specific_scanners(self) -> None:

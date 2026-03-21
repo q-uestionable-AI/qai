@@ -9,8 +9,8 @@ from q_ai.core.schema import CURRENT_VERSION, V1_INDEXES, V1_TABLES, migrate
 
 
 class TestSchemaV2:
-    def test_current_version_is_6(self) -> None:
-        assert CURRENT_VERSION == 8
+    def test_current_version_is_9(self) -> None:
+        assert CURRENT_VERSION == 9
 
     def test_audit_scans_table_created(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"
@@ -39,12 +39,12 @@ class TestSchemaV2:
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
         assert ver == 1
 
-        # Now run migrate() which should upgrade through V2 to V6
+        # Now run migrate() which should upgrade through V2 to V9
         migrate(conn)
 
         # Verify final state (migrate goes all the way to CURRENT_VERSION)
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 8
+        assert ver == 9
 
         tables = {
             row[0]
@@ -99,4 +99,31 @@ class TestSchemaV2:
             fk_enforced = True
 
         assert fk_enforced, "FK constraint should prevent invalid run_id"
+        conn.close()
+
+    def test_v9_adds_mitigation_column(self, tmp_path: Path) -> None:
+        """Verify V9 migration adds nullable mitigation column to findings."""
+        db_path = tmp_path / "test.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("PRAGMA foreign_keys = ON")
+
+        # Apply up to V8 manually
+        conn.executescript(V1_TABLES)
+        conn.executescript(V1_INDEXES)
+        conn.execute("PRAGMA user_version = 8")
+        conn.commit()
+
+        # Verify no mitigation column yet
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(findings)").fetchall()}
+        assert "mitigation" not in columns
+
+        # Run migrate() to apply V9
+        migrate(conn)
+        ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        assert ver == 9
+
+        # Verify mitigation column exists and is nullable
+        col_info = {row[1]: row for row in conn.execute("PRAGMA table_info(findings)").fetchall()}
+        assert "mitigation" in col_info
+        assert col_info["mitigation"][3] == 0  # notnull == 0 (nullable)
         conn.close()

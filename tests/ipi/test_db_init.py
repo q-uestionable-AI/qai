@@ -26,7 +26,7 @@ class TestIPISchemaV7:
         db_path = tmp_path / "test.db"
         with get_connection(db_path) as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert version == 8
+            assert version == 9
 
     def test_ipi_payloads_columns(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"
@@ -94,6 +94,8 @@ class TestIPISchemaV7:
 
         with get_connection(db_path) as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
+            # V9 skips when findings table is absent (V1 never ran in this
+            # synthetic scenario), so version stays at 8.
             assert version == 8
             tables = {
                 row[0]

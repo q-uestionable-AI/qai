@@ -182,13 +182,18 @@ def persist_scan(
             description = _build_description(finding)
             framework_ids = finding.framework_ids if finding.framework_ids else None
 
+            # Serialize mitigation guidance as JSON
+            mitigation_json: str | None = None
+            if finding.mitigation is not None:
+                mitigation_json = json.dumps(finding.mitigation.to_dict())
+
             conn.execute(
                 """
                 INSERT INTO findings
                     (id, run_id, module, category, severity,
                      title, description, framework_ids,
-                     source_ref, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     mitigation, source_ref, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     finding_id,
@@ -199,6 +204,7 @@ def persist_scan(
                     finding.title,
                     description,
                     json.dumps(framework_ids) if framework_ids else None,
+                    mitigation_json,
                     finding.tool_name or None,
                     finding.timestamp.isoformat(),
                 ),

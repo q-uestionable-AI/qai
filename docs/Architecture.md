@@ -23,8 +23,10 @@ src/q_ai/
 │   ├── cli/                        # Shared CLI commands (config, runs, findings, targets, update-frameworks)
 │   ├── config.py                   # Config loader, keyring credential store, settings resolver
 │   ├── data/frameworks.yaml        # Framework mapping data (OWASP MCP, OWASP Agentic, MITRE ATLAS, CWE)
+│   ├── data/mitigations.yaml       # Mitigation guidance data (tier 1 actions, tier 2 rules, tier 3 factors)
 │   ├── db.py                       # Connection manager, CRUD for shared tables, schema migration
 │   ├── frameworks.py               # FrameworkResolver — category → framework IDs
+│   ├── mitigation.py               # MitigationResolver — ScanFinding → MitigationGuidance
 │   ├── llm.py                      # ProviderClient protocol, NormalizedResponse, ToolSpec, ToolCall
 │   ├── llm_litellm.py              # LiteLLMClient — only file importing litellm
 │   ├── models.py                   # Run, Target, Finding, Evidence, Severity, RunStatus
@@ -108,6 +110,7 @@ The core module is the integration surface. All modules read and write through i
 - **`llm.py`** — `ProviderClient` protocol, `NormalizedResponse`, `ToolSpec`, `ToolCall`. `provider/model` string convention. The litellm runtime string is composed at launch time from separate `provider` and `model_id` fields stored in settings.
 - **`llm_litellm.py`** — The only file that imports `litellm`. If litellm needs replacing, only this file changes.
 - **`frameworks.py`** — `FrameworkResolver` resolves `category` strings (e.g., `tool_poisoning`) to OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, and CWE IDs. All four frameworks are fully mapped for all 10 scanner categories. The `category` field is the canonical taxonomy; framework IDs are derived. ATLAS mappings verified against v5.4.0.
+- **`mitigation.py`** — `MitigationResolver` generates structured `MitigationGuidance` for each `ScanFinding`. Three-tier guidance: Tier 1 taxonomy actions (per-category from `mitigations.yaml`), Tier 2 rule actions (metadata predicates matched against rule table), Tier 3 contextual factors. The resolver is a pure function — no DB, template, or I/O access after YAML load. Data models: `GuidanceSection` (kind, source_type, source_ids, items), `MitigationGuidance` (sections, caveats, schema_version, disclaimer). `SectionKind` and `SourceType` are `StrEnum` types. The normalization layer converts scanner metadata to canonical predicates via `PREDICATE_MAP` (static) and extraction functions (compound). Positioned in the scan pipeline after framework mapping, before persistence.
 - **`update_frameworks.py`** — `check_frameworks()` fetches the structured ATLAS.yaml from the latest GitHub release, diffs technique IDs against local mappings, and checks the OWASP MCP Top 10 page for version changes. Results cached 24h at `~/.qai/cache/framework_updates.json`. Never writes to `frameworks.yaml`.
 
 ### Provider Registry (`core/providers.py`)
@@ -174,7 +177,7 @@ WorkflowRunner.emit() ──► ConnectionManager.broadcast() ──► all conn
 
 ## Data Model
 
-Single SQLite database at `~/.qai/qai.db`. Schema V8.
+Single SQLite database at `~/.qai/qai.db`. Schema V9.
 
 **Shared tables:** `runs`, `targets`, `findings`, `evidence`, `settings`
 

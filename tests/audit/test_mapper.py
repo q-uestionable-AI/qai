@@ -13,6 +13,7 @@ import pytest
 from q_ai.audit.mapper import _build_description, _map_severity, persist_scan
 from q_ai.audit.orchestrator import ScanResult
 from q_ai.core.db import create_run, create_target, get_connection
+from q_ai.core.mitigation import GuidanceSection, MitigationGuidance, SectionKind, SourceType
 from q_ai.core.models import Severity as CoreSeverity
 from q_ai.core.schema import migrate
 from q_ai.mcp.models import ScanFinding, Severity
@@ -241,4 +242,53 @@ class TestPersistScan:
         scans = conn.execute("SELECT * FROM audit_scans").fetchall()
         assert len(scans) == 1
         assert dict(scans[0])["finding_count"] == 0
+        conn.close()
+
+    def test_persist_mitigation_as_json(self) -> None:
+        """Verify mitigation guidance is persisted as JSON in the mitigation column."""
+        db_path = self._make_db()
+
+        guidance = MitigationGuidance(
+            sections=[
+                GuidanceSection(
+                    kind=SectionKind.ACTIONS,
+                    source_type=SourceType.TAXONOMY,
+                    source_ids=["owasp_mcp_top10"],
+                    items=["Sanitize inputs"],
+                ),
+            ],
+            caveats=["Test caveat"],
+        )
+
+        finding = ScanFinding(
+            rule_id="MCP05-001",
+            category="command_injection",
+            title="Injection found",
+            description="Found injection",
+            severity=Severity.HIGH,
+            framework_ids={"owasp_mcp_top10": "MCP05"},
+            mitigation=guidance,
+        )
+
+        scan_result = ScanResult(
+            findings=[finding],
+            server_info={"name": "test-server", "version": "1.0"},
+            tools_scanned=1,
+            scanners_run=["injection"],
+            started_at=datetime(2026, 1, 1, tzinfo=UTC),
+            finished_at=datetime(2026, 1, 1, 0, 0, 5, tzinfo=UTC),
+        )
+
+        persist_scan(scan_result, db_path=db_path)
+
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        findings = conn.execute("SELECT * FROM findings").fetchall()
+        assert len(findings) == 1
+        f = dict(findings[0])
+        assert f["mitigation"] is not None
+        restored = MitigationGuidance.from_dict(json.loads(f["mitigation"]))
+        assert len(restored.sections) == 1
+        assert restored.sections[0].items == ["Sanitize inputs"]
+        assert restored.caveats == ["Test caveat"]
         conn.close()
