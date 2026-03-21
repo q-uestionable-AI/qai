@@ -18,7 +18,7 @@ class TestLauncherRoute:
         resp = client.get("/")
         assert "Assess an MCP Server" in resp.text
         assert "Test Document Ingestion" in resp.text
-        assert "Test a Coding Assistant" in resp.text
+        assert "Test Context Poisoning" in resp.text
         assert "Trace an Attack Path" in resp.text
         assert "Measure Blast Radius" in resp.text
         # Generate Report is hidden from launcher (visible_in_launcher=False)

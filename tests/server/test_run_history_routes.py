@@ -29,7 +29,7 @@ class TestRunHistoryPage:
             update_run_status(conn, run_id, RunStatus.COMPLETED)
         resp = client.get(f"/runs?run_id={run_id}")
         assert resp.status_code == 200
-        assert "Run History" not in resp.text
+        assert "overview-header" in resp.text
 
     def test_runs_page_shows_empty_state(self, client: TestClient) -> None:
         resp = client.get("/runs")

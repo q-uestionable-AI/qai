@@ -20,7 +20,7 @@ class TestWorkflowAccordion:
         for name in [
             "Assess an MCP Server",
             "Test Document Ingestion",
-            "Test a Coding Assistant",
+            "Test Context Poisoning",
             "Trace an Attack Path",
             "Measure Blast Radius",
         ]:
