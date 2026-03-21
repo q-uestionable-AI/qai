@@ -44,7 +44,7 @@
         </thead>
         <tbody>
             {% for f in audit_findings %}
-            <tr id="finding-{{ f.id }}" data-finding-id="{{ f.id }}" class="finding-row hover:bg-base-300/30">
+            <tr id="finding-{{ f.id }}" data-finding-id="{{ f.id }}" class="finding-row hover:bg-base-300/30 border-b border-base-content/10">
                 <td><span class="badge badge-xs badge-{{ f.severity.name | lower }}">{{ f.severity.name }}</span></td>
                 <td class="font-medium">{{ f.title }}</td>
                 <td class="text-xs text-base-content/60 max-w-[300px]">{{ f.description or '' }}</td>

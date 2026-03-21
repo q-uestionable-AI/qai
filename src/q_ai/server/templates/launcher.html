@@ -288,101 +288,134 @@
             {% endif %}
         </div>
         {% endfor %}
-    </div>
 
-    {# ---- Quick Action capsule buttons ---- #}
-    <div class="qa-capsules mt-3">
-        <button class="qa-capsule" onclick="openQuickActionModal('qa_scan')"
-                onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openQuickActionModal('qa_scan');}"
-                aria-label="Quick Scan">
-            <span>Scan</span>
-            <span class="qa-badge">audit</span>
-        </button>
-        <button class="qa-capsule" onclick="openQuickActionModal('qa_intercept')"
-                onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openQuickActionModal('qa_intercept');}"
-                aria-label="Quick Intercept">
-            <span>Intercept</span>
-            <span class="qa-badge">proxy</span>
-        </button>
-        <button class="qa-capsule" onclick="openQuickActionModal('qa_campaign')"
-                onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openQuickActionModal('qa_campaign');}"
-                aria-label="Quick Campaign">
-            <span>Campaign</span>
-            <span class="qa-badge">inject</span>
-        </button>
-    </div>
+        {# ---- Quick Action accordion rows ---- #}
 
-    {# ==== Quick Action modals (unchanged) ==== #}
-
-    <dialog id="modal-qa_scan" class="modal launcher-modal">
-        <div class="modal-box">
-            <h3 class="text-lg font-bold mb-4">Scan</h3>
-            <form id="form-qa_scan" class="space-y-4" onsubmit="return launchQuickAction(event, 'qa_scan')">
-                <input type="hidden" name="action" value="scan" />
-                {{ target_name_field('qa_scan', "my-mcp-server") }}
-                {{ transport_fields('qa_scan') }}
-                <div id="error-qa_scan" class="text-error text-sm hidden"></div>
-                <div class="modal-action">
-                    <button type="submit" class="btn btn-sm btn-launch">Scan</button>
-                    <button type="button" class="btn btn-sm btn-cancel"
-                            onclick="document.getElementById('modal-qa_scan').close()">Cancel</button>
+        <div class="wf-connector"></div>
+        <div class="wf-row" id="wf-row-qa_scan"
+             style="--wf-bg: {{ wf_color_default.bg }}; --wf-border: {{ wf_color_default.border }}; --wf-color: {{ wf_color_default.color }};">
+            <div class="wf-row-header"
+                 onclick="toggleAccordion('qa_scan')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleAccordion('qa_scan');}"
+                 role="button" tabindex="0" aria-label="Toggle Quick Scan">
+                <div class="wf-row-top">
+                    <div class="wf-row-left">
+                        <div class="wf-row-bar" style="background: {{ wf_color_default.color }};"></div>
+                        <span class="wf-row-name" style="color: {{ wf_color_default.color }};">Quick Scan</span>
+                    </div>
+                    <span class="wf-row-chevron">&#9654;</span>
                 </div>
-            </form>
-        </div>
-        <form method="dialog" class="modal-backdrop"><button>close</button></form>
-    </dialog>
-
-    <dialog id="modal-qa_intercept" class="modal launcher-modal">
-        <div class="modal-box">
-            <h3 class="text-lg font-bold mb-4">Intercept</h3>
-            <form id="form-qa_intercept" class="space-y-4" onsubmit="return launchQuickAction(event, 'qa_intercept')">
-                <input type="hidden" name="action" value="intercept" />
-                {{ target_name_field('qa_intercept', "my-mcp-server") }}
-                {{ transport_fields('qa_intercept') }}
-                <div id="error-qa_intercept" class="text-error text-sm hidden"></div>
-                <div class="modal-action">
-                    <button type="submit" class="btn btn-sm btn-launch">Intercept</button>
-                    <button type="button" class="btn btn-sm btn-cancel"
-                            onclick="document.getElementById('modal-qa_intercept').close()">Cancel</button>
+                <div class="wf-row-modules">
+                    <span class="wf-module-pill-sm">audit</span>
                 </div>
-            </form>
-        </div>
-        <form method="dialog" class="modal-backdrop"><button>close</button></form>
-    </dialog>
-
-    <dialog id="modal-qa_campaign" class="modal launcher-modal">
-        <div class="modal-box">
-            <h3 class="text-lg font-bold mb-4">Campaign</h3>
-            {% if providers|length == 0 %}
-            <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="mb-4">
-                <p class="text-sm">Campaigns require an LLM provider.</p>
-                <a href="/settings#providers" style="color: #06b6d4;" class="text-sm">Configure one now</a>
             </div>
-            {% else %}
-            <form id="form-qa_campaign" class="space-y-4" onsubmit="return launchQuickAction(event, 'qa_campaign')">
-                <input type="hidden" name="action" value="campaign" />
-                {{ target_name_field('qa_campaign', "my-mcp-server") }}
-                {{ transport_fields('qa_campaign') }}
-                {% set selector_id = "campaign" %}
-                {% include "partials/model_selector.html" %}
-
-                <div class="form-control">
-                    <label class="label"><span class="label-text">Rounds</span></label>
-                    <input type="number" name="rounds" value="1" min="1" max="10"
-                           class="input input-bordered input-sm w-24" />
+            <div class="wf-row-body">
+                <p class="wf-row-desc">Run a standalone audit scan against an MCP server.</p>
+                <div class="wf-row-pills">
+                    <span class="wf-module-pill">audit</span>
                 </div>
-
-                <div id="error-qa_campaign" class="text-error text-sm hidden"></div>
-                <div class="modal-action">
-                    <button type="submit" class="btn btn-sm btn-launch">Launch</button>
-                    <button type="button" class="btn btn-sm btn-cancel"
-                            onclick="document.getElementById('modal-qa_campaign').close()">Cancel</button>
+                <div class="wf-row-form">
+                <form id="form-qa_scan" class="space-y-4" onsubmit="return launchQuickAction(event, 'qa_scan')">
+                    <input type="hidden" name="action" value="scan" />
+                    {{ target_name_field('qa_scan', "my-mcp-server") }}
+                    {{ transport_fields('qa_scan') }}
+                    <div id="error-qa_scan" class="text-error text-sm hidden"></div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-sm btn-launch">Scan</button>
+                    </div>
+                </form>
                 </div>
-            </form>
-            {% endif %}
+            </div>
         </div>
-        <form method="dialog" class="modal-backdrop"><button>close</button></form>
-    </dialog>
+
+        <div class="wf-connector"></div>
+        <div class="wf-row" id="wf-row-qa_intercept"
+             style="--wf-bg: {{ wf_color_default.bg }}; --wf-border: {{ wf_color_default.border }}; --wf-color: {{ wf_color_default.color }};">
+            <div class="wf-row-header"
+                 onclick="toggleAccordion('qa_intercept')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleAccordion('qa_intercept');}"
+                 role="button" tabindex="0" aria-label="Toggle Quick Intercept">
+                <div class="wf-row-top">
+                    <div class="wf-row-left">
+                        <div class="wf-row-bar" style="background: {{ wf_color_default.color }};"></div>
+                        <span class="wf-row-name" style="color: {{ wf_color_default.color }};">Quick Intercept</span>
+                    </div>
+                    <span class="wf-row-chevron">&#9654;</span>
+                </div>
+                <div class="wf-row-modules">
+                    <span class="wf-module-pill-sm">proxy</span>
+                </div>
+            </div>
+            <div class="wf-row-body">
+                <p class="wf-row-desc">Start a standalone proxy intercept session against an MCP server.</p>
+                <div class="wf-row-pills">
+                    <span class="wf-module-pill">proxy</span>
+                </div>
+                <div class="wf-row-form">
+                <form id="form-qa_intercept" class="space-y-4" onsubmit="return launchQuickAction(event, 'qa_intercept')">
+                    <input type="hidden" name="action" value="intercept" />
+                    {{ target_name_field('qa_intercept', "my-mcp-server") }}
+                    {{ transport_fields('qa_intercept') }}
+                    <div id="error-qa_intercept" class="text-error text-sm hidden"></div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-sm btn-launch">Intercept</button>
+                    </div>
+                </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="wf-connector"></div>
+        <div class="wf-row" id="wf-row-qa_campaign"
+             style="--wf-bg: {{ wf_color_default.bg }}; --wf-border: {{ wf_color_default.border }}; --wf-color: {{ wf_color_default.color }};">
+            <div class="wf-row-header"
+                 onclick="toggleAccordion('qa_campaign')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleAccordion('qa_campaign');}"
+                 role="button" tabindex="0" aria-label="Toggle Quick Campaign">
+                <div class="wf-row-top">
+                    <div class="wf-row-left">
+                        <div class="wf-row-bar" style="background: {{ wf_color_default.color }};"></div>
+                        <span class="wf-row-name" style="color: {{ wf_color_default.color }};">Quick Campaign</span>
+                    </div>
+                    <span class="wf-row-chevron">&#9654;</span>
+                </div>
+                <div class="wf-row-modules">
+                    <span class="wf-module-pill-sm">inject</span>
+                </div>
+            </div>
+            <div class="wf-row-body">
+                <p class="wf-row-desc">Run a standalone injection campaign against an MCP server.</p>
+                <div class="wf-row-pills">
+                    <span class="wf-module-pill">inject</span>
+                </div>
+                {% if providers|length == 0 %}
+                <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; color: #fbbf24;">
+                    <p class="text-sm">Campaigns require an LLM provider.</p>
+                    <a href="/settings#providers" style="color: #06b6d4;" class="text-sm">Configure one now</a>
+                </div>
+                {% else %}
+                <div class="wf-row-form">
+                <form id="form-qa_campaign" class="space-y-4" onsubmit="return launchQuickAction(event, 'qa_campaign')">
+                    <input type="hidden" name="action" value="campaign" />
+                    {{ target_name_field('qa_campaign', "my-mcp-server") }}
+                    {{ transport_fields('qa_campaign') }}
+                    {% set selector_id = "campaign" %}
+                    {% include "partials/model_selector.html" %}
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Rounds</span></label>
+                        <input type="number" name="rounds" value="1" min="1" max="10"
+                               class="input input-bordered input-sm w-24" />
+                    </div>
+                    <div id="error-qa_campaign" class="text-error text-sm hidden"></div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-sm btn-launch">Launch</button>
+                    </div>
+                </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -489,10 +522,6 @@ async function loadChainExecutions(wfId) {
             if (gate) gate.style.display = 'block';
         }
     } catch (err) { /* silently fail */ }
-}
-
-function openQuickActionModal(modalId) {
-    document.getElementById('modal-' + modalId).showModal();
 }
 
 var _launchInFlight = {};
