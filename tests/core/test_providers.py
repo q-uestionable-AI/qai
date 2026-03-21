@@ -14,6 +14,7 @@ from q_ai.core.providers import (
     PROVIDERS,
     ProviderType,
     fetch_models,
+    get_configured_providers,
     get_provider,
     migrate_default_model,
 )
@@ -303,3 +304,41 @@ class TestMigrateDefaultModel:
         with get_connection(migration_db) as conn:
             assert get_setting(conn, "default_provider") == "ollama"
             assert get_setting(conn, "default_model_id") == "ollama/llama3.2"
+
+
+class TestGetConfiguredProviders:
+    """get_configured_providers() returns provider status list."""
+
+    def test_returns_all_providers(self, migration_db: Path) -> None:
+        with patch("q_ai.core.providers.get_credential", return_value=None):
+            result = get_configured_providers(migration_db)
+        assert len(result) == len(PROVIDERS)
+        names = {p["name"] for p in result}
+        assert names == set(PROVIDERS.keys())
+
+    def test_configured_when_credential_present(self, migration_db: Path) -> None:
+        def _mock_cred(p: str) -> str | None:
+            return "key" if p == "openai" else None
+
+        with patch("q_ai.core.providers.get_credential", side_effect=_mock_cred):
+            result = get_configured_providers(migration_db)
+
+        openai = next(p for p in result if p["name"] == "openai")
+        assert openai["configured"] is True
+
+    def test_configured_when_base_url_present(self, migration_db: Path) -> None:
+        with get_connection(migration_db) as conn:
+            set_setting(conn, "ollama.base_url", "http://localhost:11434")
+
+        with patch("q_ai.core.providers.get_credential", return_value=None):
+            result = get_configured_providers(migration_db)
+
+        ollama = next(p for p in result if p["name"] == "ollama")
+        assert ollama["configured"] is True
+
+    def test_includes_label(self, migration_db: Path) -> None:
+        with patch("q_ai.core.providers.get_credential", return_value=None):
+            result = get_configured_providers(migration_db)
+
+        anthropic = next(p for p in result if p["name"] == "anthropic")
+        assert anthropic["label"] == "Anthropic"

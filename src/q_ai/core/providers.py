@@ -6,8 +6,12 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 import httpx
+
+from q_ai.core.config import get_credential
+from q_ai.core.db import get_connection, get_setting
 
 
 class ProviderType(Enum):
@@ -268,6 +272,34 @@ async def _fetch_local_models(
             message=f"No models loaded in {config.label}. Pull a model to get started.",
         )
     return ModelListResponse(models=models, supports_custom=config.supports_custom)
+
+
+def get_configured_providers(db_path: Path) -> list[dict[str, Any]]:
+    """Check which providers are configured (credentials or base_url present).
+
+    Args:
+        db_path: Path to the SQLite database.
+
+    Returns:
+        List of dicts with name, label, and configured status for each provider.
+    """
+    result: list[dict[str, Any]] = []
+    with get_connection(db_path) as conn:
+        for name, config in PROVIDERS.items():
+            try:
+                cred = get_credential(name)
+            except RuntimeError:
+                cred = None
+            base_url = get_setting(conn, f"{name}.base_url") or ""
+            configured = cred is not None or bool(base_url)
+            result.append(
+                {
+                    "name": name,
+                    "label": config.label,
+                    "configured": configured,
+                }
+            )
+    return result
 
 
 def migrate_default_model(db_path: Path) -> None:
