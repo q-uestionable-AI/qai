@@ -25,6 +25,7 @@ from q_ai.core.db import (
     delete_run_cascade,
     export_run_bundle,
     get_connection,
+    get_previously_seen_finding_keys,
     get_run,
     get_setting,
     get_target,
@@ -246,7 +247,7 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
     with get_connection(db_path) as conn:
         workflow_run = get_run(conn, run_id)
         if not workflow_run:
-            return {}
+            return {"previously_seen": set()}
         child_runs = list_runs(conn, parent_run_id=run_id)
         all_ids = [run_id] + [c.id for c in child_runs]
         findings = list_findings(conn, run_ids=all_ids)
@@ -262,6 +263,15 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
         target = None
         if eff_target_id:
             target = get_target(conn, eff_target_id)
+
+        previously_seen: set[tuple[str, str]] = set()
+        if eff_target_id and workflow_run.started_at:
+            previously_seen = get_previously_seen_finding_keys(
+                conn,
+                eff_target_id,
+                workflow_run.started_at.isoformat(),
+                run_id,
+            )
 
         # Look for existing generate_report run for this target
         report_run_id = None
@@ -301,6 +311,7 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
             "report_html": report_html,
             "is_report_run": is_report_run,
             "has_evidence_zip": has_evidence_zip,
+            "previously_seen": previously_seen,
         }
         result.update(module_data)
         return result
