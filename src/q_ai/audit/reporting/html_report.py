@@ -159,6 +159,89 @@ def _findings_table(findings: list[ScanFinding]) -> str:
     )
 
 
+def _section_label(section: Any) -> str:
+    """Derive the user-facing label for a GuidanceSection.
+
+    Args:
+        section: A GuidanceSection object.
+
+    Returns:
+        Human-readable label string.
+    """
+    from q_ai.core.mitigation import SourceType
+
+    if section.source_type == SourceType.TAXONOMY:
+        ids = ", ".join(section.source_ids) if section.source_ids else ""
+        return (
+            f"Recommended by OWASP MCP Top 10 ({ids})" if ids else "Recommended by OWASP MCP Top 10"
+        )
+    if section.source_type == SourceType.RULE:
+        return "Recommended based on finding characteristics"
+    return "Considerations for your environment"
+
+
+def _mitigation_block(finding: Any) -> str:
+    """Render the mitigation guidance block for a finding card.
+
+    Args:
+        finding: A ScanFinding with optional mitigation attribute.
+
+    Returns:
+        HTML string for the mitigation section.
+    """
+    mitigation = getattr(finding, "mitigation", None)
+    if mitigation is None:
+        return (
+            '<div class="card-section mitigation-block">'
+            "<h4>Mitigation Guidance</h4>"
+            '<p class="muted">No mitigation guidance available '
+            "(generated before this version)</p>"
+            "</div>"
+        )
+
+    parts = [
+        '<details class="mitigation-details">',
+        "<summary>Mitigation Guidance</summary>",
+    ]
+
+    for section in mitigation.sections:
+        if not section.items:
+            continue
+        label = _section_label(section)
+        parts.extend(
+            [
+                '<div class="card-section mitigation-section">',
+                f"<h4>{_esc(label)}</h4>",
+                "<ul>",
+                *[f"<li>{_esc(item)}</li>" for item in section.items],
+                "</ul>",
+                "</div>",
+            ]
+        )
+
+    if mitigation.caveats:
+        parts.extend(
+            [
+                '<div class="card-section mitigation-caveats">',
+                "<h4>Caveats</h4>",
+                "<ul>",
+                *[f"<li>{_esc(caveat)}</li>" for caveat in mitigation.caveats],
+                "</ul>",
+                "</div>",
+            ]
+        )
+
+    if mitigation.disclaimer:
+        parts.append(
+            '<div class="card-section mitigation-disclaimer">'
+            f'<p class="muted">{_esc(mitigation.disclaimer)}</p>'
+            "</div>"
+        )
+
+    parts.append("</details>")
+    return "".join(parts)
+
+
 def _finding_card(finding: ScanFinding) -> str:
     """Generate an expandable detail card for a single finding.
 
@@ -192,6 +275,7 @@ def _finding_card(finding: ScanFinding) -> str:
         f"<h4>Description</h4><p>{_esc(finding.description)}</p></div>"
         f'<div class="card-section"><h4>Evidence</h4>'
         f"<pre>{_esc(finding.evidence)}</pre></div>"
+        f"{_mitigation_block(finding)}"
         f'<div class="card-section"><h4>Remediation</h4>'
         f"<p>{_esc(finding.remediation)}</p></div>"
         f'<div class="card-section"><h4>Tool</h4>'
@@ -338,6 +422,15 @@ h2.section-title{margin:2rem 0 1rem;color:#06b6d4;font-size:1.2rem}
   background:#0f172a;padding:0.75rem;border-radius:4px;
   font-size:0.8rem;color:#e2e8f0;white-space:pre-wrap;word-break:break-word;
 }
+.mitigation-details{margin-top:0.75rem}
+.mitigation-details>summary{
+  color:#06b6d4;font-size:0.75rem;text-transform:uppercase;
+  cursor:pointer;font-weight:600;margin-bottom:0.25rem;
+}
+.mitigation-section h4{color:#a78bfa;font-size:0.7rem;text-transform:uppercase}
+.mitigation-caveats h4{color:#f59e0b;font-size:0.7rem;text-transform:uppercase}
+.mitigation-disclaimer .muted{color:#64748b;font-size:0.75rem;font-style:italic}
+.muted{color:#64748b;font-size:0.85rem;font-style:italic}
 @media print{
   body{background:#fff;color:#1e293b;padding:1rem}
   .header h1{color:#0e7490}
@@ -355,6 +448,8 @@ h2.section-title{margin:2rem 0 1rem;color:#06b6d4;font-size:1.2rem}
   details.finding-card:not([open])>:not(summary){display:block!important}
   details.finding-card>summary{display:list-item}
   details.finding-card>.card-body{display:block!important}
+  details.mitigation-details:not([open])>:not(summary){display:block!important}
+  details.mitigation-details>summary{display:list-item}
 }
 @media(max-width:768px){
   body{padding:1rem}

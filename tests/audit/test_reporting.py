@@ -290,6 +290,64 @@ class TestSarifReport:
             assert "mitigation" not in props
 
 
+class TestHtmlReport:
+    def test_html_report_contains_mitigation_section(self) -> None:
+        """Verify HTML report renders mitigation guidance."""
+        from q_ai.audit.reporting.html_report import generate_html_report
+        from q_ai.core.mitigation import (
+            GuidanceSection,
+            MitigationGuidance,
+            SectionKind,
+            SourceType,
+        )
+
+        guidance = MitigationGuidance(
+            sections=[
+                GuidanceSection(
+                    kind=SectionKind.ACTIONS,
+                    source_type=SourceType.TAXONOMY,
+                    source_ids=["owasp_mcp_top10"],
+                    items=["Validate inputs", "Sanitize commands"],
+                ),
+            ],
+            caveats=["Test caveat"],
+        )
+        finding = _make_finding(
+            mitigation=guidance,
+            framework_ids={"owasp_mcp_top10": "MCP05"},
+        )
+        scan_result = FakeScanResult(
+            findings=[finding],
+            server_info={"name": "test-server"},
+            finished_at=datetime.now(UTC),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output = generate_html_report(scan_result, Path(tmp_dir) / "report.html")
+            html = output.read_text()
+            assert "Mitigation Guidance" in html
+            assert "Recommended by OWASP MCP Top 10" in html
+            assert "Validate inputs" in html
+            assert "Sanitize commands" in html
+            assert "Test caveat" in html
+
+    def test_html_report_legacy_finding_shows_not_available(self) -> None:
+        """Verify legacy findings show 'not available' message."""
+        from q_ai.audit.reporting.html_report import generate_html_report
+
+        finding = _make_finding(mitigation=None)
+        scan_result = FakeScanResult(
+            findings=[finding],
+            server_info={"name": "test-server"},
+            finished_at=datetime.now(UTC),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output = generate_html_report(scan_result, Path(tmp_dir) / "report.html")
+            html = output.read_text()
+            assert "No mitigation guidance available" in html
+
+
 class TestSeverityFromCvss:
     def test_critical(self) -> None:
         assert severity_from_cvss(9.0) == Severity.CRITICAL
