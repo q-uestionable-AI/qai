@@ -7,7 +7,7 @@
     <select name="provider" required
             id="{{ selector_id }}-provider"
             class="select select-bordered select-sm w-full"
-            onchange="htmx.ajax('GET', '/api/providers/' + this.value + '/models?default={{ default_model_id or '' }}&selector_id={{ selector_id }}', {target: '#' + '{{ selector_id }}-model-area'})">
+            onchange="(function(sel){ var dm={{ (default_model_id or '') | tojson }}; var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/' + sel.value + '/models?default=' + encodeURIComponent(dm) + '&selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })(this)">
         <option value="" disabled {% if not default_provider %}selected{% endif %}>
             Select a provider...
         </option>

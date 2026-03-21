@@ -157,7 +157,7 @@ def get_provider(name: str) -> ProviderConfig | None:
     return PROVIDERS.get(name)
 
 
-def _parse_model_list(provider_name: str, data: dict) -> list[ModelInfo]:  # type: ignore[type-arg]
+def _parse_model_list(provider_name: str, data: dict[str, Any]) -> list[ModelInfo]:
     """Parse a JSON response body into a list of ModelInfo objects.
 
     Handles both Ollama (`models[].name`) and LM Studio (`data[].id`) shapes.

@@ -280,8 +280,12 @@ Idempotent — safe to call multiple times.
 4. Split `default_model` on first `/`.
 5. If left side is a key in `PROVIDERS`: write `default_provider` and
    `default_model_id`, delete `default_model`.
-6. Otherwise (unknown prefix, missing slash, blank model id, extra delimiters):
+6. Otherwise (unknown prefix, missing slash, blank model id):
    delete `default_model`, log warning. User re-selects defaults.
+
+Note: values with multiple slashes (e.g. `openrouter/anthropic/claude-sonnet-4`)
+are valid — the split on first `/` yields a known provider (`openrouter`) and
+the full original value is preserved as `default_model_id`.
 
 ### Defaults Endpoint Changes
 

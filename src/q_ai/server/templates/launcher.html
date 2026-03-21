@@ -532,7 +532,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('[id$="-provider"]').forEach(function(sel) {
         if (sel.value && sel.value !== '') {
             var selectorId = sel.id.replace('-provider', '');
-            var defaultModel = '{{ default_model_id or "" }}';
+            var defaultModel = {{ (default_model_id or "") | tojson }};
             htmx.ajax('GET',
                 '/api/providers/' + sel.value + '/models?default=' + encodeURIComponent(defaultModel) + '&selector_id=' + selectorId,
                 {target: '#' + selectorId + '-model-area'});

@@ -121,6 +121,7 @@ class TestLaunchValidation:
         with patch("q_ai.server.routes.get_credential", return_value="test-key"):
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
+        assert "model" in resp.json()["detail"].lower()
 
     def test_launch_validation_missing_credential(self, client: TestClient) -> None:
         """POST with valid model but no credential -> 422."""

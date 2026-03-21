@@ -697,22 +697,13 @@ Expected: FAIL — `ImportError: cannot import name 'migrate_default_model'`
 
 - [ ] **Step 3: Implement `migrate_default_model()`**
 
-Add to `src/q_ai/core/providers.py`:
+Add to `src/q_ai/core/providers.py`. Use the existing `_delete_setting` helper
+from `src/q_ai/core/db.py` — do not create a duplicate:
 
 ```python
 from pathlib import Path
 
-from q_ai.core.db import get_connection, get_setting, set_setting
-
-
-def _delete_setting(conn: object, key: str) -> None:
-    """Delete a setting from the DB.
-
-    Args:
-        conn: SQLite connection.
-        key: Setting key to delete.
-    """
-    conn.execute("DELETE FROM settings WHERE key = ?", (key,))  # type: ignore[union-attr]
+from q_ai.core.db import _delete_setting, get_connection, get_setting, set_setting
 
 
 def migrate_default_model(db_path: Path) -> None:

@@ -198,6 +198,7 @@ class TestLaunchProviderValidation:
         with (
             patch("q_ai.server.routes.get_credential", return_value="test-key"),
             patch("q_ai.server.routes.get_workflow") as mock_wf,
+            patch("q_ai.server.routes._run_workflow", new_callable=AsyncMock),
         ):
             mock_wf.return_value = _mock_workflow_entry("assess")
             resp = client.post("/api/workflows/launch", json=body)

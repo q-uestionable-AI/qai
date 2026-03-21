@@ -52,11 +52,15 @@ function saveDefaults(e) {
     var form = document.getElementById("defaults-form");
     var data = {};
     new FormData(form).forEach(function(v, k) { data[k] = v; });
-    // Map provider/model fields to settings keys
-    data["default_provider"] = data["provider"] || "";
-    data["default_model_id"] = data["model"] || "";
-    delete data["provider"];
-    delete data["model"];
+    // Map provider/model fields to settings keys (only if present in form)
+    if ("provider" in data) {
+        data["default_provider"] = data["provider"];
+        delete data["provider"];
+    }
+    if ("model" in data) {
+        data["default_model_id"] = data["model"];
+        delete data["model"];
+    }
 
     var msg = document.getElementById("defaults-msg");
     fetch("/api/settings/defaults", {
