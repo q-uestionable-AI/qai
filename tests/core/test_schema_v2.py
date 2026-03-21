@@ -39,7 +39,7 @@ class TestSchemaV2:
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
         assert ver == 1
 
-        # Now run migrate() which should upgrade through V2 to V6
+        # Now run migrate() which should upgrade through V2 to V9
         migrate(conn)
 
         # Verify final state (migrate goes all the way to CURRENT_VERSION)

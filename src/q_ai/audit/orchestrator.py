@@ -22,6 +22,47 @@ from q_ai.mcp.models import ScanFinding
 logger = logging.getLogger("q_ai.audit.orchestrator")
 
 
+def _resolve_mitigations(result: ScanResult) -> None:
+    """Resolve mitigation guidance on every finding (best-effort).
+
+    If the resolver fails to initialize, an error is appended and no
+    findings are enriched. If an individual finding fails, that finding
+    is skipped and the error is recorded.
+
+    Args:
+        result: ScanResult whose findings will be enriched in-place.
+    """
+    try:
+        mitigation_resolver = MitigationResolver()
+    except Exception as exc:
+        logger.error("MitigationResolver failed to initialize: %s", exc, exc_info=True)
+        result.errors.append(
+            {
+                "scanner": "mitigation_resolver",
+                "error": f"Resolver initialization failed: {exc}",
+            }
+        )
+        return
+
+    for finding in result.findings:
+        try:
+            finding.mitigation = mitigation_resolver.resolve(finding)
+        except Exception as exc:
+            logger.error(
+                "Mitigation resolve failed for %s (%s): %s",
+                finding.rule_id,
+                finding.category,
+                exc,
+                exc_info=True,
+            )
+            result.errors.append(
+                {
+                    "scanner": "mitigation_resolver",
+                    "error": f"Failed to resolve mitigation for {finding.rule_id}: {exc}",
+                }
+            )
+
+
 @dataclass
 class ScanResult:
     """Complete results from a scan run.
@@ -119,25 +160,8 @@ async def run_scan(
     for finding in result.findings:
         finding.framework_ids = resolver.resolve(finding.category)
 
-    # Resolve mitigation guidance on every finding
-    mitigation_resolver = MitigationResolver()
-    for finding in result.findings:
-        try:
-            finding.mitigation = mitigation_resolver.resolve(finding)
-        except Exception as exc:
-            logger.error(
-                "Mitigation resolve failed for %s (%s): %s",
-                finding.rule_id,
-                finding.category,
-                exc,
-                exc_info=True,
-            )
-            result.errors.append(
-                {
-                    "scanner": "mitigation_resolver",
-                    "error": f"Failed to resolve mitigation for {finding.rule_id}: {exc}",
-                }
-            )
+    # Resolve mitigation guidance on every finding (best-effort)
+    _resolve_mitigations(result)
 
     result.finished_at = datetime.now(UTC)
     return result

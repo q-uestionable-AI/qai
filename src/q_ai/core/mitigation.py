@@ -338,6 +338,73 @@ def normalize_metadata(metadata: dict[str, Any]) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
+def _validate_categories(categories: dict[str, Any]) -> None:
+    """Validate the categories section of mitigations.yaml.
+
+    Args:
+        categories: The categories dict from the YAML file.
+
+    Raises:
+        ValueError: On unknown/missing categories or empty required lists.
+        TypeError: On unexpected types for category data or list fields.
+    """
+    unknown = set(categories.keys()) - VALID_CATEGORIES
+    if unknown:
+        msg = f"Unknown categories in mitigations.yaml: {sorted(unknown)}"
+        raise ValueError(msg)
+
+    missing = VALID_CATEGORIES - set(categories.keys())
+    if missing:
+        msg = f"Missing categories in mitigations.yaml: {sorted(missing)}"
+        raise ValueError(msg)
+
+    for cat_name, cat_data in categories.items():
+        if not isinstance(cat_data, dict):
+            msg = f"Category '{cat_name}' must be a mapping, got {type(cat_data).__name__}"
+            raise TypeError(msg)
+        actions = cat_data.get("tier1_actions", [])
+        if not isinstance(actions, list):
+            msg = f"tier1_actions for '{cat_name}' must be a list, got {type(actions).__name__}"
+            raise TypeError(msg)
+        if not actions:
+            msg = f"Empty tier1_actions for category '{cat_name}'"
+            raise ValueError(msg)
+        factors = cat_data.get("tier3_factors", [])
+        if not isinstance(factors, list):
+            msg = f"tier3_factors for '{cat_name}' must be a list, got {type(factors).__name__}"
+            raise TypeError(msg)
+        if not factors:
+            msg = f"Empty tier3_factors for category '{cat_name}'"
+            raise ValueError(msg)
+
+
+def _validate_rules(rules: dict[str, Any]) -> None:
+    """Validate the rules section of mitigations.yaml.
+
+    Duplicate keys are already caught by _DuplicateKeyLoader at parse time.
+
+    Args:
+        rules: The rules dict from the YAML file.
+
+    Raises:
+        ValueError: On empty action lists.
+        TypeError: On unexpected types for rule data or action lists.
+    """
+    for predicate_name, rule_data in rules.items():
+        if not isinstance(rule_data, dict):
+            msg = f"Rule '{predicate_name}' must be a mapping, got {type(rule_data).__name__}"
+            raise TypeError(msg)
+        actions = rule_data.get("actions", [])
+        if not isinstance(actions, list):
+            msg = (
+                f"actions for rule '{predicate_name}' must be a list, got {type(actions).__name__}"
+            )
+            raise TypeError(msg)
+        if not actions:
+            msg = f"Empty actions for rule predicate '{predicate_name}'"
+            raise ValueError(msg)
+
+
 def _load_mitigations_yaml(yaml_path: Path | None = None) -> dict[str, Any]:
     """Load and validate mitigations.yaml.
 
@@ -362,36 +429,22 @@ def _load_mitigations_yaml(yaml_path: Path | None = None) -> dict[str, Any]:
         with yaml_path.open() as f:
             data = yaml.load(f, Loader=_DuplicateKeyLoader)  # noqa: S506
 
+    if not isinstance(data, dict):
+        msg = f"mitigations.yaml root must be a mapping, got {type(data).__name__}"
+        raise TypeError(msg)
+
     categories = data.get("categories", {})
     rules = data.get("rules", {})
 
-    # Validate categories
-    unknown = set(categories.keys()) - VALID_CATEGORIES
-    if unknown:
-        msg = f"Unknown categories in mitigations.yaml: {sorted(unknown)}"
-        raise ValueError(msg)
+    if not isinstance(categories, dict):
+        msg = f"'categories' must be a mapping, got {type(categories).__name__}"
+        raise TypeError(msg)
+    if not isinstance(rules, dict):
+        msg = f"'rules' must be a mapping, got {type(rules).__name__}"
+        raise TypeError(msg)
 
-    missing = VALID_CATEGORIES - set(categories.keys())
-    if missing:
-        msg = f"Missing categories in mitigations.yaml: {sorted(missing)}"
-        raise ValueError(msg)
-
-    for cat_name, cat_data in categories.items():
-        actions = cat_data.get("tier1_actions", [])
-        if not actions:
-            msg = f"Empty tier1_actions for category '{cat_name}'"
-            raise ValueError(msg)
-        factors = cat_data.get("tier3_factors", [])
-        if not factors:
-            msg = f"Empty tier3_factors for category '{cat_name}'"
-            raise ValueError(msg)
-
-    # Validate rules — duplicate keys already caught by _DuplicateKeyLoader
-    for predicate_name, rule_data in rules.items():
-        actions = rule_data.get("actions", [])
-        if not actions:
-            msg = f"Empty actions for rule predicate '{predicate_name}'"
-            raise ValueError(msg)
+    _validate_categories(categories)
+    _validate_rules(rules)
 
     return data
 
