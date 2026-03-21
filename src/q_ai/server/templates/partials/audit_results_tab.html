@@ -71,7 +71,7 @@
             {% if audit_evidence_map.get(f.id) %}
             <tr>
                 <td colspan="5" class="pt-1 pb-0 border-none">
-                    <button class="btn btn-ghost btn-xs rounded-full"
+                    <button class="btn btn-outline btn-xs rounded-full"
                             onclick="document.getElementById('evidence-{{ f.id }}').classList.toggle('hidden')">
                         Evidence
                     </button>
@@ -90,7 +90,7 @@
             {% endif %}
             <tr>
                 <td colspan="5" class="pt-1 pb-0 border-none">
-                    <button class="btn btn-ghost btn-xs rounded-full"
+                    <button class="btn btn-outline btn-xs rounded-full"
                             onclick="document.getElementById('mitigation-{{ f.id }}').classList.toggle('hidden')">
                         Mitigation
                     </button>
