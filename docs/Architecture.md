@@ -234,6 +234,14 @@ User rules: `~/.qai/cxp/rules/{id}.yaml`. Built-in rules: `src/q_ai/cxp/rules/{i
 
 ---
 
+## Design Decisions
+
+### D16: SARIF is Audit-Only
+
+SARIF output is scoped to the audit module. Inject outcomes use `InjectionOutcome` (not CWE/Rule), and proxy captures are session recordings (not static analysis findings). Normalizing these to SARIF's static analysis schema would require non-trivial refactoring with questionable value. Other modules use JSON bundle export for machine-readable output.
+
+---
+
 ## Security Considerations
 
 - All modules test systems the operator owns, controls, or has explicit permission to test.
