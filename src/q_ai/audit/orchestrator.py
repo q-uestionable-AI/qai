@@ -122,7 +122,22 @@ async def run_scan(
     # Resolve mitigation guidance on every finding
     mitigation_resolver = MitigationResolver()
     for finding in result.findings:
-        finding.mitigation = mitigation_resolver.resolve(finding)
+        try:
+            finding.mitigation = mitigation_resolver.resolve(finding)
+        except Exception as exc:
+            logger.error(
+                "Mitigation resolve failed for %s (%s): %s",
+                finding.rule_id,
+                finding.category,
+                exc,
+                exc_info=True,
+            )
+            result.errors.append(
+                {
+                    "scanner": "mitigation_resolver",
+                    "error": f"Failed to resolve mitigation for {finding.rule_id}: {exc}",
+                }
+            )
 
     result.finished_at = datetime.now(UTC)
     return result

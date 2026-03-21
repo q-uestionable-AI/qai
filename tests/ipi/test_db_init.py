@@ -94,7 +94,9 @@ class TestIPISchemaV7:
 
         with get_connection(db_path) as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert version == 9
+            # V9 skips when findings table is absent (V1 never ran in this
+            # synthetic scenario), so version stays at 8.
+            assert version == 8
             tables = {
                 row[0]
                 for row in conn.execute(

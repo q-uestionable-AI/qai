@@ -257,10 +257,11 @@ def _migrate_v9(conn: sqlite3.Connection) -> None:
     has_findings = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='findings'"
     ).fetchone()
-    if has_findings:
-        columns = {row[1] for row in conn.execute("PRAGMA table_info(findings)").fetchall()}
-        if "mitigation" not in columns:
-            conn.execute("ALTER TABLE findings ADD COLUMN mitigation TEXT")
+    if not has_findings:
+        return
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(findings)").fetchall()}
+    if "mitigation" not in columns:
+        conn.execute("ALTER TABLE findings ADD COLUMN mitigation TEXT")
     conn.execute("PRAGMA user_version = 9")
 
 

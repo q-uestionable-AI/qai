@@ -24,6 +24,8 @@ from q_ai.mcp.models import ScanFinding, Severity
 
 
 class TestSectionKind:
+    """Tests for SectionKind StrEnum values and construction validation."""
+
     def test_values(self) -> None:
         assert SectionKind.ACTIONS == "actions"
         assert SectionKind.FACTORS == "factors"
@@ -34,6 +36,8 @@ class TestSectionKind:
 
 
 class TestSourceType:
+    """Tests for SourceType StrEnum values and construction validation."""
+
     def test_values(self) -> None:
         assert SourceType.TAXONOMY == "taxonomy"
         assert SourceType.RULE == "rule"
@@ -50,6 +54,8 @@ class TestSourceType:
 
 
 class TestGuidanceSection:
+    """Tests for GuidanceSection serialization and round-trip fidelity."""
+
     def test_to_dict_round_trip(self) -> None:
         section = GuidanceSection(
             kind=SectionKind.ACTIONS,
@@ -84,6 +90,8 @@ class TestGuidanceSection:
 
 
 class TestMitigationGuidance:
+    """Tests for MitigationGuidance defaults, serialization, and fail-soft deserialization."""
+
     def test_defaults(self) -> None:
         g = MitigationGuidance()
         assert g.sections == []
@@ -137,6 +145,8 @@ class TestMitigationGuidance:
 
 
 class TestNormalizeMetadata:
+    """Tests for metadata normalization via PREDICATE_MAP and extraction functions."""
+
     def test_static_mapping(self) -> None:
         predicates = normalize_metadata({"detection_mode": "canary"})
         assert "detection_mode:canary" in predicates
@@ -208,6 +218,8 @@ class TestNormalizeMetadata:
 
 
 class TestYamlValidation:
+    """Tests for mitigations.yaml loading, validation, and error detection."""
+
     def test_bundled_yaml_loads_successfully(self) -> None:
         resolver = MitigationResolver()
         assert resolver is not None
@@ -281,6 +293,22 @@ class TestYamlValidation:
         with pytest.raises(ValueError, match="Empty actions for rule"):
             MitigationResolver(yaml_path=yaml_path)
 
+    def test_raises_on_duplicate_yaml_keys(self, tmp_path: Path) -> None:
+        """Duplicate YAML keys are caught at parse time by DuplicateKeyLoader."""
+        lines = ["categories:\n"]
+        for cat in sorted(VALID_CATEGORIES):
+            lines.append(f"  {cat}:\n")
+            lines.append("    tier1_actions: ['x']\n")
+            lines.append("    tier3_factors: ['y']\n")
+        # Duplicate rule key in YAML (not a Python dict — raw YAML text)
+        lines.append("rules:\n")
+        lines.append("  'dup:pred':\n    actions: ['a']\n")
+        lines.append("  'dup:pred':\n    actions: ['b']\n")
+        yaml_path = tmp_path / "bad.yaml"
+        yaml_path.write_text("".join(lines))
+        with pytest.raises(ValueError, match="Duplicate YAML key"):
+            MitigationResolver(yaml_path=yaml_path)
+
 
 # ---------------------------------------------------------------------------
 # MitigationResolver
@@ -288,6 +316,8 @@ class TestYamlValidation:
 
 
 class TestMitigationResolver:
+    """Tests for MitigationResolver section ordering, content, and determinism."""
+
     def _make_finding(
         self,
         category: str = "command_injection",

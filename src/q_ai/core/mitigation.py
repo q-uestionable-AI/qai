@@ -18,10 +18,44 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+import yaml.constructor
 
 from q_ai.mcp.models import ScanFinding
 
 logger = logging.getLogger("q_ai.core.mitigation")
+
+
+class _DuplicateKeyLoader(yaml.SafeLoader):
+    """YAML loader that raises on duplicate keys within a mapping."""
+
+
+def _check_duplicates(loader: yaml.Loader, node: yaml.Node) -> dict:
+    """Construct a mapping while detecting duplicate keys.
+
+    Args:
+        loader: The active YAML loader.
+        node: The mapping node to construct.
+
+    Returns:
+        The constructed dict.
+
+    Raises:
+        ValueError: If any key appears more than once in the mapping.
+    """
+    mapping: dict = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node)
+        if key in mapping:
+            msg = f"Duplicate YAML key '{key}' at line {key_node.start_mark.line + 1}"
+            raise ValueError(msg)
+        mapping[key] = loader.construct_object(value_node)
+    return mapping
+
+
+_DuplicateKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _check_duplicates,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -110,10 +144,27 @@ class GuidanceSection:
 
         Returns:
             A GuidanceSection instance.
+
+        Raises:
+            ValueError: If required keys are missing or enum values are invalid.
         """
+        missing = [k for k in ("kind", "source_type") if k not in data]
+        if missing:
+            msg = f"GuidanceSection missing required keys: {missing}"
+            raise ValueError(msg)
+        try:
+            kind = SectionKind(data["kind"])
+        except ValueError:
+            msg = f"Invalid SectionKind value: {data['kind']!r}"
+            raise ValueError(msg) from None
+        try:
+            source_type = SourceType(data["source_type"])
+        except ValueError:
+            msg = f"Invalid SourceType value: {data['source_type']!r}"
+            raise ValueError(msg) from None
         return cls(
-            kind=SectionKind(data["kind"]),
-            source_type=SourceType(data["source_type"]),
+            kind=kind,
+            source_type=source_type,
             source_ids=list(data.get("source_ids", [])),
             items=list(data.get("items", [])),
         )
@@ -306,10 +357,10 @@ def _load_mitigations_yaml(yaml_path: Path | None = None) -> dict[str, Any]:
         data_files = resources.files("q_ai.core.data")
         resource = data_files.joinpath("mitigations.yaml")
         with resource.open() as f:
-            data: dict = yaml.safe_load(f)
+            data: dict = yaml.load(f, Loader=_DuplicateKeyLoader)  # noqa: S506
     else:
         with yaml_path.open() as f:
-            data = yaml.safe_load(f)
+            data = yaml.load(f, Loader=_DuplicateKeyLoader)  # noqa: S506
 
     categories = data.get("categories", {})
     rules = data.get("rules", {})
@@ -335,14 +386,8 @@ def _load_mitigations_yaml(yaml_path: Path | None = None) -> dict[str, Any]:
             msg = f"Empty tier3_factors for category '{cat_name}'"
             raise ValueError(msg)
 
-    # Validate rules — check for duplicate predicate names
-    seen_predicates: set[str] = set()
+    # Validate rules — duplicate keys already caught by _DuplicateKeyLoader
     for predicate_name, rule_data in rules.items():
-        if predicate_name in seen_predicates:
-            msg = f"Duplicate predicate in rules: '{predicate_name}'"
-            raise ValueError(msg)
-        seen_predicates.add(predicate_name)
-
         actions = rule_data.get("actions", [])
         if not actions:
             msg = f"Empty actions for rule predicate '{predicate_name}'"

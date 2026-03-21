@@ -236,7 +236,7 @@ class Finding:
     title: str
     description: str | None = None
     framework_ids: dict | None = None
-    mitigation: str | None = None
+    mitigation: dict | None = None
     source_ref: str | None = None
     created_at: datetime.datetime | None = None
 
@@ -256,7 +256,7 @@ class Finding:
             "title": self.title,
             "description": self.description,
             "framework_ids": _dump_json(self.framework_ids),
-            "mitigation": self.mitigation,
+            "mitigation": _dump_json(self.mitigation),
             "source_ref": self.source_ref,
             "created_at": _dump_dt(self.created_at),
         }
@@ -280,7 +280,7 @@ class Finding:
             title=row["title"],
             description=row.get("description"),
             framework_ids=_parse_json(row.get("framework_ids")),
-            mitigation=row.get("mitigation"),
+            mitigation=_parse_json(row.get("mitigation")),
             source_ref=row.get("source_ref"),
             created_at=_parse_dt(row.get("created_at")),
         )

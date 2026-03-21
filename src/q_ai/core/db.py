@@ -738,7 +738,7 @@ def create_finding(
     title: str,
     description: str | None = None,
     framework_ids: dict | None = None,
-    mitigation: str | None = None,
+    mitigation: dict | None = None,
     source_ref: str | None = None,
 ) -> str:
     """Insert a new finding and return its ID.
@@ -752,7 +752,7 @@ def create_finding(
         title: Short human-readable title.
         description: Optional detailed description.
         framework_ids: Optional framework identifier mapping.
-        mitigation: Optional JSON-serialized MitigationGuidance.
+        mitigation: Optional MitigationGuidance dict for JSON serialization.
         source_ref: Optional source reference.
 
     Returns:
@@ -776,7 +776,7 @@ def create_finding(
             title,
             description,
             _dump_json(framework_ids),
-            mitigation,
+            _dump_json(mitigation),
             source_ref,
             _now_iso(),
         ),

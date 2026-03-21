@@ -9,7 +9,7 @@ from q_ai.core.schema import CURRENT_VERSION, V1_INDEXES, V1_TABLES, migrate
 
 
 class TestSchemaV2:
-    def test_current_version_is_6(self) -> None:
+    def test_current_version_is_9(self) -> None:
         assert CURRENT_VERSION == 9
 
     def test_audit_scans_table_created(self, tmp_path: Path) -> None:
