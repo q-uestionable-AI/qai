@@ -103,7 +103,8 @@ dialog:focus-visible {
 
 /* ── Checkbox overrides ─────────────────────────────────────── */
 .checkbox {
-    border-color: rgba(139, 92, 246, 0.5);
+    border-color: rgba(139, 92, 246, 0.7);
+    border-width: 2px;
 }
 
 /* ── Stat box overrides ─────────────────────────────────────── */
