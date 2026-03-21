@@ -209,9 +209,10 @@ def _load_module_data(
         audit_scan = dict(row) if row else None
         audit_findings = list_findings(conn, run_id=audit_child.id)
         for af in audit_findings:
-            af.mitigation_guidance = (
-                MitigationGuidance.from_dict(af.mitigation) if af.mitigation else None
-            )
+            af.mitigation_guidance = None
+            if af.mitigation:
+                with contextlib.suppress(TypeError, ValueError):
+                    af.mitigation_guidance = MitigationGuidance.from_dict(af.mitigation)
             audit_evidence_map[af.id] = list_evidence(conn, finding_id=af.id)
 
     inject_child = child_by_module.get("inject")
