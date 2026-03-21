@@ -1,0 +1,111 @@
+{# Model area partial — swapped in via HTMX when a provider is selected.
+   Context variables: models, supports_custom, error, message,
+                      selector_id, provider_name, default_model_id, provider_type #}
+
+{% if error %}
+{# State: unreachable or error #}
+<div style="border: 1px solid #ef4444; border-radius: 0.5rem; padding: 0.5rem 0.75rem;
+            background: rgba(239,68,68,0.08); font-size: 0.8rem;">
+    <div style="color: #ef4444; font-weight: 600; margin-bottom: 0.15rem;">{{ error }}</div>
+    <div style="opacity: 0.7;">Check that the provider is running.
+        <a href="/settings#providers" style="color: #7c3aed; text-decoration: underline;">Settings</a>
+    </div>
+</div>
+{% if supports_custom %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.35rem;">
+    {% if provider_type == "local" %}
+    <button type="button" class="btn btn-xs btn-ghost"
+            onclick="(function(){ var dm={{ (default_model_id or '') | tojson }}; var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/{{ provider_name }}/models?default=' + encodeURIComponent(dm) + '&selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })()">
+        &#8635; Retry
+    </button>
+    {% else %}
+    <span></span>
+    {% endif %}
+    <label style="font-size: 0.7rem; opacity: 0.5; font-style: italic; cursor: pointer;"
+           onclick="document.getElementById('{{ selector_id }}-custom-wrap').classList.toggle('hidden')">
+        or type a model ID manually
+    </label>
+</div>
+<div id="{{ selector_id }}-custom-wrap" class="hidden mt-1">
+    <input type="text" name="model"
+           placeholder="provider/model-id"
+           class="input input-bordered input-sm w-full" />
+</div>
+{% endif %}
+
+{% elif message %}
+{# State: reachable but empty model list #}
+<div style="border: 1px solid #f59e0b; border-radius: 0.5rem; padding: 0.5rem 0.75rem;
+            background: rgba(245,158,11,0.08); font-size: 0.8rem;">
+    <div style="color: #f59e0b; font-weight: 600; margin-bottom: 0.15rem;">No models loaded</div>
+    <div style="opacity: 0.7;">{{ message }}</div>
+</div>
+{% if supports_custom %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.35rem;">
+    <button type="button" class="btn btn-xs btn-ghost"
+            onclick="(function(){ var dm={{ (default_model_id or '') | tojson }}; var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/{{ provider_name }}/models?default=' + encodeURIComponent(dm) + '&selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })()">
+        &#8635; Refresh models
+    </button>
+    <label style="font-size: 0.7rem; opacity: 0.5; font-style: italic; cursor: pointer;"
+           onclick="document.getElementById('{{ selector_id }}-custom-wrap').classList.toggle('hidden')">
+        or type a model ID manually
+    </label>
+</div>
+<div id="{{ selector_id }}-custom-wrap" class="hidden mt-1">
+    <input type="text" name="model"
+           placeholder="provider/model-id"
+           class="input input-bordered input-sm w-full" />
+</div>
+{% endif %}
+
+{% else %}
+{# State: models loaded (enumerated or curated) #}
+<select name="model" required
+        class="select select-bordered select-sm w-full"
+        onchange="toggleCustomModel_{{ selector_id }}(this)">
+    <option value="" disabled {% if not default_model_id %}selected{% endif %}>Select a model...</option>
+    {% for m in models %}
+    <option value="{{ m.id }}"
+            {% if m.id == default_model_id %}selected{% endif %}>{{ m.label }}</option>
+    {% endfor %}
+    {% if supports_custom %}
+    <option value="__custom__">Custom model id...</option>
+    {% endif %}
+</select>
+
+{% if provider_type == "local" %}
+<div style="display: flex; justify-content: flex-end; margin-top: 0.25rem;">
+    <button type="button" class="btn btn-xs btn-ghost"
+            onclick="(function(){ var dm={{ (default_model_id or '') | tojson }}; var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/{{ provider_name }}/models?default=' + encodeURIComponent(dm) + '&selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })()">
+        &#8635; Refresh models
+    </button>
+</div>
+{% endif %}
+
+{% if supports_custom %}
+<div id="{{ selector_id }}-custom-wrap" class="hidden mt-1">
+    <input type="text" id="{{ selector_id }}-custom-input"
+           placeholder="provider/model-id"
+           class="input input-bordered input-sm w-full" />
+</div>
+<script>
+function toggleCustomModel_{{ selector_id }}(sel) {
+    var wrap = document.getElementById('{{ selector_id }}-custom-wrap');
+    var inp = document.getElementById('{{ selector_id }}-custom-input');
+    if (sel.value === '__custom__') {
+        wrap.classList.remove('hidden');
+        inp.name = 'model';
+        inp.required = true;
+        sel.name = '';
+        sel.required = false;
+    } else {
+        wrap.classList.add('hidden');
+        inp.name = '';
+        inp.required = false;
+        sel.name = 'model';
+        sel.required = true;
+    }
+}
+</script>
+{% endif %}
+{% endif %}

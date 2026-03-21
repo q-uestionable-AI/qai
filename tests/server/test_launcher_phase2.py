@@ -47,13 +47,18 @@ class TestLauncherDefaults:
     """Launcher reads and applies settings defaults."""
 
     def test_defaults_in_context(self, client: TestClient, tmp_db: Path) -> None:
-        """Launcher includes default_model and audit_default_transport."""
+        """Launcher includes default_provider and default_model_id."""
         conn = sqlite3.connect(str(tmp_db))
         try:
             conn.execute(
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) "
                 "VALUES (?, ?, datetime('now'))",
-                ("default_model", "lmstudio/qwen2.5-7b"),
+                ("default_provider", "lmstudio"),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) "
+                "VALUES (?, ?, datetime('now'))",
+                ("default_model_id", "lmstudio/qwen2.5-7b"),
             )
             conn.execute(
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) "
@@ -71,45 +76,49 @@ class TestLauncherDefaults:
 
         resp = client.get("/")
         assert resp.status_code == 200
-        # Model should appear as an option (lmstudio is configured via base_url)
-        assert "lmstudio/qwen2.5-7b" in resp.text
+        # Provider should be pre-selected in the dropdown
+        assert 'value="lmstudio"' in resp.text
 
 
 class TestModelOptions:
     """Model dropdown shows actual model names from settings."""
 
-    def test_default_model_shown(self, client: TestClient, tmp_db: Path) -> None:
-        """When default_model is set, it appears in the dropdown."""
+    def test_default_provider_preselected(self, client: TestClient, tmp_db: Path) -> None:
+        """When default_provider is set, it is pre-selected in the dropdown."""
         conn = sqlite3.connect(str(tmp_db))
         try:
             conn.execute(
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) "
                 "VALUES (?, ?, datetime('now'))",
-                ("default_model", "openai/gpt-4o"),
+                ("default_provider", "openai"),
             )
             conn.commit()
         finally:
             conn.close()
 
-        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
-            resp = client.get("/")
-        assert "openai/gpt-4o" in resp.text
-
-    def test_fallback_to_provider_default(self, client: TestClient) -> None:
-        """Without default_model, providers show provider/default."""
-        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+        with patch("q_ai.core.providers.get_credential", return_value="test-key"):
             resp = client.get("/")
         assert resp.status_code == 200
-        # All providers should render as provider/default in the dropdown
-        assert "anthropic/default" in resp.text
+        assert 'value="openai"' in resp.text
+
+    def test_configured_provider_in_dropdown(self, client: TestClient) -> None:
+        """Configured provider appears in provider dropdown."""
+        with (
+            patch("q_ai.server.routes.get_credential", return_value="test-key"),
+            patch("q_ai.core.providers.get_credential", return_value="test-key"),
+        ):
+            resp = client.get("/")
+        assert resp.status_code == 200
+        # Provider should appear in the selector dropdown by label
+        assert "Anthropic" in resp.text
 
     def test_unconfigured_providers_excluded(self, client: TestClient) -> None:
-        """ollama/lmstudio do NOT appear in the dropdown without explicit config."""
+        """Unconfigured providers do NOT appear in the dropdown."""
         resp = client.get("/")
         assert resp.status_code == 200
-        # Without configuration, local providers should not be selectable
-        assert "ollama/default" not in resp.text
-        assert "lmstudio/default" not in resp.text
+        # Without configuration, provider names should not appear in selector options
+        assert 'value="ollama"' not in resp.text
+        assert 'value="lmstudio"' not in resp.text
 
 
 class TestUrlPlaceholder:
@@ -274,17 +283,19 @@ class TestQuickActionLaunch:
 
     def test_campaign_requires_model(self, client: TestClient) -> None:
         """Campaign action without model returns 422."""
-        resp = client.post(
-            "/api/quick-actions/launch",
-            json={
-                "action": "campaign",
-                "target_name": "x",
-                "transport": "stdio",
-                "command": "echo hi",
-            },
-        )
+        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+            resp = client.post(
+                "/api/quick-actions/launch",
+                json={
+                    "action": "campaign",
+                    "target_name": "x",
+                    "transport": "stdio",
+                    "command": "echo hi",
+                    "provider": "openai",
+                },
+            )
         assert resp.status_code == 422
-        assert "model" in resp.json()["detail"]
+        assert "model" in resp.json()["detail"].lower()
 
     def test_campaign_rejects_invalid_rounds(self, client: TestClient) -> None:
         """Campaign with non-integer rounds returns 422."""
@@ -296,6 +307,7 @@ class TestQuickActionLaunch:
                     "target_name": "x",
                     "transport": "stdio",
                     "command": "echo hi",
+                    "provider": "openai",
                     "model": "openai/gpt-4",
                     "rounds": "abc",
                 },
@@ -313,6 +325,7 @@ class TestQuickActionLaunch:
                     "target_name": "x",
                     "transport": "stdio",
                     "command": "echo hi",
+                    "provider": "openai",
                     "model": "openai/gpt-4",
                     "rounds": 20,
                 },
@@ -330,11 +343,12 @@ class TestQuickActionLaunch:
                     "target_name": "x",
                     "transport": "stdio",
                     "command": "echo hi",
+                    "provider": "openai",
                     "model": "openai/gpt-4",
                 },
             )
         assert resp.status_code == 422
-        assert "credential" in resp.json()["detail"]
+        assert "not configured" in resp.json()["detail"].lower()
 
     def test_intercept_launch_creates_run(self, client: TestClient, tmp_db: Path) -> None:
         """Intercept quick action creates a run and target."""
@@ -365,6 +379,7 @@ class TestQuickActionLaunch:
                     "target_name": "inject-test",
                     "transport": "stdio",
                     "command": "echo hi",
+                    "provider": "openai",
                     "model": "openai/gpt-4",
                     "rounds": 1,
                 },

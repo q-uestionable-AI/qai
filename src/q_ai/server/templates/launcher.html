@@ -61,19 +61,6 @@
 </div>
 {% endmacro %}
 
-{# ---- Reusable macro for provider dropdown ---- #}
-{% macro model_dropdown() %}
-<div class="form-control">
-    <label class="label"><span class="label-text">Provider</span></label>
-    <select name="model" required class="select select-bordered select-sm w-full">
-        <option value="" disabled selected>Select a provider...</option>
-        {% for opt in model_options %}
-        <option value="{{ opt.value }}"
-                {% if opt.value == defaults.default_model %}selected{% endif %}>{{ opt.label }}</option>
-        {% endfor %}
-    </select>
-</div>
-{% endmacro %}
 
 {# ---- Workflow color config — unified violet for all rows ---- #}
 {% set wf_color_default = {'color': '#a78bfa', 'border': 'rgba(139,92,246,0.35)', 'bg': 'rgba(139,92,246,0.06)'} %}
@@ -157,7 +144,8 @@
                     {# ---- ASSESS FORM ---- #}
                     {{ target_name_field(wf.id, "my-mcp-server") }}
                     {{ transport_fields(wf.id) }}
-                    {{ model_dropdown() }}
+                    {% set selector_id = "assess" %}
+                    {% include "partials/model_selector.html" %}
 
                     <div class="form-control">
                         <label class="label"><span class="label-text">Rounds</span></label>
@@ -271,7 +259,8 @@
                     </div>
 
                     {{ transport_fields(wf.id) }}
-                    {{ model_dropdown() }}
+                    {% set selector_id = "trace_path" %}
+                    {% include "partials/model_selector.html" %}
 
                     {% elif wf.id == 'blast_radius' %}
                     {# ---- BLAST RADIUS FORM ---- #}
@@ -374,7 +363,8 @@
                 <input type="hidden" name="action" value="campaign" />
                 {{ target_name_field('qa_campaign', "my-mcp-server") }}
                 {{ transport_fields('qa_campaign') }}
-                {{ model_dropdown() }}
+                {% set selector_id = "campaign" %}
+                {% include "partials/model_selector.html" %}
 
                 <div class="form-control">
                     <label class="label"><span class="label-text">Rounds</span></label>
@@ -535,5 +525,19 @@ async function _doLaunch(e, wfId, url) {
 
 function launchWorkflow(e, wfId) { return _doLaunch(e, wfId, '/api/workflows/launch'); }
 function launchQuickAction(e, wfId) { return _doLaunch(e, wfId, '/api/quick-actions/launch'); }
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[id$="-provider"]').forEach(function(sel) {
+        if (sel.value && sel.value !== '') {
+            var selectorId = sel.id.replace('-provider', '');
+            var defaultModel = {{ (default_model_id or "") | tojson }};
+            htmx.ajax('GET',
+                '/api/providers/' + sel.value + '/models?default=' + encodeURIComponent(defaultModel) + '&selector_id=' + selectorId,
+                {target: '#' + selectorId + '-model-area'});
+        }
+    });
+});
 </script>
 {% endblock %}

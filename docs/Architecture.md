@@ -104,11 +104,15 @@ The core module is the integration surface. All modules read and write through i
 - **`db.py`** — SQLite connection manager with WAL mode, schema migration on connect, and common CRUD for shared tables (`runs`, `targets`, `findings`, `evidence`, `settings`).
 - **`models.py`** — `Run`, `Target`, `Finding`, `Evidence`, `Severity` (IntEnum: INFO=0..CRITICAL=4), `RunStatus` (IntEnum: PENDING=0..PARTIAL=6).
 - **`schema.py`** — DDL for all shared tables plus module-specific tables. Schema version tracked via `PRAGMA user_version`.
-- **`config.py`** — OS keyring for API keys. Non-secret settings in `~/.qai/config.yaml` and DB `settings` table. Precedence: CLI flag → env var → keyring/DB setting/config file → default.
-- **`llm.py`** — `ProviderClient` protocol, `NormalizedResponse`, `ToolSpec`, `ToolCall`. `provider/model` string convention. Bare strings fall back to `anthropic/`.
+- **`config.py`** — OS keyring for API keys. Non-secret settings in `~/.qai/config.yaml` and DB `settings` table. Provider defaults stored as `default_provider` + `default_model_id` (migrated from legacy `default_model` on first read). Precedence: CLI flag → env var → keyring/DB setting/config file → default.
+- **`llm.py`** — `ProviderClient` protocol, `NormalizedResponse`, `ToolSpec`, `ToolCall`. `provider/model` string convention. The litellm runtime string is composed at launch time from separate `provider` and `model_id` fields stored in settings.
 - **`llm_litellm.py`** — The only file that imports `litellm`. If litellm needs replacing, only this file changes.
 - **`frameworks.py`** — `FrameworkResolver` resolves `category` strings (e.g., `tool_poisoning`) to OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, and CWE IDs. All four frameworks are fully mapped for all 10 scanner categories. The `category` field is the canonical taxonomy; framework IDs are derived. ATLAS mappings verified against v5.4.0.
 - **`update_frameworks.py`** — `check_frameworks()` fetches the structured ATLAS.yaml from the latest GitHub release, diffs technique IDs against local mappings, and checks the OWASP MCP Top 10 page for version changes. Results cached 24h at `~/.qai/cache/framework_updates.json`. Never writes to `frameworks.yaml`.
+
+### Provider Registry (`core/providers.py`)
+
+Single source of truth for provider definitions. `PROVIDERS` dict maps provider keys to `ProviderConfig` dataclasses with type (CLOUD/LOCAL/CUSTOM), curated model lists, endpoint URLs, and capability flags. `fetch_models()` enumerates available models from local providers (Ollama, LM Studio) via their APIs with a 3s timeout, or returns curated lists for cloud providers. `get_configured_providers()` checks credential and base_url presence across all registered providers.
 
 ---
 
@@ -153,6 +157,9 @@ WorkflowRunner.emit() ──► ConnectionManager.broadcast() ──► all conn
 - `GET /settings` — provider credentials, defaults, infrastructure reachability
 - `POST /api/workflows/launch` — create target, start workflow as background task, return run_id
 - `WS /ws` — live workflow events
+- `GET /api/providers/{name}/models` — HTMX endpoint returning model area HTML partial. Four states: enumerated (local), curated (cloud), empty (warning), unreachable (error).
+
+**Provider/Model Selector:** Two-step HTMX component (`model_selector.html` + `model_area.html`). Provider dropdown triggers live model fetch via `htmx.ajax()`. Shared across launcher forms and Settings defaults via `{% include %}` with `selector_id` scoping.
 
 **WebSocket event schema:**
 ```python

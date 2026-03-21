@@ -33,6 +33,14 @@ from q_ai.core.db import (
     set_setting,
 )
 from q_ai.core.models import RunStatus, Severity
+from q_ai.core.providers import (
+    PROVIDERS,
+    ProviderType,
+    fetch_models,
+    get_configured_providers,
+    get_provider,
+    migrate_default_model,
+)
 from q_ai.orchestrator.registry import get_workflow, list_workflows
 from q_ai.orchestrator.runner import WorkflowRunner
 from q_ai.rxp._deps import is_available as rxp_is_available
@@ -84,21 +92,20 @@ async def launcher(request: Request) -> HTMLResponse:
         else:
             workflows.append(entry)
 
-    all_providers = _get_providers_status(request)
-    # Only show providers the user has explicitly configured in Settings.
-    providers = [p for p in all_providers if p["configured"]]
     db_path = _get_db_path(request)
+    all_providers = get_configured_providers(db_path)
+    providers = [p for p in all_providers if p["configured"]]
+
+    migrate_default_model(db_path)
+
     with get_connection(db_path) as conn:
-        default_model = get_setting(conn, "default_model") or ""
+        default_provider = get_setting(conn, "default_provider") or ""
+        default_model_id = get_setting(conn, "default_model_id") or ""
         default_transport = get_setting(conn, "audit.default_transport") or "stdio"
         defaults = {
             "ipi_callback_url": get_setting(conn, "ipi.default_callback_url") or "",
-            "default_model": default_model,
             "audit_default_transport": default_transport,
         }
-
-    # Build model options: show actual model name from settings where possible
-    model_options = _build_model_options(providers, default_model)
 
     return templates.TemplateResponse(
         request,
@@ -108,41 +115,12 @@ async def launcher(request: Request) -> HTMLResponse:
             "hero_workflow": hero_workflow,
             "workflows": workflows,
             "providers": providers,
-            "model_options": model_options,
+            "default_provider": default_provider,
+            "default_model_id": default_model_id,
             "rxp_available": rxp_is_available(),
             "defaults": defaults,
         },
     )
-
-
-def _build_model_options(
-    providers: list[dict[str, Any]], default_model: str
-) -> list[dict[str, str]]:
-    """Build model dropdown options from configured providers and default_model.
-
-    If default_model is set (e.g. "lmstudio/qwen2.5-7b-instruct"), the option
-    for that provider shows the actual model name. Other providers fall back to
-    "provider/default".
-
-    Args:
-        providers: List of configured provider dicts (must have "name" key).
-        default_model: The default_model setting value (may be empty).
-
-    Returns:
-        List of dicts with "value" and "label" keys for each option.
-    """
-    default_provider = ""
-    if default_model and "/" in default_model:
-        default_provider = default_model.split("/", 1)[0]
-
-    options: list[dict[str, str]] = []
-    for p in providers:
-        name = p["name"]
-        if name == default_provider:
-            options.append({"value": default_model, "label": default_model})
-        else:
-            options.append({"value": f"{name}/default", "label": f"{name}/default"})
-    return options
 
 
 @router.get("/operations")
@@ -1334,30 +1312,21 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
 def _get_providers_status(request: Request) -> list[dict[str, Any]]:
     """Build a list of provider statuses."""
-    known_providers = [
-        "anthropic",
-        "openai",
-        "groq",
-        "openrouter",
-        "ollama",
-        "lmstudio",
-        "custom",
-    ]
     db_path = _get_db_path(request)
     result: list[dict[str, Any]] = []
     with get_connection(db_path) as conn:
-        for p in known_providers:
+        for name in PROVIDERS:
             keyring_unavailable = False
             try:
-                cred = get_credential(p)
+                cred = get_credential(name)
             except RuntimeError:
                 cred = None
                 keyring_unavailable = True
-            base_url = get_setting(conn, f"{p}.base_url") or ""
+            base_url = get_setting(conn, f"{name}.base_url") or ""
             configured = cred is not None or bool(base_url)
             result.append(
                 {
-                    "name": p,
+                    "name": name,
                     "configured": configured,
                     "has_key": cred is not None,
                     "base_url": base_url,
@@ -1378,16 +1347,24 @@ async def settings_page(request: Request) -> HTMLResponse:
     templates = _get_templates(request)
     providers_status = _get_providers_status(request)
     db_path = _get_db_path(request)
+    migrate_default_model(db_path)
     with get_connection(db_path) as conn:
         defaults = {
-            "default_model": get_setting(conn, "default_model") or "",
+            "default_provider": get_setting(conn, "default_provider") or "",
+            "default_model_id": get_setting(conn, "default_model_id") or "",
             "audit.default_transport": (get_setting(conn, "audit.default_transport") or "stdio"),
             "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
         }
     return templates.TemplateResponse(
         request,
         "settings.html",
-        {"active": "settings", "providers": providers_status, "defaults": defaults},
+        {
+            "active": "settings",
+            "providers": providers_status,
+            "defaults": defaults,
+            "default_provider": defaults["default_provider"],
+            "default_model_id": defaults["default_model_id"],
+        },
     )
 
 
@@ -1545,7 +1522,8 @@ async def api_get_defaults(request: Request) -> JSONResponse:
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
         defaults = {
-            "default_model": get_setting(conn, "default_model") or "",
+            "default_provider": get_setting(conn, "default_provider") or "",
+            "default_model_id": get_setting(conn, "default_model_id") or "",
             "audit.default_transport": (get_setting(conn, "audit.default_transport") or "stdio"),
             "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
         }
@@ -1558,7 +1536,8 @@ async def api_save_defaults(request: Request) -> JSONResponse:
     body = await request.json()
     db_path = _get_db_path(request)
     allowed_keys = (
-        "default_model",
+        "default_provider",
+        "default_model_id",
         "audit.default_transport",
         "ipi.default_callback_url",
     )
@@ -1600,6 +1579,56 @@ async def api_infrastructure_status(request: Request) -> HTMLResponse:
         request,
         "partials/infrastructure_content.html",
         {"infrastructure": results},
+    )
+
+
+@router.get("/api/providers/{name}/models")
+async def api_provider_models(request: Request, name: str) -> Response:
+    """Fetch models for a provider and return an HTML partial."""
+    templates = _get_templates(request)
+    config = get_provider(name)
+    if config is None:
+        return HTMLResponse(
+            content="<div class='text-error text-sm'>Unknown provider</div>",
+            status_code=404,
+        )
+
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        try:
+            cred = get_credential(name)
+        except RuntimeError:
+            cred = None
+        base_url = get_setting(conn, f"{name}.base_url") or ""
+
+    configured = cred is not None or bool(base_url)
+    if not configured and config.type != ProviderType.CUSTOM:
+        return HTMLResponse(
+            content=(
+                "<div class='text-error text-sm'>Provider not configured. "
+                "<a href='/settings#providers' class='link'>Settings</a></div>"
+            ),
+            status_code=400,
+        )
+
+    result = await fetch_models(name, base_url or None)
+
+    selector_id = request.query_params.get("selector_id", "default")
+    default_model_id = request.query_params.get("default", "")
+
+    return templates.TemplateResponse(
+        request,
+        "partials/model_area.html",
+        {
+            "models": result.models,
+            "supports_custom": result.supports_custom,
+            "error": result.error,
+            "message": result.message,
+            "selector_id": selector_id,
+            "provider_name": name,
+            "default_model_id": default_model_id,
+            "provider_type": config.type.value,
+        },
     )
 
 
@@ -1968,12 +1997,13 @@ async def _run_workflow(
             await runner.fail(error=str(exc))
 
 
-def _check_provider_credential(body: dict[str, Any], db_path: Path | None) -> JSONResponse | None:
-    """Validate that the provider referenced by the model field has credentials.
+async def _validate_provider_model(
+    body: dict[str, Any], db_path: Path | None
+) -> JSONResponse | None:
+    """Validate provider/model pair before launch.
 
-    For local providers (ollama, lmstudio, custom), checks that a base URL is
-    configured or has a default. For cloud providers, checks that a credential
-    exists in the keyring.
+    Checks: provider is known, configured, model is non-empty, and
+    local providers are reachable.
 
     Args:
         body: The parsed request body dict.
@@ -1982,42 +2012,56 @@ def _check_provider_credential(body: dict[str, Any], db_path: Path | None) -> JS
     Returns:
         A JSONResponse with 422 status if validation fails, or None on success.
     """
-    try:
-        model = _str_field(body, "model")
-    except TypeError:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "Invalid provider model parameter"},
-        )
-    if not model or "/" not in model:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "model must be non-empty and in provider/model format"},
-        )
-    provider = model.split("/", 1)[0]
-    local_providers = {"ollama", "lmstudio", "custom"}
-    if provider in local_providers:
-        default_urls = {
-            "ollama": "http://localhost:11434",
-            "lmstudio": "http://localhost:1234",
-        }
-        with get_connection(db_path) as conn:
-            base_url_setting = get_setting(conn, f"{provider}.base_url")
-        if not base_url_setting and provider not in default_urls:
+    provider_name = (body.get("provider") or "").strip()
+    model = (body.get("model") or "").strip()
+
+    if not provider_name:
+        # Backward compat: try to extract from model string
+        if model and "/" in model:
+            provider_name = model.split("/", 1)[0]
+        if not provider_name:
             return JSONResponse(
                 status_code=422,
-                content={"detail": f"No base URL configured for provider '{provider}'"},
+                content={"detail": "provider is required"},
             )
-    else:
+
+    config = get_provider(provider_name)
+    if config is None:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"Unknown provider: {provider_name}"},
+        )
+
+    # Check configured
+    with get_connection(db_path) as conn:
         try:
-            cred = get_credential(provider)
+            cred = get_credential(provider_name)
         except RuntimeError:
             cred = None
-        if cred is None:
+        base_url = get_setting(conn, f"{provider_name}.base_url") or ""
+
+    configured = cred is not None or bool(base_url)
+    if not configured and config.type != ProviderType.CUSTOM:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"Provider '{provider_name}' is not configured"},
+        )
+
+    if not model:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "No model selected"},
+        )
+
+    # For local providers, check reachability via fetch_models
+    if config.type == ProviderType.LOCAL:
+        result = await fetch_models(provider_name, base_url or None)
+        if result.error:
             return JSONResponse(
                 status_code=422,
-                content={"detail": f"No credential configured for provider '{provider}'"},
+                content={"detail": result.error},
             )
+
     return None
 
 
@@ -2117,11 +2161,11 @@ async def launch_workflow(request: Request) -> JSONResponse:
             content={"detail": f"Unknown workflow: {workflow_id}"},
         )
 
-    # --- Provider credential check (skipped for workflows that don't need one) ---
+    # --- Provider/model validation (skipped for workflows that don't need one) ---
     if entry.requires_provider:
-        cred_error = _check_provider_credential(body, db_path)
-        if cred_error is not None:
-            return cred_error
+        validation_error = await _validate_provider_model(body, db_path)
+        if validation_error is not None:
+            return validation_error
 
     # --- Validate target_name early (but don't create row yet) ---
     _no_target_name_workflows = {"blast_radius", "generate_report"}
@@ -2245,7 +2289,7 @@ def _validate_campaign_fields(body: dict[str, Any]) -> JSONResponse | None:
     return None
 
 
-def _validate_quick_action(
+async def _validate_quick_action(
     body: dict[str, Any], db_path: Path | None
 ) -> JSONResponse | tuple[str, str]:
     """Validate quick action request fields.
@@ -2266,9 +2310,9 @@ def _validate_quick_action(
         )
 
     if action in _QUICK_ACTION_PROVIDER_REQUIRED:
-        cred_error = _check_provider_credential(body, db_path)
-        if cred_error is not None:
-            return cred_error
+        validation_error = await _validate_provider_model(body, db_path)
+        if validation_error is not None:
+            return validation_error
 
     target_name = _str_field(body, "target_name")
     if not target_name:
@@ -2376,7 +2420,7 @@ async def launch_quick_action(request: Request) -> JSONResponse:
     db_path = _get_db_path(request)
 
     try:
-        result = await asyncio.to_thread(_validate_quick_action, body, db_path)
+        result = await _validate_quick_action(body, db_path)
     except TypeError:
         logger.warning("Invalid request parameters in quick action", exc_info=True)
         return JSONResponse(status_code=422, content={"detail": "Invalid request parameters"})

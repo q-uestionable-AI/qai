@@ -46,7 +46,10 @@ class TestWorkflowAccordion:
 
     def test_inline_forms_present(self, client: TestClient) -> None:
         # A configured provider is required for the Assess form to render
-        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+        with (
+            patch("q_ai.server.routes.get_credential", return_value="test-key"),
+            patch("q_ai.core.providers.get_credential", return_value="test-key"),
+        ):
             resp = client.get("/")
         assert "form-assess" in resp.text
         # generate_report is hidden from launcher, no form expected
