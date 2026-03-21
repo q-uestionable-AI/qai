@@ -34,7 +34,12 @@ The web UI exposes JSON export at **Runs > Export JSON** and bulk export via **R
   "target": { },
   "audit_scans": [ ],
   "inject_results": [ ],
-  "proxy_sessions": [ ]
+  "proxy_sessions": [ ],
+  "chain_executions": [ ],
+  "chain_step_outputs": [ ],
+  "ipi_payloads": [ ],
+  "cxp_test_results": [ ],
+  "rxp_validations": [ ]
 }
 ```
 
@@ -49,8 +54,13 @@ The web UI exposes JSON export at **Runs > Export JSON** and bulk export via **R
 | `audit_scans` | array | Audit-specific scan data |
 | `inject_results` | array | Inject module results |
 | `proxy_sessions` | array | Proxy session data |
+| `chain_executions` | array | Chain module execution records |
+| `chain_step_outputs` | array | Step-level outputs from chain executions |
+| `ipi_payloads` | array | Indirect prompt injection payloads |
+| `cxp_test_results` | array | Context file poisoning test results |
+| `rxp_validations` | array | RAG retrieval poisoning validations |
 
-Module-specific arrays (`audit_scans`, `inject_results`, `proxy_sessions`) may be empty.
+All eight module-specific arrays are always present in the bundle (never omitted), defaulting to empty arrays when no data exists for that module.
 
 ## `run` — Parent Run
 
@@ -188,4 +198,4 @@ Null if no target was associated with the run.
 - `schema_version` is `"run-bundle-v1"` — breaking changes will increment this version
 - `mitigation.schema_version` is `1` — consumers should handle unknown versions gracefully
 - Null fields are always present as keys (never omitted)
-- Module-specific arrays (`audit_scans`, `inject_results`, etc.) may be empty arrays
+- All eight module-specific arrays are always present as keys, defaulting to empty arrays

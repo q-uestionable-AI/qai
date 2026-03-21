@@ -36,7 +36,7 @@ The web UI also supports CSV export at **Runs > Export > CSV**.
 | `owasp_mcp_id` | `framework_ids.owasp_mcp_top10` | OWASP MCP Top 10 ID (e.g., `MCP05`) | No OWASP mapping |
 | `remediation` | `finding.remediation` | Remediation guidance text | No remediation text |
 | `mitigation_summary` | `finding.mitigation` | Condensed mitigation (see below) | No mitigation guidance |
-| `framework_ids` | `finding.framework_ids` | Semicolon-separated `key=value` pairs | No framework mappings |
+| `framework_ids` | `finding.framework_ids` | `key=value` pairs separated by `"; "` (semicolon + space) | No framework mappings |
 | `timestamp` | `finding.timestamp` or `created_at` | ISO 8601 timestamp | Never |
 
 ### Mitigation Summary Limitation
