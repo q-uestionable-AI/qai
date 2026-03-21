@@ -18,6 +18,8 @@ from tests.audit.test_reporting import FakeScanResult, _make_finding
 
 
 class TestCsvReport:
+    """Tests for CSV report generation."""
+
     def test_header_row_present(self) -> None:
         """CSV output has expected column headers."""
         scan = FakeScanResult(findings=[_make_finding()])

@@ -624,14 +624,15 @@ async def api_export_run(
             with _tempfile.NamedTemporaryFile(suffix=f".{fmt}", delete=False) as tmp:
                 tmp_path = Path(tmp.name)
 
-            if fmt == "ndjson":
-                generate_ndjson_report(findings, tmp_path, run_metadata=meta)
-            else:
-                generate_csv_report(findings, tmp_path, run_metadata=meta)
+            try:
+                if fmt == "ndjson":
+                    generate_ndjson_report(findings, tmp_path, run_metadata=meta)
+                else:
+                    generate_csv_report(findings, tmp_path, run_metadata=meta)
 
-            data = tmp_path.read_bytes()
-            tmp_path.unlink(missing_ok=True)
-            return data
+                return tmp_path.read_bytes()
+            finally:
+                tmp_path.unlink(missing_ok=True)
 
     data = await asyncio.to_thread(_export_format)
     if data is None:

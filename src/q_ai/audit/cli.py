@@ -52,7 +52,7 @@ def _resolve_output_path(format_name: str, output: str | None) -> str:
     """Determine the output file path for a scan report.
 
     Args:
-        format_name: Report format ('json', 'sarif', or 'html').
+        format_name: Report format ('json', 'sarif', 'html', 'ndjson', or 'csv').
         output: Explicit output path from the user, or None for default.
 
     Returns:

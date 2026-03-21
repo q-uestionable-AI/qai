@@ -17,6 +17,8 @@ from tests.audit.test_reporting import FakeScanResult, _make_finding
 
 
 class TestNdjsonReport:
+    """Tests for NDJSON report generation."""
+
     def test_one_line_per_finding(self) -> None:
         """Each finding produces exactly one JSON line."""
         f1 = _make_finding(title="Finding 1")

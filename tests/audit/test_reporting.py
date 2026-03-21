@@ -291,6 +291,8 @@ class TestSarifReport:
 
 
 class TestHtmlReport:
+    """Tests for HTML report mitigation rendering."""
+
     def test_html_report_contains_mitigation_section(self) -> None:
         """Verify HTML report renders mitigation guidance."""
         from q_ai.audit.reporting.html_report import generate_html_report

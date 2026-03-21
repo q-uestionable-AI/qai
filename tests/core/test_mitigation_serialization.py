@@ -47,6 +47,8 @@ def _make_guidance() -> MitigationGuidance:
 
 
 class TestGoldenSerialization:
+    """Golden tests for MitigationGuidance wire format contract."""
+
     def test_to_dict_exact_structure(self) -> None:
         """Known input produces exact expected dict."""
         guidance = _make_guidance()

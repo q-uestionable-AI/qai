@@ -79,6 +79,8 @@ def _insert_finding(
 
 
 class TestGetPreviouslySeenFindingKeys:
+    """Tests for get_previously_seen_finding_keys DB helper."""
+
     def test_returns_keys_from_prior_run(self, conn: sqlite3.Connection) -> None:
         _insert_run(conn, "r1", "t1", int(RunStatus.COMPLETED), "2026-01-01T00:00:00")
         _insert_finding(conn, "f1", "r1", "command_injection", "Found vuln")
@@ -124,6 +126,8 @@ class TestGetPreviouslySeenFindingKeys:
 
 
 class TestGetPriorRunCountsByTarget:
+    """Tests for get_prior_run_counts_by_target DB helper."""
+
     def test_returns_count_for_target(self, conn: sqlite3.Connection) -> None:
         _insert_run(conn, "r1", "t1", int(RunStatus.COMPLETED), "2026-01-01T00:00:00")
         _insert_run(conn, "r2", "t1", int(RunStatus.COMPLETED), "2026-01-02T00:00:00")
