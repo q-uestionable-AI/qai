@@ -8,6 +8,10 @@
     {% include "partials/run_history.html" %}
     {% else %}
 
+    <a href="/runs" class="inline-flex items-center gap-1 text-xs text-base-content/50 hover:text-base-content mb-3">
+        &larr; Run History
+    </a>
+
     {% if results_mode and is_terminal %}
         {% include "partials/overview_header.html" %}
     {% else %}
