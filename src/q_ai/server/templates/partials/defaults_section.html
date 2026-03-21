@@ -1,65 +1,69 @@
 <div class="panel p-6">
-        <h2 class="text-lg font-semibold mb-4" style="color: #f1f5f9;">Defaults</h2>
-        <form id="defaults-form" class="grid grid-cols-1 md:grid-cols-2 gap-4"
-              onsubmit="return saveDefaults(event)">
-            <div class="form-control">
-                <label class="label"><span class="label-text">Default Model</span></label>
-                <input type="text" name="default_model"
-                       class="input input-bordered input-sm"
-                       placeholder="provider/model"
-                       value="{{ defaults.default_model }}">
-            </div>
+    <h2 class="text-lg font-semibold mb-4" style="color: #f1f5f9;">Defaults</h2>
+    <form id="defaults-form" class="grid grid-cols-1 md:grid-cols-2 gap-4"
+          onsubmit="return saveDefaults(event)">
 
-            <div class="form-control">
-                <label class="label">
-                    <span class="label-text">Default Audit Transport</span>
-                </label>
-                <select name="audit.default_transport"
-                        class="select select-bordered select-sm">
-                    <option value="stdio"
-                        {% if defaults['audit.default_transport'] == 'stdio' %}selected{% endif %}>
-                        stdio
-                    </option>
-                    <option value="sse"
-                        {% if defaults['audit.default_transport'] == 'sse' %}selected{% endif %}>
-                        sse
-                    </option>
-                    <option value="streamable-http"
-                        {% if defaults['audit.default_transport'] == 'streamable-http' %}selected{% endif %}>
-                        streamable-http
-                    </option>
-                </select>
-            </div>
+        <div class="md:col-span-2">
+            {% set selector_id = "defaults" %}
+            {% include "partials/model_selector.html" %}
+        </div>
 
-            <div class="form-control md:col-span-2">
-                <label class="label">
-                    <span class="label-text">IPI Callback URL</span>
-                </label>
-                <input type="text" name="ipi.default_callback_url"
-                       class="input input-bordered input-sm"
-                       placeholder="https://example.com/callback"
-                       value="{{ defaults['ipi.default_callback_url'] }}">
-            </div>
+        <div class="form-control">
+            <label class="label">
+                <span class="label-text">Default Audit Transport</span>
+            </label>
+            <select name="audit.default_transport"
+                    class="select select-bordered select-sm">
+                <option value="stdio"
+                    {% if defaults['audit.default_transport'] == 'stdio' %}selected{% endif %}>
+                    stdio
+                </option>
+                <option value="sse"
+                    {% if defaults['audit.default_transport'] == 'sse' %}selected{% endif %}>
+                    sse
+                </option>
+                <option value="streamable-http"
+                    {% if defaults['audit.default_transport'] == 'streamable-http' %}selected{% endif %}>
+                    streamable-http
+                </option>
+            </select>
+        </div>
 
-            <div class="md:col-span-2 flex items-end gap-2">
-                <button type="submit" class="btn btn-sm btn-outline btn-primary">Save</button>
-                <span id="defaults-msg" class="text-xs"></span>
-            </div>
-        </form>
+        <div class="form-control">
+            <label class="label">
+                <span class="label-text">IPI Callback URL</span>
+            </label>
+            <input type="text" name="ipi.default_callback_url"
+                   class="input input-bordered input-sm"
+                   placeholder="https://example.com/callback"
+                   value="{{ defaults['ipi.default_callback_url'] }}">
+        </div>
+
+        <div class="md:col-span-2 flex items-end gap-2">
+            <button type="submit" class="btn btn-sm btn-outline btn-primary">Save</button>
+            <span id="defaults-msg" class="text-xs"></span>
+        </div>
+    </form>
 </div>
 
 <script>
 function saveDefaults(e) {
     e.preventDefault();
-    const form = document.getElementById("defaults-form");
-    const data = {};
-    new FormData(form).forEach((v, k) => { data[k] = v; });
-    const msg = document.getElementById("defaults-msg");
+    var form = document.getElementById("defaults-form");
+    var data = {};
+    new FormData(form).forEach(function(v, k) { data[k] = v; });
+    // Map provider/model fields to settings keys
+    data["default_provider"] = data["provider"] || "";
+    data["default_model_id"] = data["model"] || "";
+    delete data["provider"];
+    delete data["model"];
+
+    var msg = document.getElementById("defaults-msg");
     fetch("/api/settings/defaults", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(data)
-    }).then(r => r.json()).then(d => {
+    }).then(function(r) { return r.json(); }).then(function(d) {
         if (d.status === "saved") {
             msg.className = "text-xs text-success";
             msg.textContent = "Saved";
@@ -67,7 +71,10 @@ function saveDefaults(e) {
             msg.className = "text-xs text-error";
             msg.textContent = d.detail || "Error";
         }
-    }).catch(() => { msg.className = "text-xs text-error"; msg.textContent = "Request failed"; });
+    }).catch(function() {
+        msg.className = "text-xs text-error";
+        msg.textContent = "Request failed";
+    });
     return false;
 }
 </script>

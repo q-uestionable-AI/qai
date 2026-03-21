@@ -69,17 +69,21 @@ class TestSaveDefaults:
     """Tests for saving and retrieving default settings."""
 
     def test_save_defaults(self, client: TestClient) -> None:
-        """POST defaults -> GET defaults returns saved value."""
+        """POST defaults -> GET defaults returns saved values."""
         resp = client.post(
             "/api/settings/defaults",
-            json={"default_model": "openai/gpt-4"},
+            json={
+                "default_provider": "openai",
+                "default_model_id": "openai/gpt-4o",
+            },
         )
         assert resp.status_code == 200
 
         resp = client.get("/api/settings/defaults")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["default_model"] == "openai/gpt-4"
+        assert data["default_provider"] == "openai"
+        assert data["default_model_id"] == "openai/gpt-4o"
 
 
 class TestProvidersInsecureKeyring:
