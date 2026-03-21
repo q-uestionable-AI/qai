@@ -1,0 +1,201 @@
+---
+title: "JSON Bundle Schema"
+description: "Schema reference for the run-bundle-v1 JSON export format"
+icon: "brackets-curly"
+---
+
+# JSON Bundle Schema — `run-bundle-v1`
+
+Schema reference for the JSON export bundle produced by `qai audit scan --format json`
+and the web UI **Export JSON** button.
+
+## Exporting
+
+```bash
+# Direct from scan
+qai audit scan --transport stdio --command "python my_server.py" --format json --output findings.json
+
+# Re-export from saved results
+qai audit report --input results/scan.json --format json --output findings.json
+```
+
+The web UI exposes JSON export at **Runs > Export JSON** and bulk export via **Runs > Bulk Export**
+(returns a ZIP archive of bundles).
+
+## Top-Level Structure
+
+```json
+{
+  "schema_version": "run-bundle-v1",
+  "run": { },
+  "child_runs": [ ],
+  "findings": [ ],
+  "evidence": [ ],
+  "target": { },
+  "audit_scans": [ ],
+  "inject_results": [ ],
+  "proxy_sessions": [ ],
+  "chain_executions": [ ],
+  "chain_step_outputs": [ ],
+  "ipi_payloads": [ ],
+  "cxp_test_results": [ ],
+  "rxp_validations": [ ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `schema_version` | string | Always `"run-bundle-v1"` |
+| `run` | object | Parent run record |
+| `child_runs` | array | Module-level child runs |
+| `findings` | array | Security findings |
+| `evidence` | array | Evidence references |
+| `target` | object \| null | Scan target |
+| `audit_scans` | array | Audit-specific scan data |
+| `inject_results` | array | Inject module results |
+| `proxy_sessions` | array | Proxy session data |
+| `chain_executions` | array | Chain module execution records |
+| `chain_step_outputs` | array | Step-level outputs from chain executions |
+| `ipi_payloads` | array | Indirect prompt injection payloads |
+| `cxp_test_results` | array | Context file poisoning test results |
+| `rxp_validations` | array | RAG retrieval poisoning validations |
+
+All eight module-specific arrays are always present in the bundle (never omitted), defaulting to empty arrays when no data exists for that module.
+
+## `run` — Parent Run
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | UUID |
+| `module` | string | Always `"workflow"` for parent runs |
+| `name` | string \| null | Workflow name (e.g., `"assess_mcp_server"`) |
+| `target_id` | string \| null | Target UUID |
+| `config` | object \| null | Workflow configuration |
+| `status` | integer | RunStatus enum (see below) |
+| `started_at` | string \| null | ISO 8601 timestamp |
+| `finished_at` | string \| null | ISO 8601 timestamp |
+| `parent_run_id` | string \| null | Parent run UUID (null for top-level) |
+
+**RunStatus values:** 0=PENDING, 1=RUNNING, 2=COMPLETED, 3=FAILED, 4=CANCELLED,
+5=WAITING\_FOR\_USER, 6=PARTIAL
+
+## `child_runs` — Module Runs
+
+Array of run objects with the same schema as `run`. One entry per module executed
+(audit, inject, proxy, etc.).
+
+## `findings` — Security Findings
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | UUID |
+| `run_id` | string | Run that produced this finding |
+| `module` | string | Module name (`"audit"`, `"inject"`, etc.) |
+| `category` | string | Finding category (e.g., `"command_injection"`) |
+| `severity` | integer | 0=INFO, 1=LOW, 2=MEDIUM, 3=HIGH, 4=CRITICAL |
+| `title` | string | Short human-readable title |
+| `description` | string \| null | Detailed description |
+| `framework_ids` | object \| null | Framework mappings (see below) |
+| `mitigation` | object \| null | Structured mitigation guidance (see below) |
+| `source_ref` | string \| null | Source reference (tool name, file, line) |
+| `created_at` | string | ISO 8601 timestamp |
+
+**`framework_ids` example:**
+```json
+{
+  "owasp_mcp_top10": "MCP05",
+  "cwe": ["CWE-78"]
+}
+```
+
+### `mitigation` — Mitigation Guidance
+
+Null for findings generated before mitigation guidance was added. When present:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sections` | array | Ordered list of guidance sections |
+| `caveats` | array\<string\> | Top-level caveats |
+| `schema_version` | integer | Currently `1` |
+| `disclaimer` | string | Standard non-exhaustiveness disclaimer |
+
+#### `sections[n]` — Guidance Section
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `kind` | string | `"actions"` (recommended steps) or `"factors"` (risk considerations) |
+| `source_type` | string | `"taxonomy"`, `"rule"`, or `"context"` |
+| `source_ids` | array\<string\> | Framework names, predicate IDs, or category names |
+| `items` | array\<string\> | Guidance text strings |
+
+**Source type priority:**
+1. `taxonomy` — tier 1: actions derived from category definitions in the framework taxonomy
+2. `rule` — tier 2: actions from metadata predicate matching
+3. `context` — tier 3: contextual risk factors from category definitions
+
+#### Example mitigation object
+
+```json
+{
+  "sections": [
+    {
+      "kind": "actions",
+      "source_type": "taxonomy",
+      "source_ids": ["owasp_mcp_top10"],
+      "items": [
+        "Validate and sanitize all tool input parameters before execution",
+        "Implement allowlist-based command filtering"
+      ]
+    },
+    {
+      "kind": "factors",
+      "source_type": "context",
+      "source_ids": ["command_injection"],
+      "items": [
+        "Server executes system commands based on tool input"
+      ]
+    }
+  ],
+  "caveats": [
+    "Guidance is based on static analysis of tool definitions"
+  ],
+  "schema_version": 1,
+  "disclaimer": "This guidance is not exhaustive. Validate all recommendations against your specific deployment."
+}
+```
+
+## `evidence` — Evidence References
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | UUID |
+| `finding_id` | string | Associated finding UUID |
+| `run_id` | string | Associated run UUID |
+| `type` | string | Evidence type |
+| `mime_type` | string \| null | MIME type |
+| `hash` | string \| null | Content hash |
+| `storage` | string | `"inline"` or `"file"` |
+| `created_at` | string | ISO 8601 timestamp |
+
+Evidence content and file paths are not included in the bundle metadata.
+Inline evidence content is available via the findings detail view in the web UI.
+
+## `target` — Scan Target
+
+Null if no target was associated with the run.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | UUID |
+| `type` | string | Target type |
+| `name` | string | Display name |
+| `uri` | string \| null | Target URI |
+| `metadata` | object \| null | Additional target metadata |
+| `created_at` | string | ISO 8601 timestamp |
+
+## Compatibility Notes
+
+- `schema_version` is `"run-bundle-v1"` — breaking changes will increment this version
+- `mitigation.schema_version` is `1` — consumers should handle unknown versions gracefully
+- Null fields are always present as keys (never omitted)
+- All eight module-specific arrays are always present as keys, defaulting to empty arrays

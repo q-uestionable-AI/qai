@@ -1,0 +1,107 @@
+---
+title: "DefectDojo"
+description: "Import qai scan results into DefectDojo via SARIF"
+icon: "shield-halved"
+---
+
+# DefectDojo Integration
+
+[DefectDojo](https://www.defectdojo.org/) supports SARIF import natively.
+This guide walks through exporting SARIF from qai and importing it into DefectDojo.
+
+## Step 1: Export SARIF from qai
+
+```bash
+# Direct from scan
+qai audit scan --transport stdio --command "python my_server.py" --format sarif --output findings.sarif
+
+# Re-export from saved results
+qai audit report --input results/scan.json --format sarif --output findings.sarif
+```
+
+This produces a SARIF 2.1.0 file with all findings, severity mappings, and
+mitigation guidance embedded in result properties.
+
+## Step 2: Import into DefectDojo
+
+1. Navigate to **Findings > Import Scan Results**
+2. Select **SARIF** as the scan type
+3. Choose the product and engagement (see [recommended workflow](#recommended-workflow) below)
+4. Upload `findings.sarif`
+5. Click **Import**
+
+DefectDojo creates one finding per SARIF result.
+
+## Field Mapping
+
+| SARIF Field | DefectDojo Field | Notes |
+|-------------|------------------|-------|
+| `runs[].tool.driver.name` | Scanner name | Always `"q-ai"` |
+| `runs[].results[].ruleId` | Finding title | Rule identifier (e.g., `cmd_injection_001`) |
+| `runs[].results[].level` | Severity | `error` maps to High/Critical, `warning` to Medium, `note` to Low/Info |
+| `runs[].results[].message.text` | Description | Full finding description |
+| `runs[].tool.driver.rules[].shortDescription` | Rule short description | Finding title text |
+| `runs[].tool.driver.rules[].fullDescription` | Rule full description | Detailed description |
+| `runs[].tool.driver.rules[].properties.security-severity` | Numerical severity | Used by DefectDojo for severity scoring |
+
+### Severity Mapping
+
+qai maps its severity levels to SARIF as follows:
+
+| qai Severity | SARIF Level | security-severity Score |
+|-------------|-------------|------------------------|
+| Critical | `error` | `9.0` |
+| High | `error` | `7.0` |
+| Medium | `warning` | `4.0` |
+| Low | `note` | `0.1` |
+| Info | `note` | `0.0` |
+
+DefectDojo uses the `security-severity` score to determine the finding severity.
+The numeric score ensures accurate severity mapping even when multiple qai severities
+share the same SARIF level (e.g., both Critical and High map to `error`).
+
+## Mitigation Guidance Limitation
+
+qai embeds structured mitigation guidance in `result.properties.mitigation`.
+The `properties` field is part of the SARIF specification for tool-specific extensions,
+but **DefectDojo does not automatically surface SARIF `properties` fields as first-class
+finding attributes**.
+
+What this means in practice:
+
+- The mitigation data **is present** in the imported SARIF file
+- DefectDojo **will not display** the mitigation guidance in its finding detail view
+- The `properties.category`, `properties.tool_name`, `properties.evidence`, and
+  `properties.remediation` fields are similarly not surfaced
+
+### Workarounds
+
+- **Manual notes:** After import, review the original SARIF file and add mitigation
+  guidance as DefectDojo finding notes manually
+- **JSON export for mitigation:** Use the [JSON export](/docs/exports/json-schema) as
+  the primary reference for mitigation guidance, and DefectDojo for finding tracking
+- **API enrichment:** Use the DefectDojo API to programmatically add notes from the
+  SARIF `properties.mitigation` field after import
+
+## Recommended Workflow
+
+Use a dedicated DefectDojo **product** per target to match qai's target-centric model:
+
+1. **Create a Product** in DefectDojo named after your MCP server or target
+   (e.g., `my-mcp-server`)
+2. **Create an Engagement** per scan session or assessment cycle
+   (e.g., `2026-03 Security Assessment`)
+3. **Import SARIF** into that engagement
+4. Use DefectDojo's deduplication to track findings across repeated scans
+
+This structure maps naturally to qai's model where each target accumulates
+findings across multiple runs.
+
+## Verifying the Import
+
+After import, check that:
+
+- Finding count matches the number of SARIF results (`jq '.runs[0].results | length' findings.sarif`)
+- Severity distribution looks correct (Critical/High from `error`, Medium from `warning`, Low/Info from `note`)
+- Rule IDs appear in finding titles
+- Descriptions contain the expected finding detail

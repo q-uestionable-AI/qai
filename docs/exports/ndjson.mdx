@@ -1,0 +1,159 @@
+---
+title: "NDJSON Export"
+description: "Newline-delimited JSON export for streaming ingestion, log processors, and scripting"
+icon: "stream"
+---
+
+# NDJSON Export
+
+NDJSON (Newline-Delimited JSON) outputs one self-contained JSON object per line.
+Each line represents a single finding with optional run metadata merged in.
+This format is ideal for streaming ingestion into ELK/OpenSearch, log processors,
+and line-oriented Unix tools.
+
+## Exporting
+
+```bash
+# Direct from scan
+qai audit scan --transport stdio --command "python my_server.py" --format ndjson --output findings.ndjson
+
+# Re-export from saved results
+qai audit report --input results/scan.json --format ndjson --output findings.ndjson
+```
+
+The web UI also supports NDJSON export at **Runs > Export > NDJSON**.
+
+## Line Structure
+
+Each line is a valid JSON object. For findings produced via `qai audit scan`:
+
+```json
+{"rule_id":"cmd_injection_001","category":"command_injection","framework_ids":{"owasp_mcp_top10":"MCP05","cwe":["CWE-78"]},"owasp_id":"MCP05","title":"Command injection via shell parameter","description":"Tool 'run_command' passes user input directly to os.system()","severity":"high","evidence":"Parameter 'cmd' flows to os.system() without sanitization","remediation":"Validate and sanitize input before passing to system commands","tool_name":"run_command","metadata":{},"timestamp":"2026-03-20T14:30:00","mitigation":{"sections":[{"kind":"actions","source_type":"taxonomy","source_ids":["owasp_mcp_top10"],"items":["Validate and sanitize all tool input parameters"]}],"caveats":[],"schema_version":1,"disclaimer":"This guidance is not exhaustive."},"run_id":"abc123","started_at":"2026-03-20T14:29:00","target_name":"my-mcp-server"}
+```
+
+### Field Reference
+
+| Field | Type | Present | Description |
+|-------|------|---------|-------------|
+| `rule_id` | string | CLI path | Scanner rule identifier |
+| `category` | string | Always | Finding category (e.g., `"command_injection"`) |
+| `framework_ids` | object | Always | Framework mappings |
+| `owasp_id` | string | CLI path | OWASP MCP Top 10 ID (extracted from `framework_ids`) |
+| `title` | string | Always | Short human-readable title |
+| `description` | string | Always | Detailed description |
+| `severity` | string | Always | `"critical"`, `"high"`, `"medium"`, `"low"`, or `"info"` |
+| `evidence` | string | CLI path | Evidence text |
+| `remediation` | string | CLI path | Remediation guidance text |
+| `tool_name` | string | CLI path | MCP tool that triggered the finding |
+| `metadata` | object | CLI path | Additional scanner metadata |
+| `timestamp` | string | CLI path | ISO 8601 timestamp |
+| `mitigation` | object \| null | Always | Structured mitigation guidance (see [JSON Schema](/docs/exports/json-schema#mitigation--mitigation-guidance)) |
+| `source_ref` | string \| null | Web UI path | Source reference |
+| `created_at` | string | Web UI path | ISO 8601 creation timestamp |
+| `run_id` | string | When available | Run UUID (from run metadata) |
+| `started_at` | string | When available | Run start time (from run metadata) |
+| `target_name` | string | When available | Target display name (from run metadata) |
+
+Findings from `qai audit scan` (CLI path) use the `ScanFinding` model with fields like
+`rule_id`, `evidence`, `tool_name`. Findings from the web UI export use the `Finding` model
+with `source_ref` and `created_at` instead.
+
+## Usage Examples
+
+### Filtering with jq
+
+```bash
+# Count findings by severity
+cat findings.ndjson | jq -s 'group_by(.severity) | map({severity: .[0].severity, count: length})'
+
+# Extract only critical and high findings
+cat findings.ndjson | jq 'select(.severity == "critical" or .severity == "high")'
+
+# List unique categories
+cat findings.ndjson | jq -s '[.[].category] | unique'
+
+# Get titles of findings with mitigation guidance
+cat findings.ndjson | jq 'select(.mitigation != null) | .title'
+
+# Count findings per tool
+cat findings.ndjson | jq -s 'group_by(.tool_name) | map({tool: .[0].tool_name, count: length})'
+```
+
+### ELK / OpenSearch Ingestion
+
+**Filebeat** can ingest NDJSON directly with the JSON codec:
+
+```yaml
+# filebeat.yml
+filebeat.inputs:
+  - type: filestream
+    id: qai-findings
+    paths:
+      - /path/to/findings.ndjson
+    parsers:
+      - ndjson:
+          keys_under_root: true
+          overwrite_keys: true
+
+output.elasticsearch:
+  hosts: ["localhost:9200"]
+  index: "qai-findings-%{+yyyy.MM.dd}"
+```
+
+**Logstash** with the JSON codec:
+
+```ruby
+# logstash.conf
+input {
+  file {
+    path => "/path/to/findings.ndjson"
+    codec => "json"
+    sincedb_path => "/dev/null"
+    start_position => "beginning"
+  }
+}
+
+filter {
+  mutate {
+    rename => { "severity" => "finding_severity" }
+  }
+}
+
+output {
+  elasticsearch {
+    hosts => ["localhost:9200"]
+    index => "qai-findings-%{+YYYY.MM.dd}"
+  }
+}
+```
+
+### Python One-Liners
+
+```python
+import json
+from pathlib import Path
+
+# Load all findings
+findings = [json.loads(line) for line in Path("findings.ndjson").read_text().splitlines() if line.strip()]
+
+# Filter by severity
+critical = [f for f in findings if f["severity"] in ("critical", "high")]
+
+# Summary by category
+from collections import Counter
+print(Counter(f["category"] for f in findings))
+```
+
+### Streaming in Python
+
+For large exports, process line by line without loading the full file:
+
+```python
+import json
+
+with open("findings.ndjson") as fh:
+    for line in fh:
+        finding = json.loads(line)
+        if finding["severity"] == "critical":
+            print(f"CRITICAL: {finding['title']}")
+```
