@@ -34,6 +34,7 @@ from q_ai.core.db import (
     list_targets,
     set_setting,
 )
+from q_ai.core.mitigation import MitigationGuidance, SourceType
 from q_ai.core.models import RunStatus, Severity
 from q_ai.core.providers import (
     PROVIDERS,
@@ -168,6 +169,19 @@ def _count_findings_by_severity(findings: list[Any]) -> dict[str, int]:
     return {k: v for k, v in counts.items() if v > 0}
 
 
+def _mitigation_section_label(section: Any) -> str:
+    """User-facing label for a mitigation GuidanceSection."""
+    st = getattr(section, "source_type", None)
+    if st == SourceType.TAXONOMY:
+        ids = ", ".join(section.source_ids) if section.source_ids else ""
+        return (
+            f"Recommended by OWASP MCP Top 10 ({ids})" if ids else "Recommended by OWASP MCP Top 10"
+        )
+    if st == SourceType.RULE:
+        return "Recommended based on finding characteristics"
+    return "Considerations for your environment"
+
+
 def _load_module_data(
     conn: Any,
     child_by_module: dict[str, Any],
@@ -193,6 +207,9 @@ def _load_module_data(
         audit_scan = dict(row) if row else None
         audit_findings = list_findings(conn, run_id=audit_child.id)
         for af in audit_findings:
+            af.mitigation_guidance = (
+                MitigationGuidance.from_dict(af.mitigation) if af.mitigation else None
+            )
             audit_evidence_map[af.id] = list_evidence(conn, finding_id=af.id)
 
     inject_child = child_by_module.get("inject")
@@ -220,6 +237,7 @@ def _load_module_data(
         "audit_evidence_map": audit_evidence_map,
         "inject_results_data": inject_results_data,
         "proxy_session": proxy_session,
+        "mitigation_section_label": _mitigation_section_label,
     }
 
 
