@@ -17,12 +17,16 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 from starlette.websockets import WebSocketDisconnect
 
+from q_ai.audit.reporting.csv_report import generate_csv_report
+from q_ai.audit.reporting.ndjson_report import generate_ndjson_report
 from q_ai.core.config import delete_credential, get_credential, set_credential
 from q_ai.core.db import (
     create_target,
     delete_run_cascade,
     export_run_bundle,
     get_connection,
+    get_previously_seen_finding_keys,
+    get_prior_run_counts_by_target,
     get_run,
     get_setting,
     get_target,
@@ -32,6 +36,7 @@ from q_ai.core.db import (
     list_targets,
     set_setting,
 )
+from q_ai.core.mitigation import MitigationGuidance, SourceType
 from q_ai.core.models import RunStatus, Severity
 from q_ai.core.providers import (
     PROVIDERS,
@@ -166,6 +171,19 @@ def _count_findings_by_severity(findings: list[Any]) -> dict[str, int]:
     return {k: v for k, v in counts.items() if v > 0}
 
 
+def _mitigation_section_label(section: Any) -> str:
+    """User-facing label for a mitigation GuidanceSection."""
+    st = getattr(section, "source_type", None)
+    if st == SourceType.TAXONOMY:
+        ids = ", ".join(section.source_ids) if section.source_ids else ""
+        return (
+            f"Recommended by OWASP MCP Top 10 ({ids})" if ids else "Recommended by OWASP MCP Top 10"
+        )
+    if st == SourceType.RULE:
+        return "Recommended based on finding characteristics"
+    return "Considerations for your environment"
+
+
 def _load_module_data(
     conn: Any,
     child_by_module: dict[str, Any],
@@ -191,6 +209,9 @@ def _load_module_data(
         audit_scan = dict(row) if row else None
         audit_findings = list_findings(conn, run_id=audit_child.id)
         for af in audit_findings:
+            af.mitigation_guidance = (
+                MitigationGuidance.from_dict(af.mitigation) if af.mitigation else None
+            )
             audit_evidence_map[af.id] = list_evidence(conn, finding_id=af.id)
 
     inject_child = child_by_module.get("inject")
@@ -218,6 +239,7 @@ def _load_module_data(
         "audit_evidence_map": audit_evidence_map,
         "inject_results_data": inject_results_data,
         "proxy_session": proxy_session,
+        "mitigation_section_label": _mitigation_section_label,
     }
 
 
@@ -226,7 +248,7 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
     with get_connection(db_path) as conn:
         workflow_run = get_run(conn, run_id)
         if not workflow_run:
-            return {}
+            return {"previously_seen": set()}
         child_runs = list_runs(conn, parent_run_id=run_id)
         all_ids = [run_id] + [c.id for c in child_runs]
         findings = list_findings(conn, run_ids=all_ids)
@@ -242,6 +264,15 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
         target = None
         if eff_target_id:
             target = get_target(conn, eff_target_id)
+
+        previously_seen: set[tuple[str, str]] = set()
+        if eff_target_id and workflow_run.started_at:
+            previously_seen = get_previously_seen_finding_keys(
+                conn,
+                eff_target_id,
+                workflow_run.started_at.isoformat(),
+                run_id,
+            )
 
         # Look for existing generate_report run for this target
         report_run_id = None
@@ -281,6 +312,7 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
             "report_html": report_html,
             "is_report_run": is_report_run,
             "has_evidence_zip": has_evidence_zip,
+            "previously_seen": previously_seen,
         }
         result.update(module_data)
         return result
@@ -397,6 +429,11 @@ def _build_history_context(
                 )
             )
 
+        target_ids_on_page = [r.target_id for r in history_runs if r.target_id]
+        prior_run_counts = (
+            get_prior_run_counts_by_target(conn, target_ids_on_page) if target_ids_on_page else {}
+        )
+
     return {
         "history_runs": history_runs,
         "workflows": list_workflows(),
@@ -406,6 +443,7 @@ def _build_history_context(
         "current_target": target_filter or "",
         "current_status": status_filter or "",
         "group_by_target": group_by_target,
+        "prior_run_counts": prior_run_counts,
     }
 
 
@@ -539,16 +577,73 @@ def _sync_export_run(db_path: Path | None, run_id: str) -> dict | None:
 
 
 @router.get("/api/runs/{run_id}/export", response_model=None)
-async def api_export_run(request: Request, run_id: str) -> Response:
-    """Export a run as a schema-versioned JSON bundle."""
+async def api_export_run(
+    request: Request,
+    run_id: str,
+    fmt: str = Query("json", alias="format"),
+) -> Response:
+    """Export a run as JSON bundle, NDJSON, or CSV."""
+    if fmt not in ("json", "ndjson", "csv"):
+        return JSONResponse(status_code=400, content={"detail": f"Unknown format: {fmt}"})
+
     db_path = _get_db_path(request)
-    bundle = await asyncio.to_thread(_sync_export_run, db_path, run_id)
-    if bundle is None:
+
+    if fmt == "json":
+        bundle = await asyncio.to_thread(_sync_export_run, db_path, run_id)
+        if bundle is None:
+            return JSONResponse(status_code=404, content={"detail": "Run not found"})
+        return JSONResponse(
+            content=bundle,
+            headers={
+                "Content-Disposition": (f'attachment; filename="run-{run_id[:12]}.json"'),
+            },
+        )
+
+    # NDJSON / CSV: load findings from DB and generate
+    def _export_format() -> bytes | None:
+        import tempfile as _tempfile
+
+        with get_connection(db_path) as conn:
+            run = get_run(conn, run_id)
+            if run is None:
+                return None
+            child_rows = conn.execute(
+                "SELECT id FROM runs WHERE parent_run_id = ?", (run_id,)
+            ).fetchall()
+            all_ids = [run_id] + [r["id"] for r in child_rows]
+            findings = list_findings(conn, run_ids=all_ids)
+
+            eff_target_id = run.target_id or (run.config or {}).get("target_id")
+            target = get_target(conn, eff_target_id) if eff_target_id else None
+            meta = {
+                "run_id": run_id,
+                "started_at": (run.started_at.isoformat() if run.started_at else None),
+                "target_name": target.name if target else None,
+            }
+
+            with _tempfile.NamedTemporaryFile(suffix=f".{fmt}", delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+
+            try:
+                if fmt == "ndjson":
+                    generate_ndjson_report(findings, tmp_path, run_metadata=meta)
+                else:
+                    generate_csv_report(findings, tmp_path, run_metadata=meta)
+
+                return tmp_path.read_bytes()
+            finally:
+                tmp_path.unlink(missing_ok=True)
+
+    data = await asyncio.to_thread(_export_format)
+    if data is None:
         return JSONResponse(status_code=404, content={"detail": "Run not found"})
-    return JSONResponse(
-        content=bundle,
+
+    media = "application/x-ndjson" if fmt == "ndjson" else "text/csv"
+    return Response(
+        content=data,
+        media_type=media,
         headers={
-            "Content-Disposition": f'attachment; filename="run-{run_id[:12]}.json"',
+            "Content-Disposition": (f'attachment; filename="run-{run_id[:12]}.{fmt}"'),
         },
     )
 

@@ -846,6 +846,74 @@ def list_findings(
     return [Finding.from_row(dict(row)) for row in rows]
 
 
+def get_previously_seen_finding_keys(
+    conn: sqlite3.Connection,
+    target_id: str,
+    before_run_started_at: str,
+    current_run_id: str,
+) -> set[tuple[str, str]]:
+    """Return (category, title) pairs from prior completed runs on the same target.
+
+    Only considers top-level runs (parent_run_id IS NULL) with COMPLETED
+    or PARTIAL status that started before the given timestamp.
+
+    Args:
+        conn: Active database connection.
+        target_id: Target to scope the query.
+        before_run_started_at: ISO timestamp upper bound (exclusive).
+        current_run_id: Current run ID to exclude.
+
+    Returns:
+        Set of (category, title) tuples.
+    """
+    rows = conn.execute(
+        """SELECT DISTINCT f.category, f.title
+           FROM findings f
+           JOIN runs r ON f.run_id = r.id
+           WHERE r.target_id = ?
+             AND r.parent_run_id IS NULL
+             AND r.status IN (?, ?)
+             AND r.started_at < ?
+             AND r.id != ?""",
+        (
+            target_id,
+            int(RunStatus.COMPLETED),
+            int(RunStatus.PARTIAL),
+            before_run_started_at,
+            current_run_id,
+        ),
+    ).fetchall()
+    return {(row["category"], row["title"]) for row in rows}
+
+
+def get_prior_run_counts_by_target(
+    conn: sqlite3.Connection,
+    target_ids: list[str],
+) -> dict[str, int]:
+    """Return completed/partial top-level run counts per target.
+
+    Args:
+        conn: Active database connection.
+        target_ids: Target IDs to query.
+
+    Returns:
+        Dict mapping target_id to run count. Targets with zero runs are omitted.
+    """
+    if not target_ids:
+        return {}
+    ph = ", ".join("?" for _ in target_ids)
+    rows = conn.execute(
+        f"""SELECT target_id, COUNT(*) as cnt
+            FROM runs
+            WHERE target_id IN ({ph})
+              AND parent_run_id IS NULL
+              AND status IN (?, ?)
+            GROUP BY target_id""",  # noqa: S608
+        [*target_ids, int(RunStatus.COMPLETED), int(RunStatus.PARTIAL)],
+    ).fetchall()
+    return {row["target_id"]: row["cnt"] for row in rows}
+
+
 # ---------------------------------------------------------------------------
 # Evidence CRUD
 # ---------------------------------------------------------------------------

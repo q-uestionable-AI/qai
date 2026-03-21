@@ -5,8 +5,8 @@ from __future__ import annotations
 import datetime
 import enum
 import json
-from dataclasses import dataclass
-from typing import Self
+from dataclasses import dataclass, field
+from typing import Any, Self
 
 
 class Severity(enum.IntEnum):
@@ -226,6 +226,7 @@ class Finding:
         framework_ids: Optional mapping of framework names to identifiers.
         source_ref: Optional reference to the source (file, line, tool name).
         created_at: Optional creation timestamp.
+        mitigation_guidance: Optional deserialized MitigationGuidance object (not persisted).
     """
 
     id: str
@@ -239,6 +240,7 @@ class Finding:
     mitigation: dict | None = None
     source_ref: str | None = None
     created_at: datetime.datetime | None = None
+    mitigation_guidance: Any = field(default=None, repr=False, compare=False)
 
     def to_dict(self) -> dict:
         """Serialize the finding to a dict suitable for database storage.

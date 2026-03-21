@@ -15,8 +15,10 @@ from rich.console import Console
 from rich.table import Table
 
 from q_ai.audit.orchestrator import ScanResult, run_scan
+from q_ai.audit.reporting.csv_report import generate_csv_report
 from q_ai.audit.reporting.html_report import generate_html_report
 from q_ai.audit.reporting.json_report import generate_json_report
+from q_ai.audit.reporting.ndjson_report import generate_ndjson_report
 from q_ai.audit.reporting.sarif_report import generate_sarif_report
 from q_ai.mcp.connection import MCPConnection
 from q_ai.mcp.discovery import enumerate_server
@@ -50,7 +52,7 @@ def _resolve_output_path(format_name: str, output: str | None) -> str:
     """Determine the output file path for a scan report.
 
     Args:
-        format_name: Report format ('json', 'sarif', or 'html').
+        format_name: Report format ('json', 'sarif', 'html', 'ndjson', or 'csv').
         output: Explicit output path from the user, or None for default.
 
     Returns:
@@ -58,7 +60,7 @@ def _resolve_output_path(format_name: str, output: str | None) -> str:
     """
     if output is not None:
         return output
-    ext_map = {"json": "json", "sarif": "sarif", "html": "html"}
+    ext_map = {"json": "json", "sarif": "sarif", "html": "html", "ndjson": "ndjson", "csv": "csv"}
     return f"results/scan.{ext_map[format_name]}"
 
 
@@ -146,11 +148,11 @@ def scan(
         "json",
         "--format",
         "-f",
-        help="Output format: 'json', 'sarif', or 'html'",
+        help="Output format: 'json', 'sarif', 'html', 'ndjson', or 'csv'",
     ),
     output: str | None = typer.Option(
         None,
-        help="Output file path (default: results/scan.{json,sarif,html})",
+        help="Output file path (default: results/scan.{json,sarif,html,ndjson,csv})",
     ),
     verbose: bool = typer.Option(
         False,
@@ -160,8 +162,10 @@ def scan(
     ),
 ) -> None:
     """Scan an MCP server for security vulnerabilities."""
-    if format not in ("json", "sarif", "html"):
-        raise typer.BadParameter(f"Unknown format: {format}. Use 'json', 'sarif', or 'html'.")
+    if format not in ("json", "sarif", "html", "ndjson", "csv"):
+        raise typer.BadParameter(
+            f"Unknown format: {format}. Use 'json', 'sarif', 'html', 'ndjson', or 'csv'."
+        )
 
     output = _resolve_output_path(format, output)
     _configure_logging(verbose)
@@ -187,6 +191,10 @@ def scan(
                 report_path = generate_sarif_report(result, output)
             elif format == "html":
                 report_path = generate_html_report(result, output)
+            elif format == "ndjson":
+                report_path = generate_ndjson_report(result, output)
+            elif format == "csv":
+                report_path = generate_csv_report(result, output)
             else:
                 report_path = generate_json_report(result, output)
             console.print(f"\n[dim]Report saved to {report_path}[/dim]")
@@ -326,7 +334,7 @@ def report(
         "sarif",
         "--format",
         "-f",
-        help="Report format: 'json', 'sarif', or 'html'",
+        help="Report format: 'json', 'sarif', 'html', 'ndjson', or 'csv'",
     ),
     output: str | None = typer.Option(
         None,
@@ -348,8 +356,10 @@ def report(
 
     console.print("[bold blue]q-ai audit[/bold blue] — Report Generator\n")
 
-    if format not in ("json", "sarif", "html"):
-        console.print(f"[red]Unknown format: {format}. Use 'json', 'sarif', or 'html'.[/red]")
+    if format not in ("json", "sarif", "html", "ndjson", "csv"):
+        console.print(
+            f"[red]Unknown format: {format}. Use 'json', 'sarif', 'html', 'ndjson', or 'csv'.[/red]"
+        )
         raise typer.Exit(1)
 
     input_path = Path(input)
@@ -359,7 +369,13 @@ def report(
 
     # Determine output path (avoid overwriting input file)
     if output is None:
-        ext_map = {"json": ".json", "sarif": ".sarif", "html": ".html"}
+        ext_map = {
+            "json": ".json",
+            "sarif": ".sarif",
+            "html": ".html",
+            "ndjson": ".ndjson",
+            "csv": ".csv",
+        }
         ext = ext_map[format]
         candidate = input_path.with_suffix(ext)
         if candidate == input_path:
@@ -413,6 +429,10 @@ def report(
         result_path = generate_sarif_report(report_data, output_path)
     elif format == "html":
         result_path = generate_html_report(report_data, output_path)
+    elif format == "ndjson":
+        result_path = generate_ndjson_report(report_data, output_path)
+    elif format == "csv":
+        result_path = generate_csv_report(report_data, output_path)
     else:
         result_path = generate_json_report(report_data, output_path)
 

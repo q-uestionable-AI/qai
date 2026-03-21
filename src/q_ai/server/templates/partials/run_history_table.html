@@ -33,7 +33,14 @@
                    onchange="onRunSelectChange()">
         </td>
         <td class="font-medium pl-8">{{ run.display_name }}</td>
-        <td>{{ run.target_name or "—" }}</td>
+        <td>
+            {{ run.target_name or "—" }}
+            {% if prior_run_counts.get(run.target_id, 0) > 0 %}
+            <span class="badge badge-ghost badge-xs ml-1">
+                {{ prior_run_counts[run.target_id] }} prior run{{ "s" if prior_run_counts[run.target_id] != 1 }}
+            </span>
+            {% endif %}
+        </td>
         <td>
             <span class="badge badge-sm
                 {% if run.status.name == 'COMPLETED' %}badge-success
@@ -51,15 +58,20 @@
             {{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else "—" }}
         </td>
         <td class="flex gap-1" onclick="event.stopPropagation()">
-            <a href="/api/runs/{{ run.id }}/export"
-               class="btn btn-ghost btn-xs tooltip" data-tip="Export JSON"
-               download>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                     stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                </svg>
-            </a>
+            <div class="dropdown dropdown-end" onclick="event.stopPropagation()">
+                <label tabindex="0" class="btn btn-ghost btn-xs tooltip" data-tip="Export">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                         stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                </label>
+                <ul tabindex="0" class="dropdown-content menu menu-xs bg-base-200 rounded-box shadow-lg z-10 w-32">
+                    <li><a href="/api/runs/{{ run.id }}/export?format=json" download>JSON</a></li>
+                    <li><a href="/api/runs/{{ run.id }}/export?format=ndjson" download>NDJSON</a></li>
+                    <li><a href="/api/runs/{{ run.id }}/export?format=csv" download>CSV</a></li>
+                </ul>
+            </div>
             {% if run.status.name in ('COMPLETED', 'PARTIAL', 'FAILED') %}
             {% if run.report_run_id %}
             <a href="/api/exports/{{ run.report_run_id }}/report"
@@ -109,7 +121,14 @@
                    onchange="onRunSelectChange()">
         </td>
         <td class="font-medium">{{ run.display_name }}</td>
-        <td>{{ run.target_name or "—" }}</td>
+        <td>
+            {{ run.target_name or "—" }}
+            {% if prior_run_counts.get(run.target_id, 0) > 0 %}
+            <span class="badge badge-ghost badge-xs ml-1">
+                {{ prior_run_counts[run.target_id] }} prior run{{ "s" if prior_run_counts[run.target_id] != 1 }}
+            </span>
+            {% endif %}
+        </td>
         <td>
             <span class="badge badge-sm
                 {% if run.status.name == 'COMPLETED' %}badge-success
@@ -127,15 +146,20 @@
             {{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else "—" }}
         </td>
         <td class="flex gap-1" onclick="event.stopPropagation()">
-            <a href="/api/runs/{{ run.id }}/export"
-               class="btn btn-ghost btn-xs tooltip" data-tip="Export JSON"
-               download>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                     stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                </svg>
-            </a>
+            <div class="dropdown dropdown-end" onclick="event.stopPropagation()">
+                <label tabindex="0" class="btn btn-ghost btn-xs tooltip" data-tip="Export">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                         stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                </label>
+                <ul tabindex="0" class="dropdown-content menu menu-xs bg-base-200 rounded-box shadow-lg z-10 w-32">
+                    <li><a href="/api/runs/{{ run.id }}/export?format=json" download>JSON</a></li>
+                    <li><a href="/api/runs/{{ run.id }}/export?format=ndjson" download>NDJSON</a></li>
+                    <li><a href="/api/runs/{{ run.id }}/export?format=csv" download>CSV</a></li>
+                </ul>
+            </div>
             {% if run.status.name in ('COMPLETED', 'PARTIAL', 'FAILED') %}
             {% if run.report_run_id %}
             <a href="/api/exports/{{ run.report_run_id }}/report"

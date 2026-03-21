@@ -96,6 +96,66 @@ class TestFindingSerialization:
         assert d["framework_ids"]["owasp_mcp_top10"] == "MCP05"
         assert d["framework_ids"]["cwe"] == ["CWE-78"]
 
+    def test_finding_to_dict_includes_mitigation(self) -> None:
+        """Verify mitigation is serialized in finding dict."""
+        from q_ai.core.mitigation import (
+            GuidanceSection,
+            MitigationGuidance,
+            SectionKind,
+            SourceType,
+        )
+
+        guidance = MitigationGuidance(
+            sections=[
+                GuidanceSection(
+                    kind=SectionKind.ACTIONS,
+                    source_type=SourceType.TAXONOMY,
+                    source_ids=["owasp_mcp_top10"],
+                    items=["Validate inputs"],
+                ),
+            ],
+        )
+        finding = _make_finding(mitigation=guidance)
+        d = finding_to_dict(finding)
+
+        assert "mitigation" in d
+        assert d["mitigation"]["sections"][0]["kind"] == "actions"
+        assert d["mitigation"]["schema_version"] == 1
+
+    def test_finding_to_dict_null_mitigation(self) -> None:
+        """Verify None mitigation serializes as null."""
+        finding = _make_finding(mitigation=None)
+        d = finding_to_dict(finding)
+        assert d["mitigation"] is None
+
+    def test_roundtrip_with_mitigation(self) -> None:
+        """Verify finding roundtrip preserves mitigation data."""
+        from q_ai.core.mitigation import (
+            GuidanceSection,
+            MitigationGuidance,
+            SectionKind,
+            SourceType,
+        )
+
+        guidance = MitigationGuidance(
+            sections=[
+                GuidanceSection(
+                    kind=SectionKind.ACTIONS,
+                    source_type=SourceType.TAXONOMY,
+                    source_ids=["owasp_mcp_top10"],
+                    items=["Validate inputs"],
+                ),
+            ],
+            caveats=["Test caveat"],
+        )
+        original = _make_finding(mitigation=guidance)
+        d = finding_to_dict(original)
+        restored = dict_to_finding(d)
+
+        assert restored.mitigation is not None
+        assert restored.mitigation.sections[0].items == ["Validate inputs"]
+        assert restored.mitigation.caveats == ["Test caveat"]
+
 
 class TestJsonReport:
     def test_generate_json_report(self) -> None:
@@ -182,6 +242,112 @@ class TestSarifReport:
             assert len(rules) == 1
             results = data["runs"][0]["results"]
             assert len(results) == 2
+
+    def test_sarif_result_includes_mitigation(self) -> None:
+        """Verify SARIF result properties include mitigation when present."""
+        from q_ai.core.mitigation import (
+            GuidanceSection,
+            MitigationGuidance,
+            SectionKind,
+            SourceType,
+        )
+
+        guidance = MitigationGuidance(
+            sections=[
+                GuidanceSection(
+                    kind=SectionKind.ACTIONS,
+                    source_type=SourceType.TAXONOMY,
+                    source_ids=["owasp_mcp_top10"],
+                    items=["Validate inputs"],
+                ),
+            ],
+        )
+        finding = _make_finding(mitigation=guidance)
+        scan_result = FakeScanResult(
+            findings=[finding],
+            server_info={"name": "test-server"},
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output = generate_sarif_report(scan_result, Path(tmp_dir) / "report.sarif")
+            data = json.loads(output.read_text())
+            props = data["runs"][0]["results"][0]["properties"]
+            assert "mitigation" in props
+            assert props["mitigation"]["sections"][0]["kind"] == "actions"
+
+    def test_sarif_result_omits_mitigation_when_none(self) -> None:
+        """Verify SARIF result omits mitigation key when None."""
+        finding = _make_finding(mitigation=None)
+        scan_result = FakeScanResult(
+            findings=[finding],
+            server_info={"name": "test-server"},
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output = generate_sarif_report(scan_result, Path(tmp_dir) / "report.sarif")
+            data = json.loads(output.read_text())
+            props = data["runs"][0]["results"][0]["properties"]
+            assert "mitigation" not in props
+
+
+class TestHtmlReport:
+    """Tests for HTML report mitigation rendering."""
+
+    def test_html_report_contains_mitigation_section(self) -> None:
+        """Verify HTML report renders mitigation guidance."""
+        from q_ai.audit.reporting.html_report import generate_html_report
+        from q_ai.core.mitigation import (
+            GuidanceSection,
+            MitigationGuidance,
+            SectionKind,
+            SourceType,
+        )
+
+        guidance = MitigationGuidance(
+            sections=[
+                GuidanceSection(
+                    kind=SectionKind.ACTIONS,
+                    source_type=SourceType.TAXONOMY,
+                    source_ids=["owasp_mcp_top10"],
+                    items=["Validate inputs", "Sanitize commands"],
+                ),
+            ],
+            caveats=["Test caveat"],
+        )
+        finding = _make_finding(
+            mitigation=guidance,
+            framework_ids={"owasp_mcp_top10": "MCP05"},
+        )
+        scan_result = FakeScanResult(
+            findings=[finding],
+            server_info={"name": "test-server"},
+            finished_at=datetime.now(UTC),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output = generate_html_report(scan_result, Path(tmp_dir) / "report.html")
+            html = output.read_text()
+            assert "Mitigation Guidance" in html
+            assert "Recommended by OWASP MCP Top 10" in html
+            assert "Validate inputs" in html
+            assert "Sanitize commands" in html
+            assert "Test caveat" in html
+
+    def test_html_report_legacy_finding_shows_not_available(self) -> None:
+        """Verify legacy findings show 'not available' message."""
+        from q_ai.audit.reporting.html_report import generate_html_report
+
+        finding = _make_finding(mitigation=None)
+        scan_result = FakeScanResult(
+            findings=[finding],
+            server_info={"name": "test-server"},
+            finished_at=datetime.now(UTC),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output = generate_html_report(scan_result, Path(tmp_dir) / "report.html")
+            html = output.read_text()
+            assert "No mitigation guidance available" in html
 
 
 class TestSeverityFromCvss:

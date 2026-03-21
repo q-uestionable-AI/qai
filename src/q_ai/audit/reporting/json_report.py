@@ -14,6 +14,7 @@ from typing import Any
 
 from q_ai import __version__
 from q_ai.audit.reporting.prompt import build_audit_interpret_prompt
+from q_ai.core.mitigation import MitigationGuidance
 from q_ai.mcp.models import ScanFinding, Severity
 
 
@@ -39,6 +40,7 @@ def finding_to_dict(finding: ScanFinding) -> dict[str, Any]:
         "tool_name": finding.tool_name,
         "metadata": finding.metadata,
         "timestamp": finding.timestamp.isoformat(),
+        "mitigation": finding.mitigation.to_dict() if finding.mitigation else None,
     }
 
 
@@ -68,6 +70,9 @@ def dict_to_finding(data: dict[str, Any]) -> ScanFinding:
         if "timestamp" in data
         else datetime.now(UTC),
         framework_ids=data.get("framework_ids", {}),
+        mitigation=(
+            MitigationGuidance.from_dict(data["mitigation"]) if data.get("mitigation") else None
+        ),
     )
 
 
