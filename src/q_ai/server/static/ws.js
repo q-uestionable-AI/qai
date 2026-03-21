@@ -262,19 +262,35 @@
     }
 
     // Expose for the Resume button onclick
-    window.resumeWorkflow = function () {
+    window.resumeWorkflow = async function () {
         if (!runId) return;
-        fetch('/api/workflows/' + runId + '/resume', {method: 'POST'});
         var btn = document.getElementById('resume-btn');
         if (btn) btn.classList.add('hidden');
+        try {
+            var resp = await fetch('/api/workflows/' + runId + '/resume', {method: 'POST'});
+            if (!resp.ok) {
+                throw new Error('Server returned ' + resp.status);
+            }
+        } catch (err) {
+            console.error('Failed to resume workflow:', err);
+            if (btn) btn.classList.remove('hidden');
+        }
     };
 
     // Expose for the Conclude Campaign button onclick
-    window.concludeWorkflow = function () {
+    window.concludeWorkflow = async function () {
         if (!runId) return;
-        fetch('/api/workflows/' + runId + '/conclude', {method: 'POST'});
         var btn = document.getElementById('conclude-btn');
         if (btn) btn.disabled = true;
+        try {
+            var resp = await fetch('/api/workflows/' + runId + '/conclude', {method: 'POST'});
+            if (!resp.ok) {
+                throw new Error('Server returned ' + resp.status);
+            }
+        } catch (err) {
+            console.error('Failed to conclude campaign:', err);
+            if (btn) btn.disabled = false;
+        }
     };
 
     // Clean up on page unload to prevent reconnect attempts

@@ -930,11 +930,16 @@ def save_run_guidance(
         conn: Active database connection.
         run_id: ID of the run to update.
         guidance_json: JSON-serialized RunGuidance string.
+
+    Raises:
+        ValueError: If run_id does not exist.
     """
-    conn.execute(
+    cursor = conn.execute(
         "UPDATE runs SET guidance = ? WHERE id = ?",
         (guidance_json, run_id),
     )
+    if cursor.rowcount == 0:
+        raise ValueError(f"Run {run_id!r} not found")
 
 
 def get_run_guidance(
@@ -948,11 +953,14 @@ def get_run_guidance(
         run_id: ID of the run to query.
 
     Returns:
-        The raw JSON string or None if no guidance is set.
+        The raw JSON string or None if the run exists but has no guidance set.
+
+    Raises:
+        ValueError: If run_id does not exist.
     """
     row = conn.execute("SELECT guidance FROM runs WHERE id = ?", (run_id,)).fetchone()
     if row is None:
-        return None
+        raise ValueError(f"Run {run_id!r} not found")
     result: str | None = row[0]
     return result
 

@@ -245,6 +245,20 @@ class TestRunGuidanceDBPersistence:
         with get_connection(db_path) as conn:
             assert get_run_guidance(conn, run_id) is None
 
+    def test_save_guidance_raises_on_missing_run(self, tmp_path: Path) -> None:
+        from q_ai.core.db import get_connection, save_run_guidance
+
+        db_path = tmp_path / "test.db"
+        with get_connection(db_path) as conn, pytest.raises(ValueError, match="not found"):
+            save_run_guidance(conn, "nonexistent", '{"blocks": []}')
+
+    def test_get_guidance_raises_on_missing_run(self, tmp_path: Path) -> None:
+        from q_ai.core.db import get_connection, get_run_guidance
+
+        db_path = tmp_path / "test.db"
+        with get_connection(db_path) as conn, pytest.raises(ValueError, match="not found"):
+            get_run_guidance(conn, "nonexistent")
+
     def test_guidance_in_run_model(self, tmp_path: Path) -> None:
         from q_ai.core.db import create_run, get_connection, get_run, save_run_guidance
 

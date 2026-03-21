@@ -2679,13 +2679,6 @@ async def resume_workflow(request: Request, run_id: str) -> JSONResponse:
 # Conclude Campaign API
 # ---------------------------------------------------------------------------
 
-_TERMINAL_STATUSES = {
-    RunStatus.COMPLETED,
-    RunStatus.FAILED,
-    RunStatus.CANCELLED,
-    RunStatus.PARTIAL,
-}
-
 
 @router.post("/api/workflows/{run_id}/conclude")
 async def conclude_campaign(request: Request, run_id: str) -> JSONResponse:
@@ -2741,7 +2734,7 @@ async def conclude_campaign(request: Request, run_id: str) -> JSONResponse:
     active_workflows: dict[str, object] = request.app.state.active_workflows
     runner = active_workflows.get(run_id)
     if runner is not None and isinstance(runner, WorkflowRunner):
-        runner._wait_event.set()
+        runner.unblock()
         active_workflows.pop(run_id, None)
 
     return JSONResponse(content={"status": "concluded"})
