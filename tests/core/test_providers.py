@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import sqlite3
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 
-from q_ai.core.providers import PROVIDERS, ProviderType, fetch_models, get_provider
+from q_ai.core.db import get_connection, get_setting, set_setting
+from q_ai.core.providers import (
+    PROVIDERS,
+    ProviderType,
+    fetch_models,
+    get_provider,
+    migrate_default_model,
+)
+from q_ai.core.schema import migrate
 
 
 class TestProviderRegistry:
@@ -192,3 +202,104 @@ class TestFetchModels:
         mock_client.get.assert_called_once()
         call_url = mock_client.get.call_args[0][0]
         assert call_url == "http://localhost:11434/api/tags"
+
+
+@pytest.fixture
+def migration_db(tmp_path: Path) -> Path:
+    """Create a temp DB with schema for migration tests."""
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        migrate(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    return db_path
+
+
+class TestMigrateDefaultModel:
+    """migrate_default_model() splits legacy default_model into two fields."""
+
+    def test_happy_path(self, migration_db: Path) -> None:
+        with get_connection(migration_db) as conn:
+            set_setting(conn, "default_model", "lmstudio/qwen2.5-7b")
+
+        migrate_default_model(migration_db)
+
+        with get_connection(migration_db) as conn:
+            assert get_setting(conn, "default_provider") == "lmstudio"
+            assert get_setting(conn, "default_model_id") == "lmstudio/qwen2.5-7b"
+            assert get_setting(conn, "default_model") is None
+
+    def test_missing_slash(self, migration_db: Path) -> None:
+        with get_connection(migration_db) as conn:
+            set_setting(conn, "default_model", "gpt-4o")
+
+        migrate_default_model(migration_db)
+
+        with get_connection(migration_db) as conn:
+            assert get_setting(conn, "default_provider") is None
+            assert get_setting(conn, "default_model_id") is None
+            assert get_setting(conn, "default_model") is None
+
+    def test_unknown_provider_prefix(self, migration_db: Path) -> None:
+        with get_connection(migration_db) as conn:
+            set_setting(conn, "default_model", "fakeprovider/some-model")
+
+        migrate_default_model(migration_db)
+
+        with get_connection(migration_db) as conn:
+            assert get_setting(conn, "default_provider") is None
+            assert get_setting(conn, "default_model_id") is None
+            assert get_setting(conn, "default_model") is None
+
+    def test_blank_model_id(self, migration_db: Path) -> None:
+        with get_connection(migration_db) as conn:
+            set_setting(conn, "default_model", "openai/")
+
+        migrate_default_model(migration_db)
+
+        with get_connection(migration_db) as conn:
+            assert get_setting(conn, "default_provider") is None
+            assert get_setting(conn, "default_model") is None
+
+    def test_extra_delimiters(self, migration_db: Path) -> None:
+        with get_connection(migration_db) as conn:
+            set_setting(conn, "default_model", "openrouter/anthropic/claude-sonnet-4")
+
+        migrate_default_model(migration_db)
+
+        with get_connection(migration_db) as conn:
+            assert get_setting(conn, "default_provider") == "openrouter"
+            assert get_setting(conn, "default_model_id") == "openrouter/anthropic/claude-sonnet-4"
+
+    def test_already_migrated(self, migration_db: Path) -> None:
+        with get_connection(migration_db) as conn:
+            set_setting(conn, "default_model", "openai/gpt-4o")
+            set_setting(conn, "default_provider", "openai")
+            set_setting(conn, "default_model_id", "openai/gpt-4o")
+
+        migrate_default_model(migration_db)
+
+        with get_connection(migration_db) as conn:
+            assert get_setting(conn, "default_provider") == "openai"
+            assert get_setting(conn, "default_model_id") == "openai/gpt-4o"
+            assert get_setting(conn, "default_model") is None
+
+    def test_no_default_model(self, migration_db: Path) -> None:
+        migrate_default_model(migration_db)
+
+        with get_connection(migration_db) as conn:
+            assert get_setting(conn, "default_provider") is None
+            assert get_setting(conn, "default_model_id") is None
+
+    def test_idempotent(self, migration_db: Path) -> None:
+        with get_connection(migration_db) as conn:
+            set_setting(conn, "default_model", "ollama/llama3.2")
+
+        migrate_default_model(migration_db)
+        migrate_default_model(migration_db)
+
+        with get_connection(migration_db) as conn:
+            assert get_setting(conn, "default_provider") == "ollama"
+            assert get_setting(conn, "default_model_id") == "ollama/llama3.2"

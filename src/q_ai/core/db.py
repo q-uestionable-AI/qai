@@ -984,3 +984,13 @@ def set_setting(
         """,
         (key, value, _now_iso()),
     )
+
+
+def _delete_setting(conn: sqlite3.Connection, key: str) -> None:
+    """Delete a setting by key. No-op if the key does not exist.
+
+    Args:
+        conn: Active database connection.
+        key: Setting key to remove.
+    """
+    conn.execute("DELETE FROM settings WHERE key = ?", (key,))

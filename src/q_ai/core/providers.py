@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 
 import httpx
 
@@ -267,3 +268,49 @@ async def _fetch_local_models(
             message=f"No models loaded in {config.label}. Pull a model to get started.",
         )
     return ModelListResponse(models=models, supports_custom=config.supports_custom)
+
+
+def migrate_default_model(db_path: Path) -> None:
+    """Migrate the legacy ``default_model`` setting to ``default_provider`` + ``default_model_id``.
+
+    Reads ``default_model`` from the settings table and, when present, splits
+    it on the first ``/`` to derive a provider key and full model ID.  The
+    legacy key is always deleted on exit (whether migration succeeded or was
+    skipped).  Safe to call multiple times — idempotent.
+
+    Migration rules:
+    - Absent or empty value → no-op, return.
+    - ``default_provider`` already present → already migrated; delete
+      ``default_model`` and return.
+    - Left side is a known provider key AND right side is non-empty → write
+      ``default_provider`` (left) and ``default_model_id`` (full original
+      value), delete ``default_model``.
+    - Otherwise → delete ``default_model``, log a warning.
+
+    Args:
+        db_path: Path to the SQLite database file.
+    """
+    from q_ai.core.db import _delete_setting, get_connection, get_setting, set_setting
+
+    with get_connection(db_path) as conn:
+        legacy = get_setting(conn, "default_model")
+        if not legacy:
+            return
+
+        if get_setting(conn, "default_provider") is not None:
+            # Already migrated — clean up the legacy key only.
+            _delete_setting(conn, "default_model")
+            return
+
+        provider_key, _, model_suffix = legacy.partition("/")
+
+        if provider_key in PROVIDERS and model_suffix:
+            set_setting(conn, "default_provider", provider_key)
+            set_setting(conn, "default_model_id", legacy)
+        else:
+            _log.warning(
+                "migrate_default_model: cannot parse %r — discarding legacy setting",
+                legacy,
+            )
+
+        _delete_setting(conn, "default_model")
