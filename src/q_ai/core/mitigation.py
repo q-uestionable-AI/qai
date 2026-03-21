@@ -162,11 +162,19 @@ class GuidanceSection:
         except ValueError:
             msg = f"Invalid SourceType value: {data['source_type']!r}"
             raise ValueError(msg) from None
+        source_ids = data.get("source_ids", [])
+        if not isinstance(source_ids, list):
+            msg = f"GuidanceSection 'source_ids' must be a list, got {type(source_ids).__name__}"
+            raise TypeError(msg)
+        items = data.get("items", [])
+        if not isinstance(items, list):
+            msg = f"GuidanceSection 'items' must be a list, got {type(items).__name__}"
+            raise TypeError(msg)
         return cls(
             kind=kind,
             source_type=source_type,
-            source_ids=list(data.get("source_ids", [])),
-            items=list(data.get("items", [])),
+            source_ids=list(source_ids),
+            items=list(items),
         )
 
 
@@ -217,9 +225,17 @@ class MitigationGuidance:
             return cls(
                 caveats=["Mitigation guidance format not supported by this version"],
             )
+        raw_sections = data.get("sections", [])
+        if not isinstance(raw_sections, list):
+            msg = f"MitigationGuidance 'sections' must be a list, got {type(raw_sections).__name__}"
+            raise TypeError(msg)
+        raw_caveats = data.get("caveats", [])
+        if not isinstance(raw_caveats, list):
+            msg = f"MitigationGuidance 'caveats' must be a list, got {type(raw_caveats).__name__}"
+            raise TypeError(msg)
         return cls(
-            sections=[GuidanceSection.from_dict(s) for s in data.get("sections", [])],
-            caveats=list(data.get("caveats", [])),
+            sections=[GuidanceSection.from_dict(s) for s in raw_sections],
+            caveats=list(raw_caveats),
             schema_version=version,
             disclaimer=data.get("disclaimer", DEFAULT_DISCLAIMER),
         )
