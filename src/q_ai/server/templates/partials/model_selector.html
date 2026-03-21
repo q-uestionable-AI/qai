@@ -1,0 +1,30 @@
+{# Two-step provider/model selector.
+   Required context: selector_id (unique per form), providers (configured list),
+                     default_provider, default_model_id #}
+
+<div class="form-control">
+    <label class="label"><span class="label-text">Provider</span></label>
+    <select name="provider" required
+            id="{{ selector_id }}-provider"
+            class="select select-bordered select-sm w-full"
+            onchange="htmx.ajax('GET', '/api/providers/' + this.value + '/models?default={{ default_model_id or '' }}&selector_id={{ selector_id }}', {target: '#' + '{{ selector_id }}-model-area'})">
+        <option value="" disabled {% if not default_provider %}selected{% endif %}>
+            Select a provider...
+        </option>
+        {% for p in providers %}
+        <option value="{{ p.name }}"
+                {% if p.name == default_provider %}selected{% endif %}>
+            {{ p.label }}
+        </option>
+        {% endfor %}
+    </select>
+</div>
+
+<div class="form-control">
+    <label class="label"><span class="label-text">Model</span></label>
+    <div id="{{ selector_id }}-model-area">
+        <select disabled class="select select-bordered select-sm w-full opacity-40">
+            <option>Select a provider first</option>
+        </select>
+    </div>
+</div>
