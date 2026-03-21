@@ -269,6 +269,14 @@
         if (btn) btn.classList.add('hidden');
     };
 
+    // Expose for the Conclude Campaign button onclick
+    window.concludeWorkflow = function () {
+        if (!runId) return;
+        fetch('/api/workflows/' + runId + '/conclude', {method: 'POST'});
+        var btn = document.getElementById('conclude-btn');
+        if (btn) btn.disabled = true;
+    };
+
     // Clean up on page unload to prevent reconnect attempts
     window.addEventListener('beforeunload', function () {
         intentionalClose = true;
