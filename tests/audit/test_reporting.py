@@ -96,6 +96,66 @@ class TestFindingSerialization:
         assert d["framework_ids"]["owasp_mcp_top10"] == "MCP05"
         assert d["framework_ids"]["cwe"] == ["CWE-78"]
 
+    def test_finding_to_dict_includes_mitigation(self) -> None:
+        """Verify mitigation is serialized in finding dict."""
+        from q_ai.core.mitigation import (
+            GuidanceSection,
+            MitigationGuidance,
+            SectionKind,
+            SourceType,
+        )
+
+        guidance = MitigationGuidance(
+            sections=[
+                GuidanceSection(
+                    kind=SectionKind.ACTIONS,
+                    source_type=SourceType.TAXONOMY,
+                    source_ids=["owasp_mcp_top10"],
+                    items=["Validate inputs"],
+                ),
+            ],
+        )
+        finding = _make_finding(mitigation=guidance)
+        d = finding_to_dict(finding)
+
+        assert "mitigation" in d
+        assert d["mitigation"]["sections"][0]["kind"] == "actions"
+        assert d["mitigation"]["schema_version"] == 1
+
+    def test_finding_to_dict_null_mitigation(self) -> None:
+        """Verify None mitigation serializes as null."""
+        finding = _make_finding(mitigation=None)
+        d = finding_to_dict(finding)
+        assert d["mitigation"] is None
+
+    def test_roundtrip_with_mitigation(self) -> None:
+        """Verify finding roundtrip preserves mitigation data."""
+        from q_ai.core.mitigation import (
+            GuidanceSection,
+            MitigationGuidance,
+            SectionKind,
+            SourceType,
+        )
+
+        guidance = MitigationGuidance(
+            sections=[
+                GuidanceSection(
+                    kind=SectionKind.ACTIONS,
+                    source_type=SourceType.TAXONOMY,
+                    source_ids=["owasp_mcp_top10"],
+                    items=["Validate inputs"],
+                ),
+            ],
+            caveats=["Test caveat"],
+        )
+        original = _make_finding(mitigation=guidance)
+        d = finding_to_dict(original)
+        restored = dict_to_finding(d)
+
+        assert restored.mitigation is not None
+        assert restored.mitigation.sections[0].items == ["Validate inputs"]
+        assert restored.mitigation.caveats == ["Test caveat"]
+
 
 class TestJsonReport:
     def test_generate_json_report(self) -> None:
