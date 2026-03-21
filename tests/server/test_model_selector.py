@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -121,3 +121,84 @@ class TestProviderModelsEndpoint:
             )
         assert resp.status_code == 200
         assert "selected" in resp.text
+
+
+def _mock_workflow_entry(wf_id: str, *, requires_provider: bool = True) -> MagicMock:
+    """Create a mock WorkflowEntry for launch validation tests."""
+    entry = MagicMock()
+    entry.id = wf_id
+    entry.executor = AsyncMock()
+    entry.requires_provider = requires_provider
+    return entry
+
+
+class TestLaunchProviderValidation:
+    """Launch endpoint validates provider/model before creating a run."""
+
+    def test_unknown_provider_rejected(self, client: TestClient) -> None:
+        body = {
+            "workflow_id": "assess",
+            "target_name": "test",
+            "transport": "stdio",
+            "command": "echo hi",
+            "provider": "fakeprovider",
+            "model": "fakeprovider/some-model",
+        }
+        with patch("q_ai.server.routes.get_workflow") as mock_wf:
+            mock_wf.return_value = _mock_workflow_entry("assess")
+            resp = client.post("/api/workflows/launch", json=body)
+        assert resp.status_code == 422
+        assert "Unknown provider" in resp.json()["detail"]
+
+    def test_unconfigured_provider_rejected(self, client: TestClient) -> None:
+        body = {
+            "workflow_id": "assess",
+            "target_name": "test",
+            "transport": "stdio",
+            "command": "echo hi",
+            "provider": "anthropic",
+            "model": "anthropic/claude-sonnet-4-20250514",
+        }
+        with (
+            patch("q_ai.server.routes.get_credential", return_value=None),
+            patch("q_ai.server.routes.get_workflow") as mock_wf,
+        ):
+            mock_wf.return_value = _mock_workflow_entry("assess")
+            resp = client.post("/api/workflows/launch", json=body)
+        assert resp.status_code == 422
+        assert "not configured" in resp.json()["detail"].lower()
+
+    def test_empty_model_rejected(self, client: TestClient) -> None:
+        body = {
+            "workflow_id": "assess",
+            "target_name": "test",
+            "transport": "stdio",
+            "command": "echo hi",
+            "provider": "anthropic",
+            "model": "",
+        }
+        with (
+            patch("q_ai.server.routes.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.get_workflow") as mock_wf,
+        ):
+            mock_wf.return_value = _mock_workflow_entry("assess")
+            resp = client.post("/api/workflows/launch", json=body)
+        assert resp.status_code == 422
+        assert "model" in resp.json()["detail"].lower()
+
+    def test_valid_cloud_provider_accepted(self, client: TestClient) -> None:
+        body = {
+            "workflow_id": "assess",
+            "target_name": "test",
+            "transport": "stdio",
+            "command": "echo hi",
+            "provider": "openai",
+            "model": "openai/gpt-4o",
+        }
+        with (
+            patch("q_ai.server.routes.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.get_workflow") as mock_wf,
+        ):
+            mock_wf.return_value = _mock_workflow_entry("assess")
+            resp = client.post("/api/workflows/launch", json=body)
+        assert resp.status_code == 201

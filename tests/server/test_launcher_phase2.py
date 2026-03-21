@@ -274,17 +274,19 @@ class TestQuickActionLaunch:
 
     def test_campaign_requires_model(self, client: TestClient) -> None:
         """Campaign action without model returns 422."""
-        resp = client.post(
-            "/api/quick-actions/launch",
-            json={
-                "action": "campaign",
-                "target_name": "x",
-                "transport": "stdio",
-                "command": "echo hi",
-            },
-        )
+        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+            resp = client.post(
+                "/api/quick-actions/launch",
+                json={
+                    "action": "campaign",
+                    "target_name": "x",
+                    "transport": "stdio",
+                    "command": "echo hi",
+                    "provider": "openai",
+                },
+            )
         assert resp.status_code == 422
-        assert "model" in resp.json()["detail"]
+        assert "model" in resp.json()["detail"].lower()
 
     def test_campaign_rejects_invalid_rounds(self, client: TestClient) -> None:
         """Campaign with non-integer rounds returns 422."""
@@ -296,6 +298,7 @@ class TestQuickActionLaunch:
                     "target_name": "x",
                     "transport": "stdio",
                     "command": "echo hi",
+                    "provider": "openai",
                     "model": "openai/gpt-4",
                     "rounds": "abc",
                 },
@@ -313,6 +316,7 @@ class TestQuickActionLaunch:
                     "target_name": "x",
                     "transport": "stdio",
                     "command": "echo hi",
+                    "provider": "openai",
                     "model": "openai/gpt-4",
                     "rounds": 20,
                 },
@@ -330,11 +334,12 @@ class TestQuickActionLaunch:
                     "target_name": "x",
                     "transport": "stdio",
                     "command": "echo hi",
+                    "provider": "openai",
                     "model": "openai/gpt-4",
                 },
             )
         assert resp.status_code == 422
-        assert "credential" in resp.json()["detail"]
+        assert "not configured" in resp.json()["detail"].lower()
 
     def test_intercept_launch_creates_run(self, client: TestClient, tmp_db: Path) -> None:
         """Intercept quick action creates a run and target."""
@@ -365,6 +370,7 @@ class TestQuickActionLaunch:
                     "target_name": "inject-test",
                     "transport": "stdio",
                     "command": "echo hi",
+                    "provider": "openai",
                     "model": "openai/gpt-4",
                     "rounds": 1,
                 },

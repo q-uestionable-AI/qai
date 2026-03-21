@@ -15,6 +15,7 @@ def _valid_body() -> dict:
         "target_name": "test-server",
         "transport": "stdio",
         "command": "echo hi",
+        "provider": "openai",
         "model": "openai/gpt-4",
         "rounds": 1,
     }
@@ -117,7 +118,8 @@ class TestLaunchValidation:
         """POST without model -> 422."""
         body = _valid_body()
         body["model"] = ""
-        resp = client.post("/api/workflows/launch", json=body)
+        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+            resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
 
     def test_launch_validation_missing_credential(self, client: TestClient) -> None:
@@ -253,6 +255,7 @@ class TestLaunchTracePath:
             "chain_template_id": "test-chain",
             "transport": "stdio",
             "command": "echo hi",
+            "provider": "openai",
             "model": "openai/gpt-4",
         }
         with (
@@ -274,6 +277,7 @@ class TestLaunchTracePath:
             "chain_template_id": "nonexistent",
             "transport": "stdio",
             "command": "echo hi",
+            "provider": "openai",
             "model": "openai/gpt-4",
         }
         with (
@@ -294,6 +298,7 @@ class TestLaunchTracePath:
             "target_name": "trace-target",
             "transport": "stdio",
             "command": "echo hi",
+            "provider": "openai",
             "model": "openai/gpt-4",
         }
         with (

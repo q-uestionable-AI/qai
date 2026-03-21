@@ -1997,12 +1997,13 @@ async def _run_workflow(
             await runner.fail(error=str(exc))
 
 
-def _check_provider_credential(body: dict[str, Any], db_path: Path | None) -> JSONResponse | None:
-    """Validate that the provider referenced by the model field has credentials.
+async def _validate_provider_model(
+    body: dict[str, Any], db_path: Path | None
+) -> JSONResponse | None:
+    """Validate provider/model pair before launch.
 
-    For local providers (ollama, lmstudio, custom), checks that a base URL is
-    configured or has a default. For cloud providers, checks that a credential
-    exists in the keyring.
+    Checks: provider is known, configured, model is non-empty, and
+    local providers are reachable.
 
     Args:
         body: The parsed request body dict.
@@ -2011,42 +2012,56 @@ def _check_provider_credential(body: dict[str, Any], db_path: Path | None) -> JS
     Returns:
         A JSONResponse with 422 status if validation fails, or None on success.
     """
-    try:
-        model = _str_field(body, "model")
-    except TypeError:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "Invalid provider model parameter"},
-        )
-    if not model or "/" not in model:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "model must be non-empty and in provider/model format"},
-        )
-    provider = model.split("/", 1)[0]
-    local_providers = {"ollama", "lmstudio", "custom"}
-    if provider in local_providers:
-        default_urls = {
-            "ollama": "http://localhost:11434",
-            "lmstudio": "http://localhost:1234",
-        }
-        with get_connection(db_path) as conn:
-            base_url_setting = get_setting(conn, f"{provider}.base_url")
-        if not base_url_setting and provider not in default_urls:
+    provider_name = (body.get("provider") or "").strip()
+    model = (body.get("model") or "").strip()
+
+    if not provider_name:
+        # Backward compat: try to extract from model string
+        if model and "/" in model:
+            provider_name = model.split("/", 1)[0]
+        if not provider_name:
             return JSONResponse(
                 status_code=422,
-                content={"detail": f"No base URL configured for provider '{provider}'"},
+                content={"detail": "provider is required"},
             )
-    else:
+
+    config = get_provider(provider_name)
+    if config is None:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"Unknown provider: {provider_name}"},
+        )
+
+    # Check configured
+    with get_connection(db_path) as conn:
         try:
-            cred = get_credential(provider)
+            cred = get_credential(provider_name)
         except RuntimeError:
             cred = None
-        if cred is None:
+        base_url = get_setting(conn, f"{provider_name}.base_url") or ""
+
+    configured = cred is not None or bool(base_url)
+    if not configured and config.type != ProviderType.CUSTOM:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"Provider '{provider_name}' is not configured"},
+        )
+
+    if not model:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "No model selected"},
+        )
+
+    # For local providers, check reachability via fetch_models
+    if config.type == ProviderType.LOCAL:
+        result = await fetch_models(provider_name, base_url or None)
+        if result.error:
             return JSONResponse(
                 status_code=422,
-                content={"detail": f"No credential configured for provider '{provider}'"},
+                content={"detail": result.error},
             )
+
     return None
 
 
@@ -2146,11 +2161,11 @@ async def launch_workflow(request: Request) -> JSONResponse:
             content={"detail": f"Unknown workflow: {workflow_id}"},
         )
 
-    # --- Provider credential check (skipped for workflows that don't need one) ---
+    # --- Provider/model validation (skipped for workflows that don't need one) ---
     if entry.requires_provider:
-        cred_error = _check_provider_credential(body, db_path)
-        if cred_error is not None:
-            return cred_error
+        validation_error = await _validate_provider_model(body, db_path)
+        if validation_error is not None:
+            return validation_error
 
     # --- Validate target_name early (but don't create row yet) ---
     _no_target_name_workflows = {"blast_radius", "generate_report"}
@@ -2274,7 +2289,7 @@ def _validate_campaign_fields(body: dict[str, Any]) -> JSONResponse | None:
     return None
 
 
-def _validate_quick_action(
+async def _validate_quick_action(
     body: dict[str, Any], db_path: Path | None
 ) -> JSONResponse | tuple[str, str]:
     """Validate quick action request fields.
@@ -2295,9 +2310,9 @@ def _validate_quick_action(
         )
 
     if action in _QUICK_ACTION_PROVIDER_REQUIRED:
-        cred_error = _check_provider_credential(body, db_path)
-        if cred_error is not None:
-            return cred_error
+        validation_error = await _validate_provider_model(body, db_path)
+        if validation_error is not None:
+            return validation_error
 
     target_name = _str_field(body, "target_name")
     if not target_name:
@@ -2405,7 +2420,7 @@ async def launch_quick_action(request: Request) -> JSONResponse:
     db_path = _get_db_path(request)
 
     try:
-        result = await asyncio.to_thread(_validate_quick_action, body, db_path)
+        result = await _validate_quick_action(body, db_path)
     except TypeError:
         logger.warning("Invalid request parameters in quick action", exc_info=True)
         return JSONResponse(status_code=422, content={"detail": "Invalid request parameters"})
