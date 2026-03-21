@@ -1444,6 +1444,10 @@ async def settings_page(request: Request) -> HTMLResponse:
     providers_status = _get_providers_status(request)
     db_path = _get_db_path(request)
     migrate_default_model(db_path)
+
+    all_providers = get_configured_providers(db_path)
+    configured_providers = [p for p in all_providers if p["configured"]]
+
     with get_connection(db_path) as conn:
         defaults = {
             "default_provider": get_setting(conn, "default_provider") or "",
@@ -1451,15 +1455,31 @@ async def settings_page(request: Request) -> HTMLResponse:
             "audit.default_transport": (get_setting(conn, "audit.default_transport") or "stdio"),
             "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
         }
+
+    # Resolve display labels for saved defaults
+    default_provider_label = ""
+    default_model_label = ""
+    if defaults["default_provider"]:
+        provider_cfg = get_provider(defaults["default_provider"])
+        if provider_cfg:
+            default_provider_label = provider_cfg.label
+        if defaults["default_model_id"]:
+            # Model ID format is "provider/model-name"; use the part after "/"
+            parts = defaults["default_model_id"].split("/", 1)
+            default_model_label = parts[1] if len(parts) > 1 else parts[0]
+
     return templates.TemplateResponse(
         request,
         "settings.html",
         {
             "active": "settings",
-            "providers": providers_status,
+            "providers_status": providers_status,
+            "configured_providers": configured_providers,
             "defaults": defaults,
             "default_provider": defaults["default_provider"],
             "default_model_id": defaults["default_model_id"],
+            "default_provider_label": default_provider_label,
+            "default_model_label": default_model_label,
         },
     )
 
@@ -1643,6 +1663,16 @@ async def api_save_defaults(request: Request) -> JSONResponse:
             if value is not None:
                 set_setting(conn, key, str(value))
     return JSONResponse(content={"status": "saved"})
+
+
+@router.delete("/api/settings/defaults")
+async def api_clear_defaults(request: Request) -> JSONResponse:
+    """Clear default provider and model settings."""
+    db_path = _get_db_path(request)
+    with get_connection(db_path) as conn:
+        set_setting(conn, "default_provider", "")
+        set_setting(conn, "default_model_id", "")
+    return JSONResponse(content={"status": "cleared"})
 
 
 @router.get("/api/settings/infrastructure")
