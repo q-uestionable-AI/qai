@@ -45,7 +45,7 @@ class TestSchemaV8:
         conn.commit()
         migrate(conn)
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 8
+        assert ver == 9
         tables = {
             row[0]
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()

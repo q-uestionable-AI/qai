@@ -10,7 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from q_ai.core.mitigation import MitigationGuidance
 
 
 class Severity(StrEnum):
@@ -81,6 +84,7 @@ class ScanFinding:
     metadata: dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     framework_ids: dict[str, str | list[str]] = field(default_factory=dict)
+    mitigation: MitigationGuidance | None = None
 
 
 @dataclass

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_VERSION = 8
+CURRENT_VERSION = 9
 
 V1_TABLES = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -247,6 +247,23 @@ CREATE INDEX IF NOT EXISTS idx_rxp_validations_model_id ON rxp_validations(model
 """
 
 
+def _migrate_v9(conn: sqlite3.Connection) -> None:
+    """V9: Add mitigation column to findings table.
+
+    Guards against: (1) findings table not existing in partial-migration
+    test scenarios, and (2) column already existing for idempotency.
+    Uses conn.execute() instead of executescript() to avoid implicit COMMIT.
+    """
+    has_findings = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='findings'"
+    ).fetchone()
+    if has_findings:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(findings)").fetchall()}
+        if "mitigation" not in columns:
+            conn.execute("ALTER TABLE findings ADD COLUMN mitigation TEXT")
+    conn.execute("PRAGMA user_version = 9")
+
+
 def migrate(conn: sqlite3.Connection) -> None:
     """Run schema migrations up to CURRENT_VERSION.
 
@@ -259,6 +276,7 @@ def migrate(conn: sqlite3.Connection) -> None:
     Version 6 adds ipi_payloads and ipi_hits tables.
     Version 7 adds cxp_test_results table.
     Version 8 adds rxp_validations table.
+    Version 9 adds mitigation column to findings table.
     """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version < 1:
@@ -294,3 +312,5 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.executescript(V8_TABLES)
         conn.executescript(V8_INDEXES)
         conn.execute("PRAGMA user_version = 8")
+    if version < 9:
+        _migrate_v9(conn)

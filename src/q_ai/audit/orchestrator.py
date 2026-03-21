@@ -14,6 +14,7 @@ from typing import Any
 
 from q_ai.audit.scanner.registry import get_all_scanners, get_scanner
 from q_ai.core.frameworks import FrameworkResolver
+from q_ai.core.mitigation import MitigationResolver
 from q_ai.mcp.connection import MCPConnection
 from q_ai.mcp.discovery import enumerate_server
 from q_ai.mcp.models import ScanFinding
@@ -117,6 +118,11 @@ async def run_scan(
     resolver = FrameworkResolver()
     for finding in result.findings:
         finding.framework_ids = resolver.resolve(finding.category)
+
+    # Resolve mitigation guidance on every finding
+    mitigation_resolver = MitigationResolver()
+    for finding in result.findings:
+        finding.mitigation = mitigation_resolver.resolve(finding)
 
     result.finished_at = datetime.now(UTC)
     return result

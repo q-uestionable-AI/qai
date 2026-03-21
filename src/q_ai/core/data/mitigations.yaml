@@ -1,0 +1,221 @@
+# Mitigation guidance data for q-ai findings
+# Updated: 2026-03-21
+#
+# Structure:
+#   categories: Per-category tier 1 actions, tier 3 factors, and general notes
+#   rules: Predicate-keyed tier 2 rule actions
+#
+# Content standard:
+#   Tier 1 actions express class-level controls from the taxonomy.
+#   Tier 2 rule actions add finding-property refinements that complement,
+#   not restate, taxonomy guidance. Overlap resolved at authoring time.
+
+categories:
+  command_injection:
+    tier1_actions:
+      - "Validate and sanitize all tool input parameters before passing to system commands"
+      - "Use allowlists for permitted commands and arguments rather than blocklists"
+      - "Run MCP server processes with minimal OS privileges (least-privilege principle)"
+      - "Disable shell expansion in subprocess calls (avoid shell=True)"
+    tier3_factors:
+      - "Severity depends on whether the server runs with elevated privileges"
+      - "Network-accessible servers have higher blast radius than local stdio connections"
+      - "Consider whether the tool's legitimate function requires command execution"
+    general_note: null
+
+  auth:
+    tier1_actions:
+      - "Require authentication for all MCP connections, especially over network transports"
+      - "Use TLS for all non-stdio transports to protect credentials in transit"
+      - "Implement per-tool authorization checks, not just connection-level authentication"
+      - "Rotate credentials and tokens on a regular schedule"
+    tier3_factors:
+      - "Stdio transport inherits OS-level process isolation; network transports do not"
+      - "Sensitive tools (file write, exec, admin) require stronger auth controls"
+      - "Consider whether the server exposes operations that could modify system state"
+    general_note: null
+
+  token_exposure:
+    tier1_actions:
+      - "Never embed secrets or API keys in tool descriptions, parameters, or responses"
+      - "Use environment variable references or secret managers instead of literal values"
+      - "Audit tool responses for accidental credential leakage"
+      - "Implement response filtering to redact sensitive patterns before returning to clients"
+    tier3_factors:
+      - "Exposed tokens for privileged services (cloud APIs, databases) have higher impact"
+      - "Consider whether leaked credentials grant lateral movement to other systems"
+      - "Rotation speed determines the window of exposure after a leak"
+    general_note: null
+
+  permissions:
+    tier1_actions:
+      - "Apply least-privilege: only expose tools required for the server's stated purpose"
+      - "Separate read and write operations into distinct tools with independent authorization"
+      - "Enforce input length limits on all string parameters"
+      - "Review tool descriptions for overly broad capability claims"
+    tier3_factors:
+      - "High write-to-read tool ratios indicate potential for unintended state changes"
+      - "Servers with many tools have larger attack surfaces"
+      - "Consider whether tool capabilities match the server's documented scope"
+    general_note: null
+
+  tool_poisoning:
+    tier1_actions:
+      - "Inspect tool descriptions for hidden instructions or embedded prompt injections"
+      - "Validate tool names and descriptions against known homoglyph and Unicode attacks"
+      - "Compare tool descriptions against expected behavior documentation"
+      - "Monitor for tool description changes between server versions"
+    tier3_factors:
+      - "Poisoned tool descriptions can cause AI agents to perform unintended actions"
+      - "Hidden Unicode characters may not be visible in standard UI rendering"
+      - "Risk increases with the number of agents consuming the tool descriptions"
+    general_note: null
+
+  supply_chain:
+    tier1_actions:
+      - "Pin MCP server versions and verify integrity before deployment"
+      - "Monitor server dependencies for known vulnerabilities (CVEs)"
+      - "Validate server identity and provenance before connecting"
+      - "Maintain an inventory of all MCP servers in your environment"
+    tier3_factors:
+      - "Servers with known CVEs require immediate patching or isolation"
+      - "Unversioned or development-mode servers may have unstable security properties"
+      - "Consider the trust boundary between your agent and third-party MCP servers"
+    general_note: null
+
+  prompt_injection:
+    tier1_actions:
+      - "Sanitize tool outputs before incorporating into agent prompts"
+      - "Implement output validation to detect and filter injection patterns"
+      - "Use structured data formats for tool responses rather than free-text"
+      - "Apply content security boundaries between tool outputs and system instructions"
+    tier3_factors:
+      - "Cross-tool references in prompts can enable privilege escalation across tools"
+      - "Risk depends on the agent's authority level and available actions"
+      - "Consider whether injected instructions could reach other connected systems"
+    general_note: "Prompt injection mitigations are an active area of research. No single control is fully effective — defense in depth is essential."
+
+  audit_telemetry:
+    tier1_actions:
+      - "Enable comprehensive logging for all MCP tool invocations and responses"
+      - "Ensure error messages do not disclose internal implementation details"
+      - "Implement monitoring and alerting for anomalous MCP usage patterns"
+      - "Retain audit logs for incident investigation and compliance"
+    tier3_factors:
+      - "Servers without logging capabilities cannot support incident investigation"
+      - "Verbose error messages may expose file paths, stack traces, or configuration"
+      - "Consider regulatory requirements for audit trail retention"
+    general_note: null
+
+  shadow_servers:
+    tier1_actions:
+      - "Maintain an inventory of all authorized MCP servers in the environment"
+      - "Block connections to unregistered or unapproved MCP endpoints"
+      - "Implement network-level controls to detect unauthorized MCP traffic"
+      - "Validate server identity and version against expected deployment manifest"
+    tier3_factors:
+      - "Development or debug servers in production increase exposure to unpatched flaws"
+      - "Ephemeral or unversioned servers may lack security controls"
+      - "Consider whether shadow servers share credentials with production systems"
+    general_note: null
+
+  context_sharing:
+    tier1_actions:
+      - "Implement data classification for resources exposed via MCP"
+      - "Apply access controls to sensitive resources (user data, credentials, config)"
+      - "Validate that response sizes are proportional to request scope"
+      - "Enforce tenant and session isolation for multi-user MCP servers"
+    tier3_factors:
+      - "Disproportionate response sizes may indicate unintended data exposure"
+      - "Shared resources without scoping can leak data across user sessions"
+      - "Consider PII and regulatory implications of exposed resource content"
+    general_note: null
+
+rules:
+  "detection_mode:canary":
+    actions:
+      - "Canary-based detection confirmed command execution — prioritize input validation for this tool"
+
+  "detection_mode:pattern":
+    actions:
+      - "Pattern-based detection suggests output contains command artifacts — review output sanitization"
+
+  "detection_mode:error_based":
+    actions:
+      - "Error-based detection indicates the server leaks execution errors — suppress or sanitize error output"
+
+  "cwe:command_injection":
+    actions:
+      - "CWE-78: Ensure OS command construction uses parameterized APIs, not string concatenation"
+
+  "cwe:argument_injection":
+    actions:
+      - "CWE-88: Validate and escape command-line arguments; use allowlists for permitted flags"
+
+  "cwe:path_traversal":
+    actions:
+      - "CWE-22: Resolve and validate file paths against an allowed base directory before access"
+
+  "technique:shell_command":
+    actions:
+      - "Replace shell command execution with language-native APIs where possible"
+
+  "technique:path_traversal":
+    actions:
+      - "Implement path canonicalization and restrict access to a defined root directory"
+
+  "technique:argument_injection":
+    actions:
+      - "Use '--' to terminate option parsing before user-supplied arguments"
+
+  "transport:stdio":
+    actions:
+      - "Stdio transport relies on OS process isolation — ensure the calling process has appropriate privileges"
+
+  "transport:sse":
+    actions:
+      - "SSE transport is network-exposed — enforce TLS and authentication on all connections"
+
+  "transport:http":
+    actions:
+      - "HTTP transport is network-exposed — enforce TLS, authentication, and rate limiting"
+
+  "param:unbounded_input":
+    actions:
+      - "Add explicit max_length constraints to string parameters to prevent buffer abuse"
+
+  "permissions:high_write_ratio":
+    actions:
+      - "High write-to-read ratio detected — review whether all write tools are necessary for the server's purpose"
+
+  "permissions:many_tools":
+    actions:
+      - "Large tool count increases attack surface — consider splitting into focused servers with fewer tools"
+
+  "token:secrets_in_response":
+    actions:
+      - "Secrets detected in tool responses — implement server-side response filtering to redact credentials"
+
+  "token:env_var_leak":
+    actions:
+      - "Environment variables exposed — restrict the server process environment to required variables only"
+
+  "poisoning:hidden_chars":
+    actions:
+      - "Hidden Unicode characters detected in tool descriptions — inspect with a hex viewer and report to maintainer"
+
+  "poisoning:homoglyphs":
+    actions:
+      - "Homoglyph characters detected — tool names or descriptions may be visually spoofing legitimate tools"
+
+  "supply_chain:known_cve":
+    actions:
+      - "Known CVE identified — check vendor advisories and apply the fix or isolate the server immediately"
+
+  "shadow:debug_tools":
+    actions:
+      - "Debug/development tools detected — these should not be present in production deployments"
+
+  "prompt_injection:cross_tool_ref":
+    actions:
+      - "Cross-tool references found in prompt content — this may enable tool-to-tool privilege escalation"
