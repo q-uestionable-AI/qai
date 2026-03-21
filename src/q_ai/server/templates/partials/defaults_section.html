@@ -109,6 +109,7 @@ function showDefaultsForm() {
 }
 
 function cancelDefaultsEdit() {
+    document.getElementById("defaults-form").reset();
     document.getElementById("defaults-form").style.display = "none";
     document.getElementById("defaults-display").style.display = "";
 }
@@ -138,7 +139,7 @@ function saveDefaults(e) {
             msg.className = "text-xs text-success";
             msg.textContent = "Saved";
             // Reload the defaults section to show display mode
-            htmx.ajax("GET", "/settings", {target: "#defaults", select: "#defaults"});
+            htmx.ajax("GET", "/settings", {target: "#defaults", select: "#defaults", swap: "outerHTML"});
         } else {
             msg.className = "text-xs text-error";
             msg.textContent = d.detail || "Error";
@@ -155,7 +156,7 @@ function clearDefaults() {
     fetch("/api/settings/defaults", {method: "DELETE"})
         .then(function(r) { return r.json(); }).then(function(d) {
             if (d.status === "cleared") {
-                htmx.ajax("GET", "/settings", {target: "#defaults", select: "#defaults"});
+                htmx.ajax("GET", "/settings", {target: "#defaults", select: "#defaults", swap: "outerHTML"});
             }
         });
 }

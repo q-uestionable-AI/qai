@@ -1677,7 +1677,14 @@ async def api_save_defaults(request: Request) -> JSONResponse:
 
 @router.delete("/api/settings/defaults")
 async def api_clear_defaults(request: Request) -> JSONResponse:
-    """Clear default provider and model settings."""
+    """Clear default provider and model settings.
+
+    Args:
+        request: The incoming HTTP request, used to resolve the database path.
+
+    Returns:
+        JSONResponse with ``{"status": "cleared"}`` on success.
+    """
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
         set_setting(conn, "default_provider", "")
