@@ -32,6 +32,11 @@
         {% if workflow_run %}
         <a href="/runs?run_id={{ workflow_run.id }}" class="btn btn-outline btn-secondary btn-xs">Refresh</a>
         {% endif %}
+        {% if workflow_run and workflow_run.status.name == 'WAITING_FOR_USER' and workflow_run.name in ('test_docs', 'test_assistant') %}
+        <button id="conclude-btn"
+                class="btn btn-outline btn-ghost btn-xs"
+                onclick="concludeWorkflow()">Conclude Campaign</button>
+        {% endif %}
         Elapsed: <span id="workflow-elapsed">--:--</span>
         {% if workflow_run and workflow_run.name == 'generate_report' and workflow_run.status.name in ('COMPLETED', 'PARTIAL') %}
         <a href="/api/exports/{{ workflow_run.id }}/report"

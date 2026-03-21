@@ -292,6 +292,14 @@ class WorkflowRunner:
         self._resume_data = data
         self._wait_event.set()
 
+    def unblock(self) -> None:
+        """Unblock the wait event so the adapter coroutine exits cleanly.
+
+        Called by the conclude endpoint to release a workflow that is blocked
+        on wait_for_user() without going through the normal resume() path.
+        """
+        self._wait_event.set()
+
     # --- Target resolution ---
 
     async def resolve_target(self, target_id: str) -> Target:

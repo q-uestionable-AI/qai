@@ -2676,6 +2676,84 @@ async def resume_workflow(request: Request, run_id: str) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# Conclude Campaign API
+# ---------------------------------------------------------------------------
+
+
+def _sync_conclude(
+    db_path: Path | None,
+    run_id: str,
+) -> str:
+    """Run the conclude-campaign DB work synchronously.
+
+    Returns:
+        ``"not_found"``, ``"already_terminal"``, or ``"concluded"``.
+    """
+    terminal_ints = tuple(int(s) for s in _TERMINAL_STATUSES)
+    now = _dt.datetime.now(_dt.UTC).isoformat()
+
+    with get_connection(db_path) as conn:
+        run = get_run(conn, run_id)
+        if run is None:
+            return "not_found"
+        if run.status in _TERMINAL_STATUSES:
+            return "already_terminal"
+
+        # Atomic conditional UPDATE — only transitions non-terminal rows
+        non_terminal_ph = ", ".join("?" for _ in terminal_ints)
+        conn.execute(
+            f"UPDATE runs SET status = ?, finished_at = ? "  # noqa: S608
+            f"WHERE id = ? AND status NOT IN ({non_terminal_ph})",
+            (int(RunStatus.COMPLETED), now, run_id, *terminal_ints),
+        )
+        # Transition children still in WAITING_FOR_USER
+        conn.execute(
+            "UPDATE runs SET status = ?, finished_at = ? WHERE parent_run_id = ? AND status = ?",
+            (int(RunStatus.COMPLETED), now, run_id, int(RunStatus.WAITING_FOR_USER)),
+        )
+
+    return "concluded"
+
+
+@router.post("/api/workflows/{run_id}/conclude")
+async def conclude_campaign(request: Request, run_id: str) -> JSONResponse:
+    """Conclude a research campaign, transitioning the run to COMPLETED.
+
+    Marks the parent run and any children still in WAITING_FOR_USER as
+    COMPLETED with finished_at. Idempotent: already-terminal runs return
+    success. Emits a run_status WebSocket event and unblocks the runner's
+    wait event so the adapter coroutine exits cleanly.
+    """
+    db_path = _get_db_path(request)
+    result = await asyncio.to_thread(_sync_conclude, db_path, run_id)
+
+    if result == "not_found":
+        return JSONResponse(status_code=404, content={"detail": "Run not found"})
+    if result == "already_terminal":
+        return JSONResponse(content={"status": "concluded"})
+
+    # Emit WebSocket event so UI updates live
+    ws_manager = request.app.state.ws_manager
+    await ws_manager.broadcast(
+        {
+            "type": "run_status",
+            "run_id": run_id,
+            "status": int(RunStatus.COMPLETED),
+            "module": "workflow",
+        }
+    )
+
+    # Unblock the runner's wait event so the adapter coroutine exits cleanly
+    active_workflows: dict[str, object] = request.app.state.active_workflows
+    runner = active_workflows.get(run_id)
+    if runner is not None and isinstance(runner, WorkflowRunner):
+        runner.unblock()
+        active_workflows.pop(run_id, None)
+
+    return JSONResponse(content={"status": "concluded"})
+
+
+# ---------------------------------------------------------------------------
 # Audit API routes
 # ---------------------------------------------------------------------------
 

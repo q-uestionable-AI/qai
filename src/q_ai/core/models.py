@@ -102,6 +102,7 @@ class Run:
         config: Optional configuration dict for the run.
         started_at: Optional timestamp when the run started.
         finished_at: Optional timestamp when the run finished.
+        guidance: Optional JSON-serialized RunGuidance for this run.
     """
 
     id: str
@@ -113,6 +114,7 @@ class Run:
     config: dict | None = None
     started_at: datetime.datetime | None = None
     finished_at: datetime.datetime | None = None
+    guidance: str | None = None
 
     def to_dict(self) -> dict:
         """Serialize the run to a dict suitable for database storage.
@@ -131,6 +133,7 @@ class Run:
             "config": _dump_json(self.config),
             "started_at": _dump_dt(self.started_at),
             "finished_at": _dump_dt(self.finished_at),
+            "guidance": self.guidance,
         }
 
     @classmethod
@@ -153,6 +156,7 @@ class Run:
             config=_parse_json(row.get("config")),
             started_at=_parse_dt(row.get("started_at")),
             finished_at=_parse_dt(row.get("finished_at")),
+            guidance=row.get("guidance"),
         )
 
 

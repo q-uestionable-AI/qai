@@ -915,6 +915,57 @@ def get_prior_run_counts_by_target(
 
 
 # ---------------------------------------------------------------------------
+# Run Guidance
+# ---------------------------------------------------------------------------
+
+
+def save_run_guidance(
+    conn: sqlite3.Connection,
+    run_id: str,
+    guidance_json: str,
+) -> None:
+    """Persist guidance JSON on an existing run.
+
+    Args:
+        conn: Active database connection.
+        run_id: ID of the run to update.
+        guidance_json: JSON-serialized RunGuidance string.
+
+    Raises:
+        ValueError: If run_id does not exist.
+    """
+    cursor = conn.execute(
+        "UPDATE runs SET guidance = ? WHERE id = ?",
+        (guidance_json, run_id),
+    )
+    if cursor.rowcount == 0:
+        raise ValueError(f"Run {run_id!r} not found")
+
+
+def get_run_guidance(
+    conn: sqlite3.Connection,
+    run_id: str,
+) -> str | None:
+    """Retrieve guidance JSON for a run.
+
+    Args:
+        conn: Active database connection.
+        run_id: ID of the run to query.
+
+    Returns:
+        The raw JSON string or None if the run exists but has no guidance set.
+
+    Raises:
+        ValueError: If run_id does not exist.
+    """
+    row = conn.execute("SELECT guidance FROM runs WHERE id = ?", (run_id,)).fetchone()
+    if row is None:
+        raise ValueError(f"Run {run_id!r} not found")
+    result: str | None = row[0]
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Evidence CRUD
 # ---------------------------------------------------------------------------
 
