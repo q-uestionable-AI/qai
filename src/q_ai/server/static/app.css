@@ -101,6 +101,11 @@ dialog:focus-visible {
     color: #c4b5fd;
 }
 
+/* ── Checkbox overrides ─────────────────────────────────────── */
+.checkbox {
+    border-color: rgba(139, 92, 246, 0.5);
+}
+
 /* ── Stat box overrides ─────────────────────────────────────── */
 .stats {
     background: rgba(255, 255, 255, 0.03) !important;
@@ -220,8 +225,8 @@ select.select:focus {
 
 /* ── Outer panel ──────────────────────────────────────────── */
 .wf-panel {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(139, 92, 246, 0.15);
     border-radius: 16px;
     padding: 2rem;
     width: fit-content;

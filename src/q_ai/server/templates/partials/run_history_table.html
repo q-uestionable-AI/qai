@@ -26,7 +26,7 @@
         </td>
     </tr>
     {% for run in group.runs %}
-    <tr class="hover cursor-pointer target-group-row border-b border-base-content/10"
+    <tr class="hover cursor-pointer target-group-row border-b border-base-content/25"
         onclick="window.location.href='/runs?run_id={{ run.id }}'">
         <td class="w-8 text-center" onclick="event.stopPropagation()">
             <input type="checkbox" class="checkbox checkbox-xs run-select-cb" data-run-id="{{ run.id }}"
@@ -114,7 +114,7 @@
 {% elif history_runs %}
     {# --- Flat list view --- #}
     {% for run in history_runs %}
-    <tr class="hover cursor-pointer border-b border-base-content/10"
+    <tr class="hover cursor-pointer border-b border-base-content/25"
         onclick="window.location.href='/runs?run_id={{ run.id }}'">
         <td class="w-8 text-center" onclick="event.stopPropagation()">
             <input type="checkbox" class="checkbox checkbox-xs run-select-cb" data-run-id="{{ run.id }}"

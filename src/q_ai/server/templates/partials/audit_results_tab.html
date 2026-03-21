@@ -92,7 +92,7 @@
                 <td colspan="5" class="pt-1 pb-0 border-none">
                     <span class="text-xs cursor-pointer select-none"
                           style="color: #a78bfa;"
-                          onclick="document.getElementById('mitigation-{{ f.id }}').classList.toggle('hidden')">Mitigation <span style="color: #fff;">&rarr;</span></span>
+                          onclick="var el=document.getElementById('mitigation-{{ f.id }}');el.classList.toggle('hidden');this.querySelector('.mit-arrow').textContent=el.classList.contains('hidden')?'▼':'▲'">Mitigation <span class="mit-arrow" style="color: #fff;">▼</span></span>
                 </td>
             </tr>
             <tr id="mitigation-{{ f.id }}" class="hidden">

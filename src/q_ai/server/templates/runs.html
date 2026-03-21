@@ -8,8 +8,8 @@
     {% include "partials/run_history.html" %}
     {% else %}
 
-    <a href="/runs" class="inline-flex items-center gap-1 text-xs text-base-content/50 hover:text-base-content mb-3">
-        &larr; Run History
+    <a href="/runs" class="inline-flex items-center gap-1 text-xs hover:opacity-80 mb-3">
+        <span class="text-white">&larr;</span> <span style="color: #06b6d4;">Run History</span>
     </a>
 
     {% if results_mode and is_terminal %}
