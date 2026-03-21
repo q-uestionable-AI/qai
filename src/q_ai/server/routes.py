@@ -17,6 +17,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 from starlette.websockets import WebSocketDisconnect
 
+from q_ai.audit.reporting.csv_report import generate_csv_report
+from q_ai.audit.reporting.ndjson_report import generate_ndjson_report
 from q_ai.core.config import delete_credential, get_credential, set_credential
 from q_ai.core.db import (
     create_target,
@@ -539,16 +541,72 @@ def _sync_export_run(db_path: Path | None, run_id: str) -> dict | None:
 
 
 @router.get("/api/runs/{run_id}/export", response_model=None)
-async def api_export_run(request: Request, run_id: str) -> Response:
-    """Export a run as a schema-versioned JSON bundle."""
+async def api_export_run(
+    request: Request,
+    run_id: str,
+    fmt: str = Query("json", alias="format"),
+) -> Response:
+    """Export a run as JSON bundle, NDJSON, or CSV."""
+    if fmt not in ("json", "ndjson", "csv"):
+        return JSONResponse(status_code=400, content={"detail": f"Unknown format: {fmt}"})
+
     db_path = _get_db_path(request)
-    bundle = await asyncio.to_thread(_sync_export_run, db_path, run_id)
-    if bundle is None:
+
+    if fmt == "json":
+        bundle = await asyncio.to_thread(_sync_export_run, db_path, run_id)
+        if bundle is None:
+            return JSONResponse(status_code=404, content={"detail": "Run not found"})
+        return JSONResponse(
+            content=bundle,
+            headers={
+                "Content-Disposition": (f'attachment; filename="run-{run_id[:12]}.json"'),
+            },
+        )
+
+    # NDJSON / CSV: load findings from DB and generate
+    def _export_format() -> bytes | None:
+        import tempfile as _tempfile
+
+        with get_connection(db_path) as conn:
+            run = get_run(conn, run_id)
+            if run is None:
+                return None
+            child_rows = conn.execute(
+                "SELECT id FROM runs WHERE parent_run_id = ?", (run_id,)
+            ).fetchall()
+            all_ids = [run_id] + [r["id"] for r in child_rows]
+            findings = list_findings(conn, run_ids=all_ids)
+
+            eff_target_id = run.target_id or (run.config or {}).get("target_id")
+            target = get_target(conn, eff_target_id) if eff_target_id else None
+            meta = {
+                "run_id": run_id,
+                "started_at": (run.started_at.isoformat() if run.started_at else None),
+                "target_name": target.name if target else None,
+            }
+
+            with _tempfile.NamedTemporaryFile(suffix=f".{fmt}", delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+
+            if fmt == "ndjson":
+                generate_ndjson_report(findings, tmp_path, run_metadata=meta)
+            else:
+                generate_csv_report(findings, tmp_path, run_metadata=meta)
+
+            data = tmp_path.read_bytes()
+            tmp_path.unlink(missing_ok=True)
+            return data
+
+    data = await asyncio.to_thread(_export_format)
+    if data is None:
         return JSONResponse(status_code=404, content={"detail": "Run not found"})
-    return JSONResponse(
-        content=bundle,
+
+    media = "application/x-ndjson" if fmt == "ndjson" else "text/csv"
+    return Response(
+        content=data,
+        media_type=media,
         headers={
-            "Content-Disposition": f'attachment; filename="run-{run_id[:12]}.json"',
+            "Content-Disposition": (f'attachment; filename="run-{run_id[:12]}.{fmt}"'),
         },
     )
 
