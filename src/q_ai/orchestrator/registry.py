@@ -115,7 +115,7 @@ _DEFAULT_WORKFLOWS = [
     ),
     WorkflowEntry(
         id="test_assistant",
-        name="Test a Coding Assistant",
+        name="Test Context Poisoning",
         description=(
             "Poison context files and validate whether AI assistants propagate tainted output."
         ),

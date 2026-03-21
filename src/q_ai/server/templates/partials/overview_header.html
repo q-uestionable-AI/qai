@@ -13,7 +13,7 @@
             {% endif %}
             <span class="text-lg font-semibold">{{ workflow_display_name }}</span>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-col items-end gap-2">
             {% if report_run_id %}
             <a href="/api/exports/{{ report_run_id }}/report"
                class="btn btn-sm btn-outline btn-primary" download>
