@@ -1,420 +1,63 @@
 ---
 title: Audit Module Architecture
-description: Scanner discovery, execution pipeline, and multi-format reporting
+description: Scanner pipeline, MCP connection, and multi-format reporting
 ---
 
-## Audit Module
+The audit module (`q_ai.audit`) scans MCP servers for security vulnerabilities. It connects to a server, enumerates its tools/resources/prompts, runs scanner checks against them, and produces findings mapped to security frameworks.
 
-The Audit module discovers security scanners and orchestrates assessment runs. It normalizes findings across diverse scanner types and generates reports in multiple formats.
-
-### Module Structure
+## Module Structure
 
 ```
 audit/
-├── orchestrator.py      # Run coordination and scanner orchestration
-├── scanner/             # Scanner discovery and execution
-├── reporting/           # Report generation (JSON, SARIF, HTML, etc.)
-├── cli.py               # Typer command interface
-├── adapter.py           # Module adapter for platform integration
-└── mapper.py            # Framework mapping (ATT&CK, CIS, etc.)
+├── orchestrator.py      # run_scan() — coordinates connection, enumeration, scanning
+├── scanner/
+│   ├── registry.py      # Scanner registration and lookup
+│   └── *.py             # Individual scanner implementations (one per OWASP MCP category)
+├── reporting/
+│   ├── json_report.py
+│   ├── sarif_report.py
+│   ├── html_report.py
+│   ├── ndjson_report.py
+│   └── csv_report.py
+├── cli.py               # scan, enumerate, list-checks, report commands
+├── adapter.py           # AuditAdapter for orchestrator integration
+└── mapper.py            # persist_scan() — bridges ScanFinding → core Finding for DB
 ```
 
-### Scanner System
+## Scan Pipeline
 
-The Audit module discovers and manages scanners dynamically.
+1. **Connect** — `MCPConnection` (from `q_ai.mcp`) opens a stdio, SSE, or Streamable HTTP connection to the target server
+2. **Enumerate** — `enumerate_server()` discovers tools, resources, and prompts
+3. **Scan** — `run_scan()` runs all registered scanners (or a filtered subset via `--checks`) against the enumerated capabilities
+4. **Map** — Each scanner produces `ScanFinding` objects with a `category` field (e.g., `command_injection`, `auth`). The `FrameworkResolver` populates `framework_ids` with OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10 mappings.
+5. **Report** — Results serialize to JSON, SARIF, HTML, NDJSON, or CSV
+6. **Persist** — `persist_scan()` maps `ScanFinding` → core `Finding` model for database storage
 
-**Scanner Discovery**
+## Scanner Registry
 
-On startup, the module scans configured directories for scanner plugins:
+Scanners are registered in `scanner/registry.py`. Each scanner targets one OWASP MCP Top 10 category:
 
-```bash
-qai audit discover --list-all
-```
+| Category | Scanner | What It Checks |
+|----------|---------|---------------|
+| `command_injection` | injection | Tool parameters susceptible to injection |
+| `auth` | auth | Authentication and authorization gaps |
+| `token_exposure` | token_exposure | Secret and token exposure in responses |
+| `permissions` | permissions | Privilege escalation via tool capabilities |
+| `tool_poisoning` | tool_poisoning | Malicious tool descriptions |
+| `prompt_injection` | prompt_injection | Indirect prompt injection vectors |
+| `audit_telemetry` | audit_telemetry | Missing logging and monitoring |
+| `supply_chain` | supply_chain | Supply chain integrity risks |
+| `shadow_servers` | shadow_servers | Unauthorized MCP server detection |
+| `context_sharing` | context_sharing | Cross-context information leakage |
 
-Scanner directories:
-- Built-in: `src/q_ai/audit/scanner/`
-- User: `~/.qai/scanners/`
-- Custom: `QAI_SCANNER_PATH`
+Use `qai audit list-checks` to see available scanners and their framework mappings.
 
-**Scanner Interface**
+## Adapter
 
-Each scanner implements:
+`AuditAdapter` integrates the audit module with the orchestrator for workflow execution. It creates a child run, calls `run_scan()`, persists results, and emits findings via the workflow runner.
 
-```python
-class Scanner:
-    id: str                              # Unique identifier
-    name: str                            # Display name
-    description: str
-    version: str
-    supported_targets: [str]             # url, host, port, etc.
-    frameworks: [str]                    # MITRE ATT&CK, CIS, etc.
+## Reporting
 
-    async def validate_target(target: Target) -> bool
-    async def execute(target: Target) -> [Finding]
-    async def health_check() -> bool
-```
+All report generators take a `ScanResult` object (containing findings, server info, scanner metadata) and produce formatted output. The `--format` flag on `qai audit scan` and `qai audit report` selects the format.
 
-<Note>
-Scanners run in isolated processes. If a scanner crashes, it doesn't affect other scanners or the audit run.
-</Note>
-
-### Audit Execution Flow
-
-```
-User initiates audit
-    ↓
-Run created (status: PENDING)
-    ↓
-FrameworkResolver loads configured frameworks
-    ↓
-For each target:
-    ├─ Scanner validation
-    ├─ Parallel scanner execution
-    ├─ Result normalization
-    └─ Finding storage
-    ↓
-Run status: COMPLETED or PARTIAL
-    ↓
-User triggers report generation
-```
-
-**Parallel Execution**
-
-Multiple scanners execute concurrently:
-
-```python
-# Orchestrator spawns parallel tasks
-results = await asyncio.gather(
-    scanner_1.execute(target),
-    scanner_2.execute(target),
-    scanner_3.execute(target),
-    return_exceptions=True
-)
-```
-
-### Finding Normalization
-
-Scanners produce diverse output formats. The audit module normalizes findings into the core Finding model.
-
-**Scanner Output Example**
-
-```json
-{
-  "scan_id": "scan-12345",
-  "scan_date": "2024-01-15T10:30:00Z",
-  "results": [
-    {
-      "severity": "high",
-      "message": "Unencrypted HTTP endpoint detected",
-      "affected_resource": "example.com",
-      "cve": "CVE-2024-1234",
-      "remediation": "Enable HTTPS"
-    }
-  ]
-}
-```
-
-**Normalization Steps**
-
-1. **Severity Mapping**: Normalize scanner severity (critical, high, medium, low, info, unknown) to core enum
-2. **Framework Mapping**: Map scanner findings to framework technique IDs using FrameworkResolver
-3. **Evidence Extraction**: Store raw scanner output and structured fields
-4. **Deduplication**: Merge duplicate findings within same run
-
-**Mapping Configuration**
-
-Define scanner→framework mappings in `scanner-mappings.yaml`:
-
-```yaml
-scanners:
-  nmap:
-    frameworks:
-      - name: mitre-attack
-        mappings:
-          - finding: "Open port"
-            technique_id: T1046
-          - finding: "Service enumeration"
-            technique_id: T1526
-  trivy:
-    frameworks:
-      - name: cis-benchmarks
-        mappings:
-          - pattern: "^CVE-"
-            technique_id: CIS-x.y.z
-```
-
-### Reporting Pipeline
-
-You can generate reports in multiple formats from audit results.
-
-**Available Formats**
-
-| Format | Extension | Use Case |
-|--------|-----------|----------|
-| JSON | .json | Machine parsing, data exchange |
-| SARIF | .sarif | IDE/SIEM integration, vulnerability tools |
-| HTML | .html | Executive dashboard, visual review |
-| NDJSON | .ndjson | Streaming logs, real-time analysis |
-| CSV | .csv | Spreadsheet analysis, pivot tables |
-
-**Report Generation**
-
-```bash
-# Generate all reports
-qai audit report --run-id <id> --format all --output-dir ./reports
-
-# Generate specific format
-qai audit report --run-id <id> --format sarif --output ./findings.sarif
-
-# Stream NDJSON
-qai audit report --run-id <id> --format ndjson --follow
-```
-
-**JSON Report Structure**
-
-```json
-{
-  "metadata": {
-    "run_id": 123,
-    "scan_date": "2024-01-15T10:30:00Z",
-    "framework": "mitre-attack",
-    "total_findings": 42,
-    "by_severity": {
-      "critical": 2,
-      "high": 8,
-      "medium": 15,
-      "low": 17,
-      "info": 0
-    }
-  },
-  "findings": [
-    {
-      "id": "f-001",
-      "title": "Unencrypted HTTP endpoint",
-      "description": "...",
-      "severity": "high",
-      "framework_id": "T1046",
-      "framework_name": "MITRE ATT&CK",
-      "technique": "Network Service Discovery",
-      "source": "nmap",
-      "evidence": {
-        "raw": "...",
-        "fields": {
-          "port": "80",
-          "service": "http",
-          "host": "example.com"
-        }
-      },
-      "remediation": "...",
-      "created_at": "2024-01-15T10:30:00Z"
-    }
-  ]
-}
-```
-
-**SARIF Report Structure**
-
-SARIF (Static Analysis Results Interchange Format) enables IDE integration:
-
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-  "version": "2.1.0",
-  "runs": [
-    {
-      "tool": {
-        "driver": {
-          "name": "qai-audit",
-          "version": "0.5.1",
-          "informationUri": "https://qai.platform/"
-        }
-      },
-      "results": [
-        {
-          "ruleId": "T1046",
-          "message": {
-            "text": "Network Service Discovery detected"
-          },
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "address": {"relativeUrl": "example.com:80"}
-              }
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-```
-
-### Framework Integration
-
-<Tip>
-The audit module references the core FrameworkResolver to ensure consistent framework mapping across all modules.
-</Tip>
-
-**Framework Resolution Process**
-
-1. Load configured framework definitions
-2. For each finding, determine potential technique matches
-3. Apply scanner-specific mapping rules
-4. Store framework_id in Finding model
-5. Include technique metadata in reports
-
-**Multi-Framework Support**
-
-Run audit against multiple frameworks:
-
-```bash
-qai audit run \
-  --scanner nmap \
-  --frameworks mitre-attack,cis-benchmarks \
-  --target example.com
-```
-
-Results include mappings to all configured frameworks:
-
-```json
-{
-  "finding": "Open port 22",
-  "mappings": [
-    {
-      "framework": "mitre-attack",
-      "technique_id": "T1046",
-      "technique_name": "Network Service Discovery"
-    },
-    {
-      "framework": "cis-benchmarks",
-      "benchmark_id": "CIS-x.y.z",
-      "benchmark_name": "Ensure SSH protocol version 2"
-    }
-  ]
-}
-```
-
-### Run Lifecycle
-
-**Creating a Run**
-
-```bash
-qai audit run create \
-  --name "Q1 Assessment" \
-  --target example.com \
-  --scanners nmap,trivy \
-  --framework mitre-attack
-```
-
-**Monitoring Progress**
-
-```bash
-# Poll status
-qai audit run status --run-id <id>
-
-# Watch live (WebSocket)
-qai audit run watch --run-id <id>
-```
-
-**Run Status Transitions**
-
-```
-PENDING → RUNNING → COMPLETED
-              ↓
-            PARTIAL (if some scanners fail)
-              ↓
-            FAILED (if critical failure)
-
-User can cancel at any time → CANCELLED
-```
-
-**Accessing Results**
-
-```bash
-# List findings
-qai audit findings list --run-id <id>
-
-# Get specific finding with evidence
-qai audit findings get --finding-id <id> --include-evidence
-
-# Export to file
-qai audit report --run-id <id> --format json --output results.json
-```
-
-### Performance Considerations
-
-**Scan Timeout**
-
-Each scanner has a configurable timeout (default: 5 minutes):
-
-```bash
-qai audit run --scanner nmap --timeout 600s
-```
-
-**Parallel Limits**
-
-The orchestrator limits parallel scanners to avoid resource exhaustion:
-
-```yaml
-# audit-config.yaml
-parallel-scanners: 4
-scanner-timeout-seconds: 300
-```
-
-**Result Caching**
-
-Audit caches scanner discovery results (5 minute TTL):
-
-```bash
-qai audit discover --no-cache  # Bypass cache
-```
-
-### Custom Scanners
-
-Extend audit with custom scanners:
-
-```python
-# ~/.qai/scanners/my_scanner.py
-from q_ai.audit.scanner import Scanner, Finding
-
-class MyScanner(Scanner):
-    id = "my-scanner"
-    name = "Custom Scanner"
-
-    async def execute(self, target):
-        findings = []
-        # Your scanning logic
-        for item in scan_results:
-            findings.append(Finding(
-                title=item.title,
-                description=item.desc,
-                severity="high",
-                framework_id="T1234"
-            ))
-        return findings
-```
-
-Register with:
-
-```bash
-qai audit discover --register-path ~/.qai/scanners
-```
-
-### Integration with Other Modules
-
-The Audit module outputs are consumed by:
-
-- **Chain Module**: References audit findings in attack chain templates
-- **IPI Module**: Audit results inform adversarial document generation
-- **Web UI**: Displays findings in unified dashboard
-
-<Note>
-All findings include `run_id` linking to the core Run model, enabling cross-module correlation.
-</Note>
-
-### Next Steps
-
-- [Chain Module](/docs/architecture/chain-module) - Using audit findings in attack chains
-- [IPI Module](/docs/architecture/ipi-module) - Generating evidence for findings
-- [Core Infrastructure](/docs/architecture/core) - Finding storage and schema
+SARIF output follows the OASIS SARIF 2.1.0 schema and is compatible with GitHub Code Scanning.

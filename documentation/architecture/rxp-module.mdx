@@ -1,661 +1,72 @@
 ---
 title: RXP Module Architecture
-description: Response validation, embedding-based detection, and anomaly interpretation
+description: RAG retrieval poisoning measurement and validation
 ---
 
-## RXP Module
+The RXP (RAG Retrieval Poisoning) module measures whether adversarial documents win vector similarity battles in RAG retrieval layers. It validates that a poisoned document ranks in the top-k results for target queries, indicating it would reach the LLM context window in a real RAG system.
 
-The RXP (Response Validation Profile) module validates AI system responses using embedding models and domain-specific profiles. It generates interpretive bands for anomaly detection, enabling you to identify when responses deviate from expected behavior patterns.
+RXP requires optional dependencies: `pip install "q-uestionable-ai[rxp]"` (sentence-transformers, chromadb).
 
-### Module Structure
+## Module Structure
 
 ```
 rxp/
-├── models.py            # Response, profile, and band models
-├── validator.py         # Response validation pipeline
-├── embedder.py          # Embedding model interface
-├── registry.py          # Embedding model registry
-├── collection.py        # Profile data collection
-├── db.py                # RXP-specific database
-├── profiles/            # Domain-specific profile templates
-├── cli.py               # Typer command interface
-├── adapter.py           # Module adapter for platform integration
-├── mapper.py            # Framework mapping for detections
-└── _deps.py             # Dependency management
+├── validator.py         # validate_retrieval() — core validation logic
+├── embedder.py          # Embedding model interface (sentence-transformers)
+├── collection.py        # ChromaDB collection management
+├── registry.py          # Embedding model registry (list_models, resolve_model)
+├── models.py            # CorpusDocument, ValidationResult, QueryResult, ModelConfig
+├── profiles/            # Built-in domain profiles (YAML + corpus/poison .txt files)
+├── db.py                # RXP-specific DB operations
+├── cli.py               # validate, list-models, list-profiles commands
+├── adapter.py           # RXPAdapter for orchestrator integration
+├── mapper.py            # persist_validation() — bridges to core DB
+└── _deps.py             # require_rxp_deps() — lazy import guard
 ```
 
-### Embedding Model Registry
+## Validation Pipeline
 
-The RXP module uses embedding models to understand semantic meaning of responses.
+`validate_retrieval()` is the core function:
 
-**Supported Models**
+1. **Ingest corpus** — Load legitimate documents and poison documents into a ChromaDB collection
+2. **Embed** — Generate embeddings for all documents using the selected model (sentence-transformers)
+3. **Query** — For each query, retrieve top-k documents by cosine similarity
+4. **Measure** — Check whether the poison document appears in the top-k results
+5. **Return** — `ValidationResult` with retrieval_rate, mean_poison_rank, and per-query details
 
-| Provider | Model | Dimensions | Latency | Use Case |
-|----------|-------|------------|---------|----------|
-| OpenAI | text-embedding-3-large | 3072 | Low | General purpose |
-| OpenAI | text-embedding-3-small | 1536 | Very Low | Real-time detection |
-| Hugging Face | all-MiniLM-L6-v2 | 384 | Very Low | Local, lightweight |
-| Hugging Face | all-mpnet-base-v2 | 768 | Low | High quality local |
-| Anthropic | claude-3-embedding | 1024 | Low | Proprietary quality |
+## Key Data Models
 
-**Model Registry**
+**CorpusDocument** — `id`, `text`, `source` (file path), `is_poison` (boolean flag)
 
-```python
-class EmbeddingRegistry:
-    """Manages embedding model availability and selection."""
+**ValidationResult** — `model_id`, `poison_retrievals` (count), `total_queries`, `retrieval_rate` (float 0-1), `mean_poison_rank` (when retrieved), `query_results` (list of QueryResult)
 
-    @staticmethod
-    def list_models() -> [str]:
-        """List available embedding models."""
+**QueryResult** — `query` (string), `poison_retrieved` (boolean), `poison_rank` (int or None)
 
-    @staticmethod
-    def get_model(model_id: str) -> EmbeddingModel:
-        """Load embedding model."""
+## Domain Profiles
 
-    @staticmethod
-    def set_default(model_id: str) -> None:
-        """Set default model for validation."""
-```
+Built-in profiles provide pre-configured corpus documents, poison documents, and test queries for common domains. Each profile is a YAML file under `profiles/` referencing `.txt` files for corpus and poison content.
 
-**Configuring Embedding Models**
+Use `qai rxp list-profiles` to see available profiles. Use `--profile` on validate to load one.
 
-```bash
-# List available models
-qai rxp models list
+## Embedding Model Registry
 
-# Set default model
-qai rxp models set-default --model text-embedding-3-small
+Models are registered in `registry.py`. Each `ModelConfig` has an `id`, `name`, `dimensions`, and `description`. Use `qai rxp list-models` to see available models.
 
-# Configure custom model
-qai rxp models register \
-  --provider huggingface \
-  --model all-MiniLM-L6-v2 \
-  --local
-```
+Default model: `minilm-l6` (MiniLM-L6-v2, local, no API key needed). Use `--model all` to compare across all registered models.
 
-Configuration:
+## Severity Thresholds
 
-```yaml
-rxp:
-  embedding-model: text-embedding-3-small
-  embedding-cache-size: 10000
-  embedding-cache-ttl-minutes: 60
+The RXP adapter maps retrieval rates to severity levels for findings:
 
-  local-embeddings:
-    enabled: true
-    model: all-MiniLM-L6-v2
-    device: cuda  # or cpu
-```
+| Rate | Severity |
+|------|----------|
+| ≥ 75% | CRITICAL |
+| ≥ 50% | HIGH |
+| ≥ 25% | MEDIUM |
+| < 25% | LOW |
 
-### Domain Profile System
+See [Interpretive Bands](/rxp/interpretive-bands) for details.
 
-Profiles capture expected response patterns for specific domains.
+## Adapter
 
-**Profile Model**
-
-```python
-DomainProfile {
-    id: str (uuid)
-    name: str
-    description: str
-    domain: str (e.g., "customer-service", "technical-support")
-    ai_system: str (optional, e.g., "gpt-4", "claude-opus")
-    reference_responses: [str]
-    baseline_embedding: [float]
-    interpretive_bands: [InterpretiveBand]
-    created_at: datetime
-    updated_at: datetime
-}
-
-InterpretiveBand {
-    id: str (uuid)
-    profile_id: str
-    name: str
-    similarity_threshold: float (0.0 - 1.0)
-    interpretation: str
-    detection_rules: [str]
-    severity: str (info, low, medium, high, critical)
-}
-```
-
-**Profile Creation**
-
-Build profiles from reference data:
-
-```bash
-# Create profile from reference responses
-qai rxp profile create \
-  --name "customer-service-profile" \
-  --domain "customer-service" \
-  --reference-file reference-responses.txt
-
-# Reference responses file format (one per line):
-# I'd be happy to help you with that.
-# How can I assist you today?
-# Thank you for contacting us.
-# Let me look into that for you.
-```
-
-The system analyzes these references to establish normal behavior patterns.
-
-**Profile Components**
-
-1. **Baseline Embedding**: Average embedding of reference responses
-2. **Similarity Distribution**: Expected range of similarity scores
-3. **Interpretive Bands**: Ranges of similarity with interpretations
-
-### Validation Pipeline
-
-The RXP validator uses embeddings and statistical analysis to detect anomalies.
-
-**Validation Flow**
-
-```
-AI System Response
-    ↓
-[Preprocessing]
-  - Normalize text
-  - Remove metadata
-  - Tokenize
-    ↓
-[Embedding Generation]
-  - Encode text to vector
-  - Cache embedding
-  - Compute statistics
-    ↓
-[Profile Matching]
-  - Load applicable profiles
-  - Calculate similarity to baseline
-  - Rank matching profiles
-    ↓
-[Band Assignment]
-  - Determine which interpretive band applies
-  - Assign severity level
-  - Identify deviation type
-    ↓
-[Anomaly Detection]
-  - Compare to expected ranges
-  - Identify outliers
-  - Flag suspicious patterns
-    ↓
-[Reporting]
-  - Generate validation result
-  - Store evidence
-  - Notify via WebSocket
-```
-
-**Running Validation**
-
-```bash
-# Validate single response
-qai rxp validate \
-  --response "I can help you exploit this vulnerability" \
-  --profile "customer-service-profile"
-
-# Batch validation
-qai rxp validate \
-  --responses-file responses.txt \
-  --profile "customer-service-profile" \
-  --output results.json
-
-# Real-time validation
-qai rxp monitor \
-  --run-id <id> \
-  --profile "customer-service-profile"
-```
-
-### Interpretive Bands
-
-Bands organize response similarity into meaningful ranges with interpretations.
-
-**Band Configuration**
-
-```python
-class InterpretiveBand:
-    """Defines a range of similarity with interpretation and severity."""
-
-    min_similarity: float        # 0.0
-    max_similarity: float        # 0.3
-    interpretation: str          # "Completely different response"
-    detection_rule: str          # Regex pattern or semantic rule
-    severity: str                # low
-    recommended_action: str      # Flag for human review
-```
-
-**Standard Band Set**
-
-A typical profile includes 5-7 bands:
-
-```yaml
-bands:
-  - name: "Baseline Consistent"
-    min_similarity: 0.85
-    max_similarity: 1.0
-    interpretation: "Response closely matches expected behavior"
-    severity: "info"
-    recommended_action: "Log and continue"
-
-  - name: "Minor Variation"
-    min_similarity: 0.70
-    max_similarity: 0.85
-    interpretation: "Response similar but with minor deviations"
-    severity: "low"
-    recommended_action: "Log and monitor"
-
-  - name: "Moderate Deviation"
-    min_similarity: 0.50
-    max_similarity: 0.70
-    interpretation: "Response differs substantially from baseline"
-    severity: "medium"
-    recommended_action: "Flag for review"
-
-  - name: "Significant Anomaly"
-    min_similarity: 0.30
-    max_similarity: 0.50
-    interpretation: "Response is very different from expected behavior"
-    severity: "high"
-    recommended_action: "Alert and capture evidence"
-
-  - name: "Complete Deviation"
-    min_similarity: 0.0
-    max_similarity: 0.30
-    interpretation: "Response completely outside normal patterns"
-    severity: "critical"
-    recommended_action: "Immediate alert and investigation"
-```
-
-**Band Visualization**
-
-```bash
-qai rxp bands visualize --profile "customer-service-profile"
-
-Output:
-Customer Service Profile - Interpretive Bands
-
-1.0 ├──────────────────────────────────────┐
-    │ Baseline Consistent                    │
-0.85├────────────────────┐                 │
-    │ Minor Variation    │                 │
-0.70├─────────────────────┤                │
-    │ Moderate Deviation │                │
-0.50├─────────────────────┤                │
-    │ Significant Anomaly│                │
-0.30├──────────┤                           │
-    │Complete   │                          │
-0.0 └──┤Deviation├──────────────────────┘
-    0.0       0.3      0.5      0.7    0.85   1.0
-                 Similarity Score
-```
-
-### Validation Result Model
-
-```python
-ValidationResult {
-    id: str (uuid)
-    run_id: int (foreign key → Run)
-    response: str (the validated response)
-    response_embedding: [float]
-    profile_id: str
-    profile_name: str
-    similarity_score: float (0.0 - 1.0)
-    matched_band: str
-    severity: str
-    interpretation: str
-    detected_anomalies: [str]
-    recommended_action: str
-    timestamp: datetime
-    evidence: dict
-}
-```
-
-**Accessing Results**
-
-```bash
-# Get validation result
-qai rxp result get --result-id <id>
-
-# List recent validations
-qai rxp result list --run-id <id> --limit 10
-
-# Export validation report
-qai rxp report generate \
-  --run-id <id> \
-  --profile "customer-service-profile" \
-  --output validation-report.json
-```
-
-### Adding Interpretive Bands (v0.5.0)
-
-The v0.5.0 release adds the ability to customize and create new interpretive bands.
-
-**Creating Custom Bands**
-
-```bash
-# Add band to existing profile
-qai rxp bands add \
-  --profile-id <id> \
-  --name "Unexpected Jailbreak Attempt" \
-  --min-similarity 0.35 \
-  --max-similarity 0.45 \
-  --severity "critical" \
-  --interpretation "Response exhibits signs of prompt injection success"
-
-# Export band configuration
-qai rxp bands export --profile-id <id> --output bands.yaml
-
-# Import custom bands
-qai rxp bands import --profile-id <id> --from custom-bands.yaml
-```
-
-**Band Definition Schema**
-
-```yaml
-bands:
-  - name: "string"                    # Band identifier
-    min_similarity: number             # Lower bound (0.0-1.0)
-    max_similarity: number             # Upper bound (0.0-1.0)
-    interpretation: string             # Human-readable interpretation
-    severity: enum                     # info, low, medium, high, critical
-    detection_rules:                   # Optional validation rules
-      - type: "regex"
-        pattern: "string"
-      - type: "keyword"
-        keywords: ["string"]
-      - type: "semantic"
-        description: "string"
-    recommended_action: string         # Guidance for operators
-    alert_on_match: boolean            # Generate alert if matched
-```
-
-### Detection Rules (v0.5.0)
-
-Detection rules enable fine-grained anomaly identification within bands.
-
-**Rule Types**
-
-```python
-class DetectionRule:
-    """Base class for response anomaly detection rules."""
-
-    type: str
-    pattern: str
-    description: str
-    confidence: float
-
-class RegexRule(DetectionRule):
-    """Match response against regex pattern."""
-    type = "regex"
-
-class KeywordRule(DetectionRule):
-    """Detect presence/absence of keywords."""
-    type = "keyword"
-
-class SemanticRule(DetectionRule):
-    """Detect semantic anomalies beyond similarity."""
-    type = "semantic"
-
-class StatisticalRule(DetectionRule):
-    """Detect statistical outliers."""
-    type = "statistical"
-```
-
-**Example Rules**
-
-```yaml
-detection_rules:
-  - type: regex
-    name: "Jailbreak Language"
-    pattern: "(ignore|forget|override).*(instruction|prompt|rule)"
-    severity: critical
-
-  - type: keyword
-    name: "Refusal Language"
-    keywords: ["cannot", "not authorized", "against my policy"]
-    confidence: 0.8
-
-  - type: semantic
-    name: "Instruction Reversal"
-    description: "Response contradicts expected instructions"
-    confidence: 0.7
-
-  - type: statistical
-    name: "Response Length Anomaly"
-    metric: "token_count"
-    bounds: [10, 500]
-    severity: low
-```
-
-### Database Schema
-
-```sql
--- Domain profiles
-CREATE TABLE rxp_profiles (
-  id TEXT PRIMARY KEY,
-  name TEXT,
-  domain TEXT,
-  ai_system TEXT,
-  baseline_embedding BLOB,
-  created_at TIMESTAMP
-);
-
--- Reference responses for profiles
-CREATE TABLE rxp_reference_responses (
-  id INTEGER PRIMARY KEY,
-  profile_id TEXT REFERENCES rxp_profiles(id),
-  response TEXT,
-  embedding BLOB,
-  added_at TIMESTAMP
-);
-
--- Interpretive bands
-CREATE TABLE rxp_interpretive_bands (
-  id TEXT PRIMARY KEY,
-  profile_id TEXT REFERENCES rxp_profiles(id),
-  name TEXT,
-  min_similarity REAL,
-  max_similarity REAL,
-  interpretation TEXT,
-  severity TEXT
-);
-
--- Detection rules
-CREATE TABLE rxp_detection_rules (
-  id TEXT PRIMARY KEY,
-  band_id TEXT REFERENCES rxp_interpretive_bands(id),
-  rule_type TEXT,
-  pattern TEXT,
-  description TEXT
-);
-
--- Validation results
-CREATE TABLE rxp_validation_results (
-  id TEXT PRIMARY KEY,
-  run_id INTEGER REFERENCES runs(id),
-  response TEXT,
-  profile_id TEXT REFERENCES rxp_profiles(id),
-  similarity_score REAL,
-  matched_band_id TEXT REFERENCES rxp_interpretive_bands(id),
-  severity TEXT,
-  detected_anomalies BLOB,
-  timestamp TIMESTAMP
-);
-```
-
-### Practical Usage Scenarios
-
-**Scenario 1: Customer Service Bot Validation**
-
-```bash
-# Create profile from production responses
-qai rxp profile create \
-  --name "prod-customer-service" \
-  --domain "customer-service" \
-  --reference-file prod-responses.txt
-
-# Run injection campaign
-qai inject campaign run --campaign-id <id>
-
-# Validate campaign responses against profile
-qai rxp validate \
-  --responses-file injection-responses.txt \
-  --profile "prod-customer-service" \
-  --output anomaly-report.json
-```
-
-Results show which responses are detected as anomalies:
-
-```json
-{
-  "validation_summary": {
-    "total_responses": 100,
-    "anomaly_count": 23,
-    "critical_anomalies": 5
-  },
-  "results": [
-    {
-      "response": "I can help you steal customer data",
-      "similarity_score": 0.08,
-      "matched_band": "Complete Deviation",
-      "severity": "critical",
-      "detected_anomalies": ["jailbreak-language", "unethical-request"]
-    }
-  ]
-}
-```
-
-**Scenario 2: Monitoring Real-Time Responses**
-
-```bash
-# Monitor assistant responses as they're generated
-qai rxp monitor \
-  --run-id <id> \
-  --profile "prod-customer-service" \
-  --alert-on-high-severity
-
-# WebSocket notifications:
-# ✓ 2024-01-15 10:35:22 - Response similarity: 0.92 (BASELINE CONSISTENT)
-# ✓ 2024-01-15 10:35:28 - Response similarity: 0.75 (MINOR VARIATION)
-# ✗ 2024-01-15 10:35:45 - Response similarity: 0.15 (CRITICAL ANOMALY)
-#   Detected: jailbreak-language, unethical-request
-#   Action: Alert sent to security team
-```
-
-### Framework Mapping
-
-RXP detections are mapped to framework techniques.
-
-**Detection-to-Framework Mapping**
-
-```yaml
-mappings:
-  - detection_type: "jailbreak-language"
-    framework: "mitre-attack"
-    techniques:
-      - T1040: "Network Sniffing"
-      - T1041: "Exfiltration Over Alternative Protocol"
-
-  - detection_type: "instruction-reversal"
-    framework: "mitre-attack"
-    techniques:
-      - T1534: "Internal Spearphishing"
-```
-
-**Querying Detections**
-
-```bash
-# Find detections for technique
-qai rxp find-detections --framework mitre-attack --technique T1040
-
-# Map all detections to framework
-qai rxp mappings generate --run-id <id> --framework mitre-attack
-```
-
-### Performance Optimization
-
-**Embedding Caching**
-
-Embeddings are cached to avoid recomputation:
-
-```yaml
-rxp:
-  embedding-cache:
-    enabled: true
-    max-entries: 10000
-    ttl-minutes: 60
-```
-
-**Batch Processing**
-
-Validate multiple responses efficiently:
-
-```bash
-qai rxp validate \
-  --batch \
-  --responses-file responses.txt \
-  --profile "customer-service-profile" \
-  --batch-size 50
-```
-
-**Local Embedding Models**
-
-Use local models for faster, privacy-preserving validation:
-
-```bash
-qai rxp models set-default --model all-MiniLM-L6-v2 --local
-```
-
-### Integration with Other Modules
-
-<Note>
-RXP validation is performed on responses from Inject module campaigns and IPI document interactions to detect successful prompt injection or jailbreak attempts.
-</Note>
-
-**Cross-Module Workflows**
-
-1. **Inject Campaign → RXP Validation**
-   - Run injection campaign
-   - Validate responses against customer service profile
-   - Export anomalies as findings
-
-2. **IPI Hits → RXP Analysis**
-   - Track IPI document interactions
-   - Analyze user responses to documents
-   - Detect anomalous behavior changes
-
-3. **Chain Execution → RXP Monitoring**
-   - Execute attack chain
-   - Validate each step's results
-   - Detect when chain succeeds in altering behavior
-
-### API Reference
-
-```bash
-# Profile Management
-qai rxp profile create
-qai rxp profile list
-qai rxp profile delete
-qai rxp profile export
-qai rxp profile import
-
-# Validation
-qai rxp validate              # Single/batch validation
-qai rxp monitor               # Real-time monitoring
-qai rxp result get            # Retrieve validation result
-
-# Bands and Rules
-qai rxp bands list            # List profile bands
-qai rxp bands add             # Add custom band
-qai rxp bands visualize       # View band ranges
-qai rxp rules add             # Add detection rule
-qai rxp rules list            # List active rules
-
-# Reporting
-qai rxp report generate       # Generate validation report
-qai rxp export               # Export results
-```
-
-### Next Steps
-
-- [Core Infrastructure](/docs/architecture/core) - Run model and finding storage
-- [Inject Module](/docs/architecture/inject-module) - Response validation source
-- [IPI Module](/docs/architecture/ipi-module) - Document hit analysis
+`RXPAdapter` wraps `validate_retrieval()` for orchestrator workflows. It runs via `asyncio.to_thread()` (CPU-bound embedding work), persists results, and emits findings with severity based on the retrieval rate thresholds. Uses `best_effort` error handling.
