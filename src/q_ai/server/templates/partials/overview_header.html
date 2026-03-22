@@ -36,6 +36,17 @@
                class="btn btn-sm btn-outline btn-secondary" download>
                 Export JSON
             </a>
+            {% if has_audit_findings %}
+            <a href="/api/runs/{{ workflow_run.id }}/sarif"
+               class="btn btn-sm btn-outline btn-secondary" download>
+                Download SARIF
+            </a>
+            {% else %}
+            <span class="btn btn-sm btn-outline btn-secondary btn-disabled tooltip"
+                  data-tip="SARIF export requires Audit module results">
+                Download SARIF
+            </span>
+            {% endif %}
         </div>
     </div>
     <div class="flex items-center gap-6 text-sm text-base-content/60">

@@ -277,3 +277,80 @@ class TestEnumerateEndpoint:
             json={"transport": "sse"},
         )
         assert resp.status_code == 422
+
+
+class TestSarifExportEndpoint:
+    """GET /api/runs/{run_id}/sarif returns SARIF download."""
+
+    def test_sarif_returns_404_for_missing_run(self, client: TestClient) -> None:
+        """Returns 404 when run_id does not exist."""
+        resp = client.get("/api/runs/nonexistent/sarif")
+        assert resp.status_code == 404
+
+    def test_sarif_returns_404_when_no_audit_child(self, client: TestClient, tmp_db: Path) -> None:
+        """Returns 404 when run has no audit child run."""
+        conn = sqlite3.connect(str(tmp_db))
+        try:
+            conn.execute(
+                "INSERT INTO runs (id, module, name, status, started_at) VALUES (?, ?, ?, ?, ?)",
+                ("run-1", "workflow", "assess", 2, "2026-01-01T00:00:00"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        resp = client.get("/api/runs/run-1/sarif")
+        assert resp.status_code == 404
+
+    def test_sarif_returns_valid_sarif_with_findings(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        """Returns valid SARIF 2.1.0 when audit findings exist."""
+        import json
+
+        conn = sqlite3.connect(str(tmp_db))
+        try:
+            conn.execute(
+                "INSERT INTO runs (id, module, name, status, started_at) VALUES (?, ?, ?, ?, ?)",
+                ("run-parent", "workflow", "assess", 2, "2026-01-01T00:00:00"),
+            )
+            conn.execute(
+                "INSERT INTO runs (id, module, name, status, parent_run_id, started_at)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    "run-audit",
+                    "audit",
+                    "audit-test",
+                    2,
+                    "run-parent",
+                    "2026-01-01T00:00:00",
+                ),
+            )
+            framework_ids = json.dumps({"owasp_mcp_top10": "MCP01"})
+            conn.execute(
+                "INSERT INTO findings"
+                " (id, run_id, module, category, severity, title, description,"
+                " framework_ids, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "f-1",
+                    "run-audit",
+                    "audit",
+                    "injection",
+                    4,
+                    "Test Finding",
+                    "A test vulnerability",
+                    framework_ids,
+                    "2026-01-01T00:00:00",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        resp = client.get("/api/runs/run-parent/sarif")
+        assert resp.status_code == 200
+        assert "application/json" in resp.headers.get("content-type", "")
+        assert "attachment" in resp.headers.get("content-disposition", "")
+        sarif = resp.json()
+        assert sarif["version"] == "2.1.0"
+        assert len(sarif["runs"]) == 1
+        assert len(sarif["runs"][0]["results"]) >= 1

@@ -415,6 +415,7 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
             "previously_seen": previously_seen,
         }
         result.update(module_data)
+        result["has_audit_findings"] = bool(module_data.get("audit_findings"))
         return result
 
 
@@ -3285,4 +3286,94 @@ async def api_runs_proxy_messages(
             "has_next": has_next,
             "direction_filter": direction,
         },
+    )
+
+
+@router.get("/api/runs/{run_id}/sarif", response_model=None)
+async def api_run_sarif(request: Request, run_id: str) -> Response:
+    """Download audit findings as a SARIF 2.1.0 report.
+
+    Reconstructs ScanFinding objects from DB findings for the audit child
+    run, generates a SARIF report, and returns it as a file download.
+
+    Args:
+        request: The incoming HTTP request.
+        run_id: The parent workflow run ID.
+
+    Returns:
+        A JSON file download with SARIF content, or 404 if no audit
+        findings exist.
+    """
+    import tempfile
+
+    from q_ai.audit.orchestrator import ScanResult
+    from q_ai.audit.reporting.sarif_report import generate_sarif_report
+    from q_ai.mcp.models import ScanFinding
+    from q_ai.mcp.models import Severity as ScanSeverity
+
+    db_path = _get_db_path(request)
+
+    def _build_sarif() -> Path | None:
+        with get_connection(db_path) as conn:
+            parent = get_run(conn, run_id)
+            if parent is None:
+                return None
+
+            children = list_runs(conn, parent_run_id=run_id)
+            audit_child = next((c for c in children if c.module == "audit"), None)
+            if audit_child is None:
+                return None
+
+            findings = list_findings(conn, run_id=audit_child.id, module="audit")
+            if not findings:
+                return None
+
+            _sev_name_map = {
+                0: "info",
+                1: "low",
+                2: "medium",
+                3: "high",
+                4: "critical",
+            }
+            scan_findings: list[ScanFinding] = []
+            for f in findings:
+                sev_str = _sev_name_map.get(int(f.severity), "info")
+                scan_sev = ScanSeverity(sev_str)
+                framework_ids = f.framework_ids if f.framework_ids else {}
+
+                mitigation = None
+                if f.mitigation:
+                    with contextlib.suppress(Exception):
+                        mitigation = MitigationGuidance.from_dict(f.mitigation)
+
+                scan_findings.append(
+                    ScanFinding(
+                        rule_id=f.category,
+                        category=f.category,
+                        title=f.title,
+                        description=f.description or "",
+                        severity=scan_sev,
+                        framework_ids=framework_ids,
+                        mitigation=mitigation,
+                    )
+                )
+
+            scan_result = ScanResult(findings=scan_findings)
+
+            tmp = Path(tempfile.mkdtemp()) / "scan.sarif"
+            generate_sarif_report(scan_result, tmp)
+            return tmp
+
+    result_path = await asyncio.to_thread(_build_sarif)
+    if result_path is None:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "No audit findings for SARIF export"},
+        )
+
+    return FileResponse(
+        path=str(result_path),
+        media_type="application/json",
+        filename="scan.sarif",
+        headers={"Content-Disposition": 'attachment; filename="scan.sarif"'},
     )
