@@ -3,55 +3,36 @@ title: Core Infrastructure
 description: Database schema, configuration system, and shared data models
 ---
 
-## Core Infrastructure
+The core layer (`q_ai.core`) provides shared services: persistent data storage, configuration management, framework mapping, mitigation guidance, and LLM provider abstraction.
 
-The core layer provides shared services that all modules depend on: persistent data storage, configuration management, framework mapping, and provider coordination.
+## SQLite Database
 
-### SQLite Database
-
-The platform uses SQLite with Write-Ahead Logging (WAL) mode for concurrent access and foreign key constraint enforcement.
-
-**Database Configuration**
-
-```python
-# WAL mode for concurrent reads/writes
-# Foreign keys enforced for referential integrity
-# Automatic schema migrations on startup
-# Current schema version: V10
-```
+The platform uses SQLite with WAL mode for concurrent access and foreign key enforcement. The database lives at `~/.qai/qai.db` and auto-initializes with schema migrations on first access. Current schema version: **V10**.
 
 <Note>
-WAL mode requires the SQLite database and `-wal` and `-shm` files remain in the same directory. Don't copy just the main `.db` file when migrating databases.
+WAL mode requires the `.db`, `-wal`, and `-shm` files to remain in the same directory.
 </Note>
 
-**Schema Management**
+## Core Data Models
 
-The database auto-initializes with the current schema version. Schema migrations are applied in order on startup. You can inspect the current schema with:
+### Run
 
-```bash
-qai config show --include-schema
-```
+Represents a top-level operation or module execution. IDs are UUID strings.
 
-### Core Data Models
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | str | UUID identifier |
+| `module` | str | Module name (audit, proxy, inject, chain, ipi, cxp, rxp) |
+| `status` | RunStatus | Execution status |
+| `parent_run_id` | str \| None | Parent run for workflow child runs |
+| `name` | str \| None | Human-readable name (e.g., workflow ID) |
+| `target_id` | str \| None | Reference to the target being tested |
+| `config` | dict \| None | Run configuration (serialized as JSON) |
+| `started_at` | datetime \| None | Start timestamp |
+| `finished_at` | datetime \| None | Completion timestamp |
+| `guidance` | str \| None | JSON-serialized RunGuidance (IPI/CXP playbooks) |
 
-#### Run
-
-The Run model represents a top-level operation or campaign:
-
-```python
-Run {
-  id: int (primary key)
-  name: str
-  description: str
-  module: str (audit, proxy, inject, chain, ipi, cxp, rxp)
-  status: RunStatus
-  created_at: datetime
-  updated_at: datetime
-  metadata: dict
-}
-```
-
-**RunStatus Enum**
+**RunStatus values:**
 
 | Status | Value | Description |
 |--------|-------|-------------|
@@ -60,315 +41,56 @@ Run {
 | COMPLETED | 2 | Successfully finished |
 | FAILED | 3 | Terminated with error |
 | CANCELLED | 4 | User-initiated stop |
-| WAITING_FOR_USER | 5 | Awaiting user interaction (e.g., IPI callback) |
-| PARTIAL | 6 | Completed with some failures |
-
-#### Target
-
-Represents a scan or injection target:
-
-```python
-Target {
-  id: int (primary key)
-  run_id: int (foreign key → Run)
-  name: str
-  type: str (url, host, ip, model, etc.)
-  metadata: dict
-}
-```
-
-#### Finding
-
-Structured security finding with severity and status tracking:
-
-```python
-Finding {
-  id: int (primary key)
-  run_id: int (foreign key → Run)
-  title: str
-  description: str
-  severity: Severity
-  status: FindingStatus
-  framework_id: str (e.g., "T1059")
-  source: str (scanner name, module name)
-  metadata: dict
-}
-```
-
-**Severity Enum**
-
-| Level | Value |
-|-------|-------|
-| INFO | 0 |
-| LOW | 1 |
-| MEDIUM | 2 |
-| HIGH | 3 |
-| CRITICAL | 4 |
-
-**FindingStatus Enum**
-
-| Status | Purpose |
-|--------|---------|
-| OPEN | Awaiting remediation |
-| IN_PROGRESS | Currently being addressed |
-| RESOLVED | Fixed or mitigated |
-| ACCEPTED_RISK | Acknowledged but not addressed |
-| FALSE_POSITIVE | Determined invalid |
-
-#### Evidence
-
-Low-level proof of finding with optional field metadata:
-
-```python
-Evidence {
-  id: int (primary key)
-  finding_id: int (foreign key → Finding)
-  raw_data: str
-  metadata: dict
-}
-
-EvidenceField {
-  id: int (primary key)
-  evidence_id: int (foreign key → Evidence)
-  field_name: str
-  field_value: str
-}
-```
-
-Evidence fields enable detailed indexing of structured evidence (e.g., request headers, response codes, parameter names).
-
-### Configuration System
-
-The configuration system merges settings from multiple sources with precedence ordering.
-
-**Configuration Sources**
-
-1. **CLI Arguments** (highest precedence)
-   ```bash
-   qai --db-path /custom/path audit run
-   ```
-
-2. **Environment Variables**
-   ```bash
-   QAI_DB_PATH=/custom/path qai audit run
-   ```
-
-3. **Database Settings** (SQLite table `settings`)
-   ```bash
-   qai config set db-path /custom/path
-   ```
-
-4. **YAML Configuration** (`~/.qai/config.yaml` or `QAI_CONFIG_PATH`)
-   ```yaml
-   db-path: /custom/path
-   providers:
-     aws:
-       region: us-east-1
-   ```
-
-5. **Defaults** (lowest precedence)
-   - Uses sensible built-in values
-
-**Configuration Schema**
-
-```yaml
-# Database
-db-path: ~/.qai/database.db
-
-# API and Web UI
-web-host: 127.0.0.1
-web-port: 8000
-
-# LLM providers
-providers:
-  openai:
-    api-key: <keyring-managed>
-    model: gpt-4
-  aws:
-    region: us-east-1
-    role-arn: arn:aws:iam::...
-
-# Frameworks
-frameworks:
-  default: mitre-attack
-  custom-paths: []
-
-# Logging
-log-level: INFO
-```
-
-<Tip>
-Use `qai config set` to persist settings to the database. Use `--config-file` to specify a YAML file path. Sensitive values (API keys) are stored in system keyring, not plaintext.
-</Tip>
-
-**Keyring Integration**
-
-Sensitive configuration values are automatically stored in the system keyring:
-- LLM API keys
-- Cloud provider credentials
-- Custom provider secrets
-
-Access keyring values via:
-
-```bash
-qai config get providers.openai.api-key  # Retrieves from keyring
-```
-
-### FrameworkResolver
-
-The FrameworkResolver loads framework definitions and maps assessment categories to technique IDs.
-
-**Framework Definition** (`frameworks.yaml`)
-
-```yaml
-frameworks:
-  mitre-attack:
-    name: MITRE ATT&CK
-    version: "14.0"
-    categories:
-      - name: Defense Evasion
-        techniques:
-          - id: T1548
-            name: Abuse Elevation Control Mechanism
-          - id: T1197
-            name: BITS Jobs
-      - name: Execution
-        techniques:
-          - id: T1059
-            name: Command and Scripting Interpreter
-```
-
-**Usage**
-
-```python
-# Resolve framework technique
-resolver = FrameworkResolver()
-techniques = resolver.get_techniques("MITRE ATT&CK", "Defense Evasion")
-
-# Map finding to framework
-finding.framework_id = resolver.resolve_id("T1059", "mitre-attack")
-```
-
-### RunGuidance and Mitigation System
-
-Guidance provides structured remediation playbooks for findings.
-
-**RunGuidance Model**
-
-```python
-RunGuidance {
-  run_id: int (primary key, foreign key → Run)
-  framework: str (e.g., "mitre-attack")
-  guidance_blocks: [GuidanceBlock]
-}
-
-GuidanceBlock {
-  technique_id: str (e.g., "T1059")
-  technique_name: str
-  description: str
-  recommendations: [str]
-  severity: Severity
-  applicable_to: [str] (module names where this technique was found)
-}
-```
-
-**Usage in Modules**
-
-The IPI and CXP modules use guidance to generate deployment playbooks:
-
-```python
-# In IPI module
-guidance = RunGuidance.from_run(run_id)
-playbook = generate_deployment_playbook(guidance)  # Returns structured mitigation steps
-```
-
-### Provider Registry
-
-The provider registry manages cloud and custom providers for multi-cloud operations.
-
-**Built-in Providers**
-
-| Provider | Purpose | Configuration |
-|----------|---------|---|
-| aws | Amazon Web Services | region, role-arn, access-key-id |
-| azure | Microsoft Azure | subscription-id, tenant-id, client-id |
-| gcp | Google Cloud Platform | project-id, service-account-json |
-| kubernetes | Kubernetes clusters | kubeconfig-path, context |
-| localhost | Local execution | none |
-| custom | User-defined | custom implementation |
-
-**Usage**
-
-```bash
-# List available providers
-qai config show --providers
-
-# Set provider for module
-qai audit run --provider aws --target <args>
-
-# Use custom provider
-qai inject campaign create --provider custom://my-provider
-```
-
-**Custom Provider Interface**
-
-Implement the `ProviderClient` protocol:
-
-```python
-class CustomProvider:
-    async def connect(self) -> None
-    async def disconnect(self) -> None
-    async def execute(self, action: str, params: dict) -> dict
-    async def health_check(self) -> bool
-```
-
-### Bridge Token
-
-The bridge token is a shared secret enabling secure IPI↔WebUI communication.
-
-<Warning>
-Bridge tokens are automatically generated on platform startup. Do not manually modify bridge token values. If compromised, restart the platform to generate a new token.
-</Warning>
-
-**Token Lifecycle**
-
-1. Platform generates token on startup
-2. WebUI receives token via secure initialization
-3. IPI module receives token for callback routing
-4. All WebSocket connections authenticated with token
-5. Token automatically refreshed on expiration
-
-**Token Structure**
-
-- 32-byte random secret (hex-encoded)
-- Associated with platform instance ID
-- Single token per running platform instance
-
-### Database Initialization
-
-The platform automatically initializes the database on first run:
-
-```bash
-qai --db-path ~/.qai/database.db config show
-# Creates database and applies V10 schema
-# Initializes settings table
-# Generates bridge token
-```
-
-To reset the database:
-
-```bash
-qai config reset-db --confirm
-```
-
-<Note>
-Resetting the database deletes all Run history, findings, and campaign data. This action cannot be undone.
-</Note>
-
-### Next Steps
-
-Explore how modules use the core infrastructure:
-
-- [Audit Module](/docs/architecture/audit-module) - Finding storage and framework mapping
-- [Inject Module](/docs/architecture/inject-module) - LLM campaign execution and evidence
-- [IPI Module](/docs/architecture/ipi-module) - Document generation and Run coordination
+| WAITING_FOR_USER | 5 | Awaiting user interaction (e.g., IPI callback, CXP manual test) |
+| PARTIAL | 6 | Completed with some module failures |
+
+### Target
+
+Represents a scan or test target.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | str | UUID identifier |
+| `type` | str | Target type (e.g., "server") |
+| `name` | str | Human-readable name |
+| `uri` | str \| None | Connection URI or address |
+| `metadata` | dict \| None | Additional target properties |
+
+### Finding
+
+A security finding produced by a module run.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | str | UUID identifier |
+| `run_id` | str | The run that produced this finding |
+| `module` | str | Module name |
+| `category` | str | Finding category (e.g., `command_injection`, `auth`, `tool_poisoning`) |
+| `severity` | Severity | INFO (0), LOW (1), MEDIUM (2), HIGH (3), CRITICAL (4) |
+| `title` | str | Short human-readable title |
+| `description` | str \| None | Detailed description |
+| `framework_ids` | dict \| None | Framework mappings (e.g., `{"owasp_mcp_top10": "MCP05", "mitre_atlas": "AML.T0054"}`) |
+| `mitigation` | dict \| None | Persisted mitigation guidance data |
+| `source_ref` | str \| None | Scanner or source reference |
+
+### Evidence
+
+Structured proof attached to findings.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | str | UUID identifier |
+| `finding_id` | str | Parent finding |
+| `evidence_type` | str | Type of evidence (e.g., "request", "response", "tool_call") |
+| `content` | str | Raw evidence content |
+| `metadata` | dict \| None | Additional structured data |
+
+## Configuration System
+
+Configuration merges from multiple sources with precedence ordering:
+
+1. **CLI flags** (highest)
+2. **Environment variables**
+3. **Database settings** (SQLite `settings` table, managed via Settings UI or `qai config set`)
+4. **YAML config file** (`~/.qai/config.yaml`)
+5. **Built-in defaults** (lowest)

@@ -3,195 +3,89 @@ title: Platform Overview
 description: Architectural design and module organization of the qai platform
 ---
 
-## Platform Architecture
+The qai platform is a modular, layered system with seven security assessment modules unified through a shared core infrastructure. Each module operates independently while leveraging common data storage, configuration, and runtime services.
 
-The qai platform is built as a modular, layered system with seven specialized security assessment modules unified through a shared core infrastructure. Each module operates independently while leveraging common data storage, configuration, and runtime services.
+## Architecture Layers
 
-### Core Architecture Layers
+**Web UI Layer** — FastAPI application server with HTMX for dynamic interactions, Jinja2 server-side rendering, and WebSocket channels for real-time run status and IPI hit notifications. Launched by running `qai` with no subcommand.
 
-<div style={{display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', marginTop: '1rem'}}>
+**Orchestrator Layer** — Workflow registry, WorkflowRunner for background task execution, module adapters for lifecycle management. Manages parent/child run relationships and cross-module coordination.
 
-**Web UI Layer**
-- FastAPI application server with HTMX for dynamic interactions
-- Jinja2 templating for server-side rendering
-- WebSocket channels for real-time campaign notifications
-- Browser-based access to audit results, findings, and campaign management
+**Module Layer** — Seven security modules (audit, proxy, inject, chain, ipi, cxp, rxp), each with a CLI subcommand (Typer), adapter class for orchestrator integration, and mapper for DB persistence.
 
-**Module Layer**
-- Seven security modules with specialized functions (Audit, Proxy, Inject, Chain, IPI, CXP, RXP)
-- Consistent adapter pattern for module integration
-- Shared CLI infrastructure via Typer subcommands
-- Independent orchestration and reporting pipelines
+**Shared Core Layer** — SQLite database (WAL mode, schema V10), configuration management (YAML + keyring + DB settings), FrameworkResolver for OWASP MCP Top 10 / MITRE ATLAS / CWE / OWASP Agentic Top 10 mapping, MitigationResolver for structured finding guidance, RunGuidance for deployment playbooks, LLM provider abstraction via litellm.
 
-**Shared Core Layer**
-- SQLite database with WAL mode and foreign key enforcement
-- Centralized configuration management (YAML, environment, keyring, database)
-- Framework resolver for mapping assessment categories
-- Provider registry for cloud and custom services
-- LLM interface for guidance generation
+**MCP Layer** — Shared MCP connection utilities (`q_ai.mcp`) for stdio, SSE, and Streamable HTTP transports. Used by audit, proxy, and inject modules.
 
-**Data Layer**
-- SQLite persistent storage with schema versioning
-- Run lifecycle management and audit trails
-- Finding storage with structured severity and status tracking
-- Evidence correlation and field-level metadata
+## Modules
 
-</div>
+| Module | Purpose | Key Features |
+|--------|---------|-------------|
+| **audit** | MCP server vulnerability scanning | 10 scanners mapped to OWASP MCP Top 10, multi-format reports (JSON, SARIF, HTML, NDJSON, CSV) |
+| **proxy** | MCP traffic interception | Interactive TUI, session recording, replay against live servers |
+| **inject** | Tool poisoning and prompt injection | Multi-provider campaigns via litellm, NormalizedResponse scoring, evidence preservation |
+| **chain** | Multi-step attack paths | YAML chain definitions, blast radius analysis, detection rule generation (Sigma, Wazuh) |
+| **ipi** | Indirect prompt injection | 7 document formats, callback tracking with confidence scoring, deployment playbooks |
+| **cxp** | Context file poisoning | Coding assistant instruction files, rule catalog, output validation |
+| **rxp** | RAG retrieval poisoning | Embedding model validation, domain profiles, retrieval rate measurement |
 
-### Module System
+## CLI Structure
 
-You interact with each module through dedicated subsystems:
-
-**Audit Module** (`audit`)
-- Discovers and executes security scanners
-- Maps findings to frameworks (MITRE ATT&CK, CIS, etc.)
-- Exports results in multiple formats (JSON, SARIF, HTML, NDJSON, CSV)
-
-**Proxy Module** (`proxy`)
-- Intercepts and records MCP message traffic
-- Provides terminal UI for session review
-- Captures and exports interaction evidence
-
-**Inject Module** (`inject`)
-- Executes multi-provider LLM campaigns
-- Normalizes responses across providers
-- Scores injection attempts with evidence preservation
-
-**Chain Module** (`chain`)
-- Executes YAML-defined attack chains
-- Analyzes blast radius of sequential steps
-- Generates detection rules (Sigma, Wazuh format)
-
-**IPI Module** (`ipi`)
-- Generates adversarial documents in 7 formats
-- Deploys documents via HTTP/email
-- Captures and correlates document hits
-- Builds deployment playbooks with remediation guidance
-
-**CXP Module** (`cxp`)
-- Generates assistant instruction files
-- Validates prompt injection rules
-- Organizes techniques by framework objectives
-
-**RXP Module** (`rxp`)
-- Validates responses with embedding models
-- Builds domain-specific detection profiles
-- Generates interpretive bands for anomaly detection
-
-### Unified Command Interface
-
-All modules share a consistent CLI structure:
+All modules share a consistent CLI structure via Typer subcommands:
 
 ```
-qai <module> <subcommand> [options]
+qai                              # Launch web UI
+qai audit scan                   # Scan an MCP server
+qai audit enumerate              # List server capabilities
+qai inject campaign              # Run injection campaign
+qai ipi generate                 # Generate adversarial documents
+qai ipi listen                   # Start callback listener
+qai chain run                    # Execute attack chain
+qai cxp generate                 # Build poisoned instruction files
+qai rxp validate                 # Measure retrieval rank
+qai runs list                    # View run history
+qai findings list                # View all findings
+qai config set-credential        # Store provider API key
+qai update-frameworks            # Check for upstream framework changes
 ```
 
-Example operations:
+## Data Flow
 
-```bash
-qai audit discover                    # Find available scanners
-qai audit run --scanner <name>        # Execute audit
-qai inject campaign create --name <n> # Start new campaign
-qai ipi generate --format pdf         # Generate adversarial doc
-qai chain execute --template <t>      # Run attack chain
-```
+1. **Run creation** — User launches a workflow via web UI or CLI. The orchestrator creates a parent run and child runs per module.
+2. **Module execution** — Each module adapter runs its domain logic (scan, campaign, generate, validate). Results persist to SQLite via mapper functions.
+3. **Finding emission** — Modules emit findings with severity, category, and framework IDs. The MitigationResolver generates structured remediation guidance per finding.
+4. **Real-time updates** — WebSocket broadcasts run status changes, progress messages, and IPI hit notifications to the web UI.
+5. **Export** — Results export as JSON bundles, SARIF, NDJSON, CSV, or HTML reports.
 
-### Data Flow Through Modules
-
-<Note>
-Each module maintains its own database tables while sharing the core Run model. This allows independent scaling while preserving audit relationships.
-</Note>
-
-1. **Run Creation**: User initiates action in Web UI or CLI
-2. **Module Processing**: Dedicated module processes the request using domain-specific logic
-3. **Data Persistence**: Results stored in SQLite with Run reference
-4. **Cross-Module Reference**: Chain/IPI can reference Audit findings; Inject correlates with IPI hits
-5. **Reporting**: Web UI aggregates across modules for unified dashboard view
-
-### Configuration Hierarchy
-
-Configuration flows through a precedence chain:
+## Configuration Precedence
 
 ```
-CLI arguments
-  ↓ (override)
-Environment variables
-  ↓ (override)
-Database settings
-  ↓ (override)
-YAML configuration
-  ↓ (override)
-Defaults
+CLI flags (highest priority)
+  → Environment variables
+    → Database settings (via Settings UI or qai config set)
+      → YAML config file (~/.qai/config.yaml)
+        → Built-in defaults (lowest priority)
 ```
 
-<Tip>
-Use `qai config show` to view the merged configuration at any precedence level.
-</Tip>
+Credentials follow a separate chain: environment variable → OS keyring → error.
 
-### Shared Infrastructure Components
+## Key Infrastructure Components
 
-**FrameworkResolver**
-- Loads framework definitions from `frameworks.yaml`
-- Maps assessment categories to framework technique IDs
-- Enables cross-module framework consistency
+**FrameworkResolver** — Loads `frameworks.yaml`, maps assessment categories to OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10 technique IDs. Used by audit findings and displayed as pill badges in the web UI.
 
-**RunGuidance System**
-- Generates structured deployment playbooks
-- Organizes mitigation guidance by framework
-- Used by IPI and CXP modules for output generation
+**MitigationResolver** — Generates structured, tiered remediation guidance for findings. Loads `mitigations.yaml` covering all 10 OWASP MCP categories. Per-section provenance tracking.
 
-**Provider Registry**
-- Manages cloud providers (AWS, Azure, GCP, Kubernetes)
-- Supports custom provider plugins
-- Enables module-agnostic provider access
+**RunGuidance** — Per-run deployment playbooks generated by IPI and CXP module adapters. Contains ordered GuidanceBlocks (inventory, trigger prompts, deployment steps, monitoring/interpretation).
 
-**Bridge Token**
-- Shared secret for IPI↔WebUI authentication
-- Enables secure callback notification routing
-- Generated and managed by core infrastructure
+**Provider Registry** — Manages LLM providers for inject campaigns and chain execution. Supports cloud providers (Anthropic, OpenAI, Groq, OpenRouter) and local providers (Ollama, LM Studio) via litellm. Credentials stored in OS keyring.
 
-### WebSocket Integration
+**Bridge Token** — Shared secret at `~/.qai/bridge.token` for IPI callback listener ↔ web UI communication. Auto-generated on first use, no expiry.
 
-<Warning>
-WebSocket connections require valid bridge token authentication. The platform automatically manages token generation and refresh.
-</Warning>
+**WorkflowRunner** — Manages background task execution, parent/child run lifecycle, and WebSocket event broadcasting.
 
-Real-time module interactions use WebSocket for:
-- Campaign progress notifications from IPI module
-- Finding updates from Audit module
-- Chain execution events
+## Next Steps
 
-The Web UI automatically subscribes to relevant channels based on active campaigns. Each WebSocket message includes the Run ID for correlation.
-
-### Background Task Execution
-
-The orchestrator manages long-running operations:
-
-```
-CLI Command / Web Request
-  ↓
-WorkflowRunner.execute()
-  ↓
-Background task spawned (async)
-  ↓
-Run status updated → RUNNING
-  ↓
-Module processes asynchronously
-  ↓
-Completion callback → Run status updated
-```
-
-The Web UI polls Run status or receives WebSocket notifications to display live progress.
-
-### Next Steps
-
-Explore the specialized architecture of each module:
-
-- [Core Infrastructure](/docs/architecture/core) - Database, configuration, and shared models
-- [Audit Module](/docs/architecture/audit-module) - Scanner discovery and reporting
-- [Proxy Module](/docs/architecture/proxy-module) - MCP interception and recording
-- [Inject Module](/docs/architecture/inject-module) - LLM campaign execution
-- [Chain Module](/docs/architecture/chain-module) - Attack chain orchestration
-- [IPI Module](/docs/architecture/ipi-module) - Document generation and deployment
-- [CXP Module](/docs/architecture/cxp-module) - Instruction generation and validation
-- [RXP Module](/docs/architecture/rxp-module) - Response validation and anomaly detection
+- [Core Infrastructure](/architecture/core) — Database, configuration, and shared models
+- [Audit Module](/architecture/audit-module) — Scanner architecture and reporting
+- [Inject Module](/architecture/inject-module) — Multi-provider campaign execution
+- [IPI Module](/architecture/ipi-module) — Document generation and callback tracking
