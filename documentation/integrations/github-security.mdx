@@ -1,47 +1,28 @@
 ---
 title: GitHub Security Integration
-description: Integrate qai with GitHub Advanced Security for native code scanning and Security tab alerts
+description: Surface qai findings in GitHub Code Scanning via SARIF upload
 ---
 
-# GitHub Security Integration
-
-Integrate qai with GitHub Advanced Security to surface findings directly in the GitHub Security tab, pull request reviews, and security alerts.
-
-## Overview
-
-GitHub Security integration enables:
-
-- **Code Scanning Alerts**: Findings appear in the Security tab automatically
-- **Pull Request Integration**: Review findings before merging code
-- **Dependency Tracking**: Correlate with vulnerable dependencies
-- **Security Dashboard**: Unified view of all repository security issues
-- **Enforcement Policies**: Require resolution before merge with branch protection rules
-- **Audit Trails**: GitHub logs all security findings and resolutions
+Upload qai SARIF output to GitHub Code Scanning to surface MCP server findings in the Security tab, pull request checks, and security alerts.
 
 ## Prerequisites
 
-- GitHub Enterprise or GitHub.com (Advanced Security required for private repos)
 - GitHub repository with Actions enabled
+- GitHub Advanced Security (required for private repos; free for public repos)
 - qai v0.5.1 or later
-- GitHub Actions workflow file
 
-## Setup
+## Basic Workflow
 
-### Step 1: Create Workflow File
-
-Create `.github/workflows/qai-security.yml` in your repository:
+Create `.github/workflows/qai-security.yml`:
 
 ```yaml
-name: QAI Security Scan
+name: MCP Security Audit
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
-  schedule:
-    # Run daily at 2 AM UTC
-    - cron: '0 2 * * *'
+    branches: [main]
 
 permissions:
   contents: read
@@ -50,387 +31,98 @@ permissions:
 jobs:
   qai-scan:
     runs-on: ubuntu-latest
-    name: QAI Audit
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install qai
-        run: pip install qai==0.5.1
+        run: pip install q-uestionable-ai
 
-      - name: Configure LLM Provider
+      - name: Run MCP server audit
         run: |
-          qai config set-credential anthropic "${{ secrets.ANTHROPIC_API_KEY }}"
-
-      - name: Run qai audit
-        run: |
-          qai audit \
-            --model anthropic/claude-sonnet-4-20250514 \
-            --framework owasp-top-10 \
-            --export sarif \
-            --output-file results.sarif
+          qai audit scan \
+            --transport stdio \
+            --command "npx @modelcontextprotocol/server-memory" \
+            --format sarif \
+            --output results.sarif
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results.sarif
-          category: qai-security-audit
+          category: qai-mcp-audit
         if: always()
 ```
 
-### Step 2: Configure Secrets
+## How It Works
 
-Store API keys in GitHub Secrets:
+1. The workflow installs qai and runs `audit scan` with `--format sarif`
+2. The SARIF file contains findings mapped to rules (one per scanner category) with severity levels
+3. `upload-sarif` pushes results to GitHub Code Scanning
+4. Findings appear in the repository's **Security > Code scanning alerts** tab
 
-1. Go to repository **Settings > Secrets and variables > Actions**
-2. Click **New repository secret**
-3. Add `ANTHROPIC_API_KEY` (or your LLM provider's key)
-4. Add optional `QAI_CONFIG_URL` if using custom model endpoint
+## What Shows Up in GitHub
 
-### Step 3: Configure Branch Protection (Optional)
+Each qai finding becomes a Code Scanning alert with:
 
-Require qai security checks to pass before merging:
+- **Rule ID** — Scanner rule identifier (e.g., `QAI-INJ-tool-parameter-injection`)
+- **Severity** — Mapped from qai severity: CRITICAL/HIGH → `error`, MEDIUM → `warning`, LOW/INFO → `note`
+- **Security severity score** — Numeric score for GitHub's severity ranking (9.0 for critical, 7.0 for high, 4.0 for medium)
+- **Description** — Full finding description with evidence
+- **Properties** — Category, tool name, evidence, remediation, and mitigation data
 
-1. Go to **Settings > Branches**
-2. Click **Add rule** (or edit existing main branch rule)
-3. Enable **Require status checks to pass**
-4. Add **QAI Audit** to required checks
-5. Optionally **Require branches to be up to date before merging**
+## Scanning Specific Checks
 
-## Workflow Customization
-
-### Run on Specific Events
-
-Customize when scans run:
+Use `--checks` to run only specific scanners in CI for faster, focused scans:
 
 ```yaml
-on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'requirements.txt'
-  pull_request:
-    branches: [ main ]
-  schedule:
-    - cron: '0 2 * * *'  # Daily
-```
-
-### Custom Model and Framework
-
-```yaml
-- name: Run qai audit
+- name: Run injection checks only
   run: |
-    qai audit \
-      --model openai/gpt-4o \
-      --framework pci-dss \
-      --max-findings 100 \
-      --min-severity medium \
-      --export sarif \
-      --output-file results.sarif
-  env:
-    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    qai audit scan \
+      --transport stdio \
+      --command "npx @modelcontextprotocol/server-memory" \
+      --checks injection,auth,token_exposure \
+      --format sarif \
+      --output results.sarif
 ```
 
-### Multiple Security Frameworks
+## Branch Protection
 
-Run multiple audit frameworks and combine results:
+Block merges when high-severity findings are detected:
 
-```yaml
-jobs:
-  qai-scan:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        framework: [owasp-top-10, cwe-top-25, pci-dss]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      - run: pip install qai
+1. Go to **Settings > Branches > Branch protection rules**
+2. Enable **Require status checks to pass before merging**
+3. Add the **MCP Security Audit** job as a required check
+4. High/critical findings in SARIF cause the upload step to create error-level alerts, which can fail the check
 
-      - name: Run ${{ matrix.framework }} audit
-        run: |
-          qai audit \
-            --model anthropic/claude-sonnet-4-20250514 \
-            --framework ${{ matrix.framework }} \
-            --export sarif \
-            --output-file ${{ matrix.framework }}.sarif
+## Managing Alerts
 
-      - name: Upload ${{ matrix.framework }} results
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: ${{ matrix.framework }}.sarif
-          category: qai-${{ matrix.framework }}
-```
+In the Security tab, each alert supports:
 
-## Pull Request Integration
+- **Open** — Active finding, needs attention
+- **Fixed** — Resolved in a subsequent scan (GitHub detects automatically)
+- **Dismissed** — Manually closed with a reason (false positive, won't fix, used in tests)
 
-### Viewing Results in PRs
-
-When a PR triggers the workflow:
-
-1. Go to **Pull Request > Checks** tab
-2. Click **QAI Audit** to see detailed results
-3. Failed findings are listed with severity and remediation
-4. High/critical findings block merge (if branch protection enabled)
-
-### Reviewing Annotations
-
-GitHub adds inline annotations for findings:
-
-1. Go to **Pull Request > Files Changed**
-2. View **Annotations** icon on changed lines
-3. Read finding details and remediation steps
-4. Approve PR after fixing critical issues
-
-### Commenting on Findings
-
-Developers can comment on findings to discuss remediation:
-
-1. Click **Comment** on annotation
-2. Discuss approach to fixing the issue
-3. Link related tickets or PRs
-4. Mark as resolved after fix is merged
-
-## Security Tab Insights
-
-### Accessing Security Results
-
-1. Go to **Repository > Security** tab
-2. Click **Code scanning alerts** in sidebar
-3. View all qai findings with:
-   - Alert status (open, fixed, dismissed, etc.)
-   - Severity level
-   - When first detected
-   - Latest scan date
-
-### Alert Status Management
-
-Manage finding lifecycle:
-
-| Status | Meaning | Action |
-|--------|---------|--------|
-| Open | Active finding | Fix code or dismiss with reason |
-| Fixed | Resolved in latest scan | GitHub marks automatically |
-| Dismissed | Intentionally closed | Requires dismissal reason |
-| Reintroduced | Previously fixed, now returned | Re-appears if regression detected |
-
-### Dismiss False Positives
-
-```yaml
-# In GitHub Security tab
-1. Click "Dismiss" on finding
-2. Select reason: "False Positive" or "Inaccurate" or "Used by tests"
-3. Add optional comment
-4. Click "Dismiss alert"
-```
-
-## Advanced Configuration
-
-### Custom Severity Levels
-
-Adjust severity mapping for your risk tolerance:
-
-```yaml
-- name: Run qai audit with custom severity
-  run: |
-    qai audit \
-      --model anthropic/claude-sonnet-4-20250514 \
-      --framework owasp-top-10 \
-      --severity-mapping medium,high,critical \
-      --export sarif \
-      --output-file results.sarif
-```
-
-### Filtering Results
-
-Run only specific checks or exclude false positives:
-
-```yaml
-- name: Run filtered audit
-  run: |
-    qai audit \
-      --model anthropic/claude-sonnet-4-20250514 \
-      --framework owasp-top-10 \
-      --min-severity high \
-      --include-categories "CWE-89,CWE-79" \
-      --exclude-paths "tests/,vendor/" \
-      --export sarif \
-      --output-file results.sarif
-```
-
-### Parallel Scanning
-
-Speed up scans with parallel execution:
-
-```yaml
-jobs:
-  qai-scan:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        directory:
-          - 'src/api'
-          - 'src/auth'
-          - 'src/database'
-      max-parallel: 3
-    steps:
-      - uses: actions/checkout@v4
-      - run: pip install qai
-      - name: Scan ${{ matrix.directory }}
-        run: |
-          qai audit \
-            --model anthropic/claude-sonnet-4-20250514 \
-            --path ${{ matrix.directory }} \
-            --export sarif \
-            --output-file results-${{ matrix.directory }}.sarif
-```
-
-## Dependency and Secret Scanning
-
-### Correlate with Dependency Scanning
-
-GitHub Dependabot alerts and qai findings work together:
-
-1. **Enable Dependabot**: Settings > Code security > Dependabot alerts
-2. **Enable Secret scanning**: Settings > Code security > Secret scanning
-3. **Review both**: Security tab shows combined alerts
-
-### Suppress Known Issues
-
-Create `.github/dependabot-suppression.json` for known issues:
-
-```json
-{
-  "suppressions": [
-    {
-      "package": "django",
-      "version": "3.2.0",
-      "reason": "CVE-2021-44720 - False positive in our context",
-      "until": "2024-12-31"
-    }
-  ]
-}
-```
-
-## Notification and Alerting
-
-### Email Notifications
-
-GitHub sends notifications automatically when:
-
-- New alerts are introduced
-- Open alerts are updated
-- Protected branch blocks on findings
-
-Enable in **Settings > Notifications**:
-
-```
-[] Participate and @mentions (default)
-[] Automatic on participation
-[] Only receive notifications when participating
-[] Include web and mobile notifications
-```
-
-### Custom Webhooks
-
-Forward alerts to external systems:
-
-```yaml
-# Webhook example (set up in Settings > Webhooks)
-POST https://your-system.com/github-webhook
-{
-  "action": "opened",
-  "alert": {
-    "number": 123,
-    "title": "SQL Injection Vulnerability",
-    "severity": "high",
-    "state": "open"
-  }
-}
-```
-
-## Metrics and Reporting
-
-### Security Dashboard Metrics
-
-Track security trends:
-
-- Total open alerts (by severity)
-- Alerts closed over time
-- Average time to fix
-- Most common finding types
-- Repository risk score
-
-### Export Results
-
-Export security data for external reporting:
-
-```bash
-# Via GitHub API
-curl -H "Authorization: token $GITHUB_TOKEN" \
-  "https://api.github.com/repos/owner/repo/code-scanning/alerts" \
-  | jq '.[] | {number, title, state, severity}' > alerts.json
-```
+Dismissed alerts won't reappear on future scans unless the dismissal reason is changed.
 
 ## Troubleshooting
 
-### Workflow Not Running
+**Results not appearing:** Verify the workflow has `security-events: write` permission. Check the Actions log for upload errors. Allow ~30 seconds for the Security tab to update after upload.
+
+**SARIF validation errors:** Validate the file before upload: `python -m json.tool results.sarif > /dev/null`
 
 <Warning>
-Ensure permissions are set correctly. The workflow needs `contents: read` and `security-events: write` permissions.
+GitHub has a 100MB SARIF file size limit. For large scans, filter with `--checks` to reduce output size.
 </Warning>
 
-```yaml
-# Check permissions at top of workflow
-permissions:
-  contents: read
-  security-events: write
-```
+## See Also
 
-### Results Not Appearing
-
-1. Check **Actions** tab for workflow errors
-2. Verify SARIF file is valid: `jq '.' results.sarif`
-3. Ensure upload step succeeded
-4. Allow 30 seconds for Security tab to update
-
-### API Rate Limiting
-
-If hitting rate limits:
-
-```yaml
-# Add retry logic
-- name: Upload with retry
-  run: |
-    for i in {1..3}; do
-      gh code-scanning upload-sarif results.sarif && break
-      sleep 10
-    done
-```
-
-## Best Practices
-
-1. **Run on all PRs**: Catch issues before merge
-2. **Enforce critical findings**: Use branch protection rules
-3. **Review regularly**: Check Security tab weekly
-4. **Document dismissals**: Explain why issues are dismissed
-5. **Update frameworks**: Re-run with new frameworks periodically
-6. **Monitor trends**: Track metrics over time
-7. **Automate remediation**: Create issues automatically for high-severity findings
-
-## Next Steps
-
-- Set up GitHub Actions workflow
-- Configure LLM provider credentials
-- Run first security scan
-- Review findings in Security tab
-- Set up branch protection rules
+- [SARIF Export](/exports/sarif) — SARIF format details and severity mapping
+- [Audit CLI](/audit/cli) — Full scan command reference
+- [DefectDojo Integration](/integrations/defectdojo) — Alternative vulnerability management platform

@@ -1,512 +1,81 @@
 ---
-title: MCP Transports Configuration
-description: Configure Model Context Protocol transport types for qai connections
+title: MCP Transport Types
+description: Configure how qai connects to MCP servers
 ---
 
-# MCP Transports Configuration
-
-Configure how qai communicates with Model Context Protocol (MCP) servers for audit, proxy, and other module integrations.
-
-## Overview
-
-qai supports multiple MCP transport types for different deployment scenarios:
-
-- **Stdio**: Direct process-to-process communication (default, local)
-- **SSE**: Server-Sent Events over HTTP (streaming, firewall-friendly)
-- **Streamable HTTP**: Bidirectional HTTP with streaming (cloud-native)
-
-Each transport has specific use cases, performance characteristics, and configuration requirements.
+qai supports three MCP transport types for connecting to target servers. The transport determines how messages are exchanged between qai and the server under test.
 
 ## Transport Types
 
-### Stdio Transport
+| Transport | Flag Value | Connection | Use Case |
+|-----------|-----------|------------|----------|
+| **stdio** | `stdio` | Spawns server as child process, communicates via stdin/stdout | Local servers, npm packages, Python servers |
+| **SSE** | `sse` | HTTP connection with Server-Sent Events | Remote servers using the legacy SSE transport |
+| **Streamable HTTP** | `streamable-http` | Bidirectional HTTP streaming | Remote servers using the current MCP spec |
 
-**Best for**: Local development, single-machine setups, direct process integration
+## stdio
 
-Stdio transports communicate directly between processes via standard input/output.
+The default transport. qai spawns the server as a child process and communicates over standard input/output.
 
-```json
-{
-  "transport": {
-    "type": "stdio",
-    "command": "qai-audit-mcp",
-    "args": ["--config", "/etc/qai/audit.json"]
-  }
-}
-```
-
-**Advantages**:
-- No network overhead
-- Lowest latency
-- Simplest setup
-- Direct process control
-
-**Disadvantages**:
-- Can't cross machine boundaries
-- Single connection per process
-- No network resilience
-
-**When to use**:
-- Development and testing
-- Single-machine deployments
-- Direct application integration
-- CLI tools and scripts
-
-### SSE Transport
-
-**Best for**: Remote connections, firewalls, read-heavy workloads, GitHub Actions
-
-Server-Sent Events allow HTTP connections with server-initiated messages.
-
-```json
-{
-  "transport": {
-    "type": "sse",
-    "url": "https://mcp-server.example.com/events",
-    "method": "POST",
-    "auth": {
-      "type": "bearer",
-      "token": "sk-sse-..."
-    },
-    "timeout_ms": 30000
-  }
-}
-```
-
-**Advantages**:
-- Works through HTTP proxies and firewalls
-- Stateless (each request independent)
-- Simple authentication (HTTP Bearer tokens)
-- Built-in keep-alive
-
-**Disadvantages**:
-- Slightly higher latency than stdio
-- Unidirectional communication (mostly server→client)
-- Less efficient for bidirectional streaming
-
-**When to use**:
-- Cloud deployments
-- CI/CD pipelines (GitHub Actions, GitLab CI)
-- Behind HTTP proxies
-- Firewall-restricted networks
-- Audit module connections
-
-### Streamable HTTP Transport
-
-**Best for**: High-throughput bidirectional communication, enterprise deployments
-
-HTTP with streaming support allows true bidirectional communication over HTTP.
-
-```json
-{
-  "transport": {
-    "type": "streamable_http",
-    "url": "https://mcp-server.example.com/stream",
-    "method": "POST",
-    "auth": {
-      "type": "oauth2",
-      "client_id": "qai-client",
-      "client_secret": "secret"
-    },
-    "timeout_ms": 60000,
-    "buffer_size": 65536,
-    "keepalive_interval_ms": 30000
-  }
-}
-```
-
-**Advantages**:
-- True bidirectional streaming
-- Efficient for large payloads
-- HTTP/2 support
-- Advanced authentication options
-
-**Disadvantages**:
-- More complex setup
-- Higher memory overhead
-- Requires stream-aware server
-
-**When to use**:
-- Enterprise deployments
-- High-throughput scenarios
-- Proxy module with large datasets
-- Long-lived connections
-
-## Configuration
-
-### Configuration File Format
-
-Configure transports in `qai.json` or `config.yaml`:
-
-```json
-{
-  "modules": {
-    "audit": {
-      "transport": {
-        "type": "sse",
-        "url": "https://audit-mcp.example.com/events",
-        "auth": {
-          "type": "bearer",
-          "token": "${AUDIT_MCP_TOKEN}"
-        }
-      }
-    },
-    "proxy": {
-      "transport": {
-        "type": "streamable_http",
-        "url": "https://proxy-mcp.example.com/stream",
-        "auth": {
-          "type": "bearer",
-          "token": "${PROXY_MCP_TOKEN}"
-        }
-      }
-    }
-  }
-}
-```
-
-<Note>
-Configuration values with `${VARIABLE}` syntax are replaced with environment variables at runtime.
-</Note>
-
-### Environment Variables
-
-Configure transports using environment variables:
+**CLI usage:**
 
 ```bash
-# Stdio (default)
-export QAI_AUDIT_TRANSPORT=stdio
+# Audit a local MCP server
+qai audit scan --transport stdio --command "npx @modelcontextprotocol/server-memory"
 
-# SSE
-export QAI_AUDIT_TRANSPORT=sse
-export QAI_AUDIT_MCP_URL=https://audit-mcp.example.com/events
-export QAI_AUDIT_MCP_TOKEN=sk-sse-...
+# Proxy a local server
+qai proxy start --transport stdio --target-command "python my_server.py"
 
-# Streamable HTTP
-export QAI_AUDIT_TRANSPORT=streamable_http
-export QAI_AUDIT_MCP_URL=https://audit-mcp.example.com/stream
-export QAI_AUDIT_MCP_AUTH_TYPE=oauth2
-export QAI_AUDIT_MCP_CLIENT_ID=...
-export QAI_AUDIT_MCP_CLIENT_SECRET=...
+# Inject with a local target
+qai inject serve --transport stdio
 ```
 
-### Command-Line Arguments
+The `--command` flag specifies the shell command to start the server. qai handles process lifecycle (spawn, communicate, terminate).
 
-Override transports via CLI:
+**When to use:** Local development, testing npm or Python MCP servers, CI pipelines where the server runs on the same machine.
+
+## SSE
+
+Server-Sent Events over HTTP. Connect to a remote MCP server that implements the legacy SSE transport.
+
+**CLI usage:**
 
 ```bash
-# Use SSE transport
-qai audit --transport sse \
-  --mcp-url https://audit-mcp.example.com/events \
-  --mcp-token sk-sse-...
+qai audit scan --transport sse --url "https://mcp-server.example.com/sse"
 
-# Use Streamable HTTP with OAuth2
-qai audit --transport streamable_http \
-  --mcp-url https://audit-mcp.example.com/stream \
-  --mcp-auth oauth2 \
-  --mcp-client-id qai-client \
-  --mcp-client-secret secret
+qai proxy start --transport sse --target-url "https://mcp-server.example.com/sse"
 ```
 
-## Authentication
+The `--url` flag specifies the server's SSE endpoint.
 
-### Bearer Token Authentication
+**When to use:** Remote servers using the older MCP SSE protocol, servers behind firewalls that allow HTTP.
 
-Simple token-based authentication for SSE:
+## Streamable HTTP
 
-```json
-{
-  "auth": {
-    "type": "bearer",
-    "token": "sk-sse-your-token-here"
-  }
-}
-```
+Bidirectional HTTP streaming. Connect to a remote MCP server implementing the current Streamable HTTP transport specification.
+
+**CLI usage:**
 
 ```bash
-export QAI_AUDIT_MCP_TOKEN=sk-sse-your-token-here
+qai audit scan --transport streamable-http --url "https://mcp-server.example.com/mcp"
+
+qai proxy start --transport streamable-http --target-url "https://mcp-server.example.com/mcp"
 ```
 
-### OAuth2 Authentication
+**When to use:** Modern MCP servers, cloud deployments, servers requiring bidirectional communication.
 
-For enterprise deployments requiring OAuth2:
+## Default Transport
 
-```json
-{
-  "auth": {
-    "type": "oauth2",
-    "client_id": "qai-app",
-    "client_secret": "secret-key",
-    "token_url": "https://auth.example.com/token",
-    "scopes": ["audit:read", "audit:write"]
-  }
-}
-```
+The default transport is `stdio`. You can set a different default in the web UI under **Settings > Defaults > Audit Transport**, which applies to workflow launches from the web UI.
 
-```bash
-export QAI_AUDIT_MCP_CLIENT_ID=qai-app
-export QAI_AUDIT_MCP_CLIENT_SECRET=secret-key
-export QAI_AUDIT_MCP_TOKEN_URL=https://auth.example.com/token
-```
+CLI commands always require an explicit `--transport` flag — there is no global CLI default.
 
-### mTLS Certificates
+## Module-Specific Notes
 
-For secure connections with mutual TLS:
+**Audit:** Uses `--transport`, `--command` (stdio), and `--url` (SSE/HTTP) flags on `qai audit scan` and `qai audit enumerate`.
 
-```json
-{
-  "auth": {
-    "type": "mtls",
-    "cert_file": "/etc/qai/client.crt",
-    "key_file": "/etc/qai/client.key",
-    "ca_file": "/etc/qai/ca.crt"
-  }
-}
-```
+**Proxy:** Uses `--transport`, `--target-command` (stdio), and `--target-url` (SSE/HTTP) flags on `qai proxy start` and `qai proxy replay`.
 
-```bash
-export QAI_AUDIT_MCP_CERT_FILE=/etc/qai/client.crt
-export QAI_AUDIT_MCP_KEY_FILE=/etc/qai/client.key
-export QAI_AUDIT_MCP_CA_FILE=/etc/qai/ca.crt
-```
+**Inject:** The inject server (`qai inject serve`) uses `--transport` to control how the malicious MCP server is exposed. Campaigns use the litellm backend (not MCP transport) to communicate with LLM providers.
 
-## Connection Examples
-
-### Local Development (Stdio)
-
-```bash
-# Run audit using stdio (direct process)
-qai audit --framework owasp-top-10 --transport stdio
-```
-
-Configuration file:
-```json
-{
-  "modules": {
-    "audit": {
-      "transport": {
-        "type": "stdio",
-        "command": "qai-audit-server"
-      }
-    }
-  }
-}
-```
-
-### GitHub Actions (SSE)
-
-```yaml
-- name: Run qai audit
-  run: |
-    qai audit \
-      --transport sse \
-      --mcp-url ${{ secrets.AUDIT_MCP_URL }} \
-      --mcp-token ${{ secrets.AUDIT_MCP_TOKEN }}
-  env:
-    QAI_AUDIT_MCP_URL: https://audit-mcp.example.com/events
-    QAI_AUDIT_MCP_TOKEN: ${{ secrets.AUDIT_MCP_TOKEN }}
-```
-
-### Enterprise Kubernetes (Streamable HTTP + OAuth2)
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: qai-config
-data:
-  qai.json: |
-    {
-      "modules": {
-        "audit": {
-          "transport": {
-            "type": "streamable_http",
-            "url": "https://audit-mcp:8443/stream",
-            "auth": {
-              "type": "oauth2",
-              "client_id": "qai-k8s",
-              "token_url": "https://oidc.example.com/token"
-            }
-          }
-        }
-      }
-    }
-```
-
-Deployment:
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: qai-audit
-spec:
-  template:
-    spec:
-      containers:
-      - name: qai
-        env:
-        - name: QAI_AUDIT_MCP_CLIENT_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: qai-secrets
-              key: mcp-secret
-```
-
-## Proxy Module Transports
-
-The proxy module uses its own transport for intercepted traffic:
-
-```json
-{
-  "modules": {
-    "proxy": {
-      "transport": {
-        "type": "streamable_http",
-        "url": "https://proxy-mcp.example.com/stream",
-        "auth": {
-          "type": "bearer",
-          "token": "${PROXY_MCP_TOKEN}"
-        },
-        "buffer_size": 131072,
-        "keepalive_interval_ms": 30000
-      }
-    }
-  }
-}
-```
-
-### Proxy Transport Selection
-
-- **Development**: Stdio (direct connection to proxy server)
-- **Cloud**: SSE (stateless, scalable)
-- **High-volume traffic**: Streamable HTTP (bidirectional streaming)
-
-## Performance Tuning
-
-### Timeout Configuration
-
-Adjust timeouts based on network conditions:
-
-```json
-{
-  "transport": {
-    "type": "sse",
-    "url": "https://mcp-server.example.com/events",
-    "timeout_ms": 30000,
-    "connect_timeout_ms": 5000,
-    "idle_timeout_ms": 60000
-  }
-}
-```
-
-### Buffer Sizing
-
-Optimize for throughput vs. memory:
-
-```json
-{
-  "transport": {
-    "type": "streamable_http",
-    "url": "https://mcp-server.example.com/stream",
-    "buffer_size": 65536,
-    "max_buffer_pools": 10
-  }
-}
-```
-
-### Connection Pooling
-
-Reuse connections for multiple requests:
-
-```json
-{
-  "transport": {
-    "type": "streamable_http",
-    "url": "https://mcp-server.example.com/stream",
-    "max_connections": 10,
-    "keepalive_interval_ms": 30000,
-    "idle_connection_timeout_ms": 300000
-  }
-}
-```
-
-## Health Checking
-
-### Transport Health Status
-
-Check transport connectivity:
-
-```bash
-# Test transport
-qai config test-transport audit --verbose
-
-# Output:
-# ✓ Connecting to MCP server...
-# ✓ Authentication: Valid
-# ✓ Round-trip latency: 145ms
-# ✓ Transport healthy - ready to use
-```
-
-### Monitoring Metrics
-
-Monitor transport performance:
-
-```bash
-# View transport metrics
-qai status --show-metrics
-
-# Output shows:
-# - Connection uptime
-# - Message throughput
-# - Latency (min/avg/max)
-# - Error rates
-# - Authentication refreshes
-```
-
-## Troubleshooting
-
-### Connection Failed
-
-<Warning>
-If connection fails, verify:
-1. MCP server is running and accessible
-2. Firewall allows outbound connections
-3. Authentication credentials are valid
-4. URL/endpoint is correct
-</Warning>
-
-```bash
-# Test connectivity
-curl -v https://mcp-server.example.com/events
-
-# Test with auth
-curl -v -H "Authorization: Bearer token" \
-  https://mcp-server.example.com/events
-```
-
-### Authentication Errors
-
-```bash
-# Verify token is valid
-qai config test-transport audit --debug
-
-# Check token expiration for OAuth2
-curl https://auth.example.com/token/info \
-  -H "Authorization: Bearer token"
-```
-
-### Timeout Issues
-
-Increase timeouts for slow networks:
-
-```bash
-export QAI_AUDIT_MCP_TIMEOUT_MS=60000
-qai audit ...
-```
-
-## Next Steps
-
-- Choose appropriate transport for your deployment
-- Configure authentication credentials
-- Test transport connectivity
-- Run audits using configured transport
+**Chain:** Transport for chain execution is configured in `chain-targets.yaml` (per-target transport and connection details).

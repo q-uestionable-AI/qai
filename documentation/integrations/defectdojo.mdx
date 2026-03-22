@@ -3,367 +3,147 @@ title: DefectDojo Integration
 description: Import qai audit findings into DefectDojo for centralized vulnerability management
 ---
 
-# DefectDojo Integration
-
-Integrate qai audit results with DefectDojo to centralize security findings, manage remediation, and track vulnerability lifecycle.
-
-## Overview
-
-DefectDojo is an open-source application security posture management (ASPM) platform. Integrating qai with DefectDojo enables:
-
-- **Centralized findings database**: Consolidate results from qai and other security tools
-- **Remediation tracking**: Assign findings, set deadlines, and track fix status
-- **Metrics and reporting**: Generate compliance and risk reports
-- **Duplicate detection**: Automatically deduplicate findings across tools
-- **SLA management**: Define and monitor remediation timelines
-- **Integration workflows**: Connect to ticketing systems and CI/CD pipelines
+Import qai findings into DefectDojo to consolidate MCP server security results alongside your other security tools.
 
 ## Prerequisites
 
-- DefectDojo instance (self-hosted or cloud)
-- Admin access to create API tokens
+- DefectDojo instance (self-hosted or cloud) with API access
 - qai v0.5.1 or later
-- Network connectivity between qai and DefectDojo
+- A completed qai audit scan with JSON export
 
-## DefectDojo API Configuration
+## Workflow
 
-### Step 1: Generate API Token
+1. Run a qai audit scan and export as JSON
+2. Transform the findings to DefectDojo's expected format
+3. Submit via DefectDojo's findings import API
 
-In DefectDojo:
-
-1. Log in with admin credentials
-2. Navigate to **Settings > API Tokens**
-3. Click **Add API Token**
-4. Select your user account (or create service account)
-5. Copy the generated token
-6. Store securely (you'll need it for qai configuration)
-
-### Step 2: Identify Product and Engagement IDs
-
-Find IDs for the target product and engagement:
+## Step 1: Run Audit and Export
 
 ```bash
-# List products via API
-curl -X GET "https://defectdojo.example.com/api/v2/products/" \
-  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" \
-  -H "Content-Type: application/json" | jq '.results[] | {id, name}'
-
-# Get specific product details
-curl -X GET "https://defectdojo.example.com/api/v2/products/1/" \
-  -H "Authorization: Token $DEFECTDOJO_API_TOKEN"
-
-# List engagements for a product
-curl -X GET "https://defectdojo.example.com/api/v2/engagements/?product=1" \
-  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" | jq '.results[] | {id, name, status}'
+qai audit scan \
+  --transport stdio \
+  --command "npx @modelcontextprotocol/server-memory" \
+  --format json \
+  --output results/scan.json
 ```
 
-<Note>
-You can create a new engagement if needed, or use an existing one. Engagements represent testing cycles or assessment periods.
-</Note>
+Or export a completed run via the web UI: click **Export JSON** on the run overview.
 
-## qai Configuration
+## Step 2: Transform Findings
 
-### Configure Credentials
+qai findings are MCP server security results — not source code findings. Map them to DefectDojo fields:
 
-Store your DefectDojo credentials:
+| qai Finding Field | DefectDojo Field | Notes |
+|-------------------|------------------|-------|
+| `title` | `title` | Finding title (e.g., "Tool parameter allows shell injection") |
+| `description` | `description` | Detailed finding description |
+| `severity` | `severity` | Maps directly: critical→Critical, high→High, medium→Medium, low→Low |
+| `category` | `vuln_id_from_tool` | OWASP MCP category (e.g., `command_injection`) |
+| `framework_ids.owasp_mcp_top10` | `references` | OWASP MCP Top 10 ID (e.g., `MCP05`) |
+| `mitigation` | `mitigation` | Remediation guidance |
+
+Example transformation script:
+
+```python
+import json
+
+with open("results/scan.json") as f:
+    scan = json.load(f)
+
+severity_map = {0: "Info", 1: "Low", 2: "Medium", 3: "High", 4: "Critical"}
+
+findings = []
+for f in scan.get("findings", []):
+    fw = f.get("framework_ids") or {}
+    owasp = fw.get("owasp_mcp_top10", "")
+    findings.append({
+        "title": f["title"],
+        "description": f.get("description", ""),
+        "severity": severity_map.get(f.get("severity", 0), "Info"),
+        "vuln_id_from_tool": f.get("category", ""),
+        "references": f"OWASP MCP Top 10: {owasp}" if owasp else "",
+        "mitigation": json.dumps(f.get("mitigation")) if f.get("mitigation") else "",
+        "active": True,
+        "verified": False,
+    })
+
+print(json.dumps(findings, indent=2))
+```
+
+## Step 3: Submit to DefectDojo
+
+Use the DefectDojo v2 API to create findings:
 
 ```bash
-# Set DefectDojo API token in keyring
-qai config set-credential defectdojo-api-key YOUR_API_TOKEN
+# Generate API token in DefectDojo: Settings > API Tokens
+export DEFECTDOJO_URL="https://defectdojo.example.com"
+export DEFECTDOJO_API_TOKEN="your-token-here"
 
-# Configure DefectDojo base URL
-qai config set defectdojo-url https://defectdojo.example.com
-```
+# Create or identify your engagement
+curl -X GET "$DEFECTDOJO_URL/api/v2/engagements/?product=1" \
+  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" | jq '.results[] | {id, name}'
 
-Or set environment variables:
-
-```bash
-export DEFECTDOJO_URL=https://defectdojo.example.com
-export DEFECTDOJO_API_KEY=your_api_token_here
-```
-
-### Run Audit with DefectDojo Export
-
-Execute an audit and export to DefectDojo:
-
-```bash
-qai audit --model anthropic/claude-sonnet-4-20250514 \
-  --framework owasp-top-10 \
-  --export defectdojo \
-  --defectdojo-product-id 1 \
-  --defectdojo-engagement-id 42
-```
-
-## Automated Import Workflow
-
-### Direct API Submission
-
-For CI/CD integration, submit findings directly to DefectDojo:
-
-<CodeGroup>
-
-```bash Bash Script
-#!/bin/bash
-DEFECTDOJO_URL="https://defectdojo.example.com"
-DEFECTDOJO_TOKEN="your_token"
-PRODUCT_ID=1
-ENGAGEMENT_ID=42
-
-# Run qai audit and export as JSON
-qai audit --export json > audit_results.json
-
-# Submit to DefectDojo
+# Submit findings
 curl -X POST "$DEFECTDOJO_URL/api/v2/findings/" \
-  -H "Authorization: Token $DEFECTDOJO_TOKEN" \
+  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "engagement": "'$ENGAGEMENT_ID'",
-    "test": "qai-audit",
-    "scan_type": "qai Static Analysis",
-    "findings": '$(cat audit_results.json | jq .findings)'
-  }'
+  -d @transformed_findings.json
 ```
 
-```yaml GitHub Actions
-name: QAI Audit to DefectDojo
-on: [push]
+### SARIF Import Alternative
+
+DefectDojo also supports SARIF import. Generate SARIF from qai and import directly:
+
+```bash
+qai audit scan \
+  --transport stdio \
+  --command "npx @modelcontextprotocol/server-memory" \
+  --format sarif \
+  --output results/scan.sarif
+
+# Import SARIF via DefectDojo reimport endpoint
+curl -X POST "$DEFECTDOJO_URL/api/v2/reimport-scan/" \
+  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" \
+  -F "file=@results/scan.sarif" \
+  -F "scan_type=SARIF" \
+  -F "engagement=42"
+```
+
+## CI/CD Integration
+
+Automate the scan-and-import workflow in GitHub Actions:
+
+```yaml
+name: MCP Audit to DefectDojo
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly Monday 2 AM
 
 jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Install qai
+        run: pip install q-uestionable-ai
 
-      - name: Run qai audit
-        run: qai audit --model openai/gpt-4o --export json -o results.json
-
-      - name: Submit to DefectDojo
+      - name: Run audit
         run: |
-          curl -X POST ${{ secrets.DEFECTDOJO_URL }}/api/v2/findings/ \
+          qai audit scan \
+            --transport stdio \
+            --command "npx @modelcontextprotocol/server-memory" \
+            --format sarif \
+            --output scan.sarif
+
+      - name: Import to DefectDojo
+        run: |
+          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/reimport-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            --data-binary @results.json
-        env:
-          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
-          DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_TOKEN }}
+            -F "file=@scan.sarif" \
+            -F "scan_type=SARIF" \
+            -F "engagement=${{ vars.DEFECTDOJO_ENGAGEMENT_ID }}"
 ```
 
-```python Python Integration
-import requests
-import json
-from qai.audit import run_audit
-
-# Run audit
-findings = run_audit(
-    framework='owasp-top-10',
-    model='anthropic/claude-sonnet-4-20250514'
-)
-
-# Format for DefectDojo
-defectdojo_payload = {
-    "engagement": 42,
-    "test": "qai-audit",
-    "scan_type": "qai Static Analysis",
-    "findings": [
-        {
-            "title": f.title,
-            "description": f.description,
-            "severity": f.severity.upper(),
-            "file_path": f.file,
-            "line": f.line,
-            "false_positive": False,
-            "duplicate": False
-        }
-        for f in findings
-    ]
-}
-
-# Submit to DefectDojo
-headers = {
-    "Authorization": f"Token {defectdojo_token}",
-    "Content-Type": "application/json"
-}
-response = requests.post(
-    f"{defectdojo_url}/api/v2/findings/",
-    json=defectdojo_payload,
-    headers=headers
-)
-```
-
-</CodeGroup>
-
-## Finding Mapping
-
-qai findings map to DefectDojo fields:
-
-| qai Field | DefectDojo Field | Notes |
-|-----------|------------------|-------|
-| `title` | title | Vulnerability name |
-| `description` | description | Detailed vulnerability info |
-| `severity` | severity | Mapped: critical→Critical, high→High, medium→Medium, low→Low |
-| `file` | file_path | Source file location |
-| `line` | line | Line number |
-| `remediation` | mitigation | How to fix |
-| `evidence` | references | Code snippets or proof |
-| `category` | test | CWE/OWASP classification |
-| `cvss_score` | cvssv3 | CVSS v3.1 score |
-
-<Tip>
-DefectDojo automatically deduplicates findings based on title, severity, and location. Rerunning audits won't create duplicate entries.
-</Tip>
-
-## Engagement Management
-
-### Create New Engagement
-
-```bash
-curl -X POST "https://defectdojo.example.com/api/v2/engagements/" \
-  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "product": 1,
-    "name": "Q1 2024 Security Audit",
-    "status": "In Progress",
-    "engagement_type": "Automated Testing",
-    "target_start": "2024-01-01",
-    "target_end": "2024-03-31",
-    "build_server": false
-  }'
-```
-
-### Update Engagement Status
-
-Track testing progress by updating engagement status:
-
-```bash
-curl -X PATCH "https://defectdojo.example.com/api/v2/engagements/42/" \
-  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"status": "Completed"}'
-```
-
-## Custom Tags and Metadata
-
-Enhance findings with tags and custom metadata:
-
-```bash
-curl -X POST "https://defectdojo.example.com/api/v2/findings/123/" \
-  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tags": ["qai-audit", "automated", "owasp-a03"],
-    "component_name": "User Authentication",
-    "component_version": "1.2.3"
-  }'
-```
-
-## Reporting and Analytics
-
-### Generate Reports
-
-DefectDojo provides comprehensive reporting:
-
-1. **Executive Dashboard**: High-level risk metrics
-2. **Product Report**: Vulnerability trends for a product
-3. **Engagement Report**: Detailed findings for a test cycle
-4. **Metrics Report**: SLA compliance and tracking data
-
-### Query Findings via API
-
-```bash
-# Get all findings for an engagement
-curl -X GET "https://defectdojo.example.com/api/v2/findings/?engagement=42&active=true" \
-  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" | jq '.results[]'
-
-# Filter by severity
-curl -X GET "https://defectdojo.example.com/api/v2/findings/?severity=High&active=true" \
-  -H "Authorization: Token $DEFECTDOJO_API_TOKEN"
-
-# Count findings by status
-curl -X GET "https://defectdojo.example.com/api/v2/findings/?engagement=42" \
-  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" | \
-  jq '[.results[] | .status] | group_by(.) | map({status: .[0], count: length})'
-```
-
-## Remediation Workflow
-
-### Assign and Track Fixes
-
-In DefectDojo:
-
-1. Review finding details
-2. Click **Assign** to assign to developer
-3. Set **Target Remediation Date**
-4. Add **Notes** for remediation steps
-5. Mark as **Out of Scope** if not applicable
-6. Update **Status** as: Active → In Review → Remediated → Verified
-
-### Automated Status Updates
-
-Update finding status after remediation:
-
-```bash
-curl -X PATCH "https://defectdojo.example.com/api/v2/findings/123/" \
-  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "status": "Verified",
-    "notes": "Fixed in PR #456"
-  }'
-```
-
-## Troubleshooting
-
-### Connection Issues
-
-```bash
-# Test DefectDojo connectivity
-curl -I "https://defectdojo.example.com/api/v2/"
-
-# Verify API token
-curl "https://defectdojo.example.com/api/v2/users/profile/" \
-  -H "Authorization: Token $DEFECTDOJO_API_TOKEN"
-```
-
-### Finding Import Failures
-
-<Warning>
-Ensure findings have all required fields before submission. Missing title, severity, or engagement ID will cause import failures. Check qai logs for detailed error messages.
-</Warning>
-
-```bash
-# Enable debug logging
-qai audit --log-level debug --export defectdojo --defectdojo-product-id 1 --defectdojo-engagement-id 42
-
-# Validate JSON before import
-jq '.' audit_results.json > /dev/null
-```
-
-### Duplicate Handling
-
-DefectDojo deduplicates automatically, but you can manage duplicates:
-
-```bash
-# Mark as duplicate
-curl -X PATCH "https://defectdojo.example.com/api/v2/findings/123/" \
-  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"duplicate": true, "duplicate_of": 100}'
-```
-
-## Best Practices
-
-1. **Use separate engagements** for different assessment periods
-2. **Set realistic remediation dates** based on severity
-3. **Enable notifications** for high-severity findings
-4. **Review SLA compliance** regularly
-5. **Archive completed engagements** after verification
-6. **Document remediation steps** in finding notes
-7. **Use tags** to categorize findings (framework, module, team)
-
-## Next Steps
-
-- Set up DefectDojo instance
-- Configure qai credentials
-- Run first integrated audit
-- Set up engagement and remediation tracking
+<Note>
+DefectDojo automatically deduplicates SARIF findings on reimport. Repeated scans update existing findings rather than creating duplicates.
+</Note>
