@@ -250,7 +250,7 @@ def _load_module_data(
 
     Returns:
         Dict with keys: audit_scan, audit_findings, audit_evidence_map,
-        inject_results_data, proxy_session.
+        inject_results_data, payload_template_map, proxy_session.
     """
     audit_scan, audit_findings, audit_evidence_map = _load_audit_data(
         conn, child_by_module.get("audit"), findings
@@ -268,6 +268,17 @@ def _load_module_data(
             (inject_child.id,),
         ).fetchall()
         inject_results_data = [dict(r) for r in rows]
+
+    # Build payload template lookup for inject results drill-down
+    payload_template_map: dict[str, dict[str, Any]] = {}
+    if inject_results_data:
+        from q_ai.inject.payloads.loader import load_all_templates as _load_inject_templates
+
+        for tmpl in _load_inject_templates():
+            payload_template_map[tmpl.name] = {
+                "tool_description": tmpl.tool_description,
+                "test_query": tmpl.test_query or f"Use the {tmpl.tool_name} tool.",
+            }
 
     proxy_child = child_by_module.get("proxy")
     if proxy_child:
@@ -308,6 +319,7 @@ def _load_module_data(
         "audit_findings": audit_findings,
         "audit_evidence_map": audit_evidence_map,
         "inject_results_data": inject_results_data,
+        "payload_template_map": payload_template_map,
         "proxy_session": proxy_session,
         "mitigation_section_label": _mitigation_section_label,
         "ipi_campaigns": ipi_campaigns,
@@ -572,6 +584,7 @@ async def runs(
         "audit_findings": [],
         "audit_evidence_map": {},
         "inject_results_data": [],
+        "payload_template_map": {},
         "proxy_session": None,
         "report_run_id": None,
         "report_html": "",
