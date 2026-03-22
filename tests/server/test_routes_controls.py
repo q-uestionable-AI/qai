@@ -222,3 +222,30 @@ class TestInjectAdapterTechniqueFiltering:
                     seen.add(t.name)
         assert len(filtered) == 2
         assert {t.name for t in filtered} == {"t1", "t2"}
+
+
+class TestPayloadLibraryEndpoint:
+    """GET /api/inject/payloads returns template metadata."""
+
+    def test_returns_payload_list(self, client: TestClient) -> None:
+        """Endpoint returns all payload templates as JSON."""
+        resp = client.get("/api/inject/payloads")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) > 0
+        first = data[0]
+        assert "name" in first
+        assert "technique" in first
+        assert "owasp_ids" in first
+        assert "description" in first
+
+    def test_payload_entries_have_expected_fields(self, client: TestClient) -> None:
+        """Each payload entry has name, technique, owasp_ids, description."""
+        resp = client.get("/api/inject/payloads")
+        data = resp.json()
+        for entry in data:
+            assert isinstance(entry["name"], str)
+            assert isinstance(entry["technique"], str)
+            assert isinstance(entry["owasp_ids"], list)
+            assert isinstance(entry["description"], str)

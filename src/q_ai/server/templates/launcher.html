@@ -168,6 +168,24 @@
                         </div>
                     </fieldset>
 
+                    {# ---- Inject: Advanced Payload Library ---- #}
+                    <div class="mt-2">
+                        <span class="text-xs cursor-pointer select-none"
+                              style="color: #a78bfa;"
+                              onclick="togglePayloadLibrary('assess')"
+                              id="payload-lib-toggle-assess">
+                            Advanced: Payload Library <span class="mit-arrow" style="color: #fff;">&#x25BC;</span>
+                        </span>
+                        <div id="payload-library-assess" class="hidden mt-2">
+                            <div class="text-xs text-base-content/40 mb-2">
+                                Select individual payloads to override technique filtering.
+                            </div>
+                            <div id="payload-lib-content-assess" class="max-h-60 overflow-y-auto">
+                                <p class="text-xs text-base-content/40">Loading...</p>
+                            </div>
+                        </div>
+                    </div>
+
                     {% elif wf.id == 'test_docs' %}
                     {# ---- TEST DOCS FORM ---- #}
                     {{ target_name_field(wf.id, "doc-pipeline") }}
@@ -556,6 +574,54 @@ async function loadChainExecutions(wfId) {
 
 function onTechniqueChange(wfId) {
     // Placeholder for technique checkbox change handling
+}
+
+var _payloadLibLoaded = {};
+
+function togglePayloadLibrary(wfId) {
+    var panel = document.getElementById('payload-library-' + wfId);
+    var toggle = document.getElementById('payload-lib-toggle-' + wfId);
+    var arrow = toggle.querySelector('.mit-arrow');
+    panel.classList.toggle('hidden');
+    arrow.textContent = panel.classList.contains('hidden') ? '\u25BC' : '\u25B2';
+    if (!panel.classList.contains('hidden') && !_payloadLibLoaded[wfId]) {
+        loadPayloadLibrary(wfId);
+    }
+}
+
+async function loadPayloadLibrary(wfId) {
+    _payloadLibLoaded[wfId] = true;
+    var container = document.getElementById('payload-lib-content-' + wfId);
+    try {
+        var resp = await fetch('/api/inject/payloads');
+        var payloads = await resp.json();
+        var html = '<table class="table table-xs w-full"><thead><tr>' +
+            '<th></th><th>Name</th><th>Technique</th><th>OWASP</th><th>Description</th>' +
+            '</tr></thead><tbody>';
+        payloads.forEach(function(p) {
+            html += '<tr><td><input type="checkbox" name="payload_names" value="' +
+                p.name + '" class="checkbox checkbox-xs" onchange="onPayloadSelect(\'' +
+                wfId + '\')" /></td>' +
+                '<td class="font-mono text-xs">' + p.name + '</td>' +
+                '<td><span class="badge badge-ghost badge-xs">' + p.technique + '</span></td>' +
+                '<td class="text-xs">' + (p.owasp_ids || []).join(', ') + '</td>' +
+                '<td class="text-xs max-w-xs truncate">' + p.description + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = '<p class="text-xs text-error">Failed to load payloads.</p>';
+    }
+}
+
+function onPayloadSelect(wfId) {
+    var form = document.getElementById('form-' + wfId);
+    var selected = form.querySelectorAll('input[name="payload_names"]:checked');
+    var techContainer = document.getElementById('technique-checks-' + wfId);
+    if (techContainer) {
+        techContainer.style.opacity = selected.length > 0 ? '0.4' : '1';
+        techContainer.style.pointerEvents = selected.length > 0 ? 'none' : 'auto';
+    }
 }
 
 var _launchInFlight = {};

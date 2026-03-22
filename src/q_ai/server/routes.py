@@ -2452,6 +2452,34 @@ def _prepare_output_dir(
     return None
 
 
+# ---------------------------------------------------------------------------
+# Inject API routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/inject/payloads")
+async def api_inject_payloads(request: Request) -> JSONResponse:
+    """Return all inject payload template metadata.
+
+    Returns:
+        JSONResponse with a list of payload template metadata objects,
+        each containing name, technique, owasp_ids, and description.
+    """
+    from q_ai.inject.payloads.loader import load_all_templates
+
+    templates = load_all_templates()
+    payload_data = [
+        {
+            "name": t.name,
+            "technique": t.technique.value,
+            "owasp_ids": t.owasp_ids,
+            "description": t.description,
+        }
+        for t in templates
+    ]
+    return JSONResponse(content=payload_data)
+
+
 @router.post("/api/workflows/launch")
 async def launch_workflow(request: Request) -> JSONResponse:
     """Launch a workflow.
