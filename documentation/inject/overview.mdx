@@ -1,33 +1,55 @@
 ---
 title: Overview
-description: Tool poisoning and prompt injection framework for MCP servers
+description: Tool poisoning and prompt injection testing against LLM-powered agents
 ---
 
-The inject module is a tool poisoning and prompt injection framework — it loads adversarial payload templates, serves them as MCP tools, and runs automated campaigns against AI models.
+The inject module is a framework for tool poisoning and prompt injection testing. It loads adversarial payload templates, serves them as MCP tools via a poisoned server, and runs automated campaigns against LLM models to measure susceptibility and document attack vectors.
 
 ## Why Inject Matters
 
-MCP tool descriptions are trusted inputs to AI agents. Adversarial descriptions embedded in tool metadata can redirect agent behavior, exfiltrate data, or cause the agent to invoke attacker-controlled operations — without modifying the model or the application.
+MCP tool descriptions are trusted inputs to AI agents. When an attacker controls or compromises an MCP server, they can:
+
+- **Redirect behavior** — Embed instructions in tool descriptions to override agent goals
+- **Exfiltrate data** — Craft poisoned tools that capture and transmit sensitive data
+- **Escalate access** — Use tool metadata to trick agents into invoking dangerous operations
+- **Degrade transparency** — Hide actions from the user by instructing agents not to disclose tool usage
+- **Manipulate reasoning** — Exploit agent preference for certain tools to steer decisions
+
+The inject module measures how effectively these attacks work against different LLM models and agents, providing evidence for security posture assessment.
 
 ## How It Works
 
-The inject campaign workflow follows five steps:
+The inject testing workflow follows three steps:
 
-1. **Select** — Choose payload templates by technique or target agent
-2. **Serve** — Launch them as live MCP tools via the inject server
-3. **Connect** — An AI model connects to the server and receives the poisoned tool list
-4. **Execute** — The poisoned tool descriptions redirect the model's behavior — invoking attacker-controlled operations, exfiltrating data, or hijacking goals
-5. **Score** — The campaign runner records and scores outcomes
+1. **Load payloads** — Select adversarial tool templates by technique (description poisoning, output injection, cross-tool escalation)
+2. **Serve** — Register payloads as live MCP tools and expose them to the target model
+3. **Campaign** — Test the model's susceptibility by measuring which payloads succeed and how
 
-## Built-in Components
+## Provider Support
 
-- **13 payload templates** — Across 3 technique categories: goal hijacking, context manipulation, and data exfiltration
-- **FastMCP server builder** — Dynamic tool registration from YAML payload templates
-- **Anthropic API campaign runner** — Drives a model against the poisoned server with parallel execution
-- **Heuristic response scorer** — Classifies outcomes into 4 categories
+Inject campaigns work with any LLM provider supported by litellm (100+ models):
+
+- **Anthropic** — Claude models
+- **OpenAI** — GPT-4, GPT-4o, etc.
+- **Google** — Gemini models
+- **Cohere, Mistral, Ollama** — And many others
+
+Model selection uses provider/model format: `anthropic/claude-sonnet-4-20250514`, `openai/gpt-4o`, `ollama/llama3`, etc.
+
+## Key Components
+
+- **Payload templates** — Adversarial tool definitions in YAML format across 3 techniques
+- **Inject server** — Dynamic MCP server that registers payloads as live tools
+- **Campaign executor** — Provider-agnostic LLM client that tests each payload
+- **Outcome scoring** — Classifies results as full compliance, partial compliance, refusal with leak, or clean refusal
+- **Evidence collection** — Preserves full provider responses for manual analysis
+
+<Tip>
+Use inject campaigns to validate your agent's resilience to tool-based attacks and identify which model/agent combinations are most vulnerable to specific techniques.
+</Tip>
 
 ## Next Steps
 
-- [Inject CLI Reference](/inject/cli) — Command reference for `qai inject`
-- [Payload Templates](/inject/payloads) — Available payload templates and technique categories
-- [Campaigns](/inject/campaigns) — Running and analyzing injection campaigns
+- [Inject CLI](/inject/cli) — Commands for serving payloads and running campaigns
+- [Payload Catalog](/inject/payloads) — Available payloads and technique reference
+- [Campaign Execution](/inject/campaigns) — Running campaigns and interpreting results

@@ -8,7 +8,7 @@ description: Install q-ai and run your first MCP server security assessment
 - **Python 3.11** or later
 - **[uv](https://docs.astral.sh/uv/)** (recommended) or pip
 - **Node.js / npm** — MCP server targets are typically npm packages. Install the example target used below with `npm install -g @modelcontextprotocol/server-memory`.
-- **LLM provider API key** (optional) — Required only for `inject` campaigns and `chain` execution. q-ai uses [litellm](https://docs.litellm.ai/) for multi-provider support. Model strings use the `provider/model` format (e.g., `anthropic/claude-sonnet-4-20250514`, `openai/gpt-4o`, `groq/llama-3.3-70b-versatile`). Set the matching environment variable (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`) or store credentials in the OS keyring via `qai config set-credential`.
+- **LLM provider API key** (optional) — Required only for `inject` campaigns and `chain` execution. q-ai supports 100+ providers via [litellm](https://docs.litellm.ai/). Store credentials in the OS keyring or set environment variables. See [Configure a provider](#configure-a-provider-optional) below.
 - **sentence-transformers + chromadb** (optional) — Required only for `rxp` module. Install with `pip install q-uestionable-ai[rxp]`.
 
 ## Install
@@ -27,12 +27,26 @@ uv sync --group dev
 
 ## Configure a provider (optional)
 
-If you plan to run injection campaigns, store your API key in the OS keyring:
+If you plan to run injection campaigns or chain analysis, set up a provider credential. q-ai supports 100+ providers via litellm. Store your API key in the OS keyring using the provider name:
 
-```bash
+<CodeGroup>
+```bash Anthropic
 qai config set-credential anthropic
 # Prompts for your API key (masked input)
 ```
+
+```bash OpenAI
+qai config set-credential openai
+```
+
+```bash Groq
+qai config set-credential groq
+```
+
+```bash Other providers
+qai config set-credential <provider-name>
+```
+</CodeGroup>
 
 Verify configured providers:
 
@@ -44,7 +58,11 @@ Alternatively, set the environment variable directly:
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
+export OPENAI_API_KEY="sk-..."
+export GROQ_API_KEY="gsk_..."
 ```
+
+When selecting a model, use the `provider/model` format (e.g., `anthropic/claude-opus-4-1`, `openai/gpt-4o`, `groq/llama-3.3-70b-versatile`).
 
 ## Run your first scan
 

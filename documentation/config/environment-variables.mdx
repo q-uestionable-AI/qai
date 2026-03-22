@@ -1,93 +1,76 @@
 ---
 title: Environment Variables
-description: Environment variables and credential management for q-ai
+description: Environment variables recognized by qai
 ---
 
-q-ai uses a multi-provider architecture powered by [litellm](https://docs.litellm.ai/). Credentials are managed via OS keyring (recommended) or environment variables. Most modules require no external configuration — audit and proxy connect directly to MCP servers, IPI generates payloads locally, CXP builds context files locally, and RXP uses local embedding models.
+qai recognizes a small number of environment variables. Most configuration is handled through the CLI, Settings UI, or config file — environment variables are primarily for credentials and CI/CD overrides.
 
-## Provider credentials
+## LLM Provider Credentials
 
-API keys are needed only for `inject` campaigns and `chain` execution, which call LLM provider APIs. q-ai supports any litellm-compatible provider.
+Provider API keys follow the convention `{PROVIDER}_API_KEY`. These are checked before the OS keyring when resolving credentials.
 
-### OS keyring (recommended)
+| Variable | Provider |
+|----------|----------|
+| `ANTHROPIC_API_KEY` | Anthropic (Claude models) |
+| `OPENAI_API_KEY` | OpenAI (GPT models) |
+| `GROQ_API_KEY` | Groq |
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `COHERE_API_KEY` | Cohere |
+| `MISTRAL_API_KEY` | Mistral |
 
-Store credentials securely in your operating system's native secret store (Windows Credential Manager, macOS Keychain, Linux Secret Service):
+Any provider name mapped through `{PROVIDER_NAME.upper()}_API_KEY` is recognized. For example, a provider named `azure` would check `AZURE_API_KEY`.
 
-```bash
-qai config set-credential anthropic
-qai config set-credential openai
-qai config set-credential groq
+
+<CodeGroup>
+```bash Linux / macOS
+export ANTHROPIC_API_KEY="sk-ant-..."
+export OPENAI_API_KEY="sk-..."
 ```
 
-Each command prompts for the API key with masked input. Verify configured providers:
-
-```bash
-qai config list-providers
+```powershell Windows PowerShell
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
+$env:OPENAI_API_KEY = "sk-..."
 ```
-
-Remove a credential:
-
-```bash
-qai config delete-credential anthropic
-```
-
-### Environment variables (alternative)
-
-Set the provider's standard environment variable. q-ai resolves credentials in this order: **environment variable → OS keyring → error** (no plaintext config file fallback).
-
-| Variable | Provider | Required for |
-|----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Anthropic | `inject`, `chain` with Anthropic models |
-| `OPENAI_API_KEY` | OpenAI | `inject`, `chain` with OpenAI models |
-| `GROQ_API_KEY` | Groq | `inject`, `chain` with Groq models |
-| `MISTRAL_API_KEY` | Mistral | `inject`, `chain` with Mistral models |
-| `COHERE_API_KEY` | Cohere | `inject`, `chain` with Cohere models |
-
-For local models via Ollama, no API key is needed — just ensure your Ollama server is running.
-
-## Model strings
-
-q-ai uses the `provider/model` format for all model references:
-
-```bash
-qai inject campaign --model anthropic/claude-sonnet-4-20250514 ...
-qai inject campaign --model openai/gpt-4o ...
-qai inject campaign --model groq/llama-3.3-70b-versatile ...
-qai inject campaign --model ollama/llama3 ...
-```
-
-Bare model strings without a provider prefix fall back to `anthropic/` for backward compatibility.
-
-## Legacy credential migration
-
-If you previously stored API keys in `~/.qai/config.yaml` (plaintext), migrate them to the OS keyring:
-
-```bash
-qai config import-legacy-credentials
-```
-
-This reads keys from the YAML file, writes them to the keyring, backs up the original file, and removes the keys from YAML. Non-secret settings are preserved. Safe to run multiple times.
-
-## Data directory
-
-All q-ai data is stored in `~/.qai/`:
-
-| Path | Purpose |
-|------|---------|
-| `~/.qai/qai.db` | Unified SQLite database (runs, findings, targets, evidence, module-specific tables) |
-| `~/.qai/config.yaml` | Non-secret configuration settings |
-| `~/.qai/artifacts/` | Generated reports and exports |
-
-## Modules requiring no configuration
-
-| Module | Why no config needed |
-|--------|---------------------|
-| **audit** | Connects directly to MCP servers via stdio, SSE, or Streamable HTTP |
-| **proxy** | Intercepts MCP traffic — no external API calls |
-| **ipi** | Generates payloads locally, runs a self-hosted callback listener |
-| **cxp** | Builds context files locally from templates and rules |
-| **rxp** | Uses local embedding models via sentence-transformers (downloaded from HuggingFace on first use — no API key needed) |
+</CodeGroup>
 
 <Note>
-RXP requires the optional `[rxp]` extra: `pip install q-uestionable-ai[rxp]`. This installs sentence-transformers and chromadb for local embedding and vector search.
+For persistent credential storage, use the OS keyring via `qai config set-credential` instead of environment variables. Environment variables are useful for CI/CD pipelines and ephemeral environments where a keyring is unavailable.
 </Note>
+
+## Model Selection
+
+### QAI_MODEL
+
+Default model for inject campaigns and chain execution. Used when the `--model` CLI flag is not provided.
+
+**Format:** `provider/model` (e.g., `anthropic/claude-sonnet-4-20250514`, `openai/gpt-4o`, `ollama/llama3`)
+
+```bash
+export QAI_MODEL=anthropic/claude-sonnet-4-20250514
+```
+
+Bare model names without a provider prefix are treated as Anthropic.
+
+## Credential Resolution Order
+
+qai resolves credentials in this order:
+
+1. **Environment variable** — `{PROVIDER}_API_KEY` (checked first)
+2. **OS keyring** — stored via `qai config set-credential` (checked second)
+3. **Error** — raises if neither is found
+
+This allows environment-based overrides for CI/CD while maintaining secure keyring storage for interactive use.
+
+## Configuration Resolution Order
+
+For non-credential settings, `qai config resolve` uses this precedence:
+
+1. **CLI flag** (highest priority)
+2. **Environment variable** (if mapped)
+3. **Database setting** (stored via Settings UI or `qai config set`)
+4. **Config file** (`~/.qai/config.yaml`)
+5. **Default value** (lowest priority)
+
+<Tip>
+Use `qai config get <key>` to see the current resolved value and its source.
+</Tip>

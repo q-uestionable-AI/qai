@@ -1,125 +1,529 @@
 ---
 title: Chain Module Architecture
-description: Multi-agent attack chain internals — loader, validator, tracer, and live execution engine
+description: Attack chain execution, blast radius analysis, and detection rule generation
 ---
 
-The chain module provides a declarative framework for defining, validating, and executing multi-step attack paths that link audit scanners and inject techniques into exploitation sequences.
+## Chain Module
 
-## File layout
+The Chain module executes YAML-defined attack chains. It tracks the impact of sequential steps, analyzes blast radius, and generates detection rules for discovered techniques.
+
+### Module Structure
 
 ```
-src/q_ai/chain/
-├── cli.py              # Typer subcommands (validate, list-templates, run, blast-radius, detect)
-├── models.py           # Data models (ChainDefinition, ChainStep, ChainResult, enums, interpret prompt)
-├── loader.py           # YAML discovery, parsing, and structural validation
-├── validator.py        # Semantic validation — module refs, graph analysis
-├── tracer.py           # Dry-run tracer — walks success path, tracks trust boundaries
-├── executor.py         # Live execution engine — dispatches to audit/inject, collects evidence
-├── executor_models.py  # StepOutput, TargetConfig with YAML loader
-├── artifacts.py        # Automatic artifact extraction from audit/inject results
-├── variables.py        # $step_id.artifact_name variable resolution
-└── templates/          # Built-in chain YAML files (3 templates)
+chain/
+├── executor.py          # Chain execution engine
+├── executor_models.py   # Execution context and step models
+├── blast_radius.py      # Impact and affected asset tracking
+├── detection.py         # Detection rule generation
+├── loader.py            # YAML template loading
+├── tracer.py            # Execution tracing and logging
+├── variables.py         # Variable substitution system
+├── cli.py               # Typer command interface
+├── adapter.py           # Module adapter for platform integration
+├── mapper.py            # Framework mapping for techniques
+├── templates/           # Built-in YAML templates
+├── artifacts.py         # Generated rule management
+└── validator.py         # Template validation
 ```
 
-## Data flow
+### Chain Template System
 
-```mermaid
-flowchart LR
-    CLI[CLI command]
-    CLI -->|validate| LC1[load_chain] --> VC1[validate_chain] --> ER[error report]
-    CLI -->|list-templates| LAC[load_all_chains] --> F[filter] --> RT[Rich table]
-    CLI -->|"run --dry-run"| LC2[load_chain] --> VC2[validate_chain] --> TC[trace_chain] --> JSON1[JSON trace]
-    CLI -->|"run --no-dry-run"| LC3[load_chain] --> VC3[validate_chain] --> EX[execute_chain] --> JSON2[JSON report]
+Chain templates are YAML files defining sequential attack steps.
+
+**Template Structure**
+
+```yaml
+# template-exfiltration-example.yaml
+name: "Data Exfiltration Chain"
+description: "Demonstrate multi-step data exfiltration attack"
+version: "1.0"
+framework: "mitre-attack"
+
+variables:
+  target_host: "example.com"
+  exfil_destination: "attacker.com"
+  protocol: "dns"
+
+steps:
+  - id: "reconnaissance"
+    name: "Initial Reconnaissance"
+    technique_id: "T1592"
+    description: "Gather target information"
+    actions:
+      - type: "scan"
+        provider: "nmap"
+        parameters:
+          target: "{{ target_host }}"
+
+    expected_output:
+      type: "network-services"
+      fields: ["port", "service", "version"]
+
+    blast_radius:
+      assets: ["network", "host"]
+      confidence: 0.8
+
+  - id: "credential_access"
+    name: "Obtain Credentials"
+    technique_id: "T1078"
+    description: "Gain authentication credentials"
+    depends_on: ["reconnaissance"]
+    actions:
+      - type: "social-engineering"
+        provider: "inject"
+        parameters:
+          campaign: "phishing"
+          targets: "{{ target_host }}"
+
+    evidence_required: true
+    expected_output:
+      type: "credentials"
+      fields: ["username", "password_hash"]
+
+  - id: "exfiltration"
+    name: "Exfiltrate Data"
+    technique_id: "T1041"
+    description: "Transmit data to attacker infrastructure"
+    depends_on: ["credential_access"]
+    actions:
+      - type: "simulate"
+        parameters:
+          protocol: "{{ protocol }}"
+          destination: "{{ exfil_destination }}"
+          data_volume: "100mb"
+
+    detection_rules:
+      - type: "sigma"
+        keywords: ["dns", "exfiltration", "data-transfer"]
+      - type: "wazuh"
+        rule_pattern: "outbound.*{{ exfil_destination }}"
+
+success_criteria:
+  - step: "exfiltration"
+    condition: "completed"
+    confidence_threshold: 0.7
 ```
 
-**Current state:** Validation, dry-run tracing, and live execution all work. The executor dispatches audit steps to `run_scan()` and inject steps to `run_campaign()` with single-payload first-match selection. Target configuration via `chain-targets.yaml` with CLI overrides. Variable resolution passes artifacts between steps via `$step_id.artifact_name` references.
+**Template Validation**
 
-## Key components
+Templates are validated on load:
 
-### ChainDefinition and ChainStep (models.py)
+```bash
+qai chain validate --template exfiltration-example.yaml
+```
 
-`ChainDefinition` holds the chain metadata (id, name, category, description) and an ordered list of `ChainStep` objects. Each step specifies a module (`audit` or `inject`), a technique, optional trust boundary, routing (`on_success`/`on_failure`), input variable references, and whether it's terminal.
+Validates:
+- YAML syntax
+- Technique IDs against configured frameworks
+- Step dependencies (no cycles, valid references)
+- Provider availability
+- Variable substitution completeness
 
-`ChainCategory` enum defines four architecture patterns: `rag_pipeline`, `agent_delegation`, `mcp_ecosystem`, `hybrid`.
+### Execution Engine
 
-`ChainResult` supports both dry-run tracing (`steps` field) and live execution (`step_outputs` field). The `_build_interpret_prompt()` method generates an AI-evaluation prompt summarizing the execution path, outcomes, and trust boundaries — matching the pattern used by audit reports and inject campaigns.
+The Chain executor runs templates sequentially with state management.
 
-### Loader (loader.py)
+**Execution Context**
 
-`load_chain(path)` parses a single YAML file into a `ChainDefinition`:
+```python
+ExecutionContext {
+    run_id: int
+    chain_id: str (uuid)
+    template_name: str
+    status: ExecutionStatus
+    started_at: datetime
+    completed_at: datetime
+    variables: dict
+    step_results: dict
+    errors: [str]
+    metadata: dict
+}
 
-1. YAML safe-load with error handling for encoding and parse failures
-2. Validates required top-level fields (`id`, `name`, `category`, `description`, `steps`)
-3. Validates `category` against the `ChainCategory` enum
-4. Parses each step dict, enforcing required fields (`id`, `name`, `module`, `technique`)
-5. Ensures step ID uniqueness within the file
+ExecutionStatus: PENDING, RUNNING, COMPLETED, FAILED, PARTIAL
+```
 
-`load_all_chains()` discovers all YAML files in the templates directory and enforces chain ID uniqueness across files.
+**Step Execution Model**
 
-### Validator (validator.py)
+```python
+StepExecution {
+    id: str (uuid)
+    chain_id: str
+    step_id: str
+    sequence: int
+    status: StepStatus
+    started_at: datetime
+    completed_at: datetime
+    duration_ms: int
+    output: dict
+    error: str
+    affected_assets: [str]
+    evidence_collected: bool
+}
 
-`validate_chain(chain)` performs six ordered checks, returning a list of `ValidationError` objects:
+StepStatus: PENDING, RUNNING, SUCCEEDED, FAILED, BLOCKED
+```
 
-| Check | What it validates |
-|-------|-------------------|
-| 1. Module refs | `step.module` must be `audit` or `inject` |
-| 2. Technique refs | Technique must exist in the audit scanner registry or inject technique enum |
-| 3. Graph refs | `on_success`/`on_failure` targets must be valid step IDs or `abort` |
-| 4. Cycle detection | DFS with three-color marking to detect circular step references |
-| 5. Reachability | BFS from the first step to ensure all steps are reachable |
-| 6. Terminal steps | At least one step must be marked `terminal` or be the implicit last step |
+**Execution Flow**
 
-### Dry-run tracer (tracer.py)
+```
+Load template
+    ↓
+Initialize execution context
+    ↓
+Validate variables
+    ↓
+For each step (in order):
+    ├─ Check dependencies satisfied
+    ├─ Resolve variables
+    ├─ Execute actions (parallel within step)
+    ├─ Capture output
+    ├─ Record blast radius impact
+    ├─ Store evidence
+    ├─ Evaluate success criteria
+    └─ Update execution context
+    ↓
+Generate detection rules
+    ↓
+Execution completion
+    ↓
+Generate report
+```
 
-`trace_chain(chain)` walks the success path without making network calls or sending payloads. Starts at the first step, follows `on_success` routing, records trust boundaries, and returns a `TraceResult` showing what a live execution would do.
+**Running a Chain**
 
-## Execution engine
+```bash
+# Load template
+qai chain execute \
+  --template exfiltration-example.yaml \
+  --variables '{"target_host": "example.com"}'
 
-### Executor (executor.py)
+# Run from custom template file
+qai chain execute --template-file ./my-chain.yaml
 
-`execute_chain(chain, target_config)` is the async entry point for live execution. It walks the step graph, dispatches each step to the appropriate module, collects `StepOutput` objects, and routes on success/failure.
+# Run with monitoring
+qai chain execute --template <name> --watch
+```
 
-**Execution flow:**
+### Blast Radius Analysis
 
-1. Build step lookup map and ordered step list
-2. Start at the first step
-3. For each step: resolve input variables from the accumulated artifact namespace
-4. Dispatch to `execute_audit_step()` or `execute_inject_step()`
-5. Extract artifacts automatically from the step result
-6. Route: success → `on_success`, failure → `on_failure` or abort
-7. Cycle and missing-step detection emit FAILED StepOutput markers
+Blast radius tracks which assets are affected by each step.
 
-**Error handling:** All dispatcher exceptions are caught and converted to FAILED `StepOutput` objects. The chain never crashes — it records the failure and routes accordingly.
+**Asset Types**
 
-### Dispatchers
+```yaml
+asset_types:
+  - network
+  - host
+  - service
+  - application
+  - credential
+  - data
+  - user
+```
 
-**`execute_audit_step()`** connects to an MCP server via `MCPConnection` (stdio, SSE, or streamable-http), runs the specified scanner, and extracts standard audit artifacts. Windows-compatible command parsing via `shlex.split(posix=False)`.
+**Blast Radius Model**
 
-**`execute_inject_step()`** loads all payload templates, filters by technique, takes the first match (deterministic single-payload selection), applies input overrides from upstream artifacts via `deepcopy`, and runs a single-round campaign.
+```python
+BlastRadius {
+    step_id: str
+    affected_assets: {
+        "network": ["10.0.0.0/24"],
+        "host": ["example.com", "192.168.1.1"],
+        "service": ["ssh", "http", "ftp"],
+        "credential": ["admin", "service-account"],
+        "data": ["customer-db", "financial-records"]
+    }
+    confidence: float (0.0 - 1.0)
+    estimated_impact: str (low, medium, high, critical)
+}
+```
 
-### StepOutput and TargetConfig (executor_models.py)
+**Blast Radius Calculation**
 
-`StepOutput` captures: step_id, module, technique, success, status, scan_result or campaign, extracted artifacts, timing, and error. `to_dict()` serializes metadata fields (excludes large scan_result/campaign objects).
+For each step, analyze:
 
-`TargetConfig` holds audit connection details (transport, command, URL) and inject model. Loads from `chain-targets.yaml` via `from_yaml()` with `QAI_MODEL` env var fallback. Supports field overrides via `with_overrides()`.
+1. **Direct Impact**: Assets directly affected by this step
+2. **Transitive Impact**: Assets affected by dependent steps
+3. **Confidence**: How confident we are in the impact assessment
 
-### Artifact extraction (artifacts.py)
+```python
+class BlastRadiusAnalyzer:
+    def calculate(self, step_results: [StepExecution]) -> BlastRadius:
+        """Calculate cumulative blast radius of chain execution."""
+        affected_assets = defaultdict(set)
 
-Automatic extraction using duck typing (`getattr` with defaults) to avoid circular imports.
+        for step in step_results:
+            # Direct impact from step output
+            if "affected_hosts" in step.output:
+                affected_assets["host"].update(step.output["affected_hosts"])
 
-**Audit artifacts:** `vulnerable_tool`, `vulnerability_type`, `finding_count`, `finding_evidence` — extracted from the highest-severity finding.
+            # Cascade impact to dependent steps
+            for dependent_step in self.find_dependent_steps(step.id):
+                cascaded = self.extract_cascade_impact(dependent_step)
+                for asset_type, assets in cascaded.items():
+                    affected_assets[asset_type].update(assets)
 
-**Inject artifacts:** `best_outcome`, `working_payload`, `working_technique`, `compliance_rate` — extracted from the first successful result.
+        return BlastRadius(
+            affected_assets=dict(affected_assets),
+            confidence=self.calculate_confidence(step_results)
+        )
+```
 
-### Variable resolution (variables.py)
+**Visualizing Blast Radius**
 
-`resolve_variables(inputs, artifact_namespace)` substitutes `$step_id.artifact_name` references in step inputs against the accumulated namespace from prior steps.
+```bash
+qai chain report --chain-id <id> --format blast-radius
 
-- Only strings starting with `$` are treated as variable references
-- Format: `$step_id.artifact_name` (split on first `.`)
-- Non-string values (int, bool from YAML) pass through unchanged
-- Unresolvable references raise `ValueError` with available artifacts listed
+# Output: Visual tree of affected assets
+Blast Radius: Exfiltration Chain
+├── Network
+│   └── 10.0.0.0/24 (Reconnaissance)
+├── Hosts
+│   ├── example.com (Reconnaissance, Credential Access)
+│   └── 192.168.1.100 (Credential Access, Exfiltration)
+├── Services
+│   ├── SSH (Reconnaissance)
+│   ├── HTTP (Reconnaissance, Credential Access)
+│   └── DNS (Exfiltration)
+├── Credentials
+│   ├── admin (Credential Access)
+│   └── service-account (Credential Access)
+└── Data
+    ├── customer-db (Exfiltration)
+    └── financial-records (Exfiltration)
 
-### Report output
+Total Affected Assets: 12
+Execution Confidence: 0.85
+Estimated Impact: HIGH
+```
 
-`write_chain_report(result, output_path)` writes a JSON report enriched with module-specific summaries: severity counts for audit steps, outcome/payload info for inject steps. The report includes the interpret prompt for AI-assisted analysis. Sensitive target config fields (audit_command, audit_url) are redacted to `<configured>` to prevent credential leakage.
+### Detection Rule Generation
+
+The Chain module generates detection rules for techniques discovered during execution.
+
+**Supported Formats**
+
+| Format | Use Case | Tool Integration |
+|--------|----------|---|
+| Sigma | Generic SIEM | Splunk, ELK, ArcSight |
+| Wazuh | Open-source SIEM | Wazuh |
+| YARA | File detection | Malware analysis |
+| Snort/Suricata | IDS/IPS | Network security |
+
+**Detection Rule Generation**
+
+```python
+class DetectionRuleGenerator:
+    def generate_sigma_rule(self, step: StepExecution, technique_id: str) -> str:
+        """Generate Sigma detection rule for discovered technique."""
+
+        technique_name = self.framework_resolver.resolve_name(technique_id)
+
+        sigma_rule = f"""
+title: {technique_name} - Chain Execution
+logsource:
+    product: {self.infer_product(step.output)}
+detection:
+    selection:
+        {self.extract_sigma_conditions(step.output)}
+    condition: selection
+falsepositives:
+    - Legitimate {technique_name} activity
+level: high
+"""
+        return sigma_rule
+```
+
+**Example Generated Rules**
+
+**Sigma Rule** (for T1041 - Exfiltration Over Alternative Protocol)
+
+```yaml
+title: Exfiltration Over DNS
+logsource:
+    product: network
+    category: dns
+detection:
+    selection:
+        query_type: "A"
+        query_value|contains|all:
+            - "exfil"
+            - "attacker.com"
+        response_count: 0
+    condition: selection
+falsepositives:
+    - Legitimate DNS queries
+level: high
+```
+
+**Wazuh Rule**
+
+```yaml
+<rule id="100001" level="high">
+    <if_sid>80203</if_sid>
+    <field name="data">exfiltration</field>
+    <field name="dst_ip">attacker.com</field>
+    <description>Exfiltration Over DNS Detected</description>
+</rule>
+```
+
+**Exporting Detection Rules**
+
+```bash
+# Export all generated rules
+qai chain artifacts export \
+  --chain-id <id> \
+  --format sigma,wazuh \
+  --output-dir ./rules
+
+# Export with baseline detection
+qai chain artifacts export \
+  --chain-id <id> \
+  --format sigma \
+  --include-false-positives-tuning \
+  --output ./rules.yml
+```
+
+### Execution Tracing
+
+The tracer records detailed execution information for analysis and debugging.
+
+**Trace Points**
+
+```python
+trace = ExecutionTrace()
+
+# Step lifecycle
+trace.record("step_start", step_id, timestamp)
+trace.record("step_action_execute", action_type, parameters)
+trace.record("step_action_result", output)
+trace.record("step_complete", duration_ms)
+
+# State changes
+trace.record("execution_status_change", old_status, new_status)
+trace.record("variable_substitution", var_name, var_value)
+
+# Error conditions
+trace.record("step_dependency_failed", dependent_step_id)
+trace.record("blast_radius_impact", affected_assets)
+```
+
+**Trace Output**
+
+```bash
+qai chain trace --chain-id <id> --format json
+```
+
+```json
+{
+  "chain_id": "chain-uuid",
+  "template": "exfiltration-example",
+  "events": [
+    {
+      "timestamp": "2024-01-15T10:30:00Z",
+      "type": "step_start",
+      "step_id": "reconnaissance",
+      "sequence": 1
+    },
+    {
+      "timestamp": "2024-01-15T10:30:05Z",
+      "type": "step_action_execute",
+      "action_type": "scan",
+      "parameters": {"target": "example.com"}
+    },
+    {
+      "timestamp": "2024-01-15T10:30:35Z",
+      "type": "step_action_result",
+      "output": {"ports_found": 8, "services": ["ssh", "http"]}
+    }
+  ]
+}
+```
+
+### Variable Substitution System
+
+Variables enable template reuse across different targets and scenarios.
+
+**Variable Resolution**
+
+```yaml
+# Template variables
+variables:
+  target_host: "{{ arg:target }}"
+  organization: "{{ env:QAI_ORG }}"
+  attack_vector: "{{ config:attack_vector }}"
+  timestamp: "{{ now }}"
+```
+
+**Variable Sources**
+
+| Source | Syntax | Example |
+|--------|--------|---------|
+| Arguments | `{{ arg:name }}` | `{{ arg:target }}` |
+| Environment | `{{ env:VAR }}` | `{{ env:QAI_ORG }}` |
+| Config | `{{ config:key }}` | `{{ config:attack_vector }}` |
+| Runtime | `{{ now }}`, `{{ uuid }}` | `{{ now }}` |
+| Step Output | `{{ steps.id.field }}` | `{{ steps.recon.ports }}` |
+
+**Using Variables**
+
+```bash
+qai chain execute \
+  --template exfiltration-example.yaml \
+  --variable target_host=example.com \
+  --variable exfil_destination=attacker.com
+```
+
+### Chain Library
+
+Built-in templates for common attack chains:
+
+```bash
+qai chain list --category all
+```
+
+Available categories:
+- **Reconnaissance**: Information gathering chains
+- **InitialAccess**: Exploitation and entry chains
+- **Persistence**: Persistence mechanism chains
+- **PrivilegeEscalation**: Elevation chains
+- **DefenseEvasion**: Evasion technique chains
+- **Exfiltration**: Data theft chains
+
+### Cross-Module Integration
+
+<Note>
+Chain execution references findings from Audit and incorporates injection results from Inject module.
+</Note>
+
+**Audit Integration**
+
+Reference audit findings in chain templates:
+
+```yaml
+steps:
+  - id: "exploit"
+    description: "Exploit vulnerability from audit"
+    references:
+      - audit_run_id: 123
+        finding_id: f-001
+```
+
+**Inject Integration**
+
+Use injection campaign results:
+
+```yaml
+steps:
+  - id: "social_engineering"
+    description: "Phishing campaign"
+    references:
+      - inject_campaign_id: "campaign-uuid"
+        minimum_success_rate: 0.3
+```
+
+### Next Steps
+
+- [Audit Module](/docs/architecture/audit-module) - Finding reference in chains
+- [Inject Module](/docs/architecture/inject-module) - Campaign integration
+- [Core Infrastructure](/docs/architecture/core) - Run model and tracking

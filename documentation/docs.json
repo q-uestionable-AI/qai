@@ -31,6 +31,15 @@
         ]
       },
       {
+        "group": "Web UI",
+        "pages": [
+          "web-ui/overview",
+          "web-ui/launcher",
+          "web-ui/runs",
+          "web-ui/settings"
+        ]
+      },
+      {
         "group": "Audit",
         "pages": [
           "audit/overview",
@@ -42,6 +51,15 @@
         ]
       },
       {
+        "group": "Inject",
+        "pages": [
+          "inject/overview",
+          "inject/cli",
+          "inject/payloads",
+          "inject/campaigns"
+        ]
+      },
+      {
         "group": "Proxy",
         "pages": [
           "proxy/overview",
@@ -49,15 +67,6 @@
           "proxy/intercept",
           "proxy/replay",
           "proxy/session-export"
-        ]
-      },
-      {
-        "group": "Inject",
-        "pages": [
-          "inject/overview",
-          "inject/cli",
-          "inject/payloads",
-          "inject/campaigns"
         ]
       },
       {
@@ -77,7 +86,7 @@
           "ipi/formats",
           "ipi/payloads",
           "ipi/callbacks",
-          "ipi/dashboard"
+          "ipi/deployment-playbook"
         ]
       },
       {
@@ -87,7 +96,8 @@
           "cxp/cli",
           "cxp/objectives",
           "cxp/assistant-formats",
-          "cxp/validation"
+          "cxp/validation",
+          "cxp/deployment-playbook"
         ]
       },
       {
@@ -95,16 +105,19 @@
         "pages": [
           "rxp/overview",
           "rxp/cli",
-          "rxp/models-profiles"
+          "rxp/models-profiles",
+          "rxp/interpretive-bands"
         ]
       },
       {
-        "group": "Web UI",
+        "group": "Exports & Integrations",
         "pages": [
-          "web-ui/overview",
-          "web-ui/launcher",
-          "web-ui/operations",
-          "web-ui/research"
+          "exports/json-schema",
+          "exports/sarif",
+          "exports/ndjson",
+          "exports/csv",
+          "integrations/defectdojo",
+          "integrations/github-security"
         ]
       },
       {

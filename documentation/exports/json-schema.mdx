@@ -1,0 +1,196 @@
+---
+title: JSON Schema Export
+description: Export qai audit runs as structured JSON with complete schema definition
+---
+
+# JSON Schema Export
+
+Export your qai audit runs in JSON format with full schema definition for integration with external systems and tooling.
+
+## Overview
+
+The JSON Schema export produces a structured JSON file containing all findings, metadata, and configuration details from an audit run. This format is ideal for:
+
+- Building custom integrations and workflows
+- Archiving audit results in structured formats
+- Integrating with data lakes and analytics platforms
+- CI/CD pipeline automation
+- Version control tracking of security findings
+
+## Export Structure
+
+The JSON export follows a consistent schema with the following top-level sections:
+
+```json
+{
+  "metadata": {
+    "timestamp": "2024-03-22T10:30:00Z",
+    "qai_version": "0.5.1",
+    "run_id": "run_12345abcde",
+    "framework": "owasp-top-10",
+    "duration_seconds": 145.32
+  },
+  "configuration": {
+    "model": "anthropic/claude-sonnet-4-20250514",
+    "parameters": {
+      "temperature": 0.0,
+      "max_tokens": 4096
+    }
+  },
+  "findings": [
+    {
+      "id": "finding_001",
+      "severity": "high",
+      "title": "SQL Injection Vulnerability",
+      "description": "User input is directly concatenated into SQL queries",
+      "location": {
+        "file": "src/database.py",
+        "line": 45
+      },
+      "evidence": "Code snippet showing vulnerable query construction",
+      "remediation": "Use parameterized queries or ORM methods"
+    }
+  ],
+  "summary": {
+    "total_findings": 12,
+    "by_severity": {
+      "critical": 1,
+      "high": 3,
+      "medium": 5,
+      "low": 3
+    }
+  }
+}
+```
+
+## Severity Levels
+
+Findings are categorized by severity:
+
+| Severity | Description |
+|----------|-------------|
+| Critical | Immediate exploitation risk, requires urgent remediation |
+| High | Significant security impact, remediate within days |
+| Medium | Moderate impact, remediate within weeks |
+| Low | Minor issues, address during regular maintenance |
+| Info | Informational only, no action required |
+
+## Finding Properties
+
+Each finding object includes:
+
+<Note>
+All finding objects are required to have `id`, `severity`, and `title` at minimum. Other fields may be present depending on the framework and audit configuration.
+</Note>
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `id` | string | Unique identifier for this finding |
+| `severity` | string | One of: critical, high, medium, low, info |
+| `title` | string | Brief title of the vulnerability |
+| `description` | string | Detailed description of the issue |
+| `location` | object | File path and line number where issue was found |
+| `evidence` | string | Code snippets or evidence supporting the finding |
+| `remediation` | string | Steps to fix the vulnerability |
+| `category` | string | OWASP category or classification |
+| `mitigation` | string | Temporary mitigation if permanent fix is pending |
+| `confidence` | string | Level of confidence in finding: high, medium, low |
+| `cvss_score` | number | CVSS v3.1 base score (0-10) |
+| `references` | array | URLs to documentation or proof-of-concept |
+
+## Metadata Fields
+
+The metadata section contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `timestamp` | ISO 8601 | When the audit run completed |
+| `qai_version` | string | Version of qai used for this audit |
+| `run_id` | string | Unique identifier for this audit run |
+| `framework` | string | Security framework used (e.g., owasp-top-10) |
+| `duration_seconds` | number | Time taken to complete the audit |
+| `target` | string | Application or URL that was audited |
+| `scanner_version` | string | Version of underlying security scanner |
+
+## Integration Example
+
+<CodeGroup>
+
+```python Python
+import json
+
+with open('audit_results.json', 'r') as f:
+    audit_data = json.load(f)
+
+# Process findings
+for finding in audit_data['findings']:
+    if finding['severity'] in ['critical', 'high']:
+        print(f"Priority: {finding['title']}")
+        print(f"Fix: {finding['remediation']}\n")
+```
+
+```javascript JavaScript
+const fs = require('fs');
+
+const auditResults = JSON.parse(
+  fs.readFileSync('audit_results.json', 'utf8')
+);
+
+const criticalFindings = auditResults.findings.filter(
+  f => f.severity === 'critical'
+);
+
+console.log(`Found ${criticalFindings.length} critical issues`);
+```
+
+```bash Bash
+jq '.findings[] | select(.severity=="high") | .title' audit_results.json
+```
+
+</CodeGroup>
+
+## Validating the JSON
+
+Use a JSON Schema validator to ensure your exports comply with the official schema:
+
+```bash
+# Validate against JSON Schema
+ajv validate -s qai-export-schema.json -d audit_results.json
+```
+
+<Tip>
+The JSON export can be quite large for comprehensive audits. Consider using streaming JSON parsers for processing very large exports.
+</Tip>
+
+## Querying Findings
+
+The JSON structure supports standard JSON Query Language (JQ) for filtering and analysis:
+
+```bash
+# Find all high-severity findings with CVSS score
+jq '.findings[] | select(.severity=="high" and .cvss_score > 7.0)' results.json
+
+# Count findings by severity
+jq '.findings | group_by(.severity) | map({severity: .[0].severity, count: length})' results.json
+
+# Extract unique categories
+jq '.findings | map(.category) | unique' results.json
+```
+
+## Schema Versioning
+
+The JSON schema is versioned. Always check the `schema_version` field in the metadata to ensure compatibility:
+
+- **v1.0**: Initial release with basic finding structure
+- **v1.1**: Added cvss_score and confidence fields
+- **v1.2**: Added mitigation and evidence extensions (current)
+
+<Warning>
+If you have schema version conflicts between qai versions, the latest version maintains backward compatibility. However, older tools may not recognize new fields added in later versions.
+</Warning>
+
+## Next Steps
+
+- Export audit runs using `/exports/json-schema`
+- Integrate JSON results with your CI/CD pipeline
+- See [integrations](/integrations/defectdojo) for connecting to DefectDojo or other platforms

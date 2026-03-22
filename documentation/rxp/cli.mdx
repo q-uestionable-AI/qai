@@ -1,141 +1,125 @@
 ---
-title: RXP CLI Reference
-description: Command reference for qai rxp
+title: "RXP CLI Reference"
+description: "Command-line interface for RAG retrieval poisoning validation"
 ---
+
+The RXP module measures whether adversarial documents win vector similarity battles in RAG retrieval layers. It requires optional dependencies — install with:
 
 ```bash
-qai rxp [OPTIONS] COMMAND [ARGS]
+pip install "q-uestionable-ai[rxp]"
 ```
 
-RAG retrieval poisoning optimizer. Validate whether poison documents achieve retrieval in vector similarity searches across embedding models.
+## qai rxp list-models
 
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `list-models` | Show registered embedding models |
-| `list-profiles` | Show built-in domain profiles |
-| `validate` | Run retrieval validation against a corpus |
-
----
-
-## list-models
-
-Show all registered embedding models with their HuggingFace model names and vector dimensions.
+Display registered embedding models.
 
 ```bash
 qai rxp list-models
 ```
 
-No options. Prints a table:
+Output is a table with columns: ID, Model, Dimensions, Description.
 
-| ID | Model | Dimensions | Description |
-|----|-------|------------|-------------|
-| `minilm-l6` | `sentence-transformers/all-MiniLM-L6-v2` | 384 | Open WebUI default embedding model |
-| `minilm-l12` | `sentence-transformers/all-MiniLM-L12-v2` | 384 | Higher quality MiniLM variant |
-| `bge-small` | `BAAI/bge-small-en-v1.5` | 384 | BGE small English v1.5 |
+## qai rxp list-profiles
 
-<Info>
-This command does not require the optional RXP dependencies (`sentence-transformers`, `chromadb`).
-</Info>
-
----
-
-## list-profiles
-
-Show built-in domain profiles with query and corpus document counts.
+Display built-in domain profiles and their query/corpus counts.
 
 ```bash
 qai rxp list-profiles
 ```
 
-No options. Prints a table:
+Output is a table with columns: ID, Name, Queries, Corpus Docs.
 
-| ID | Name | Queries | Corpus Docs |
-|----|------|---------|-------------|
-| `hr-policy` | HR Policy Knowledge Base | 8 | 5 |
+## qai rxp validate
 
-<Info>
-This command does not require the optional RXP dependencies (`sentence-transformers`, `chromadb`).
-</Info>
-
----
-
-## validate
-
-Run retrieval validation — embed a corpus, ingest into ChromaDB, query, and score poison document retrieval.
+Run retrieval validation — test whether a poisoned document ranks in the top-k results for a set of queries.
 
 ```bash
 qai rxp validate [OPTIONS]
 ```
 
+Either `--profile` or `--corpus-dir` is required.
+
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `--profile` | TEXT | — | Domain profile ID (e.g. `hr-policy`) |
-| `--corpus-dir` | PATH | — | Path to custom corpus directory |
-| `--poison-file` | PATH | — | Path to poison document |
-| `--model` | TEXT | `minilm-l6` | Embedding model: registry shortcut, `all`, or HuggingFace model name |
-| `--top-k` | INTEGER | `5` | Number of retrieval results per query |
-| `--output` | PATH | — | Write JSON results to file |
-| `--verbose` / `-v` | — | off | Show per-query hit details |
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--profile` | No* | — | Domain profile ID (from `list-profiles`) |
+| `--corpus-dir` | No* | — | Path to directory of `.txt` corpus files |
+| `--poison-file` | No | — | Path to poison document. Required if not using a profile with built-in poison docs. |
+| `--model` | No | `minilm-l6` | Embedding model: registry shortcut, `all`, or HuggingFace model name |
+| `--top-k` | No | `5` | Number of retrieval results per query |
+| `--output` | No | — | Write JSON results to file |
+| `--verbose` / `-v` | No | — | Show per-query hit details |
+| `--save` | No | — | Persist results to the qai database |
+| `--query` | No | — | Custom query (repeatable). Required when using `--corpus-dir` without a profile. |
 
-<Warning>
-Either `--profile` or `--corpus-dir` is required. The command exits with an error if neither is provided.
-</Warning>
+\* Either `--profile` or `--corpus-dir` is required.
 
-### Using a Built-in Profile
+### Examples
 
-Run validation using the `hr-policy` profile with the default embedding model:
-
-```bash
-qai rxp validate --profile hr-policy
-```
-
-Run with verbose output to see per-query retrieval details:
+Validate with a built-in profile:
 
 ```bash
-qai rxp validate --profile hr-policy --verbose
+qai rxp validate --profile hr-policy --model minilm-l6
 ```
 
-### Comparing Across Models
-
-Use `--model all` to run validation against every registered embedding model and get a comparison table:
-
-```bash
-qai rxp validate --profile hr-policy --model all
-```
-
-### Using a Specific Model
-
-Use a registry shortcut:
-
-```bash
-qai rxp validate --profile hr-policy --model bge-small
-```
-
-Or pass any HuggingFace model name directly:
-
-```bash
-qai rxp validate --profile hr-policy --model BAAI/bge-m3
-```
-
-### Custom Corpus and Poison Files
-
-Provide your own corpus directory (all `*.txt` files will be loaded) and poison document:
+Validate with custom corpus and poison file:
 
 ```bash
 qai rxp validate \
-  --corpus-dir ./my-corpus \
-  --poison-file ./my-poison.txt \
-  --model minilm-l6
+  --corpus-dir ./knowledge_base \
+  --poison-file ./adversarial_doc.txt \
+  --query "What is the vacation policy?" \
+  --model minilm-l6 \
+  --top-k 10
 ```
 
-### JSON Output
-
-Save results to a JSON file for programmatic analysis:
+Compare across all registered models:
 
 ```bash
-qai rxp validate --profile hr-policy --model all --output results.json
+qai rxp validate \
+  --profile hr-policy \
+  --model all \
+  --output results.json
+```
+
+Save results to the qai database:
+
+```bash
+qai rxp validate \
+  --profile security-guidelines \
+  --save
+```
+
+### Output
+
+Standard output shows per-model results:
+
+```
+Loading model: MiniLM-L6-v2...
+Ingesting corpus: 4 documents + 1 poison document(s)
+Running 5 queries (top-5)...
+
+Results for minilm-l6:
+  Retrieval rate: 3/5 (60.0%)
+  Mean poison rank: 2.3 (when retrieved)
+```
+
+With `--verbose`, per-query detail is added:
+
+```
+  Query: "What is the vacation policy?"
+    Poison retrieved: YES (rank 2)
+  Query: "How do I reset my password?"
+    Poison retrieved: NO
+```
+
+When running multiple models (`--model all`), a comparison table follows:
+
+```
+Comparison Summary:
+Model           Rate            Mean Rank
+------------------------------------------
+minilm-l6      3/5 (60.0%)     2.3
+bge-small      4/5 (80.0%)     1.8
 ```

@@ -1,71 +1,119 @@
 ---
-title: Proxy CLI Reference
-description: Command reference for qai proxy
+title: "Proxy CLI Commands"
+description: "Command reference for starting, replaying, exporting, and inspecting MCP sessions"
 ---
 
-## proxy
+## qai proxy
 
-Interactive MCP traffic interceptor. Sits between client and server, intercepting JSON-RPC messages for inspection, modification, and replay.
+Intercept and replay MCP traffic for inspection, testing, and analysis.
+
+```bash
+qai proxy [COMMAND] [OPTIONS]
+```
+
+## Commands
 
 ### proxy start
 
-Start the proxy with the interactive TUI.
+Start the proxy with an interactive TUI.
 
 ```bash
-qai proxy start [OPTIONS]
+qai proxy start --transport TRANSPORT [OPTIONS]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--transport` | Yes | Transport type: `stdio`, `sse`, or `streamable-http` |
-| `--target-command` | When `--transport stdio` | Server command to proxy |
-| `--target-url` | When `--transport sse` or `streamable-http` | Server URL to proxy |
-| `--intercept` | No | Start in intercept mode (default: off) |
-| `--listen-port` | No | Local port for SSE/HTTP (default: `8888`) |
-| `--session-file` | No | Auto-save session to this file |
+**Options:**
 
-```bash
+| Option | Required | Type | Description |
+|--------|----------|------|-------------|
+| `--transport` | Yes | string | Transport type: `stdio`, `sse`, or `streamable-http` |
+| `--target-command` | When transport is `stdio` | string | Server command to proxy (stdio only) |
+| `--target-url` | When transport is `sse` or `streamable-http` | string | Server URL to proxy (HTTP transports only) |
+| `--intercept` | No | flag | Start in intercept mode (default: passthrough) |
+| `--session-file` | No | string | Auto-save session to this file on exit |
+
+**Examples:**
+
+<CodeGroup>
+```bash stdio
 qai proxy start \
   --transport stdio \
-  --target-command "python my_server.py"
+  --target-command "python my_server.py" \
+  --intercept
 ```
+
+```bash HTTP
+qai proxy start \
+  --transport sse \
+  --target-url "http://localhost:3000" \
+  --session-file session.json
+```
+</CodeGroup>
+
+<Tip>
+Use passthrough mode (default) for passive capture of complete interactions. Use intercept mode when you need to halt and inspect or modify specific messages.
+</Tip>
 
 ### proxy replay
 
-Replay a captured session against a live server.
+Replay captured messages against a live server.
 
 ```bash
-qai proxy replay [OPTIONS]
+qai proxy replay --session-file FILE [OPTIONS]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--session-file` | Yes | Path to a saved session file |
-| `--target-command` | Yes* | Server command for replay (stdio) |
-| `--target-url` | No | Server URL for replay (not yet implemented) |
-| `--output` | No | Save replay results to JSON |
-| `--timeout` | No | Per-message response timeout in seconds (default: `10.0`) |
-| `--no-handshake` | No | Skip auto-handshake if session already includes initialize |
+**Options:**
 
-```bash
+| Option | Required | Type | Description |
+|--------|----------|------|-------------|
+| `--session-file` | Yes | string | Path to saved session file |
+| `--target-command` | Yes* | string | Server command for replay (stdio) |
+| `--target-url` | Yes* | string | Server URL for replay (SSE/HTTP) |
+| `--output` | No | string | Save replay results to JSON file |
+| `--timeout` | No | float | Per-message response timeout in seconds (default: 10.0) |
+| `--no-handshake` | No | flag | Skip auto-handshake; session must start with initialize |
+
+\* Either `--target-command` or `--target-url` is required.
+
+**Examples:**
+
+<CodeGroup>
+```bash stdio
 qai proxy replay \
   --session-file session.json \
-  --target-command "python my_server.py"
+  --target-command "python my_server.py" \
+  --output results.json
 ```
+
+```bash HTTP with timeout
+qai proxy replay \
+  --session-file session.json \
+  --target-url "http://localhost:3000" \
+  --timeout 30.0 \
+  --output results.json
+```
+</CodeGroup>
+
+<Note>
+By default, the replay engine sends a synthetic `initialize` handshake before replaying messages. Use `--no-handshake` if your session already includes the full handshake sequence.
+</Note>
 
 ### proxy export
 
 Export a session to JSON.
 
 ```bash
-qai proxy export [OPTIONS]
+qai proxy export --session-file FILE --output OUTPUT [OPTIONS]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--session-file` | Yes | Path to a saved session file |
-| `--output` | Yes | Output file path |
-| `--output-format` | No | Export format (default: `json`) |
+**Options:**
+
+| Option | Required | Type | Description |
+|--------|----------|------|-------------|
+| `--session-file` | Yes | string | Path to saved session file |
+| `--output` | Yes | string | Output file path |
+| `--output-format` | No | string | Export format (default: `json`) |
+
+**Example:**
 
 ```bash
 qai proxy export \
@@ -75,17 +123,52 @@ qai proxy export \
 
 ### proxy inspect
 
-Print session contents to stdout (non-interactive).
+Print session contents to stdout for review.
 
 ```bash
-qai proxy inspect [OPTIONS]
+qai proxy inspect --session-file FILE [OPTIONS]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--session-file` | Yes | Path to a saved session file |
-| `--verbose` / `-v` | No | Show full JSON payloads |
+**Options:**
+
+| Option | Required | Type | Description |
+|--------|----------|------|-------------|
+| `--session-file` | Yes | string | Path to saved session file |
+| `--verbose`, `-v` | No | flag | Show full JSON payloads for each message |
+
+**Example:**
 
 ```bash
 qai proxy inspect --session-file session.json -v
 ```
+
+**Output format:**
+
+```
+Session: abc-123
+Transport: stdio
+Server command: python my_server.py
+Messages: 12
+
+  #000 > initialize id=1
+  #001 < (response) id=1
+  #002 > notifications/initialized
+  #003 > tools/call id=2
+```
+
+Add `-v` to include full JSON payloads.
+
+## Message Direction
+
+In the TUI and output:
+
+- `>` denotes client-to-server messages (requests and notifications sent to the server)
+- `<` denotes server-to-client messages (responses and notifications from the server)
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Command error (invalid options, file not found, validation failure) |
+| 130 | Interrupted by user (Ctrl+C) |

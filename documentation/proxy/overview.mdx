@@ -1,35 +1,63 @@
 ---
-title: Overview
-description: Interactive MCP traffic interception, inspection, and replay
+title: "Proxy Overview"
+description: "Intercept, inspect, and replay MCP traffic for security testing and regression analysis"
 ---
 
-The proxy module is an interactive MCP traffic interceptor — it sits between an MCP client and server to capture, inspect, and optionally modify JSON-RPC messages in real time.
+The Proxy module provides transparent interception of Model Context Protocol (MCP) traffic, enabling you to inspect tool calls, modify messages in flight, and replay sessions for regression testing.
 
-## Why Proxy Matters
+## Use Cases
 
-MCP communication is opaque to standard network tools. The proxy gives full visibility into tool calls, responses, and notifications — enabling manual traffic analysis, breakpoint-based interception, and session replay for reproducing attack scenarios.
+<Note>
+Use the proxy to:
+- **Inspect tool calls** — See exactly which tools your agents are invoking and with what parameters
+- **Modify messages** — Intercept requests or responses and alter them mid-session for manual testing
+- **Replay sessions** — Capture and replay sessions against different server implementations to test compatibility or reproduce findings
+- **Debug multi-agent systems** — Examine raw MCP traffic to understand agent behavior and dependencies
+- **Prevent dangerous calls** — Intercept and drop risky tool invocations before they reach the target
+</Note>
 
-## How It Works
+## Core Concepts
 
-The proxy interception workflow follows five steps:
+### Session Capture
 
-1. **Launch** — Start the proxy between your MCP client and target server
-2. **Observe** — Watch the live message stream in the Textual TUI
-3. **Intercept** — Set breakpoints to hold messages matching specific criteria
-4. **Act** — Forward, modify, or drop held messages
-5. **Replay** — Save the session and replay it offline for analysis or reproduction
+The proxy operates as a transparent man-in-the-middle positioned between your client and server. Every message in both directions flows through the proxy envelope:
 
-## Built-in Components
+- **ProxyMessage** — Wraps each JSON-RPC message with proxy metadata (timestamp, sequence number, direction, transport type)
+- **ProxySession** — Captures the complete sequence of messages across a single interaction, serializable to JSON for storage and replay
 
-- **Textual TUI** — Live message stream with detail panel for inspecting individual messages
-- **Intercept engine** — Hold/release/drop actions with configurable breakpoint rules
-- **Session store** — Capture all messages as an ordered sequence with save/load and export
-- **Replay engine** — Re-send captured messages against the target server
-- **Transport adapters** — stdio, SSE, and Streamable HTTP server-facing adapters
+### Operating Modes
+
+**Passthrough Mode** (default)
+- All messages flow through unobstructed to their destination
+- Passive capture and monitoring without latency overhead
+- Use for baseline traffic recording
+
+**Intercept Mode**
+- Messages are paused and held for user inspection
+- User can FORWARD unchanged, MODIFY with edits, or DROP entirely
+- Interactive TUI-based control
+- Useful for targeted analysis of specific interactions
+
+## Transport Support
+
+The proxy bridges three MCP transports:
+
+- **STDIO** — Local processes communicating via stdin/stdout
+- **SSE** — HTTP servers using server-sent events
+- **Streamable HTTP** — Bidirectional HTTP for modern MCP implementations
+
+## Typical Workflow
+
+1. Start the proxy with your target server details and optionally enable intercept mode
+2. Route your application traffic through the proxy instead of directly to the server
+3. Watch messages in real-time via the interactive TUI
+4. Toggle intercept mode to halt and inspect specific interactions
+5. Forward, modify, or drop messages as needed
+6. Export the completed session for evidence, testing, or audit purposes
 
 ## Next Steps
 
-- [Proxy CLI Reference](/proxy/cli) — Command reference for `qai proxy`
-- [Intercept & Breakpoints](/proxy/intercept) — Breakpoint rules and message interception
-- [Session Replay](/proxy/replay) — Replaying captured sessions
-- [Session Export](/proxy/session-export) — Exporting sessions to external formats
+- **[CLI Commands](./cli.mdx)** — Start, replay, export, and inspect sessions
+- **[Live Interception](./intercept.mdx)** — Halt and modify messages interactively
+- **[Session Replay](./replay.mdx)** — Re-send captured messages to a live server
+- **[Session Export](./session-export.mdx)** — Export formats and session file structure

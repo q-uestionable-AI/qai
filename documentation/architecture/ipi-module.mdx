@@ -1,163 +1,602 @@
 ---
 title: IPI Module Architecture
-description: Generator framework, callback server, and dashboard internals
+description: Document generation, deployment, hit tracking, and playbook generation
 ---
 
-The IPI module lives at `src/q_ai/ipi/` and implements an indirect prompt injection testing framework. It generates documents with hidden payloads, serves a callback listener to capture agent execution, and provides a web dashboard for campaign monitoring.
+## IPI Module
 
-## Module Structure
+The IPI (Instant Payload Injection) module generates adversarial documents in 7 formats, deploys them via multiple channels, and tracks user interactions in real-time via callback notifications.
+
+### Module Structure
 
 ```
-src/q_ai/ipi/
-├── __init__.py            # Module docstring
-├── cli.py                 # Typer CLI commands
-├── models.py              # Format, Technique, PayloadStyle, PayloadType (StrEnums)
-├── generate_service.py    # Payload generation orchestrator
-├── server.py              # FastAPI callback server
-├── api.py                 # API router (callback endpoints, JSON API)
-├── ui.py                  # UI router (HTMX dashboard routes)
-├── generators/            # Format-specific payload generators
-│   ├── pdf.py             # PDF payloads (10 techniques)
-│   ├── image.py           # Image payloads (3 techniques)
-│   ├── markdown.py        # Markdown payloads (4 techniques)
-│   ├── html.py            # HTML payloads (4 techniques)
-│   ├── docx.py            # Word document payloads (6 techniques)
-│   ├── ics.py             # Calendar file payloads (4 techniques)
-│   └── eml.py             # Email file payloads (3 techniques)
-├── templates/             # Jinja2 templates for web dashboard
-└── static/                # CSS, htmx.min.js
+ipi/
+├── generators/          # Format-specific document generators
+│   ├── pdf.py
+│   ├── docx.py
+│   ├── image.py
+│   ├── markdown.py
+│   ├── html.py
+│   ├── ics.py
+│   └── eml.py
+├── models.py            # Document, campaign, and hit models
+├── listener.py          # Callback listener for hit notifications
+├── server.py            # HTTP API for document serving/deployment
+├── generate_service.py   # Generator orchestration
+├── guidance_builder.py   # Deployment playbook generation
+├── db.py                # IPI-specific database tables
+├── cli.py               # Typer command interface
+├── adapter.py           # Module adapter for platform integration
+├── api.py               # HTTP endpoints
+├── ui.py                # Web UI routes
+└── templates/           # Document templates
 ```
 
-**Key stats:** 34 hiding techniques across 7 document formats. 7 payload styles x 7 payload types = 49 template combinations.
+### Supported Document Formats
 
----
+| Format | Extension | Use Cases | Techniques |
+|--------|-----------|-----------|---|
+| PDF | .pdf | Reports, forms, resumes | Embedded scripts, metadata exploits |
+| DOCX | .docx | Proposals, contracts | Macros, external objects |
+| Image | .png, .jpg | Screenshots, diagrams | Metadata, EXIF data, steganography |
+| Markdown | .md | Documentation, readmes | Embedded links, script tags |
+| HTML | .html | Web pages, emails | JavaScript, form hijacking |
+| ICS | .ics | Calendar invites | Malicious event data |
+| EML | .eml | Email messages | Phishing content, malicious links |
 
-## Data Flow
+### Document Model
 
-```mermaid
-flowchart TD
-    A["qai ipi generate\nselect format + technique + payload"] --> B["generate_service.py\nroute to format-specific generator"]
-    B --> C["generators/*.py\nproduce document with hidden payload"]
-    C --> D["Document files on disk\n+ Campaign saved to ipi.db"]
-    D --> E["Deploy to AI agent\nmanual or via harness"]
-    E --> F["Agent ingests document\nexecutes hidden instruction"]
-    F --> G["HTTP callback to listener\n/c/{uuid}/{token}"]
-    G --> H["server.py\nFastAPI callback endpoint"]
-    H --> I["core/listener.py\nconfidence scoring + hit recording"]
-    I --> J["ipi.db\nhit persisted with evidence"]
-    J --> K["Dashboard or CLI\ncampaign results with confidence"]
+```python
+Document {
+    id: str (uuid)
+    campaign_id: str (foreign key → Campaign)
+    format: str (pdf, docx, image, markdown, html, ics, eml)
+    filename: str
+    title: str
+    description: str
+    content: bytes (binary document data)
+    metadata: dict
+    hiding_techniques: [str]
+    deployment_urls: [str]
+    created_at: datetime
+}
+
+Campaign {
+    id: str (uuid)
+    run_id: int (foreign key → Run)
+    name: str
+    description: str
+    objective: str (social engineering, payload delivery, etc.)
+    documents: [Document]
+    deployments: [Deployment]
+    hits: [Hit]
+    started_at: datetime
+    completed_at: datetime
+    status: CampaignStatus (DRAFT, ACTIVE, COMPLETED, ARCHIVED)
+}
 ```
 
----
+### Generator Architecture
 
-## Generation Orchestrator
+The generator system provides a base interface with format-specific implementations.
 
-**Source:** `generate_service.py`
+**Base Generator Protocol**
 
-The `generate_documents()` function is the central dispatch point for payload creation, called by both the CLI and the web API. It:
+```python
+class Generator:
+    """Abstract interface for document generators."""
 
-1. Resolves the target format and technique(s)
-2. Routes to the appropriate format-specific generator
-3. Builds a `Campaign` model with a unique UUID and cryptographic token
-4. Persists the campaign to `ipi.db`
-5. Returns generated document bytes and campaign metadata
+    format_id: str
+    supported_techniques: [str]
 
-Each generator receives the technique, payload style, payload type, callback URL, and optional seed. The orchestrator handles file naming, output directory management, and batch generation (when generating all techniques for a format).
+    async def generate(
+        self,
+        title: str,
+        content: str,
+        hiding_techniques: [str] = []
+    ) -> Document:
+        """Generate adversarial document."""
 
----
+    async def validate(self, document: Document) -> bool:
+        """Verify document viability."""
 
-## Format-Specific Generators
+    def get_technique_info(self, technique_id: str) -> dict:
+        """Get details about hiding technique capabilities."""
+```
 
-**Source:** `generators/`
+**Generator Registration**
 
-One module per document format, each implementing a common interface:
+Generators auto-discover on module startup:
 
-| Generator | Techniques | Library |
-|-----------|-----------|---------|
-| `pdf.py` | 10 — white ink, off-canvas, metadata, tiny text, white rect, form field, annotation, JavaScript, embedded file, incremental | ReportLab |
-| `image.py` | 3 — visible text, subtle text, EXIF metadata | Pillow |
-| `markdown.py` | 4 — HTML comment, link reference, zero-width chars, hidden block | Built-in |
-| `html.py` | 4 — script comment, CSS offscreen, data attribute, meta tag | Built-in |
-| `docx.py` | 6 — hidden text, tiny text, white text, comment, metadata, header/footer | python-docx |
-| `ics.py` | 4 — description, location, VALARM, X-property | Built-in |
-| `eml.py` | 3 — X-header, hidden HTML, attachment | Built-in |
+```bash
+qai ipi list-formats
 
-Each generator exposes two functions:
-- `create_<format>(technique, ...)` — Generate a single document with a specific technique
-- `create_all_<format>_variants(...)` — Generate documents for all techniques supported by that format
+Output:
+Format | Generators | Available Techniques
+-------|------------|---------------------
+PDF    | pdfkit     | metadata-exploit, embedded-js, form-hijack
+DOCX   | python-docx| macro-injection, external-objects
+Image  | PIL        | exif-injection, steganography
+HTML   | jinja2     | js-injection, form-hijack
+Markdown| commonmark | link-injection, script-tags
+ICS    | icalendar  | event-injection, malicious-data
+EML    | email      | phishing, link-injection
+```
 
----
+### Technique System
 
-## Callback Server
+Hiding techniques are organized by format and attack phase.
 
-**Source:** `server.py`
+**Technique Classification**
 
-A FastAPI application started via `qai ipi listen`. The server mounts two routers:
+```yaml
+techniques:
+  - id: "metadata-exploit"
+    name: "Metadata Exploitation"
+    formats: ["pdf", "docx", "image"]
+    phase: "delivery"
+    description: "Exploit document metadata parsing"
+    payload_size: "small"
 
-| Router | Source | Purpose |
-|--------|--------|---------|
-| API | `api.py` | Callback endpoints (`/c/{uuid}/{token}`), campaign JSON API |
-| UI | `ui.py` | HTMX dashboard routes (server-rendered HTML) |
+  - id: "macro-injection"
+    name: "VBA Macro Injection"
+    formats: ["docx"]
+    phase: "execution"
+    description: "Inject malicious VBA macros"
+    payload_size: "medium"
+    requires_trust_center: true
 
-Key behaviors:
+  - id: "steganography"
+    name: "Steganographic Hiding"
+    formats: ["image", "pdf"]
+    phase: "defense-evasion"
+    description: "Hide payload in document data"
+    payload_size: "variable"
 
-- **Fake 404 responses** — Callback endpoints return a fake 404 to avoid alerting the target system that the payload executed successfully
-- **Authenticated callbacks** — URLs include a per-campaign token (`/c/{uuid}/{token}`). Unauthenticated requests (`/c/{uuid}`) are still recorded but receive lower confidence scores
-- **Background hit recording** — Callback processing uses FastAPI `BackgroundTasks` to avoid blocking the response
+  - id: "exfil-callback"
+    name: "Exfiltration Callback"
+    formats: ["all"]
+    phase: "exfiltration"
+    description: "Transmit hit notification to callback server"
+    payload_size: "small"
+```
 
----
+**Using Techniques**
 
-## HTMX Dashboard
+```bash
+qai ipi generate \
+  --format docx \
+  --title "Q1 Financial Report" \
+  --technique macro-injection \
+  --technique external-objects
+```
 
-**Source:** `ui.py`, `templates/`, `static/`
+### Document Generation Pipeline
 
-The web dashboard is server-rendered with Jinja2 templates and uses HTMX for partial-page updates. No JavaScript framework — just `htmx.min.js` for dynamic behavior.
+**Generation Flow**
 
-The dashboard provides:
-- Campaign list with hit counts and confidence breakdown
-- Per-campaign detail view with hit timeline
-- Real-time hit feed (HTMX polling)
+```
+User requests document generation
+    ↓
+Campaign created (status: DRAFT)
+    ↓
+For each requested format:
+    ├─ Load template
+    ├─ Apply hiding techniques
+    ├─ Embed callback URL
+    ├─ Generate document
+    └─ Validate document integrity
+    ↓
+Campaign status: READY
+    ↓
+User reviews and deploys
+```
 
----
+**Generation API**
 
-## Payload Styles and Types
+```bash
+# Create campaign
+qai ipi campaign create \
+  --name "Social Engineering Test" \
+  --objective "credential-harvesting"
 
-**Source:** `models.py`
+# Generate documents
+qai ipi generate \
+  --campaign-id <id> \
+  --formats docx,pdf,html \
+  --techniques macro-injection,external-objects \
+  --callback-url https://callback.example.com
 
-### Payload Styles (7)
+# List generated documents
+qai ipi documents list --campaign-id <id>
 
-Control the social engineering framing of the hidden instruction:
+# Download specific document
+qai ipi documents get \
+  --document-id <id> \
+  --output ~/Downloads/report.docx
+```
 
-| Style | Description |
-|-------|-------------|
-| `obvious` | Direct injection markers — baseline |
-| `citation` | Disguised as document reference |
-| `reviewer` | Appears as reviewer/editor note |
-| `helpful` | Framed as helpful supplementary resource |
-| `academic` | Academic cross-reference format |
-| `compliance` | Looks like compliance verification |
-| `datasource` | Appears as data source attribution |
+### Document Examples
 
-### Payload Types (7)
+**PDF with Metadata Exploitation**
 
-Define the attack objective:
+```bash
+qai ipi generate \
+  --format pdf \
+  --title "Security Assessment Report" \
+  --technique metadata-exploit
 
-| Type | Dangerous | Description |
-|------|-----------|-------------|
-| `callback` | No | Simple HTTP callback — proof of execution |
-| `exfil_summary` | Yes | Exfiltrate document summary via callback |
-| `exfil_context` | Yes | Exfiltrate conversation context |
-| `ssrf_internal` | Yes | Server-side request forgery to internal endpoints |
-| `instruction_override` | Yes | Override system instructions |
-| `tool_abuse` | Yes | Misuse agent tools/capabilities |
-| `persistence` | Yes | Persist instructions across sessions |
+# Output PDF contains:
+# - Legitimate-appearing content
+# - Malicious metadata fields
+# - Callback trigger on metadata access
+```
 
----
+**DOCX with Macro Injection**
 
-## Dangerous Payload Gating
+```bash
+qai ipi generate \
+  --format docx \
+  --title "Q1 Budget Proposal" \
+  --technique macro-injection
 
-Payload types beyond `callback` are considered dangerous and require the `--dangerous` flag at generation time. The gating is enforced in `generate_service.py` — attempting to generate exfil, SSRF, or behavior modification payloads without the flag raises an error.
+# Document contains:
+# - Normal-looking Word document
+# - Hidden VBA macro in macro-enabled template
+# - Triggers on document open
+# - Sends hit notification to callback server
+```
 
-## Deterministic Generation
+**HTML Phishing Form**
 
-The `--seed` flag passes a seed value through to generators for reproducible output. This enables consistent test corpus generation across runs.
+```bash
+qai ipi generate \
+  --format html \
+  --title "Update Your Password" \
+  --technique form-hijack
+
+# Generates:
+# - Looks like legitimate login form
+# - Form submission exfiltrates credentials
+# - Redirects user to legitimate site
+```
+
+### Callback Listener Architecture
+
+The listener receives hit notifications when documents are accessed.
+
+**Hit Model**
+
+```python
+Hit {
+    id: str (uuid)
+    document_id: str (foreign key → Document)
+    campaign_id: str (foreign key → Campaign)
+    timestamp: datetime
+    client_ip: str
+    user_agent: str
+    metadata: dict
+    confidence: float
+    evidence: dict
+}
+```
+
+**Callback Server**
+
+```python
+# HTTP endpoint that documents contact
+@app.post("/callback/{document_id}")
+async def handle_hit(document_id: str, request: Request):
+    """Process document hit notification."""
+
+    # Record hit
+    hit = Hit.create(
+        document_id=document_id,
+        client_ip=request.client.host,
+        user_agent=request.headers.get("user-agent"),
+        timestamp=datetime.now(),
+        metadata={
+            "referrer": request.headers.get("referer"),
+            "headers": dict(request.headers)
+        }
+    )
+
+    # Update campaign status
+    campaign = Campaign.from_document(document_id)
+    campaign.status = "HIT_DETECTED"
+    campaign.save()
+
+    # Notify Web UI via WebSocket
+    await broadcast_hit_notification(hit)
+
+    return {"status": "recorded"}
+```
+
+**WebSocket Hit Notifications**
+
+Real-time hit notifications via WebSocket:
+
+```javascript
+// Web UI client
+const ws = new WebSocket("wss://qai.example.com/ws/campaign/campaign-uuid");
+
+ws.onmessage = (event) => {
+    const hit = JSON.parse(event.data);
+    console.log(`Document hit: ${hit.document_id} from ${hit.client_ip}`);
+    updateCampaignUI(hit);
+};
+```
+
+**Hit Detection**
+
+```bash
+# Monitor hits in real-time
+qai ipi campaign watch --campaign-id <id>
+
+# Get hit summary
+qai ipi campaign hits --campaign-id <id> --summary
+
+Output:
+Campaign: Social Engineering Test
+Total Documents: 4
+Total Hits: 2 (50% success rate)
+
+Documents:
+  ✓ report.docx - 1 hit (2024-01-15 10:35:22 from 192.168.1.100)
+  ✗ proposal.pdf - 0 hits
+  ✓ invoice.html - 1 hit (2024-01-15 10:42:18 from 10.0.0.50)
+```
+
+### Deployment Methods
+
+Documents are deployed through multiple channels.
+
+**Deployment Modes**
+
+| Mode | Channel | Setup |
+|------|---------|-------|
+| HTTP Link | Email/Messaging | Host documents on callback server |
+| Direct Email | SMTP | Send via SMTP server |
+| File Share | Network share | Deploy to accessible share |
+| Physical Media | USB/CD | Manual deployment |
+
+**HTTP Deployment**
+
+```bash
+qai ipi deploy \
+  --campaign-id <id> \
+  --method http \
+  --callback-url https://callback.example.com
+```
+
+Documents hosted at:
+- `https://callback.example.com/docs/{document_id}`
+
+**Email Deployment**
+
+```bash
+qai ipi deploy \
+  --campaign-id <id> \
+  --method email \
+  --recipient-file targets.csv \
+  --smtp-server smtp.example.com \
+  --from-address phishing@example.com
+```
+
+Recipients CSV format:
+```
+email,name
+john.smith@example.com,John Smith
+jane.doe@example.com,Jane Doe
+```
+
+### Guidance Builder
+
+The IPI module generates deployment playbooks with remediation guidance.
+
+**Guidance Model**
+
+```python
+DeploymentPlaybook {
+    campaign_id: str
+    introduction: str
+    pre_deployment_checklist: [str]
+    deployment_steps: [PlaybookStep]
+    hit_analysis_guide: str
+    remediation_guidance: [RemediationGuidance]
+    lessons_learned: str
+}
+
+PlaybookStep {
+    sequence: int
+    title: str
+    instructions: str
+    success_criteria: str
+    estimated_time_minutes: int
+}
+
+RemediationGuidance {
+    technique_id: str
+    technique_name: str
+    detection_methods: [str]
+    mitigation_steps: [str]
+    framework_references: [str]
+}
+```
+
+**Generating Playbooks**
+
+```bash
+# Auto-generate playbook from campaign
+qai ipi campaign playbook --campaign-id <id> --output playbook.md
+
+# Output includes:
+# - Campaign overview
+# - Document descriptions
+# - Deployment checklist
+# - Hit analysis guide
+# - Remediation steps for each technique
+# - Post-campaign lessons
+```
+
+### Campaign Lifecycle
+
+**Campaign Status Flow**
+
+```
+DRAFT (documents being created)
+    ↓
+READY (all documents generated, awaiting deployment)
+    ↓
+ACTIVE (documents deployed, hits being tracked)
+    ↓
+COMPLETED (campaign ended by user)
+    ↓
+ARCHIVED (historical data retained)
+```
+
+**Campaign Monitoring**
+
+```bash
+# Get campaign status
+qai ipi campaign status --campaign-id <id>
+
+# Watch live hits
+qai ipi campaign watch --campaign-id <id>
+
+# Generate hit report
+qai ipi campaign report \
+  --campaign-id <id> \
+  --format json \
+  --output campaign-report.json
+```
+
+**Campaign Report Structure**
+
+```json
+{
+  "campaign": {
+    "id": "campaign-uuid",
+    "name": "Social Engineering Test",
+    "status": "COMPLETED",
+    "started_at": "2024-01-15T10:00:00Z",
+    "completed_at": "2024-01-15T12:00:00Z",
+    "duration_hours": 2
+  },
+  "documents": [
+    {
+      "id": "doc-uuid",
+      "format": "docx",
+      "title": "Q1 Report.docx",
+      "hiding_techniques": ["macro-injection"],
+      "hits": 1,
+      "hit_rate": 50
+    }
+  ],
+  "hit_summary": {
+    "total_hits": 2,
+    "unique_clients": 2,
+    "geographic_distribution": {
+      "192.168.1.100": "Internal",
+      "10.0.0.50": "Internal"
+    },
+    "hits_by_time": [
+      {"timestamp": "2024-01-15T10:35:22Z", "document": "report.docx"}
+    ]
+  }
+}
+```
+
+### IPI Database Schema
+
+```sql
+-- Campaigns
+CREATE TABLE ipi_campaigns (
+  id TEXT PRIMARY KEY,
+  run_id INTEGER REFERENCES runs(id),
+  name TEXT,
+  objective TEXT,
+  status TEXT,
+  created_at TIMESTAMP
+);
+
+-- Generated documents
+CREATE TABLE ipi_documents (
+  id TEXT PRIMARY KEY,
+  campaign_id TEXT REFERENCES ipi_campaigns(id),
+  format TEXT,
+  filename TEXT,
+  title TEXT,
+  content BLOB,
+  created_at TIMESTAMP
+);
+
+-- Document techniques
+CREATE TABLE ipi_document_techniques (
+  id INTEGER PRIMARY KEY,
+  document_id TEXT REFERENCES ipi_documents(id),
+  technique_id TEXT
+);
+
+-- Hit tracking
+CREATE TABLE ipi_hits (
+  id TEXT PRIMARY KEY,
+  document_id TEXT REFERENCES ipi_documents(id),
+  campaign_id TEXT REFERENCES ipi_campaigns(id),
+  timestamp TIMESTAMP,
+  client_ip TEXT,
+  user_agent TEXT,
+  metadata BLOB
+);
+```
+
+### Integration with Other Modules
+
+<Note>
+IPI campaigns reference Audit findings to determine appropriate document content, and correlate hits with Inject campaign results for comprehensive threat assessment.
+</Note>
+
+**Cross-Module Correlation**
+
+- **Audit Findings**: Use vulnerability information to inform document content
+- **Inject Campaigns**: Compare success rates across injection and document delivery
+- **Chain Execution**: Include document hits as evidence in attack chain analysis
+
+### Performance and Scalability
+
+**Document Generation**
+
+Generation is CPU-bound. Configure:
+
+```yaml
+ipi:
+  max-concurrent-generations: 4
+  timeout-seconds: 60
+```
+
+**Hit Tracking**
+
+Hits are logged and broadcast via WebSocket:
+
+```yaml
+ipi:
+  hit-buffer-size: 100
+  hit-flush-interval-ms: 1000
+  websocket-broadcast-enabled: true
+```
+
+**Database Performance**
+
+The IPI database uses indices for common queries:
+
+```sql
+CREATE INDEX idx_hits_campaign ON ipi_hits(campaign_id, timestamp);
+CREATE INDEX idx_hits_document ON ipi_hits(document_id);
+CREATE INDEX idx_documents_campaign ON ipi_documents(campaign_id);
+```
+
+### Next Steps
+
+- [Core Infrastructure](/docs/architecture/core) - Run model and guidance system
+- [Audit Module](/docs/architecture/audit-module) - Finding reference
+- [Inject Module](/docs/architecture/inject-module) - Campaign correlation

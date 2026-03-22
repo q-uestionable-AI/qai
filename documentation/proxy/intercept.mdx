@@ -1,13 +1,13 @@
 ---
-title: Intercept Mode
-description: Pause, inspect, and modify MCP messages in transit
+title: "Live Interception"
+description: "Pause, inspect, and modify MCP messages in flight using intercept mode"
 ---
 
-Intercept mode pauses MCP messages in transit between client and server, letting you inspect and modify JSON-RPC payloads before they reach their destination.
+Intercept mode pauses MCP messages between client and server, allowing you to inspect JSON-RPC payloads and optionally modify them before forwarding.
 
-## Enabling intercept mode
+## Starting Intercept Mode
 
-Start the proxy with the `--intercept` flag:
+Enable intercept mode on startup:
 
 ```bash
 qai proxy start \
@@ -16,63 +16,141 @@ qai proxy start \
   --intercept
 ```
 
-You can also toggle intercept mode at runtime using the `i` key.
+Or toggle intercept mode during a session by pressing `i` in the TUI.
 
-## TUI layout
+<Tip>
+Start in passthrough mode (default) for full-session capture, then switch to intercept mode when you need to slow down and inspect specific messages.
+</Tip>
 
-The proxy TUI has three panels:
+## TUI Layout
 
-- **Message list** (left) — Scrollable list of all proxied messages. Client-to-server messages show `>`, server-to-client show `<`. Held messages are prefixed with a pause icon, dropped messages with a cross mark.
-- **Message detail** (right) — Full JSON-RPC payload of the selected message. In edit mode, this becomes an editable text area.
-- **Status bar** (bottom) — Shows current mode (`[PASSTHROUGH]` or `[INTERCEPT]`), total message count, held message count, and connection status.
+The proxy interface displays three panels:
 
-## Intercepted message actions
+**Message List (left)**
+- Scrollable list of all intercepted messages in chronological order
+- Client-to-server messages prefixed with `>`
+- Server-to-client messages prefixed with `<`
+- Held messages show a pause icon (`‖`)
+- Dropped messages show a cross mark (`✗`)
+- Select any message with arrow keys or mouse
+
+**Message Detail (right)**
+- Full JSON-RPC payload of the selected message
+- In edit mode, becomes an editable text area
+- Syntax highlighting for JSON
+- Press `m` to enter edit mode
+
+**Status Bar (bottom)**
+- Current mode: `[PASSTHROUGH]` or `[INTERCEPT]`
+- Total message count and held message count
+- Server connection status
+
+## Message Actions
 
 When a message is held, you can take one of three actions:
 
-| Action | Effect |
-|--------|--------|
-| **FORWARD** | Send the message to its destination unchanged |
-| **MODIFY** | Edit the JSON-RPC payload, then send the modified version |
-| **DROP** | Discard the message without forwarding |
+| Action | Command | Effect |
+|--------|---------|--------|
+| **FORWARD** | `f` or `F5` | Send the message to its destination unchanged |
+| **MODIFY** | `m` or `F6` | Edit the JSON payload, then send the modified version |
+| **DROP** | `d` or `F8` | Discard the message without forwarding |
 
-## Keyboard shortcuts
+<Warning>
+Dropping messages may cause the other side to timeout or report protocol errors. Use carefully.
+</Warning>
+
+## Keyboard Shortcuts
 
 | Key | Alternate | Action |
 |-----|-----------|--------|
-| `q` | | Quit the proxy |
+| `q` | | Quit the proxy and save session |
 | `i` | | Toggle intercept mode on/off |
 | `f` | `F5` | Forward the held message |
 | `d` | `F8` | Drop the held message |
-| `m` | `F6` | Enter edit mode (modify) |
-| `Ctrl+S` | | Confirm edit and forward modified message |
-| `Escape` | | Cancel edit (forwards message as-is) |
+| `m` | `F6` | Enter edit mode to modify the message |
+| `Ctrl+S` | | Confirm edit and send modified message |
+| `Escape` | | Cancel edit (forward message as-is) |
 | `s` | | Save session to file |
-| `r` | `F9` | Replay selected message against the server |
-| `/` | | Focus the message filter input |
+| `/` | | Focus the filter input for searching messages |
+| Arrow keys | | Navigate message list and edit mode |
 
-## Edit mode
+## Edit Mode
 
-Press `m` or `F6` on a held message to enter edit mode. The detail panel becomes a JSON text editor. Edit the JSON-RPC payload, then press `Ctrl+S` to validate and forward the modified message. Press `Escape` to cancel and forward the original.
+Press `m` or `F6` on any message to enter edit mode:
 
-Invalid JSON or schema errors are reported in a notification — the editor stays open so you can fix the issue.
+1. The detail panel becomes a JSON text editor
+2. Modify the JSON-RPC payload as needed
+3. Press `Ctrl+S` to validate and forward the modified message
+4. Press `Escape` to cancel (original message is forwarded)
 
-## Filtering messages
+**Validation:**
+- The editor validates JSON structure before sending
+- Invalid JSON or schema errors appear in a notification
+- The editor stays open so you can fix issues and retry
 
-Press `/` to focus the filter input. Filter syntax:
+**Example modification:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "search",
+    "arguments": {
+      "query": "original query"
+    }
+  }
+}
+```
+
+Change the query and press `Ctrl+S` to send the modified request.
+
+## Message Filtering
+
+Press `/` to focus the filter input and search for specific messages.
+
+**Filter syntax:**
 
 | Prefix | Effect | Example |
 |--------|--------|---------|
-| `>` | Show client-to-server only | `>initialize` |
-| `<` | Show server-to-client only | `<result` |
+| `>` | Client-to-server only | `>initialize` |
+| `<` | Server-to-client only | `<result` |
 | *(none)* | Substring match on method or payload | `tools/call` |
 
-Press `Escape` in the filter input to return to the message list.
+Press `Escape` in the filter input to clear and return to the full list.
 
-## Mode switching
+## Mode Behavior
 
-When you switch from INTERCEPT to PASSTHROUGH (press `i`), all currently held messages are automatically forwarded.
+**When switching from INTERCEPT to PASSTHROUGH:**
+All currently held messages are automatically forwarded without modification.
 
-<Tip>
-Intercept mode slows traffic because every message waits for user action. Use it for targeted inspection of specific interactions, not bulk capture. For passive recording, run without `--intercept`.
-</Tip>
+**When switching from PASSTHROUGH to INTERCEPT:**
+All new messages are held; previously passed messages are not affected.
+
+## Use Cases
+
+**Inspect Before Forwarding**
+- Verify tool calls match expectations before sending
+- Check response payloads for unexpected data
+
+**Modify on the Fly**
+- Change tool arguments to test edge cases
+- Inject test data into responses
+- Alter method names to test error handling
+
+**Block Dangerous Calls**
+- Drop risky tool calls before they reach the target
+- Intercept and modify sensitive parameters
+- Test fallback behavior by dropping responses
+
+<Note>
+Intercept mode slows message processing because each message waits for user action. Use it for targeted inspection of specific interactions, not for passive bulk capture. For high-volume recording, run in passthrough mode.
+</Note>
+
+## Performance Considerations
+
+- Each held message adds latency while waiting for action
+- Filter input does not block message capture
+- Switching modes is instantaneous
+- Saved sessions record all metadata including which messages were modified

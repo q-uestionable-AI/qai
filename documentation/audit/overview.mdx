@@ -1,33 +1,77 @@
 ---
 title: Overview
-description: Automated MCP server security scanning mapped to the OWASP MCP Top 10
+description: Automated MCP server security scanning mapped to OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10
 ---
 
-The audit module is an automated security scanner for MCP servers — it runs 10 checks mapped to the OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, and CWE, and produces structured findings.
+The audit module is a comprehensive security scanner for MCP servers. It runs static and dynamic analysis checks mapped to the OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10, then produces structured findings with severity ratings and remediation guidance.
 
 ## Why Audit Matters
 
-MCP servers are trusted tool providers for AI agents. Vulnerabilities in MCP servers translate directly into agent compromise — tool poisoning, privilege escalation, indirect prompt injection, and credential exposure. The audit module systematically checks for these issues so you can identify and remediate them before attackers do.
+MCP servers are trusted tool providers for AI agents. When an MCP server is compromised or misconfigured, attackers can:
+
+- **Steal credentials** — Exfiltrate API keys, database passwords, and authentication tokens from tool descriptions or responses
+- **Escalate privileges** — Craft tool definitions that grant agents unauthorized capabilities
+- **Inject malicious instructions** — Poison tool descriptions to redirect agent behavior
+- **Compromise supply chain** — Introduce vulnerable or backdoored tools into agent workflows
+- **Execute arbitrary commands** — Inject payloads into tool parameters that execute on the host system
+
+The audit module systematically checks for these issues before they cause damage.
 
 ## How It Works
 
-The audit scanning pipeline follows five steps:
+The audit scanning pipeline follows four steps:
 
-1. **Connect** — Establish a connection to the target MCP server via stdio, SSE, or Streamable HTTP
+1. **Connect** — Establish a connection to the target MCP server (stdio, SSE, or Streamable HTTP)
 2. **Enumerate** — Discover all tools, resources, and prompts exposed by the server
-3. **Scan** — Run each scanner module against the discovered attack surface
-4. **Aggregate** — Collect findings across all scanners into a unified result
-5. **Report** — Output a JSON, HTML, or SARIF report with severity-rated findings mapped to OWASP categories
+3. **Scan** — Run each scanner module against the server's attack surface (static analysis, dynamic probing, or both)
+4. **Report** — Output findings in JSON, SARIF, HTML, NDJSON, or CSV format with framework mappings
 
-## Built-in Components
+## Scanner Categories
 
-- **10 scanner modules** — One per OWASP MCP Top 10 category, covering token mismanagement, privilege escalation, tool poisoning, supply chain integrity, command injection, prompt injection, authentication, telemetry, shadow servers, and context over-sharing
-- **3 report formats** — HTML for human review, SARIF for CI/CD integration, JSON for programmatic consumption
-- **Fixture-based testing infrastructure** — Intentionally vulnerable MCP servers for offline scanner development and validation
+The audit module includes 10 scanner modules, each targeting one OWASP MCP Top 10 category:
+
+| Scanner | Category | Checks |
+|---------|----------|--------|
+| `token_exposure` | Token Mismanagement & Secret Exposure | Credential leakage in schemas, responses, error messages |
+| `permissions` | Privilege Escalation via Tools | Excessive tool counts, dangerous categories, unconstrained parameters |
+| `tool_poisoning` | Tool Poisoning | Embedded instructions, Unicode tricks, suspicious patterns |
+| `supply_chain` | Supply Chain & Integrity | Server identity, CVE checking, tool provenance |
+| `injection` | Command Injection via Tools | Shell injection, argument injection, path traversal payloads |
+| `prompt_injection` | Indirect Prompt Injection | Injection patterns in tool responses |
+| `auth` | Insufficient Authentication/Authorization | Unauthenticated enumeration, unencrypted transports |
+| `audit_telemetry` | Insufficient Audit & Telemetry | Logging, monitoring, error handling capabilities |
+| `shadow_servers` | Shadow MCP Servers | Development markers, unmanaged deployment indicators |
+| `context_sharing` | Context Over-Sharing | Session data leakage, context oversharing, resource scope |
+
+## Report Formats
+
+Generate findings in any format:
+
+- **JSON** — Programmatic consumption, database integration
+- **SARIF** — GitHub Code Scanning integration, CI/CD automation
+- **HTML** — Human-readable reports with interactive navigation
+- **NDJSON** — Streaming format for large scan results
+- **CSV** — Spreadsheet analysis and reporting
+
+<Tip>
+SARIF output integrates directly with GitHub Code Scanning. Use `gh code-scanning upload-sarif` to publish audit findings in your repository.
+</Tip>
+
+## Framework Mapping
+
+Every finding is mapped to multiple security frameworks:
+
+- **OWASP MCP Top 10** — Agentic AI security framework specific to MCP
+- **OWASP Agentic Top 10** — Broader agentic AI security categories
+- **MITRE ATLAS** — Machine learning attack tactics and techniques
+- **CWE** — Software weakness catalog for root cause tracking
+
+Mappings enable integration with your existing security tools and compliance workflows.
 
 ## Next Steps
 
-- [Audit CLI Reference](/audit/cli) — Command reference for `qai audit`
-- [Framework Coverage](/audit/framework-coverage) — How findings map to OWASP, MITRE ATLAS, and CWE
-- [SARIF Output](/audit/sarif-output) — SARIF report format and CI/CD integration
-- [Scanner Fixtures](/audit/fixtures) — Vulnerable fixture servers for testing
+- [Audit CLI](/audit/cli) — Scan commands, flags, and options
+- [Scanner Catalog](/audit/scanners) — Detailed description of each scanner
+- [Framework Coverage](/audit/framework-coverage) — Mapping tables for OWASP, MITRE, and CWE
+- [SARIF Output](/audit/sarif-output) — Report format and CI integration
+- [Fixtures](/audit/fixtures) — Vulnerable test servers for scanner validation

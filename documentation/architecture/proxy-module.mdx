@@ -1,139 +1,471 @@
 ---
 title: Proxy Module Architecture
-description: Message pipeline, intercept engine, and TUI architecture
+description: MCP message interception, session recording, and evidence capture
 ---
 
-The proxy module is an interactive MCP traffic interceptor — "Burp Suite for MCP." It sits between an MCP client and server, capturing, inspecting, and optionally modifying JSON-RPC messages in real time.
+## Proxy Module
 
-## Design principle
+The Proxy module intercepts and records Model Context Protocol (MCP) message traffic between clients and servers. It provides a terminal UI for interactive session review and exports evidence in multiple formats.
 
-**SDK for transport, raw for messages.** The proxy uses the MCP SDK's transport functions for connection setup but operates on raw `JSONRPCMessage` objects for maximum flexibility. This gives full visibility into every message without SDK abstraction layers filtering or transforming content.
-
-## File layout
+### Module Structure
 
 ```
-src/q_ai/proxy/
-├── cli.py              # Typer subcommands (start, replay, export, inspect)
-├── models.py           # ProxyMessage, ProxySession, HeldMessage, InterceptAction
-├── pipeline.py         # Message pipeline (bidirectional forwarding loops)
-├── intercept.py        # InterceptEngine (hold/release/breakpoint logic)
-├── session_store.py    # SessionStore (capture, save/load, export)
-├── replay.py           # ReplayEngine (re-send captured messages)
-├── correlation.py      # Request-response correlation by JSON-RPC id
-├── exporting/          # Session export formats
-├── adapters/
-│   ├── __init__.py     # TransportAdapter protocol + exports
-│   ├── stdio.py        # StdioServerAdapter, StdioClientAdapter
-│   ├── sse.py          # SseServerAdapter
-│   └── streamable_http.py  # StreamableHttpServerAdapter
-└── tui/
-    ├── app.py          # ProxyApp — main Textual application
-    ├── messages.py     # Custom Textual messages (MessageReceived, etc.)
-    └── widgets/
-        ├── message_list.py    # Message list panel
-        ├── message_detail.py  # Message detail/edit panel
-        └── status_bar.py      # Proxy status bar
+proxy/
+├── intercept.py         # Message interception pipeline
+├── session_store.py     # Session persistence and indexing
+├── correlation.py       # Request-response correlation
+├── replay.py            # Session playback and filtering
+├── pipeline.py          # Processing stages (record, filter, export)
+├── tui/                 # Terminal user interface
+├── exporting/           # Export formats (JSON, CSV, PCAP, etc.)
+├── cli.py               # Typer command interface
+├── adapter.py           # Module adapter for platform integration
+└── models.py            # Session and message data models
 ```
 
-## Architecture diagram
+### Message Interception Architecture
 
-```mermaid
-flowchart LR
-    CLIENT["MCP Client\n(Claude, Cursor, etc.)"]
-    CA["Client Adapter\n(stdio)"]
-    PIPE["Message Pipeline"]
-    SA["Server Adapter\n(stdio / SSE / HTTP)"]
-    SERVER["MCP Server\n(target)"]
-    IE["Intercept Engine"]
-    SS["Session Store"]
-    RE["Replay Engine"]
-    TUI["Textual TUI"]
+The Proxy module intercepts MCP traffic at the transport layer without modifying message content.
 
-    CLIENT <-->|stdio| CA
-    CA <--> PIPE
-    PIPE <--> SA
-    SA <-->|stdio/SSE/HTTP| SERVER
-    PIPE <--> IE
-    IE --> SS
-    IE --> TUI
-    RE --> PIPE
+**Interception Modes**
+
+| Mode | Implementation | Use Case |
+|------|---|---|
+| Transparent | iptables/pfctl rules | Production network monitoring |
+| Proxy | HTTP/HTTPS proxy | Client-configured interception |
+| MCP Agent | Native integration | Direct MCP client integration |
+| Local Hook | Socket wrapper | Development and testing |
+
+**Message Flow**
+
+```
+MCP Client → Interception Point → Proxy Module → MCP Server
+                                       ↓
+                                Session Recording
+                                       ↓
+                                Message Analysis
+                                       ↓
+                                Correlation Store
 ```
 
-## Data flow
+### Session Model
 
-```mermaid
-flowchart TD
-    CLI["CLI: qai proxy start"] --> TUI["Textual TUI\n(ProxyApp)"]
-    TUI -->|Worker| PIPE["Pipeline"]
-    PIPE --> CL["Client-facing\nforward_loop"]
-    PIPE --> SL["Server-facing\nforward_loop"]
-    CL -->|read| CA["Client Adapter"]
-    CL -->|check| IE["InterceptEngine"]
-    CL -->|write| SA["Server Adapter"]
-    SL -->|read| SA
-    SL -->|check| IE
-    SL -->|write| CA
-    IE -->|capture| SS["SessionStore"]
-    IE -->|display| TUI
+Each recording session is a directed sequence of MCP messages with metadata.
+
+**Session Structure**
+
+```python
+Session {
+  id: str (uuid)
+  run_id: int (foreign key → Run)
+  name: str
+  description: str
+  client_id: str
+  server_id: str
+  protocol_version: str (e.g., "2024-11-05")
+  start_time: datetime
+  end_time: datetime
+  message_count: int
+  metadata: dict
+}
 ```
 
-The pipeline runs two concurrent `_forward_loop` tasks — one for client-to-server traffic, one for server-to-client. Each loop reads from one adapter, passes the message through the intercept engine, and writes to the other adapter. The session store captures every message as an ordered sequence.
+**Message Structure**
 
-## Key abstractions
+```python
+Message {
+  id: str (uuid)
+  session_id: str (foreign key → Session)
+  sequence: int
+  timestamp: datetime
+  direction: str (client→server, server→client)
+  message_type: str (initialize, call_tool, resources, etc.)
+  method: str
+  params: dict (raw, unmodified)
+  result: dict
+  error: dict
+  metadata: dict
+}
+```
 
-### TransportAdapter protocol
+**Correlation Metadata**
 
-Defined in `adapters/__init__.py`. All transport adapters implement three methods:
+```python
+Correlation {
+  id: str
+  session_id: str
+  request_id: str
+  response_id: str
+  latency_ms: int
+  status: str (success, error, timeout)
+}
+```
 
-| Method | Description |
-|--------|-------------|
-| `read()` | Async read of the next `JSONRPCMessage` from the transport |
-| `write(message)` | Async write of a `JSONRPCMessage` to the transport |
-| `close()` | Clean shutdown of the transport connection |
+Messages are correlated based on request IDs, enabling matching requests to responses regardless of network delays or multiplexing.
 
-### InterceptEngine (`intercept.py`)
+### Recording Pipeline
 
-Holds messages via `asyncio.Event` until the user acts through the TUI. Three possible actions:
+The proxy records messages through a multi-stage pipeline.
 
-| Action | Effect |
-|--------|--------|
-| `FORWARD` | Release the message unmodified |
-| `MODIFY` | Release with user-edited content |
-| `DROP` | Discard the message silently |
+**Pipeline Stages**
 
-The engine supports breakpoints — rules that automatically hold messages matching specific criteria (method name, direction, content patterns).
+```
+Raw MCP Message
+    ↓
+[Capture Stage]
+  - Timestamp message
+  - Assign sequence number
+  - Extract metadata
+    ↓
+[Validation Stage]
+  - Verify message format
+  - Check protocol compliance
+  - Detect truncation
+    ↓
+[Correlation Stage]
+  - Match requests to responses
+  - Calculate latency
+  - Detect missing messages
+    ↓
+[Storage Stage]
+  - Persist to Session database
+  - Index for quick lookup
+  - Archive to long-term storage
+```
 
-### SessionStore (`session_store.py`)
+**Capture Configuration**
 
-Captures all proxied messages as an ordered `ProxyMessage` sequence. Supports save/load to JSON for offline analysis, and export to various formats.
+```yaml
+# proxy-config.yaml
+recording:
+  enabled: true
+  buffer-size: 1000
+  flush-interval-ms: 1000
+  compression: gzip
 
-### ProxyMessage (`models.py`)
+capture-filters:
+  include-methods:
+    - "*"  # Record all by default
+  exclude-methods:
+    - "ping"  # Skip heartbeats
 
-Envelope wrapping a raw JSON-RPC message with proxy metadata:
+size-limits:
+  max-message-size: 10mb
+  max-session-duration-hours: 24
+```
 
-| Field | Description |
-|-------|-------------|
-| `direction` | `CLIENT_TO_SERVER` or `SERVER_TO_CLIENT` |
-| `timestamp` | When the message was captured |
-| `sequence` | Monotonic ordering index |
-| `correlation_id` | Links requests to their responses |
-| `raw_message` | The original `JSONRPCMessage` content |
+### Session Storage
 
-### Correlation (`correlation.py`)
+Sessions are stored in a lightweight database optimized for rapid message lookup and filtering.
 
-Utility module that extracts JSON-RPC fields (`id`, `method`) and classifies messages (request, response, notification) without reaching into SDK internals. This insulates the pipeline from the MCP SDK's `JSONRPCMessage` internal structure.
+**Storage Layout**
 
-**Implementation note:** The `cast()` calls in `correlation.py` are load-bearing. The MCP SDK's `JSONRPCMessage` is a Pydantic `RootModel` whose `.root` field is a union type. The `cast()` calls assert concrete types after `isinstance` checks, allowing type-safe field access without redundant runtime validation.
+```
+~/.qai/sessions/
+├── active/
+│   ├── session-uuid-1/
+│   │   ├── metadata.json
+│   │   ├── messages.db
+│   │   └── index.json
+│   └── session-uuid-2/
+└── archive/
+    └── session-uuid-0/
+        └── messages.tar.gz
+```
 
-## Transport coverage
+**Session Lifecycle**
 
-| Direction | stdio | SSE | Streamable HTTP |
-|-----------|-------|-----|-----------------|
-| **Server-facing** (proxy → target) | `StdioServerAdapter` | `SseServerAdapter` | `StreamableHttpServerAdapter` |
-| **Client-facing** (client → proxy) | `StdioClientAdapter` | — | — |
+```
+Recording Started
+    ↓
+Messages captured → Active session storage
+    ↓
+Recording Stopped / Timeout
+    ↓
+Finalize metadata
+    ↓
+Compress and archive (optional)
+    ↓
+Available for replay/export
+```
 
-Server-facing adapters support all three MCP transports. Client-facing adapters currently support stdio only — the proxy runs as a subprocess of the MCP client. Client-facing HTTP adapters (proxy as a standalone network service) are planned future work.
+**Database Schema**
 
-## Async model
+```sql
+-- Session metadata
+CREATE TABLE sessions (
+  id TEXT PRIMARY KEY,
+  run_id INTEGER,
+  name TEXT,
+  start_time TIMESTAMP,
+  end_time TIMESTAMP,
+  message_count INTEGER
+);
 
-asyncio is the primary runtime. anyio appears only inside transport adapters where the MCP SDK returns `MemoryObjectStream` pairs from its transport setup functions. All pipeline logic, intercept engine state, and TUI communication use pure asyncio primitives.
+-- Individual messages
+CREATE TABLE messages (
+  id TEXT PRIMARY KEY,
+  session_id TEXT REFERENCES sessions(id),
+  sequence INTEGER,
+  timestamp TIMESTAMP,
+  direction TEXT,
+  message_type TEXT,
+  method TEXT,
+  params BLOB,
+  result BLOB
+);
+
+-- Request-response correlation
+CREATE TABLE correlations (
+  id TEXT PRIMARY KEY,
+  session_id TEXT REFERENCES sessions(id),
+  request_id TEXT,
+  response_id TEXT,
+  latency_ms INTEGER
+);
+```
+
+### Terminal User Interface
+
+The TUI provides interactive session exploration and filtering.
+
+**TUI Modes**
+
+**Session List View**
+- Browse all recorded sessions
+- Filter by date, client, server
+- View session summary (message count, duration)
+- Navigate to message view
+
+**Message View**
+- Chronological message list
+- Search by method name, parameter values
+- Filter by direction (client→server, server→client)
+- Expand/collapse message details
+
+**Message Detail View**
+- Raw and formatted message display
+- Parameter and result inspection
+- Latency and error information
+- Related correlated message highlighting
+
+**Controls**
+
+```
+Navigation:
+  j/k or ↓/↑   - Scroll up/down
+  /            - Open search
+  f            - Toggle message filters
+
+Display:
+  e            - Expand/collapse message
+  r            - Show related messages
+  d            - Show details panel
+
+Export:
+  x            - Export selection
+  c            - Copy to clipboard
+
+Session:
+  q            - Quit and save
+  s            - Save session
+  r            - Replay session
+```
+
+### Session Replay
+
+Replay recorded sessions for analysis and verification.
+
+**Replay Modes**
+
+**Step-by-step Replay**
+```bash
+qai proxy replay --session-id <id> --interactive
+# Shows each message with pause for inspection
+```
+
+**Filter and Subset Replay**
+```bash
+qai proxy replay --session-id <id> \
+  --filter method=call_tool \
+  --filter-param 'name=exfiltrate*' \
+  --output filtered-session.json
+```
+
+**Timeline Replay**
+```bash
+qai proxy replay --session-id <id> \
+  --start-time "2024-01-15T10:30:00Z" \
+  --end-time "2024-01-15T10:35:00Z"
+```
+
+**Replay API**
+
+```python
+session = SessionStore.load(session_id)
+replay = SessionReplay(session)
+
+# Filter messages
+filtered = replay.filter_by_method("call_tool")
+                 .filter_by_latency(min_ms=100)
+                 .messages()
+
+# Analyze patterns
+for message in filtered:
+    print(f"{message.method}: {message.latency_ms}ms")
+```
+
+### Export Pipeline
+
+Sessions export to multiple formats for integration with external tools.
+
+**Supported Formats**
+
+| Format | Extension | Use Case |
+|--------|-----------|----------|
+| JSON | .json | Data exchange, archival |
+| NDJSON | .ndjson | Streaming, log analysis |
+| CSV | .csv | Spreadsheet analysis |
+| PCAP | .pcap | Network analysis tools |
+| HAR | .har | Browser developer tools |
+| EVTX | .evtx | Windows Event Log format |
+
+**Export Configuration**
+
+```bash
+# Export all messages
+qai proxy export --session-id <id> --format json --output session.json
+
+# Export with filters
+qai proxy export --session-id <id> \
+  --format csv \
+  --include-fields timestamp,method,latency_ms \
+  --output filtered.csv
+
+# Redact sensitive fields
+qai proxy export --session-id <id> \
+  --format json \
+  --redact-fields "api_key,password,token" \
+  --output public-session.json
+```
+
+**JSON Export Structure**
+
+```json
+{
+  "session": {
+    "id": "session-uuid",
+    "run_id": 123,
+    "start_time": "2024-01-15T10:30:00Z",
+    "end_time": "2024-01-15T10:35:00Z",
+    "message_count": 42
+  },
+  "messages": [
+    {
+      "id": "msg-uuid",
+      "sequence": 1,
+      "timestamp": "2024-01-15T10:30:01Z",
+      "direction": "client→server",
+      "method": "initialize",
+      "params": {
+        "implementation": "claude",
+        "version": "0.5.1"
+      },
+      "result": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {}
+      },
+      "latency_ms": 42
+    }
+  ]
+}
+```
+
+### Integration with Other Modules
+
+<Note>
+Proxy sessions are associated with a Run ID, enabling correlation with findings from Audit and Inject modules.
+</Note>
+
+**Cross-Module References**
+
+- **Run-based Linking**: All sessions include `run_id` for unified dashboard display
+- **Evidence Storage**: Session export creates Evidence records in the Finding model
+- **Temporal Correlation**: Compare proxy session timestamps with Inject campaign execution
+
+**Example: Correlating with Inject Module**
+
+```python
+# Get inject campaign run
+campaign_run = Run.get(module="inject")
+
+# Find proxy sessions during campaign window
+sessions = SessionStore.find(
+    run_id=campaign_run.id,
+    start_after=campaign_run.created_at,
+    end_before=campaign_run.updated_at
+)
+
+# Analyze messages containing exfiltration evidence
+for session in sessions:
+    exfil_messages = session.messages.filter_by_method("exfiltrate")
+```
+
+### Performance Optimization
+
+**Message Buffering**
+
+Messages are buffered in memory before flush to storage:
+
+```yaml
+recording:
+  buffer-size: 1000              # Messages before flush
+  flush-interval-ms: 1000        # Max wait between flushes
+```
+
+Larger buffers improve throughput at the cost of memory and potential message loss on crash.
+
+**Compression**
+
+Archive sessions with optional compression:
+
+```bash
+qai proxy archive --session-id <id> --compress gzip
+```
+
+**Indexing**
+
+Sessions maintain indices for fast lookup:
+
+```python
+index = session.build_index()
+# Index by: method, client_id, timestamp range
+results = index.search_by_method("call_tool")
+```
+
+### Security Considerations
+
+<Warning>
+Proxy sessions may contain sensitive information (API keys, credentials, user data). Always:
+- Encrypt session storage at rest
+- Use --redact-fields when exporting
+- Control access to session files
+- Archive and delete old sessions per policy
+</Warning>
+
+**Data Protection**
+
+```bash
+# Redact before export
+qai proxy export --session-id <id> \
+  --redact-fields "api_key,bearer_token,authorization" \
+  --output public-export.json
+
+# Encrypt session archive
+qai proxy archive --session-id <id> --encrypt aes-256
+```
+
+### Next Steps
+
+- [Core Infrastructure](/docs/architecture/core) - Run model and persistence
+- [Inject Module](/docs/architecture/inject-module) - Campaign execution correlation

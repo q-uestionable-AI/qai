@@ -1,0 +1,12 @@
+# Gitleaks configuration — path allowlists for documentation examples
+#
+# The documentation directory contains curl examples with Authorization headers
+# (DefectDojo integration, GitHub Security integration) and bridge token references
+# (callback server). These are documentation examples, not real credentials.
+
+[allowlist]
+  paths = [
+    '''documentation/integrations/defectdojo\.mdx''',
+    '''documentation/integrations/github-security\.mdx''',
+    '''documentation/config/callback-server\.mdx''',
+  ]

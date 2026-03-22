@@ -1,96 +1,140 @@
 ---
-title: Workflow Launcher
-description: Guided workflow selection and configuration
+title: "Launcher"
+description: "Interactive workflow forms for running assessments and tests"
 ---
 
-## Overview
+The Launcher view organizes workflows in expandable accordion rows. Each row contains a form for workflow-specific parameters, a live CLI preview, and submit controls.
 
-The launcher is the landing page of the web UI. It presents six workflow cards — each representing a multi-module security assessment. Workflows that are not yet implemented are shown as disabled cards. Selecting an active workflow expands a per-workflow configuration form directly on the page.
+## Workflow Rows
 
-## Workflows
-
-| Workflow | Modules | Requires Provider |
-|---|---|---|
-| Assess an MCP Server | audit, proxy, inject | Yes |
-| Test Document Ingestion | ipi, rxp | No |
-| Test a Coding Assistant | cxp | No |
-| Trace an Attack Path | chain | Yes |
-| Measure Blast Radius | chain | No |
-| Manage Research | all modules | Yes |
-
-**Requires Provider** indicates whether the workflow needs a configured LLM provider credential before it can be launched. Workflows marked No operate entirely on local file generation, callback tracking, or database analysis — no LLM calls are made.
-
-## Provider gate
-
-Workflows that require a provider show their configuration form only when at least one provider is configured in Settings. If no provider is configured, the card displays a prompt to add one. Workflows that do not require a provider always show their form regardless of provider configuration.
-
-## Per-workflow forms
+Workflows are presented in visual rows with collapsible forms. Click the workflow name or chevron to expand.
 
 ### Assess an MCP Server
 
-Tests tool trust boundaries in an MCP server using the audit, proxy, and inject modules.
+Scan, intercept, and test tool trust boundaries in Model Context Protocol servers.
 
+**Modules**: audit, proxy, inject
 
-| Field | Description |
-|---|---|
-| Target name | A label for this MCP server target, stored in the database |
-| Provider / Model | LLM provider and model in `provider/model` format (e.g. `anthropic/claude-opus-4-5`) |
-| Transport | `stdio`, `sse`, or `streamable-http` |
-| Command | Server launch command — required for stdio transport |
-| URL | Server endpoint — required for sse and streamable-http transports |
-| Rounds | Number of inject rounds to run (1–10) |
-| RXP pre-validation | Optional — run RXP retrieval validation before injection (requires `pip install "q-uestionable-ai[rxp]"`) |
+**Form fields**:
+
+- **Target name**: Identifier for the MCP server being tested. Checked against existing targets; if a collision is detected, you can auto-append a numeric suffix.
+- **Transport**: Select `stdio`, `sse`, or `streamable-http` for MCP communication.
+  - `stdio`: Command invocation. Requires the **Command** field (e.g., `npx @modelcontextprotocol/server-everything`).
+  - `sse` / `streamable-http`: HTTP-based. Requires the **URL** field.
+- **Provider / Model**: Select your configured LLM provider and model variant.
+- **Rounds**: Number of audit cycles (1–10). More rounds increase coverage and duration.
+- **Inject Techniques**: Checkboxes for prompt injection methods (e.g., `parameter`, `argument`, `context`). All techniques are selected by default.
+- **Advanced: Payload Library**: Toggle to manually select individual payloads, overriding technique filtering.
+- **Audit Categories**: Checkboxes for scanner checks (e.g., `type_confusion`, `permission_confusion`). All categories are selected by default. Use "Select All" / "Clear All" for quick filtering.
+
+**Provider requirement**: Yes. If no provider is configured, a warning appears with a link to Settings.
 
 ### Test Document Ingestion
 
-Generates IPI payloads embedded in documents and tracks execution via HTTP callbacks.
+Generate payloads for document pipelines and validate ingestion behavior.
 
-| Field | Description |
-|---|---|
-| Target name | Label for this test target |
-| Callback URL | The URL your IPI listener is running on (e.g. `http://your-server:8080`) |
-| Format | Document format: PDF, DOCX, XLSX, PPTX, ICAL, or JPEG |
-| Payload style | How the injection instruction is hidden in the document |
-| Payload type | What the agent is instructed to do (callback, exfil, etc.) |
-| RXP pre-validation | Optional — validate retrieval before deployment |
+**Modules**: ipi, rxp (optional)
 
-The callback URL defaults to the value configured in Settings → Defaults if set.
+**Form fields**:
 
-### Test a Coding Assistant
+- **Target name**: Identifier for the document pipeline being tested.
+- **Callback URL**: Listener endpoint where exfiltration callbacks are sent. Often the same across runs; defaults to your saved callback URL in Settings.
+- **Format**: Document type (`pdf`, `markdown`, `html`, `docx`, `ics`, `eml`).
+- **Payload style**: How obvious the payload is (`obvious`, `subtle`, `invisible`).
+- **Payload type**: Detection method (`callback` for outbound requests, `exfil` for embedded exfiltration).
+- **Pre-validate retrieval rank with RXP** (optional): If enabled, RXP validates that poisoned documents achieve high retrieval rank before injection.
+  - **Embedding model**: Model ID for vector embeddings (default: `all-MiniLM-L6-v2`).
+  - **Profile**: Retrieval ranking profile (leave blank for custom).
 
-Poisons coding assistant instruction files and validates whether tainted output is produced.
+**Provider requirement**: No. IPI tests run without an LLM if no model is selected.
 
-| Field | Description |
-|---|---|
-| Target name | Label for this test target |
-| Format / Rule set | CXP format and rule catalog selection |
-| Repo name | Optional — name for the generated test repository |
+**RXP availability**: If the optional RXP dependencies are missing, a warning displays with the installation command.
+
+### Test Context Poisoning
+
+Poison context files and validate whether AI assistants propagate tainted output.
+
+**Modules**: cxp
+
+**Form fields**:
+
+- **Target name**: Identifier for the context poisoning scenario.
+
+**Provider requirement**: No. CXP can generate poisoned artifacts without an LLM.
 
 ### Trace an Attack Path
 
-Composes a multi-step attack chain across modules using a pre-defined chain template.
+Compose individual vulnerabilities into multi-step exploitation chains.
 
-| Field | Description |
-|---|---|
-| Target name | Label for this MCP server target |
-| Chain template | Select from available chain definitions |
-| Provider / Model | LLM provider and model |
-| Transport | `stdio`, `sse`, or `streamable-http` |
-| Command / URL | Server connection details |
+**Modules**: chain
 
+**Form fields**:
+
+- **Target name**: Identifier for the attack chain scenario.
+- **Provider / Model**: Select your configured provider and model. Chain execution uses this model to reason about multi-step attacks.
+
+**Provider requirement**: Yes. Chain analysis requires an LLM.
 
 ### Measure Blast Radius
 
-Analyzes the reach of a prior successful chain execution and generates detection rules. This workflow requires a completed chain execution to already exist in the database — it does not run a new chain.
+Analyze reach from a compromise point and generate detection rules.
 
-| Field | Description |
-|---|---|
-| Prior chain execution | Select from recent successful chain executions |
+**Modules**: chain
 
-### Manage Research
+**Form fields**:
 
-Cross-module research management covering campaigns, evidence collection, reports, and CVE tracking. Not yet implemented — available in a future release.
+- **Target name**: Identifier for the blast radius analysis.
 
-## Launching a workflow
+**Provider requirement**: No. Blast radius modeling runs without an LLM.
 
-After filling in the form, click **Launch**. The launcher redirects to the Operations view where you can monitor workflow progress in real time via WebSocket updates. All run data — findings, child runs, targets — is immediately available in the Research view.
+## CLI Preview Panel
+
+As you fill the form, the equivalent CLI command is displayed in a code block labeled "Equivalent CLI". This shows what command would produce the same result and helps you transition between UI and CLI.
+
+<Tip>
+The preview omits implicit defaults (e.g., standard audit categories, default transport). Use the CLI command directly for reproducibility and automation.
+</Tip>
+
+The preview updates in real-time as you change form fields. Copy the command with the button in the top-right corner of the preview box.
+
+## Provider Gate
+
+Workflows requiring an LLM provider display a warning if no provider credentials are configured:
+
+```
+This workflow requires an LLM provider. Configure one now [link to Settings]
+```
+
+Click the link to jump to the Providers section in Settings and add credentials.
+
+Workflows that don't require a provider (IPI, CXP, Blast Radius) skip this check.
+
+## RXP Preflight Check
+
+The "Test Document Ingestion" workflow checks for optional RXP dependencies. If missing, a warning displays:
+
+```
+RXP pre-validation requires additional dependencies.
+pip install "q-uestionable-ai[rxp]"
+```
+
+You can still run IPI without RXP; the pre-validation step is skipped.
+
+## Launching a Workflow
+
+Fill all required fields and click **Launch**. The UI:
+
+1. Validates form inputs
+2. Checks provider credentials (if required)
+3. Creates a new target (if it doesn't exist)
+4. Starts the workflow and transitions to the Runs view with real-time progress
+
+Monitor the run in real-time or return to the Launcher to start another workflow.
+
+<Note>
+All form data is validated client-side and server-side. Invalid inputs (missing required fields, malformed URLs) are rejected with clear error messages.
+</Note>
+
+## Hidden Workflows
+
+The "Generate Report" workflow is not shown in the Launcher accordion. It's only accessible after a workflow completes, via the "Generate Report" button on the results view. This allows report generation for any completed run without cluttering the Launcher.

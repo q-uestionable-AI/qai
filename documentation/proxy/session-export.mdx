@@ -1,25 +1,25 @@
 ---
-title: Session Export
-description: Export captured MCP sessions as JSON evidence
+title: "Session Export & Structure"
+description: "Understand session file format and export captured MCP traffic"
 ---
 
-Session files capture complete MCP request/response sequences for evidence, debugging, and replay.
+Session files store complete MCP request/response sequences as JSON, providing a portable record of interactions for replay, debugging, and evidence.
 
-## Session file format
+## Session File Format
 
-A session file is a JSON document containing a `ProxySession` with ordered `ProxyMessage` entries:
+A session file contains a `ProxySession` object with metadata and an ordered list of `ProxyMessage` entries:
 
 ```json
 {
-  "id": "session-uuid",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
   "started_at": "2026-03-04T10:00:00+00:00",
-  "ended_at": null,
+  "ended_at": "2026-03-04T10:05:30+00:00",
   "transport": "stdio",
-  "server_command": "python my_server.py",
+  "server_command": "python -m my_server",
   "server_url": null,
   "messages": [
     {
-      "proxy_id": "msg-uuid",
+      "proxy_id": "msg-001",
       "sequence": 0,
       "timestamp": "2026-03-04T10:00:01+00:00",
       "direction": "client_to_server",
@@ -28,32 +28,87 @@ A session file is a JSON document containing a `ProxySession` with ordered `Prox
       "method": "initialize",
       "correlated_id": null,
       "modified": false,
-      "payload": { "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }
+      "payload": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2024-11-05",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "qai-agent",
+            "version": "0.5.1"
+          }
+        }
+      },
+      "original_payload": null
+    },
+    {
+      "proxy_id": "msg-002",
+      "sequence": 1,
+      "timestamp": "2026-03-04T10:00:02+00:00",
+      "direction": "server_to_client",
+      "transport": "stdio",
+      "jsonrpc_id": 1,
+      "method": null,
+      "correlated_id": "msg-001",
+      "modified": false,
+      "payload": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "protocolVersion": "2024-11-05",
+          "capabilities": {},
+          "serverInfo": {
+            "name": "example-server",
+            "version": "1.0.0"
+          }
+        }
+      },
+      "original_payload": null
     }
   ],
-  "metadata": {}
+  "metadata": {
+    "target": "example-server",
+    "notes": "Captured during security audit"
+  }
 }
 ```
 
-### Message fields
+## Session Fields
 
-| Field | Description |
-|-------|-------------|
-| `proxy_id` | Unique proxy-assigned UUID for this message |
-| `sequence` | Monotonic sequence number within the session |
-| `timestamp` | When the proxy received the message |
-| `direction` | `client_to_server` or `server_to_client` |
-| `transport` | Transport type (`stdio`, `sse`, or `streamable_http`) |
-| `jsonrpc_id` | JSON-RPC id field (`null` for notifications) |
-| `method` | JSON-RPC method (`null` for responses) |
-| `correlated_id` | Proxy ID of the request this response correlates to |
-| `modified` | `true` if user modified the message before forwarding |
-| `payload` | The raw JSON-RPC message content |
-| `original_payload` | Pre-modification snapshot (present only when `modified` is `true`) |
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique session UUID |
+| `started_at` | ISO 8601 timestamp | When the proxy started |
+| `ended_at` | ISO 8601 timestamp or null | When the proxy ended (null if still active) |
+| `transport` | string | Transport type: `stdio`, `sse`, or `streamable_http` |
+| `server_command` | string or null | Server startup command (stdio only) |
+| `server_url` | string or null | Server endpoint URL (SSE/HTTP only) |
+| `messages` | array | Ordered list of ProxyMessage objects |
+| `metadata` | object | Custom metadata (target name, audit notes, etc.) |
 
-## Saving sessions
+## Message Fields
 
-Use `--session-file` on `proxy start` to auto-save the session:
+| Field | Type | Description |
+|-------|------|-------------|
+| `proxy_id` | string | Unique proxy-assigned UUID for this message |
+| `sequence` | integer | Monotonic sequence number (0-based) within the session |
+| `timestamp` | ISO 8601 timestamp | When the proxy received this message |
+| `direction` | string | `client_to_server` or `server_to_client` |
+| `transport` | string | Transport type (`stdio`, `sse`, or `streamable_http`) |
+| `jsonrpc_id` | integer, string, or null | JSON-RPC id field (null for notifications) |
+| `method` | string or null | JSON-RPC method name (null for responses) |
+| `correlated_id` | string or null | Proxy ID of the request this response correlates to |
+| `modified` | boolean | `true` if the user modified this message before forwarding |
+| `payload` | object | The complete JSON-RPC message content |
+| `original_payload` | object or null | Pre-modification snapshot (present only when `modified` is `true`) |
+
+## Saving Sessions
+
+### Auto-save on Startup
+
+Use `--session-file` to automatically save when the proxy exits:
 
 ```bash
 qai proxy start \
@@ -62,73 +117,140 @@ qai proxy start \
   --session-file session.json
 ```
 
-You can also press `s` in the TUI to save the session at any time.
+### Save During Session
 
-## proxy export
+Press `s` in the TUI at any time to save the current session to disk.
 
-Export a saved session to a new JSON file:
+### Export Command
 
-```bash
-qai proxy export [OPTIONS]
-```
-
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--session-file` | Yes | Path to a saved session file |
-| `--output` | Yes | Output file path |
-| `--output-format` | No | Export format (default: `json`) |
+Export a saved session to a new file:
 
 ```bash
 qai proxy export \
   --session-file session.json \
-  --output report.json
+  --output report.json \
+  --output-format json
 ```
 
-## proxy inspect
+## Inspecting Sessions
 
-Print session contents to stdout for quick review:
+### Quick Review
 
-```bash
-qai proxy inspect [OPTIONS]
-```
-
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--session-file` | Yes | Path to a saved session file |
-| `--verbose` / `-v` | No | Show full JSON payloads |
+Print session contents to stdout:
 
 ```bash
 qai proxy inspect --session-file session.json
 ```
 
-Output shows session metadata followed by each message with direction, method, JSON-RPC id, and correlation:
+**Output:**
 
 ```
-Session: abc-123
+Session: 550e8400-e29b-41d4-a716-446655440000
 Transport: stdio
 Server command: python my_server.py
 Messages: 12
----
+
   #000 > initialize id=1
-  #001 < (response) id=1 corr=abc...
+  #001 < (response) id=1 corr=msg-001
   #002 > notifications/initialized
   #003 > tools/call id=2
+  #004 < (response) id=2 corr=msg-003
+  #005 > tools/call id=3
+  #006 < (response) id=3 corr=msg-005
 ```
 
-Add `-v` to include full JSON payloads for each message:
+### Verbose Output
+
+Include full JSON payloads:
 
 ```bash
 qai proxy inspect --session-file session.json -v
 ```
 
-## Evidence use
+## Message Modification Recording
 
-Session files capture the complete request/response sequence for:
+When you modify a message in intercept mode, the proxy records both versions:
 
-- **Finding reproduction** — replay the exact message sequence that triggered a vulnerability
-- **Bug reports** — attach the session file showing the failing interaction
-- **Audit evidence** — provide the full traffic capture alongside scan results
+```json
+{
+  "proxy_id": "msg-005",
+  "sequence": 4,
+  "direction": "client_to_server",
+  "modified": true,
+  "payload": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "search",
+      "arguments": {
+        "query": "MODIFIED QUERY"
+      }
+    }
+  },
+  "original_payload": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "search",
+      "arguments": {
+        "query": "original query"
+      }
+    }
+  }
+}
+```
+
+The `original_payload` field is only present when `modified` is `true`, preserving evidence of user modifications.
+
+## Use Cases
+
+### Finding Reproduction
+
+Attach the session file when reporting a vulnerability to provide complete evidence:
+
+```bash
+qai proxy export \
+  --session-file vulnerable_interaction.json \
+  --output vulnerability_evidence.json
+```
+
+### Regression Testing
+
+Store sessions from successful interactions and replay them against new versions:
+
+```bash
+# Save baseline
+qai proxy start \
+  --transport stdio \
+  --target-command "python server_v1.py" \
+  --session-file baseline_v1.json
+
+# Replay against v2
+qai proxy replay \
+  --session-file baseline_v1.json \
+  --target-command "python server_v2.py" \
+  --output v2_results.json
+```
+
+### Audit Trails
+
+Export sessions with metadata for compliance documentation:
+
+```bash
+# Session with audit notes
+qai proxy export \
+  --session-file security_test.json \
+  --output audit_evidence.json
+```
 
 <Tip>
-Use `proxy inspect` for a quick human-readable summary. Use `proxy export` when you need a clean JSON file for tooling or sharing.
+Session files are self-contained JSON — no external dependencies. Share them via email, commit to repositories, or attach to bug reports. Use `--verbose` mode in `inspect` to see full payloads when reviewing manually.
 </Tip>
+
+## File Size Considerations
+
+Session files scale linearly with message count and payload size. A typical agent interaction with 50 messages averages 10-50 KB. High-volume capture sessions can be 1-10 MB for thousands of messages.
+
+For long-running proxies, periodically save sessions with `--session-file` to manage file size.

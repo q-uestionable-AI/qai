@@ -1,123 +1,387 @@
 ---
-title: Models & Profiles
-description: Embedding model registry and domain profile structure for RXP
+title: "RXP Models and Profiles"
+description: "Embedding models and domain profiles for retrieval testing"
 ---
 
-RXP ships with a registry of embedding models and a domain profile system for building reproducible retrieval poisoning tests.
+# Models and Profiles
 
-## Optional Dependencies
-
-The validation engine requires `sentence-transformers` and `chromadb`. Install with:
-
-```bash
-pip install q-uestionable-ai[rxp]
-# or
-uv sync --extra rxp
-```
-
-The `list-models` and `list-profiles` commands work without these dependencies installed.
-
----
+RXP testing requires two components: **embedding models** to vectorize text and **domain profiles** to provide standard queries.
 
 ## Embedding Models
 
-RXP includes three built-in embedding models selected for their prevalence in open-source RAG deployments.
+Embedding models convert text to numerical vectors. RXP uses these vectors to measure semantic similarity between the poisoned document and legitimate documents.
 
-### Built-in Models
+### Model Registry
 
-| ID | HuggingFace Model | Dimensions | Description |
-|----|-------------------|------------|-------------|
-| `minilm-l6` | `sentence-transformers/all-MiniLM-L6-v2` | 384 | Open WebUI default embedding model |
-| `minilm-l12` | `sentence-transformers/all-MiniLM-L12-v2` | 384 | Higher quality MiniLM variant |
-| `bge-small` | `BAAI/bge-small-en-v1.5` | 384 | BGE small English v1.5 |
+List available models:
 
 ```bash
 qai rxp list-models
 ```
 
-### Arbitrary HuggingFace Models
+### Built-in Models
 
-The `--model` option also accepts any HuggingFace model name. If the name doesn't match a registry shortcut, RXP creates an ad-hoc configuration and loads the model directly from HuggingFace:
+#### OpenAI
 
-```bash
-# Use a model not in the registry
-qai rxp validate --profile hr-policy --model BAAI/bge-m3
+**Name:** `openai`
+**Provider:** OpenAI
+**Dimensions:** 1536
+**Cost:** Paid (token-based pricing)
+**Speed:** Fast (API)
 
-# Use a larger model for comparison
-qai rxp validate --profile hr-policy --model sentence-transformers/all-mpnet-base-v2
-```
-
-### Multi-Model Comparison
-
-Use `--model all` to run validation against every registered model in a single pass. RXP prints per-model results followed by a comparison table:
+Requires `OPENAI_API_KEY` environment variable.
 
 ```bash
-qai rxp validate --profile hr-policy --model all
+export OPENAI_API_KEY="sk-..."
+
+qai rxp validate \
+  --profile hr_policy \
+  --corpus-dir ./kb \
+  --poison-file ./poison.txt \
+  --model openai
 ```
 
----
+**Pros:**
+- State-of-the-art embeddings
+- Consistent, reliable quality
+- Works with any text length
+
+**Cons:**
+- Requires API key
+- Per-token pricing
+- Network request latency
+
+#### Mistral
+
+**Name:** `mistral`
+**Provider:** Mistral AI
+**Dimensions:** 1024
+**Cost:** Free
+**Speed:** Medium (API)
+
+Free tier available; requires Mistral API key for higher usage.
+
+```bash
+export MISTRAL_API_KEY="..."
+
+qai rxp validate \
+  --profile hr_policy \
+  --corpus-dir ./kb \
+  --poison-file ./poison.txt \
+  --model mistral
+```
+
+**Pros:**
+- Free with generous limits
+- High-quality embeddings
+- No local infrastructure needed
+
+**Cons:**
+- Network request latency
+- Rate limits on free tier
+- Requires API account
+
+#### Ollama (Local)
+
+**Name:** `ollama-mistral`, `ollama-nomic`, `ollama-llama`
+**Provider:** Ollama (local)
+**Dimensions:** Varies (1024, 768, etc.)
+**Cost:** Free
+**Speed:** Fast (local)
+
+Requires Ollama running locally.
+
+Install Ollama and pull a model:
+
+```bash
+# https://ollama.ai
+ollama pull mistral
+ollama serve
+
+# In another terminal
+export OLLAMA_MODEL="mistral"
+
+qai rxp validate \
+  --profile hr_policy \
+  --corpus-dir ./kb \
+  --poison-file ./poison.txt \
+  --model ollama-mistral
+```
+
+**Available Ollama models:**
+- `ollama-mistral` (1024 dims, fast)
+- `ollama-nomic` (768 dims, smaller)
+- `ollama-llama` (4096 dims, larger)
+
+**Pros:**
+- Completely free
+- No API keys needed
+- Fast local execution
+- Works offline
+- No data leaves your machine
+
+**Cons:**
+- Requires local setup
+- Slower than cloud APIs (unless you have GPU)
+- Model quality varies
+
+### Custom Models
+
+Register your own embedding model by implementing the interface:
+
+```python
+from qai.rxp.registry import register_embedding_model
+
+@register_embedding_model("my-model")
+class CustomEmbedder:
+    def embed(self, text: str) -> list[float]:
+        # Return vector for text
+        return [...]
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        # Return vectors for batch
+        return [...]
+```
 
 ## Domain Profiles
 
-A domain profile is a self-contained test scenario: a corpus of legitimate documents, a set of target queries, and one or more poison documents. Profiles are used to run repeatable validation tests.
+Domain profiles contain standard queries for testing a knowledge domain. When you validate against a profile, RXP runs all queries and measures how well the poisoned document ranks.
+
+### List Profiles
 
 ```bash
 qai rxp list-profiles
 ```
 
-### Profile Structure
+### Built-in Profiles
 
-Each profile lives in a subdirectory under `src/q_ai/rxp/profiles/` and contains:
+#### HR Policy
+
+**Name:** `hr_policy`
+**Domain:** Human Resources
+**Queries:** 5
 
 ```
-profiles/{profile-id}/
-├── profile.yaml       # Profile metadata and queries
-├── corpus/            # Legitimate documents (*.txt)
-│   ├── doc1.txt
-│   └── doc2.txt
-└── poison/            # Adversarial documents (*.txt)
-    └── poison1.txt
+- What is the vacation policy?
+- How do I request time off?
+- What benefits are available?
+- How do I reset my password?
+- What is the dress code policy?
 ```
 
-**`profile.yaml`** defines the profile metadata and query list:
-
-```yaml
-id: hr-policy
-name: HR Policy Knowledge Base
-queries:
-  - "What is the remote work policy?"
-  - "How do I request time off?"
-  - "What benefits are available?"
-  # ...
-```
-
-**`corpus/`** contains legitimate documents that represent the knowledge base. Each `.txt` file becomes a corpus document with its filename stem as the document ID.
-
-**`poison/`** contains adversarial documents designed to rank highly for the profile's queries. Each `.txt` file is ingested with `is_poison=True` for retrieval tracking.
-
-### Built-in Profile: hr-policy
-
-The `hr-policy` profile simulates an HR knowledge base:
-
-- **8 queries** covering remote work, time off, benefits, dress code, performance reviews, parental leave, expenses, and holidays
-- **5 corpus documents** — benefits, expenses, performance reviews, remote work, and time off policies
-- **1 poison document** — a fake "urgent policy update" that covers all five topic areas to maximize retrieval across diverse queries
-
-The poison document uses classic phishing patterns: urgency language, credential re-verification requests, and a fake external URL.
-
-### Custom Corpus and Poison
-
-Instead of a built-in profile, you can point RXP at your own files:
+**Use case:** Validate HR knowledge bases for poisoning vulnerabilities.
 
 ```bash
 qai rxp validate \
-  --corpus-dir ./my-corpus \
-  --poison-file ./my-poison.txt
+  --profile hr_policy \
+  --corpus-dir ./company_kb \
+  --poison-file ./poison.txt
 ```
 
-- `--corpus-dir`: Directory of `.txt` files to use as the corpus
-- `--poison-file`: Path to a single poison document (overrides profile poison)
+#### Security Guidelines
 
-<Info>
-When using `--corpus-dir`, you must provide queries through a profile or they will be derived from the corpus. For best results, combine `--profile` with `--corpus-dir` or `--poison-file` to override specific components.
-</Info>
+**Name:** `security_guidelines`
+**Domain:** Information Security
+**Queries:** 8
+
+```
+- What is our password policy?
+- How do I report a security incident?
+- What VPN is approved for remote work?
+- How do I handle classified information?
+- What is the incident response procedure?
+- Who is the security contact?
+- What is the acceptable use policy?
+- How do I secure my workstation?
+```
+
+**Use case:** Validate security documentation for retrieval poisoning.
+
+#### Finance Policy
+
+**Name:** `finance_policy`
+**Domain:** Finance
+**Queries:** 4
+
+```
+- What is the expense reporting process?
+- What are the approval limits?
+- How do I submit a reimbursement request?
+- What payment methods are approved?
+```
+
+**Use case:** Validate financial knowledge bases and policy documents.
+
+#### Developer Onboarding
+
+**Name:** `developer_onboarding`
+**Domain:** Engineering
+**Queries:** 6
+
+```
+- How do I set up the development environment?
+- What coding standards should I follow?
+- How do I submit a pull request?
+- What are the deployment procedures?
+- How do I access production systems?
+- Where are the API docs?
+```
+
+**Use case:** Validate developer documentation for injection attacks.
+
+### Creating Custom Profiles
+
+Define custom profiles as YAML or JSON:
+
+```yaml
+# my_profile.yaml
+name: "customer_support"
+domain: "Customer Support"
+queries:
+  - "What is the refund policy?"
+  - "How do I contact support?"
+  - "What are your business hours?"
+  - "How do I cancel my subscription?"
+  - "What payment methods do you accept?"
+```
+
+Register the profile:
+
+```bash
+qai rxp validate \
+  --profile ./my_profile.yaml \
+  --corpus-dir ./kb \
+  --poison-file ./poison.txt
+```
+
+Or use a single custom query:
+
+```bash
+qai rxp validate \
+  --corpus-dir ./kb \
+  --poison-file ./poison.txt \
+  --query "What is your refund policy?"
+```
+
+## Model × Profile Selection
+
+### Quick Start
+
+**Fastest (local):**
+```bash
+qai rxp validate \
+  --profile hr_policy \
+  --corpus-dir ./kb \
+  --poison-file ./poison.txt \
+  --model ollama-mistral
+```
+Requires Ollama setup but no API calls.
+
+**Simplest (cloud):**
+```bash
+qai rxp validate \
+  --profile hr_policy \
+  --corpus-dir ./kb \
+  --poison-file ./poison.txt \
+  --model openai
+```
+Requires OpenAI key but works out-of-the-box.
+
+### Choosing a Model
+
+| Scenario | Recommended Model | Why |
+|----------|-------------------|-----|
+| Testing locally, offline | ollama-mistral | Free, fast, no API keys |
+| Production validations | openai | Best quality, consistent |
+| Cost-sensitive testing | mistral | Free tier, good quality |
+| Proof-of-concept | ollama-mistral | Minimal setup |
+| Comparing models | All three | See consistency |
+
+### Comparing Models
+
+Test the same poisoned document with multiple embedding models to see consistency:
+
+```bash
+for model in openai mistral ollama-mistral; do
+  qai rxp validate \
+    --profile hr_policy \
+    --corpus-dir ./kb \
+    --poison-file ./poison.txt \
+    --model $model \
+    --output results_$model.json
+done
+```
+
+If all models show similar retrieval effectiveness, the poisoning vulnerability is robust across different embedding spaces.
+
+## Profile Customization
+
+### Extend a Built-in Profile
+
+Create a new profile based on an existing one:
+
+```yaml
+# extended_hr_policy.yaml
+name: "extended_hr_policy"
+domain: "Human Resources"
+base_profile: "hr_policy"  # Inherit 5 base queries
+queries:
+  # Add custom queries
+  - "What is the maternity leave policy?"
+  - "How do I request remote work?"
+  - "What is the hybrid work schedule?"
+```
+
+### Domain-Specific Profiles
+
+Create profiles for your specific use cases:
+
+```yaml
+# medical_knowledge.yaml
+name: "medical_kb"
+domain: "Healthcare"
+queries:
+  - "What are the contraindications for Drug X?"
+  - "What is the treatment protocol for Condition Y?"
+  - "Who do I contact for emergencies?"
+  - "What is the patient privacy policy?"
+```
+
+## Performance Considerations
+
+**Embedding cache:** Reuse embeddings across multiple validation runs with `--save`:
+
+```bash
+qai rxp validate \
+  --profile hr_policy \
+  --corpus-dir ./kb \
+  --poison-file ./poison.txt \
+  --save \
+  --db embeddings.db
+```
+
+Subsequent runs reuse cached embeddings, reducing API costs and latency.
+
+**Batch processing:** Test multiple profiles or poison documents concurrently:
+
+```bash
+# Parallel validation
+for profile in hr_policy security_guidelines finance_policy; do
+  qai rxp validate \
+    --profile $profile \
+    --corpus-dir ./kb \
+    --poison-file ./poison.txt \
+    --model ollama-mistral &
+done
+wait
+```
+
+## Troubleshooting
+
+**"Model not found"** → Run `qai rxp list-models` to verify model name
+
+**"OPENAI_API_KEY not set"** → Export your key: `export OPENAI_API_KEY="sk-..."`
+
+**"Ollama not running"** → Start Ollama: `ollama serve`
+
+**Slow validation** → Use `ollama-mistral` or `mistral` instead of `openai`

@@ -23,6 +23,14 @@ If you are unsure whether you have authorization, you do not have authorization.
 
 For bug bounty programs, verify that MCP servers, AI agent infrastructure, and document ingestion pipelines are explicitly in scope before running any active scans, injection tests, or payload deployments.
 
+## IPI Module Authorization
+
+The IPI module generates adversarial documents and deploys them to track whether AI agents execute hidden instructions. This module requires explicit authorization for all testing.
+
+<Warning>
+IPI is the only module where you upload adversarial documents to third-party services. Ensure you have explicit written authorization to deploy payloads to the target system before using IPI.
+</Warning>
+
 ## Dangerous Payloads
 
 The `--dangerous` flag enables IPI payload types that go beyond callback verification — data exfiltration, SSRF, and behavior modification. These payloads cause target systems to take real actions with real consequences.
