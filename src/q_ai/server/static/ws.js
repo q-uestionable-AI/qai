@@ -203,6 +203,7 @@
             case 'finding':      handleFinding(event);    break;
             case 'waiting':      handleWaiting(event);    break;
             case 'resumed':      handleResumed(event);    break;
+            case 'ipi_hit':      handleIpiHit(event);     break;
         }
     }
 
@@ -259,6 +260,42 @@
         if (event.run_id !== runId) return;
         var banner = document.getElementById('waiting-banner');
         if (banner) banner.classList.add('hidden');
+    }
+
+    function handleIpiHit(event) {
+        var tbody = document.getElementById('ipi-hit-feed-body');
+        if (!tbody) return;
+
+        // Dedup guard: skip if hit already rendered from DB hydration
+        if (tbody.querySelector('[data-hit-id="' + event.id + '"]')) return;
+
+        // Remove "no hits" message if present
+        var noMsg = document.getElementById('ipi-no-hits-msg');
+        if (noMsg) noMsg.remove();
+
+        var tr = document.createElement('tr');
+        tr.setAttribute('data-hit-id', event.id);
+
+        var confLabel = 'LOW';
+        var confClass = 'badge-error';
+        var conf = String(event.confidence);
+        if (conf === '2' || conf === 'HIGH') { confLabel = 'HIGH'; confClass = 'badge-success'; }
+        else if (conf === '1' || conf === 'MEDIUM') { confLabel = 'MEDIUM'; confClass = 'badge-warning'; }
+
+        var tokenBadge = event.token_valid
+            ? '<span class="badge badge-xs badge-success">valid</span>'
+            : '<span class="badge badge-xs badge-ghost">missing</span>';
+
+        var uuid = event.uuid || '';
+        tr.innerHTML =
+            '<td class="text-xs opacity-50">' + (event.timestamp || '') + '</td>' +
+            '<td class="font-mono text-xs">' + uuid.substring(0, 8) + '...</td>' +
+            '<td><span class="badge badge-xs ' + confClass + '">' + confLabel + '</span></td>' +
+            '<td class="text-xs">' + (event.source_ip || '') + '</td>' +
+            '<td>' + tokenBadge + '</td>';
+
+        // Prepend to show newest first
+        tbody.insertBefore(tr, tbody.firstChild);
     }
 
     // Expose for the Resume button onclick

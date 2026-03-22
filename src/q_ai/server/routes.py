@@ -36,6 +36,7 @@ from q_ai.core.db import (
     list_targets,
     set_setting,
 )
+from q_ai.core.guidance import RunGuidance
 from q_ai.core.mitigation import MitigationGuidance, SourceType
 from q_ai.core.models import RunStatus, Severity
 from q_ai.core.providers import (
@@ -234,6 +235,32 @@ def _load_module_data(
         ).fetchone()
         proxy_session = dict(row) if row else None
 
+    # IPI data: campaigns and hits for the IPI child run
+    ipi_campaigns: list[dict[str, Any]] = []
+    ipi_hits: list[dict[str, Any]] = []
+    ipi_child = child_by_module.get("ipi")
+    if ipi_child:
+        camp_rows = conn.execute(
+            """SELECT id, uuid, token, filename, format, technique,
+                      callback_url, payload_style, payload_type, created_at
+               FROM ipi_payloads WHERE run_id = ?
+               ORDER BY created_at""",
+            (ipi_child.id,),
+        ).fetchall()
+        ipi_campaigns = [dict(r) for r in camp_rows]
+
+        if ipi_campaigns:
+            camp_uuids = [c["uuid"] for c in ipi_campaigns]
+            ph = ", ".join("?" for _ in camp_uuids)
+            hit_rows = conn.execute(
+                f"SELECT id, uuid, source_ip, user_agent, confidence,"  # noqa: S608
+                f" token_valid, timestamp, body"
+                f" FROM ipi_hits WHERE uuid IN ({ph})"
+                " ORDER BY timestamp DESC",
+                camp_uuids,
+            ).fetchall()
+            ipi_hits = [dict(r) for r in hit_rows]
+
     return {
         "audit_scan": audit_scan,
         "audit_findings": audit_findings,
@@ -241,6 +268,8 @@ def _load_module_data(
         "inject_results_data": inject_results_data,
         "proxy_session": proxy_session,
         "mitigation_section_label": _mitigation_section_label,
+        "ipi_campaigns": ipi_campaigns,
+        "ipi_hits": ipi_hits,
     }
 
 
@@ -266,6 +295,16 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
         wf_modules = list(workflow.modules) if workflow else []
 
         module_data = _load_module_data(conn, child_by_module)
+
+        # Deserialize RunGuidance from child runs for playbook rendering
+        child_guidance: dict[str, RunGuidance | None] = {}
+        for mod, child in child_by_module.items():
+            if child.guidance:
+                with contextlib.suppress(TypeError, ValueError):
+                    child_guidance[mod] = RunGuidance.from_dict(_json.loads(child.guidance))
+            else:
+                child_guidance[mod] = None
+        module_data["child_guidance"] = child_guidance
 
         eff_target_id = workflow_run.target_id or (workflow_run.config or {}).get("target_id")
         target = None
@@ -1341,6 +1380,44 @@ async def api_cxp_results(request: Request) -> HTMLResponse:
             "miss_count": miss_count,
         },
     )
+
+
+@router.post("/api/cxp/{run_id}/trigger-override")
+async def api_cxp_trigger_override(request: Request, run_id: str) -> JSONResponse:
+    """Persist a researcher's trigger prompt override for a CXP run.
+
+    Updates the trigger_prompts block's metadata.override field in the
+    persisted RunGuidance JSON for the given run.
+    """
+    db_path = _get_db_path(request)
+    body = await request.json()
+    override_text = body.get("prompt", "")
+
+    def _sync_update() -> str:
+        with get_connection(db_path) as conn:
+            row = conn.execute("SELECT guidance FROM runs WHERE id = ?", (run_id,)).fetchone()
+            if not row:
+                return "not_found"
+            raw = row["guidance"]
+            if not raw:
+                return "no_guidance"
+            data = _json.loads(raw)
+            for block in data.get("blocks", []):
+                if block.get("kind") == "trigger_prompts":
+                    block.setdefault("metadata", {})["override"] = override_text
+                    break
+            conn.execute(
+                "UPDATE runs SET guidance = ? WHERE id = ?",
+                (_json.dumps(data), run_id),
+            )
+        return "ok"
+
+    result = await asyncio.to_thread(_sync_update)
+    if result == "not_found":
+        return JSONResponse(status_code=404, content={"detail": "Run not found"})
+    if result == "no_guidance":
+        return JSONResponse(status_code=400, content={"detail": "No guidance on run"})
+    return JSONResponse(content={"status": "saved"})
 
 
 # ---------------------------------------------------------------------------
@@ -2751,6 +2828,52 @@ async def conclude_campaign(request: Request, run_id: str) -> JSONResponse:
         active_workflows.pop(run_id, None)
 
     return JSONResponse(content={"status": "concluded"})
+
+
+# ---------------------------------------------------------------------------
+# IPI Hit Bridge (internal)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/api/internal/ipi-hit")
+async def api_internal_ipi_hit(request: Request) -> JSONResponse:
+    """Receive a hit notification from the IPI callback server.
+
+    Validates the bridge token, reads the canonical hit from the DB,
+    and broadcasts an ``ipi_hit`` WebSocket event. Non-creating: never
+    writes or mutates hit records.
+    """
+    from q_ai.core.bridge_token import read_bridge_token
+
+    token = request.headers.get("X-QAI-Bridge-Token")
+    expected = read_bridge_token()
+    if not token or not expected or token != expected:
+        return JSONResponse(status_code=401, content={"detail": "Invalid bridge token"})
+
+    body = await request.json()
+    hit_id = body.get("hit_id")
+    if not hit_id:
+        return JSONResponse(status_code=400, content={"detail": "Missing hit_id"})
+
+    db_path = _get_db_path(request)
+
+    def _read_hit() -> dict[str, Any] | None:
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT id, uuid, source_ip, user_agent, confidence,"
+                " token_valid, timestamp, body"
+                " FROM ipi_hits WHERE id = ?",
+                (hit_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    hit_data = await asyncio.to_thread(_read_hit)
+    if not hit_data:
+        return JSONResponse(status_code=404, content={"detail": "Hit not found"})
+
+    ws_manager = request.app.state.ws_manager
+    await ws_manager.broadcast({"type": "ipi_hit", **hit_data})
+    return JSONResponse(content={"status": "ok"})
 
 
 # ---------------------------------------------------------------------------

@@ -25,12 +25,14 @@ Usage:
 """
 
 import json
+import logging
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 import uvicorn
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import PlainTextResponse
@@ -38,6 +40,7 @@ from fastapi.staticfiles import StaticFiles
 from rich.console import Console
 from rich.markup import escape
 
+from q_ai.core.bridge_token import ensure_bridge_token
 from q_ai.ipi import db
 from q_ai.ipi.listener import record_hit, score_confidence
 from q_ai.ipi.models import Hit, HitConfidence
@@ -46,6 +49,11 @@ from .api import api_router
 from .ui import ui_router
 
 console = Console()
+_logger = logging.getLogger(__name__)
+
+# Module-level bridge config, set by start_server()
+_bridge_notify_url: str | None = None
+_bridge_token: str | None = None
 
 
 @asynccontextmanager
@@ -118,16 +126,32 @@ def log_hit_to_console(hit: Hit) -> None:
 
 
 def _record_and_log_hit(hit: Hit) -> None:
-    """Persist a hit to the database and log it to the console.
+    """Persist a hit to the database, log it, and notify the main server.
 
     Called as a background task from the callback endpoint so the
     HTTP response is returned immediately without blocking on I/O.
+
+    After persisting, attempts a single POST to the main server's
+    internal bridge endpoint so the hit appears in the live feed.
+    Failure does not block hit recording or the callback response.
 
     Args:
         hit: Hit object to save and display.
     """
     record_hit(hit)
     log_hit_to_console(hit)
+
+    # Bridge notification — fire-and-forget with aggressive timeout
+    if _bridge_notify_url and _bridge_token:
+        try:
+            with httpx.Client(timeout=1.0) as client:
+                client.post(
+                    f"{_bridge_notify_url}/api/internal/ipi-hit",
+                    json={"hit_id": hit.id},
+                    headers={"X-QAI-Bridge-Token": _bridge_token},
+                )
+        except Exception:
+            _logger.warning("Bridge notification failed for hit %s", hit.id[:8])
 
 
 # =========================================================================
@@ -345,7 +369,11 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-def start_server(host: str = "127.0.0.1", port: int = 8080) -> None:
+def start_server(
+    host: str = "127.0.0.1",
+    port: int = 8080,
+    notify_url: str = "http://localhost:8899",
+) -> None:
     """Start the callback listener server.
 
     Launches the uvicorn ASGI server bound to the specified host
@@ -355,10 +383,17 @@ def start_server(host: str = "127.0.0.1", port: int = 8080) -> None:
     Args:
         host: Network interface to bind (default ``"127.0.0.1"``).
         port: TCP port to listen on (default ``8080``).
+        notify_url: URL of the main qai server for bridge notifications
+            (default ``"http://localhost:8899"``).
     """
+    global _bridge_notify_url, _bridge_token  # noqa: PLW0603
+    _bridge_notify_url = notify_url.rstrip("/")
+    _bridge_token = ensure_bridge_token()
+
     console.print(f"[bold green]Starting q-ai IPI listener on {host}:{port}[/bold green]")
     console.print(f"   Callback URL: [blue]http://<your-ip>:{port}/c/<uuid>/<token>[/blue]")
     console.print(f"   Dashboard:    [blue]http://localhost:{port}/ui/[/blue]")
+    console.print(f"   Bridge:       [blue]{_bridge_notify_url}[/blue]")
     console.print("   Press [bold]Ctrl+C[/bold] to stop\n")
 
     uvicorn.run(

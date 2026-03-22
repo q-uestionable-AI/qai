@@ -1,4 +1,49 @@
-{% if results is defined %}
+{% from "partials/guidance_block.html" import render_guidance_block %}
+
+{% if cxp_guidance %}
+{# ===== Run results playbook mode ===== #}
+<div class="flex items-center justify-between mb-4">
+    <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">
+        CXP — Deployment Playbook
+    </h3>
+</div>
+
+{% for block in cxp_guidance.blocks %}
+    {% if block.kind == "trigger_prompts" %}
+    {# CXP trigger prompt with editable override #}
+    <div class="divider"></div>
+    <section class="guidance-block mb-6">
+        <h4 class="text-sm font-semibold uppercase tracking-wider text-base-content/60 mb-3">{{ block.label }}</h4>
+        {% for item in block.items %}
+        <p class="text-sm mb-2">{{ item }}</p>
+        {% endfor %}
+
+        {% set effective_prompt = block.metadata.override if block.metadata.override else block.metadata.default %}
+        <div class="relative mb-2">
+            <pre class="text-xs whitespace-pre-wrap break-words bg-base-300/30 p-3 rounded copy-target">{{ effective_prompt }}</pre>
+            <button class="btn btn-xs btn-ghost absolute top-1 right-1"
+                    onclick="navigator.clipboard.writeText(this.parentElement.querySelector('.copy-target').textContent)">Copy</button>
+        </div>
+
+        <details class="collapse collapse-arrow bg-base-200/50 mt-2">
+            <summary class="collapse-title text-xs font-medium">Edit trigger prompt</summary>
+            <div class="collapse-content">
+                <textarea id="cxp-trigger-override"
+                          class="textarea textarea-bordered w-full text-xs mt-2"
+                          rows="3"
+                          placeholder="Enter custom trigger prompt...">{{ effective_prompt }}</textarea>
+                <button class="btn btn-xs btn-primary mt-2"
+                        onclick="(async()=>{const ta=document.getElementById('cxp-trigger-override');const r=await fetch('/api/cxp/{{ cxp_run_id }}/trigger-override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:ta.value})});if(r.ok){this.textContent='Saved!';setTimeout(()=>{this.textContent='Save Override'},1500)}})()">Save Override</button>
+            </div>
+        </details>
+    </section>
+    {% else %}
+    {{ render_guidance_block(block) }}
+    {% endif %}
+{% endfor %}
+
+{% elif results is defined %}
+{# ===== Standalone results mode ===== #}
 <div class="flex items-center justify-between mb-4">
     <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">
         CXP — Context File Poisoning
@@ -65,7 +110,17 @@
 <p class="text-sm opacity-50">No CXP test results. Run <code>qai cxp generate</code> to create poisoned repos.</p>
 {% endif %}
 
+{% elif no_guidance_available is defined and no_guidance_available %}
+{# ===== Legacy run with no guidance ===== #}
+<div class="flex items-center justify-between mb-4">
+    <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">
+        CXP — Context File Poisoning
+    </h3>
+</div>
+<p class="text-sm opacity-40 italic">No deployment guidance available (generated before this version).</p>
+
 {% else %}
+{# ===== Loading state ===== #}
 <div class="flex items-center justify-between mb-4">
     <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">
         CXP — Context File Poisoning

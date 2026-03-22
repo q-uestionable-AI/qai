@@ -581,13 +581,17 @@ def formats() -> None:
 def listen(
     port: Annotated[int, typer.Option("--port", "-p", help="Port to listen on")] = 8080,
     host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
+    notify_url: Annotated[
+        str,
+        typer.Option("--notify-url", help="Main qai server URL for hit notifications"),
+    ] = "http://localhost:8899",
 ) -> None:
     """Start the callback listener server.
 
     Launches the FastAPI server that receives and logs callback
     requests from AI agents that execute the hidden payloads.
     """
-    start_server(host=host, port=port)
+    start_server(host=host, port=port, notify_url=notify_url)
 
 
 def _display_single_campaign(campaign: Campaign, hits: list[Hit]) -> None:

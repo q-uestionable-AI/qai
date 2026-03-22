@@ -7,13 +7,16 @@ human-in-the-loop waiting, and event emission. Error handling: best_effort (D6).
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from q_ai.core.db import get_connection, save_run_guidance
 from q_ai.core.models import RunStatus
 from q_ai.ipi.generate_service import GenerateResult, generate_documents
 from q_ai.ipi.generators import get_techniques_for_format
+from q_ai.ipi.guidance_builder import build_ipi_guidance
 from q_ai.ipi.mapper import persist_generate
 from q_ai.ipi.models import Format, PayloadStyle, PayloadType, Technique
 
@@ -164,6 +167,18 @@ class IPIAdapter:
                 db_path=self._runner._db_path,
                 run_id=child_id,
             )
+
+            # Build and persist deployment guidance
+            guidance = build_ipi_guidance(
+                result=generate_result,
+                format_name=format_name,
+                callback_url=callback_url,
+                payload_style=payload_style.value,
+                payload_type=payload_type.value,
+            )
+            guidance_json = json.dumps(guidance.to_dict())
+            with get_connection(self._runner._db_path) as conn:
+                save_run_guidance(conn, child_id, guidance_json)
 
             payload_count = len(generate_result.campaigns)
             await self._runner.emit_progress(
