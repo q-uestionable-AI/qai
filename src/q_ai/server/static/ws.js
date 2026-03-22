@@ -266,33 +266,67 @@
         var tbody = document.getElementById('ipi-hit-feed-body');
         if (!tbody) return;
 
-        // Dedup guard: skip if hit already rendered from DB hydration
-        if (tbody.querySelector('[data-hit-id="' + event.id + '"]')) return;
+        // Dedup guard: skip if hit already rendered from DB hydration.
+        // Use dataset lookup instead of querySelector to avoid CSS selector injection.
+        var hitId = String(event.id || '');
+        var existing = tbody.querySelector('tr');
+        var dup = false;
+        while (existing) {
+            if (existing.dataset.hitId === hitId) { dup = true; break; }
+            existing = existing.nextElementSibling;
+        }
+        if (dup) return;
 
         // Remove "no hits" message if present
         var noMsg = document.getElementById('ipi-no-hits-msg');
         if (noMsg) noMsg.remove();
 
+        // Build row using safe DOM construction — no innerHTML with untrusted data
         var tr = document.createElement('tr');
-        tr.setAttribute('data-hit-id', event.id);
+        tr.dataset.hitId = hitId;
 
+        // Timestamp cell
+        var tdTime = document.createElement('td');
+        tdTime.className = 'text-xs opacity-50';
+        tdTime.textContent = event.timestamp || '';
+        tr.appendChild(tdTime);
+
+        // Campaign UUID cell (truncated)
+        var tdUuid = document.createElement('td');
+        tdUuid.className = 'font-mono text-xs';
+        var uuid = String(event.uuid || '');
+        tdUuid.textContent = uuid.substring(0, 8) + '...';
+        tr.appendChild(tdUuid);
+
+        // Confidence badge cell
         var confLabel = 'LOW';
         var confClass = 'badge-error';
         var conf = String(event.confidence);
         if (conf === '2' || conf === 'HIGH') { confLabel = 'HIGH'; confClass = 'badge-success'; }
         else if (conf === '1' || conf === 'MEDIUM') { confLabel = 'MEDIUM'; confClass = 'badge-warning'; }
 
-        var tokenBadge = event.token_valid
-            ? '<span class="badge badge-xs badge-success">valid</span>'
-            : '<span class="badge badge-xs badge-ghost">missing</span>';
+        var tdConf = document.createElement('td');
+        var confBadge = document.createElement('span');
+        confBadge.className = 'badge badge-xs ' + confClass;
+        confBadge.textContent = confLabel;
+        tdConf.appendChild(confBadge);
+        tr.appendChild(tdConf);
 
-        var uuid = event.uuid || '';
-        tr.innerHTML =
-            '<td class="text-xs opacity-50">' + (event.timestamp || '') + '</td>' +
-            '<td class="font-mono text-xs">' + uuid.substring(0, 8) + '...</td>' +
-            '<td><span class="badge badge-xs ' + confClass + '">' + confLabel + '</span></td>' +
-            '<td class="text-xs">' + (event.source_ip || '') + '</td>' +
-            '<td>' + tokenBadge + '</td>';
+        // Source IP cell
+        var tdIp = document.createElement('td');
+        tdIp.className = 'text-xs';
+        tdIp.textContent = event.source_ip || '';
+        tr.appendChild(tdIp);
+
+        // Token validity badge cell
+        var tdToken = document.createElement('td');
+        var tokenBadge = document.createElement('span');
+        tokenBadge.className = event.token_valid
+            ? 'badge badge-xs badge-success'
+            : 'badge badge-xs badge-ghost';
+        tokenBadge.textContent = event.token_valid ? 'valid' : 'missing';
+        tdToken.appendChild(tokenBadge);
+        tr.appendChild(tdToken);
 
         // Prepend to show newest first
         tbody.insertBefore(tr, tbody.firstChild);
