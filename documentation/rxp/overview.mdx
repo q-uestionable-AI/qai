@@ -84,12 +84,12 @@ Measured as:
 
 ### Interpretive Bands
 
-RXP v0.5.0+ includes score interpretation bands:
+RXP v0.5.0+ maps retrieval rates to severity levels:
 
-- **Critical** — Poisoned document ranks in top-3 (very high risk)
-- **High** — Poisoned document ranks in top-5 to top-10
-- **Medium** — Poisoned document ranks in top-10 to top-20
-- **Low** — Poisoned document ranks below top-20
+- **Critical** — ≥75% of queries retrieve the poisoned document (very high risk)
+- **High** — ≥50% retrieval rate
+- **Medium** — ≥25% retrieval rate
+- **Low** — <25% retrieval rate (poisoning ineffective)
 
 These bands help you understand the practical impact of poisoning.
 
@@ -127,24 +127,20 @@ qai rxp validate \
   --profile hr_policy \
   --corpus-dir ./knowledge_base \
   --poison-file ./poisoned_doc.txt \
-  --model openai \
-  --top-k 10 \
+  --model minilm-l6 \
+  --top-k 5 \
   --output results.json
 ```
 
 ### 4. Interpret Results
 
-```json
-{
-  "query": "What is the vacation policy?",
-  "poisoned_rank": 2,
-  "top_k": 10,
-  "relevance_score": 0.92,
-  "band": "critical"
-}
+```
+Results for minilm-l6:
+  Retrieval rate: 4/5 (80.0%)
+  Mean poison rank: 2.3 (when retrieved)
 ```
 
-The poisoned document ranked #2 out of the top 10 retrieved documents. This is a **critical** vulnerability.
+With 80% retrieval rate, this is a **critical** severity finding — the poisoned document reliably reaches the LLM context window.
 
 ### 5. Mitigate
 
