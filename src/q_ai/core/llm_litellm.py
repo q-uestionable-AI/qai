@@ -85,11 +85,13 @@ class LiteLLMClient:
         openai_tools = [_tool_spec_to_openai_format(t) for t in tools] if tools else None
 
         try:
+            # Security: Add timeout to prevent external provider calls from hanging indefinitely
             response = await acompletion(  # type: ignore[no-untyped-call]
                 model=model,
                 messages=messages,
                 tools=openai_tools,
                 max_tokens=max_tokens,
+                timeout=60.0,
             )
         except Exception as exc:
             error_msg = str(exc).lower()
