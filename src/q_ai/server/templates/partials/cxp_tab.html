@@ -33,7 +33,7 @@
                           rows="3"
                           placeholder="Enter custom trigger prompt...">{{ effective_prompt }}</textarea>
                 <button class="btn btn-xs btn-primary mt-2"
-                        onclick="(async()=>{const ta=document.getElementById('cxp-trigger-override');const r=await fetch('/api/cxp/{{ cxp_run_id }}/trigger-override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:ta.value})});if(r.ok){this.textContent='Saved!';setTimeout(()=>{this.textContent='Save Override'},1500)}})()">Save Override</button>
+                        onclick="(async()=>{const ta=document.getElementById('cxp-trigger-override');const r=await fetch('/api/cxp/{{ cxp_run_id }}/trigger-override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:ta.value})});if(r.ok){const ct=document.querySelector('.copy-target');if(ct)ct.textContent=ta.value;this.textContent='Saved!';setTimeout(()=>{this.textContent='Save Override'},1500)}})()">Save Override</button>
             </div>
         </details>
     </section>

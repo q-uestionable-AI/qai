@@ -17,6 +17,10 @@ _TOKEN_FILE = "bridge.token"  # noqa: S105
 def ensure_bridge_token(qai_dir: Path | None = None) -> str:
     """Return the bridge token, creating it if it does not yet exist.
 
+    Uses exclusive file creation (O_CREAT|O_EXCL on POSIX, mode "x" on
+    Windows) so the file is born with final permissions and concurrent
+    callers race safely — the first writer wins.
+
     Args:
         qai_dir: Directory where qai stores its data. Defaults to
             ``~/.qai``.
@@ -32,10 +36,22 @@ def ensure_bridge_token(qai_dir: Path | None = None) -> str:
 
     qai_dir.mkdir(parents=True, exist_ok=True)
     token = secrets.token_hex(16)
-    token_path.write_text(token, encoding="utf-8")
 
-    if os.name != "nt":
-        token_path.chmod(0o600)
+    try:
+        if os.name != "nt":
+            # POSIX: open exclusively with final 0600 permissions
+            fd = os.open(str(token_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            try:
+                os.write(fd, token.encode("utf-8"))
+            finally:
+                os.close(fd)
+        else:
+            # Windows: exclusive create via mode "x"
+            with token_path.open("x", encoding="utf-8") as fh:
+                fh.write(token)
+    except FileExistsError:
+        # Another process won the race — read their token
+        return token_path.read_text(encoding="utf-8").strip()
 
     return token
 

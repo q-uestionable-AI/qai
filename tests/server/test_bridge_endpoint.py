@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
 BRIDGE_URL = "/api/internal/ipi-hit"
 VALID_TOKEN = "deadbeef" * 4  # 32 hex chars
-BRIDGE_TOKEN_PATH = "q_ai.core.bridge_token.read_bridge_token"
 
 SAMPLE_HIT: dict[str, Any] = {
     "id": "hit-001",
@@ -31,8 +31,6 @@ def _insert_hit(db_path: Path) -> None:
     connection via get_connection (which also re-runs migrate). This
     prevents potential write-lock contention on Windows CI.
     """
-    import sqlite3
-
     conn = sqlite3.connect(str(db_path))
     try:
         conn.execute(
@@ -55,25 +53,30 @@ def _insert_hit(db_path: Path) -> None:
         conn.close()
 
 
+def _set_bridge_token(client: TestClient, token: str | None = VALID_TOKEN) -> None:
+    """Set the cached bridge token on the app state."""
+    client.app.state.bridge_token = token
+
+
 class TestInternalIpiHitEndpoint:
     """Tests for POST /api/internal/ipi-hit."""
 
     def test_missing_token_returns_401(self, client: TestClient) -> None:
         """Request without X-QAI-Bridge-Token header is rejected with 401."""
-        with patch(BRIDGE_TOKEN_PATH, return_value=VALID_TOKEN):
-            resp = client.post(BRIDGE_URL, json={"hit_id": "hit-001"})
+        _set_bridge_token(client)
+        resp = client.post(BRIDGE_URL, json={"hit_id": "hit-001"})
 
         assert resp.status_code == 401
         assert resp.json()["detail"] == "Invalid bridge token"
 
     def test_invalid_token_returns_401(self, client: TestClient) -> None:
         """Request with an incorrect bridge token is rejected with 401."""
-        with patch(BRIDGE_TOKEN_PATH, return_value=VALID_TOKEN):
-            resp = client.post(
-                BRIDGE_URL,
-                json={"hit_id": "hit-001"},
-                headers={"X-QAI-Bridge-Token": "wrong-token"},
-            )
+        _set_bridge_token(client)
+        resp = client.post(
+            BRIDGE_URL,
+            json={"hit_id": "hit-001"},
+            headers={"X-QAI-Bridge-Token": "wrong-token"},
+        )
 
         assert resp.status_code == 401
         assert resp.json()["detail"] == "Invalid bridge token"
@@ -81,21 +84,21 @@ class TestInternalIpiHitEndpoint:
     def test_valid_token_reads_hit_and_broadcasts(self, client: TestClient, tmp_db: Path) -> None:
         """Valid request reads the hit from DB and broadcasts a WS event."""
         _insert_hit(tmp_db)
+        _set_bridge_token(client)
 
         mock_broadcast = AsyncMock()
         client.app.state.ws_manager.broadcast = mock_broadcast
 
-        with patch(BRIDGE_TOKEN_PATH, return_value=VALID_TOKEN):
-            resp = client.post(
-                BRIDGE_URL,
-                json={"hit_id": SAMPLE_HIT["id"]},
-                headers={"X-QAI-Bridge-Token": VALID_TOKEN},
-            )
+        resp = client.post(
+            BRIDGE_URL,
+            json={"hit_id": SAMPLE_HIT["id"]},
+            headers={"X-QAI-Bridge-Token": VALID_TOKEN},
+        )
 
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
 
-        mock_broadcast.assert_called_once()
+        mock_broadcast.assert_awaited_once()
         payload = mock_broadcast.call_args[0][0]
         assert payload["type"] == "ipi_hit"
         assert payload["id"] == SAMPLE_HIT["id"]
@@ -103,24 +106,24 @@ class TestInternalIpiHitEndpoint:
 
     def test_missing_hit_id_returns_400(self, client: TestClient) -> None:
         """Request with valid token but no hit_id returns 400."""
-        with patch(BRIDGE_TOKEN_PATH, return_value=VALID_TOKEN):
-            resp = client.post(
-                BRIDGE_URL,
-                json={},
-                headers={"X-QAI-Bridge-Token": VALID_TOKEN},
-            )
+        _set_bridge_token(client)
+        resp = client.post(
+            BRIDGE_URL,
+            json={},
+            headers={"X-QAI-Bridge-Token": VALID_TOKEN},
+        )
 
         assert resp.status_code == 400
         assert resp.json()["detail"] == "Missing hit_id"
 
     def test_hit_not_found_returns_404(self, client: TestClient) -> None:
         """Request for a hit_id that does not exist in the DB returns 404."""
-        with patch(BRIDGE_TOKEN_PATH, return_value=VALID_TOKEN):
-            resp = client.post(
-                BRIDGE_URL,
-                json={"hit_id": "nonexistent-hit"},
-                headers={"X-QAI-Bridge-Token": VALID_TOKEN},
-            )
+        _set_bridge_token(client)
+        resp = client.post(
+            BRIDGE_URL,
+            json={"hit_id": "nonexistent-hit"},
+            headers={"X-QAI-Bridge-Token": VALID_TOKEN},
+        )
 
         assert resp.status_code == 404
         assert resp.json()["detail"] == "Hit not found"
@@ -137,19 +140,20 @@ class TestHitFeedDedup:
     def test_bridge_endpoint_returns_hit_data(self, client: TestClient, tmp_db: Path) -> None:
         """Broadcast payload includes id, uuid, source_ip, and confidence keys."""
         _insert_hit(tmp_db)
+        _set_bridge_token(client)
 
         mock_broadcast = AsyncMock()
         client.app.state.ws_manager.broadcast = mock_broadcast
 
-        with patch(BRIDGE_TOKEN_PATH, return_value=VALID_TOKEN):
-            resp = client.post(
-                BRIDGE_URL,
-                json={"hit_id": SAMPLE_HIT["id"]},
-                headers={"X-QAI-Bridge-Token": VALID_TOKEN},
-            )
+        resp = client.post(
+            BRIDGE_URL,
+            json={"hit_id": SAMPLE_HIT["id"]},
+            headers={"X-QAI-Bridge-Token": VALID_TOKEN},
+        )
 
         assert resp.status_code == 200
 
+        mock_broadcast.assert_awaited_once()
         payload = mock_broadcast.call_args[0][0]
         # Required keys for client-side dedup and rendering
         assert payload["id"] == SAMPLE_HIT["id"]

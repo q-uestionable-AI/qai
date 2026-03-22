@@ -49,6 +49,12 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     app.state.ws_manager = ConnectionManager()
     app.state.active_workflows = {}  # dict[str, WorkflowRunner]
 
+    # Cache bridge token at startup so the internal endpoint avoids
+    # blocking disk I/O on every request (mirrors ipi/server.py caching).
+    from q_ai.core.bridge_token import read_bridge_token
+
+    app.state.bridge_token = read_bridge_token()
+
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
     app.state.templates = templates
 

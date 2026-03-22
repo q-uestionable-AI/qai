@@ -266,9 +266,12 @@
         var tbody = document.getElementById('ipi-hit-feed-body');
         if (!tbody) return;
 
+        // Guard: reject malformed payloads with no usable hit ID
+        if (event.id == null || String(event.id).trim() === '') return;
+
         // Dedup guard: skip if hit already rendered from DB hydration.
         // Use dataset lookup instead of querySelector to avoid CSS selector injection.
-        var hitId = String(event.id || '');
+        var hitId = String(event.id);
         var existing = tbody.querySelector('tr');
         var dup = false;
         while (existing) {
@@ -298,10 +301,10 @@
         tdUuid.textContent = uuid.substring(0, 8) + '...';
         tr.appendChild(tdUuid);
 
-        // Confidence badge cell
+        // Confidence badge cell — normalize to uppercase for consistent matching
         var confLabel = 'LOW';
         var confClass = 'badge-error';
-        var conf = String(event.confidence);
+        var conf = String(event.confidence).toUpperCase();
         if (conf === '2' || conf === 'HIGH') { confLabel = 'HIGH'; confClass = 'badge-success'; }
         else if (conf === '1' || conf === 'MEDIUM') { confLabel = 'MEDIUM'; confClass = 'badge-warning'; }
 

@@ -73,21 +73,14 @@
             {% endfor %}
     </div>
         {% elif block.metadata.get("default") is not none %}
-    {# CXP-style: default prompt with editable textarea #}
+    {# CXP-style: default prompt — render as read-only with copy.
+       Editing is handled by the module-specific tab (cxp_tab.html)
+       which has the save endpoint context. #}
     <div class="relative">
-        <pre class="text-xs whitespace-pre-wrap break-words bg-base-300/30 p-3 rounded max-h-[300px] overflow-y-auto copy-target mb-2">{{ block.metadata["default"] }}</pre>
+        <pre class="text-xs whitespace-pre-wrap break-words bg-base-300/30 p-3 rounded max-h-[300px] overflow-y-auto copy-target mb-2">{{ block.metadata.override or block.metadata["default"] }}</pre>
         <button class="btn btn-xs btn-ghost absolute top-1 right-1"
                 onclick="navigator.clipboard.writeText(this.parentElement.querySelector('.copy-target').textContent)">Copy</button>
     </div>
-    <textarea class="textarea textarea-bordered w-full text-xs mt-2"
-              rows="4"
-              placeholder="Edit prompt..."
-              data-hx-trigger="none"
-              data-block-kind="{{ block.kind }}">{{ block.metadata["default"] }}</textarea>
-    <button class="btn btn-xs btn-primary mt-1"
-            data-block-kind="{{ block.kind }}"
-            data-action="save-prompt"
-            onclick="const ta=this.previousElementSibling;if(ta.tagName==='TEXTAREA'){navigator.clipboard.writeText(ta.value)}">Save</button>
         {% else %}
     {# Fallback: render items as prompt lines #}
             {% for item in block.items %}

@@ -1382,37 +1382,62 @@ async def api_cxp_results(request: Request) -> HTMLResponse:
     )
 
 
+def _sync_trigger_override(db_path: Path | None, run_id: str, override_text: str) -> str:
+    """Apply a trigger prompt override to a run's guidance JSON.
+
+    Returns:
+        ``"not_found"``, ``"no_guidance"``, or ``"ok"``.
+    """
+    with get_connection(db_path) as conn:
+        row = conn.execute("SELECT guidance FROM runs WHERE id = ?", (run_id,)).fetchone()
+        if not row:
+            return "not_found"
+        raw = row["guidance"]
+        if not raw:
+            return "no_guidance"
+        try:
+            data = _json.loads(raw)
+        except (ValueError, _json.JSONDecodeError):
+            return "no_guidance"
+        for block in data.get("blocks", []):
+            if block.get("kind") == "trigger_prompts":
+                block.setdefault("metadata", {})["override"] = override_text
+                conn.execute(
+                    "UPDATE runs SET guidance = ? WHERE id = ?",
+                    (_json.dumps(data), run_id),
+                )
+                return "ok"
+    return "no_guidance"
+
+
 @router.post("/api/cxp/{run_id}/trigger-override")
 async def api_cxp_trigger_override(request: Request, run_id: str) -> JSONResponse:
     """Persist a researcher's trigger prompt override for a CXP run.
 
-    Updates the trigger_prompts block's metadata.override field in the
+    Updates the trigger_prompts block's ``metadata.override`` field in the
     persisted RunGuidance JSON for the given run.
+
+    Args:
+        request: The incoming FastAPI request.
+        run_id: The CXP child run identifier whose guidance is updated.
+
+    Returns:
+        JSONResponse with ``{"status": "saved"}`` on success, or a 4xx
+        error with ``{"detail": ...}`` on validation failure.
     """
+    try:
+        body = await request.json()
+    except (ValueError, _json.JSONDecodeError):
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON body"})
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=400, content={"detail": "Expected JSON object"})
+
+    override_text = body.get("prompt")
+    if not isinstance(override_text, str) or not override_text.strip():
+        return JSONResponse(status_code=400, content={"detail": "Missing or empty prompt"})
+
     db_path = _get_db_path(request)
-    body = await request.json()
-    override_text = body.get("prompt", "")
-
-    def _sync_update() -> str:
-        with get_connection(db_path) as conn:
-            row = conn.execute("SELECT guidance FROM runs WHERE id = ?", (run_id,)).fetchone()
-            if not row:
-                return "not_found"
-            raw = row["guidance"]
-            if not raw:
-                return "no_guidance"
-            data = _json.loads(raw)
-            for block in data.get("blocks", []):
-                if block.get("kind") == "trigger_prompts":
-                    block.setdefault("metadata", {})["override"] = override_text
-                    break
-            conn.execute(
-                "UPDATE runs SET guidance = ? WHERE id = ?",
-                (_json.dumps(data), run_id),
-            )
-        return "ok"
-
-    result = await asyncio.to_thread(_sync_update)
+    result = await asyncio.to_thread(_sync_trigger_override, db_path, run_id, override_text.strip())
     if result == "not_found":
         return JSONResponse(status_code=404, content={"detail": "Run not found"})
     if result == "no_guidance":
@@ -2839,18 +2864,32 @@ async def conclude_campaign(request: Request, run_id: str) -> JSONResponse:
 async def api_internal_ipi_hit(request: Request) -> JSONResponse:
     """Receive a hit notification from the IPI callback server.
 
-    Validates the bridge token, reads the canonical hit from the DB,
-    and broadcasts an ``ipi_hit`` WebSocket event. Non-creating: never
-    writes or mutates hit records.
-    """
-    from q_ai.core.bridge_token import read_bridge_token
+    Validates the bridge token (cached at app startup), reads the
+    canonical hit from the DB, and broadcasts an ``ipi_hit`` WebSocket
+    event. Non-creating: never writes or mutates hit records.
 
+    Args:
+        request: The incoming FastAPI request. Must include an
+            ``X-QAI-Bridge-Token`` header matching the cached token
+            and a JSON body with ``{"hit_id": "<id>"}``.
+
+    Returns:
+        JSONResponse with ``{"status": "ok"}`` on success, 401 if the
+        bridge token is missing or invalid, 400 if the body is malformed,
+        or 404 if the hit ID does not exist in the database.
+    """
     token = request.headers.get("X-QAI-Bridge-Token")
-    expected = read_bridge_token()
+    expected: str | None = request.app.state.bridge_token
     if not token or not expected or token != expected:
         return JSONResponse(status_code=401, content={"detail": "Invalid bridge token"})
 
-    body = await request.json()
+    try:
+        body = await request.json()
+    except (ValueError, _json.JSONDecodeError):
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON body"})
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=400, content={"detail": "Expected JSON object"})
+
     hit_id = body.get("hit_id")
     if not hit_id:
         return JSONResponse(status_code=400, content={"detail": "Missing hit_id"})

@@ -34,9 +34,10 @@
                     <td class="text-xs opacity-50">{{ h.timestamp }}</td>
                     <td class="font-mono text-xs">{{ h.uuid[:8] }}...</td>
                     <td>
-                        {% if h.confidence == 2 or h.confidence == "HIGH" %}
+                        {% set conf = h.confidence|string|upper %}
+                        {% if conf in ("2", "HIGH") %}
                         <span class="badge badge-xs badge-success">HIGH</span>
-                        {% elif h.confidence == 1 or h.confidence == "MEDIUM" %}
+                        {% elif conf in ("1", "MEDIUM") %}
                         <span class="badge badge-xs badge-warning">MEDIUM</span>
                         {% else %}
                         <span class="badge badge-xs badge-error">LOW</span>

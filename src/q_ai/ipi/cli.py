@@ -584,7 +584,7 @@ def listen(
     notify_url: Annotated[
         str,
         typer.Option("--notify-url", help="Main qai server URL for hit notifications"),
-    ] = "http://localhost:8899",
+    ] = "http://127.0.0.1:8899",
 ) -> None:
     """Start the callback listener server.
 

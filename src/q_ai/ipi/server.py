@@ -145,13 +145,14 @@ def _record_and_log_hit(hit: Hit) -> None:
     if _bridge_notify_url and _bridge_token:
         try:
             with httpx.Client(timeout=1.0) as client:
-                client.post(
+                resp = client.post(
                     f"{_bridge_notify_url}/api/internal/ipi-hit",
                     json={"hit_id": hit.id},
                     headers={"X-QAI-Bridge-Token": _bridge_token},
                 )
-        except Exception:
-            _logger.warning("Bridge notification failed for hit %s", hit.id[:8])
+                resp.raise_for_status()
+        except Exception as err:
+            _logger.warning("Bridge notification failed for hit %s: %s", hit.id[:8], err)
 
 
 # =========================================================================
@@ -372,7 +373,7 @@ async def health() -> dict:
 def start_server(
     host: str = "127.0.0.1",
     port: int = 8080,
-    notify_url: str = "http://localhost:8899",
+    notify_url: str = "http://127.0.0.1:8899",
 ) -> None:
     """Start the callback listener server.
 

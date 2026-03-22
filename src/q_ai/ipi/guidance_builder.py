@@ -142,13 +142,19 @@ def build_ipi_guidance(
     Args:
         result: The completed generation result with campaign list.
         format_name: The document format used for generation.
-        callback_url: Base callback URL for the listener.
-        payload_style: Social engineering style used.
-        payload_type: Attack objective used.
+        callback_url: Base callback URL for the listener. Reserved for
+            future metadata — the brief intentionally designed the builder
+            to accept the full adapter config for forward compatibility.
+        payload_style: Social engineering style used. Reserved for future
+            metadata (e.g., style-aware prompt tuning).
+        payload_type: Attack objective used. Reserved for future metadata
+            (e.g., type-specific monitoring guidance).
 
     Returns:
         A RunGuidance instance ready to attach to the run record.
     """
+    # callback_url, payload_style, payload_type are accepted but not yet
+    # consumed — reserved for future per-style/type guidance refinement.
     blocks = [
         _build_inventory_block(result),
         _build_trigger_prompts_block(format_name),
