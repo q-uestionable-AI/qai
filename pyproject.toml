@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["security", "ai", "mcp", "red-team", "offensive-security"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.14",
