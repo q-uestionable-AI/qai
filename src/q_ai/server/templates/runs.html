@@ -63,6 +63,19 @@
                         {% include "partials/inject_results_tab.html" %}
                     {% elif mod == 'proxy' and mod in child_by_module %}
                         {% include "partials/proxy_results_tab.html" %}
+                    {% elif mod == 'ipi' and mod in child_by_module %}
+                        {% set ipi_guidance = child_guidance.get("ipi") if child_guidance is defined else None %}
+                        {% if ipi_guidance is none and child_by_module.get("ipi") %}
+                            {% set no_guidance_available = true %}
+                        {% endif %}
+                        {% include "partials/ipi_tab.html" %}
+                    {% elif mod == 'cxp' and mod in child_by_module %}
+                        {% set cxp_guidance = child_guidance.get("cxp") if child_guidance is defined else None %}
+                        {% set cxp_run_id = child_by_module["cxp"].id %}
+                        {% if cxp_guidance is none and child_by_module.get("cxp") %}
+                            {% set no_guidance_available = true %}
+                        {% endif %}
+                        {% include "partials/cxp_tab.html" %}
                     {% elif mod in child_by_module %}
                         <p class="text-sm text-base-content/40">
                             Results view for {{ mod }} coming soon.

@@ -7,14 +7,17 @@ human-in-the-loop waiting, and event emission. Error handling: best_effort (D6).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from q_ai.core.db import get_connection, save_run_guidance
 from q_ai.core.models import RunStatus
 from q_ai.cxp.builder import build
 from q_ai.cxp.catalog import get_rule, load_catalog
+from q_ai.cxp.guidance_builder import build_cxp_guidance
 from q_ai.cxp.mapper import persist_build
 from q_ai.cxp.models import BuildResult, Rule
 
@@ -98,6 +101,16 @@ class CXPAdapter:
                 db_path=self._runner._db_path,
                 run_id=child_id,
             )
+
+            # Build and persist deployment guidance
+            guidance = build_cxp_guidance(
+                result=build_result,
+                rules=rules,
+                format_id=format_id,
+            )
+            guidance_json = json.dumps(guidance.to_dict())
+            with get_connection(self._runner._db_path) as conn:
+                save_run_guidance(conn, child_id, guidance_json)
 
             await self._runner.emit_progress(
                 child_id,

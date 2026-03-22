@@ -40,8 +40,38 @@
         <tr>
             <td><span class="badge badge-sm badge-outline">{{ v.model_id }}</span></td>
             <td>{{ v.profile_id or '-' }}</td>
-            <td>{{ "%.0f"|format(v.retrieval_rate * 100) }}%</td>
-            <td>{{ "%.1f"|format(v.mean_poison_rank) if v.mean_poison_rank else 'N/A' }}</td>
+            <td>
+                {{ "%.0f"|format(v.retrieval_rate * 100) }}%
+                {% if v.retrieval_rate >= 0.7 %}
+                <span class="badge badge-xs badge-success ml-1"
+                      title="Poison documents are consistently retrieved">Strong signal</span>
+                {% elif v.retrieval_rate >= 0.3 %}
+                <span class="badge badge-xs badge-warning ml-1"
+                      title="Retrieval inconsistent — consider varying chunk size, embedding model, or corpus composition">Borderline</span>
+                {% else %}
+                <span class="badge badge-xs badge-error ml-1"
+                      title="Poison documents rarely surface — attack ineffective in this configuration">Weak signal</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if v.mean_poison_rank %}
+                {{ "%.1f"|format(v.mean_poison_rank) }}
+                    {% if v.mean_poison_rank <= 2.0 %}
+                <span class="badge badge-xs badge-success ml-1"
+                      title="Poison documents rank highly">Strong signal</span>
+                    {% elif v.mean_poison_rank <= 5.0 %}
+                <span class="badge badge-xs badge-warning ml-1"
+                      title="Poison documents appear but not prominently">Borderline</span>
+                    {% else %}
+                <span class="badge badge-xs badge-error ml-1"
+                      title="Poison content buried below benign results">Weak signal</span>
+                    {% endif %}
+                {% else %}
+                N/A
+                <span class="badge badge-xs badge-error ml-1"
+                      title="Poison content buried below benign results">Weak signal</span>
+                {% endif %}
+            </td>
             <td class="text-xs opacity-50">{{ v.created_at }}</td>
         </tr>
     {% endfor %}
