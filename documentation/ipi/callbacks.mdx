@@ -66,7 +66,7 @@ qai ipi listen --port 8080
 The listener starts a FastAPI server that:
 - Accepts GET and POST callbacks at `/c/<uuid>` and `/c/<uuid>/<token>`
 - Logs each hit to the console with confidence level and source details
-- Serves the web dashboard at `/ui/`
+- Notifies the qai web server via internal HTTP POST for real-time WebSocket updates (configurable via `--notify-url`)
 - Returns fake 404 responses on callback endpoints
 
 The listener binds to `127.0.0.1` by default. Use `--host 0.0.0.0` to listen on all interfaces.
@@ -104,7 +104,7 @@ Each hit records the following evidence:
 | Body/Query | POST body or query string (captures exfil data for dangerous payload types) |
 | Headers | Full HTTP headers from the request |
 
-All hits are stored in `~/.qai/ipi.db` (SQLite). Use `qai ipi export` to extract data as JSON for external analysis.
+All hits are stored in the IPI database tables within `~/.qai/qai.db`. Use `qai ipi export` to extract data as JSON for external analysis.
 
 ---
 

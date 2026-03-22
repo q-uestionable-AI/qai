@@ -23,9 +23,9 @@ Scan, intercept, and test tool trust boundaries in Model Context Protocol server
   - `sse` / `streamable-http`: HTTP-based. Requires the **URL** field.
 - **Provider / Model**: Select your configured LLM provider and model variant.
 - **Rounds**: Number of audit cycles (1–10). More rounds increase coverage and duration.
-- **Inject Techniques**: Checkboxes for prompt injection methods (e.g., `parameter`, `argument`, `context`). All techniques are selected by default.
+- **Inject Techniques**: Checkboxes for prompt injection methods (`description_poisoning`, `output_injection`, `cross_tool_escalation`). All techniques are selected by default.
 - **Advanced: Payload Library**: Toggle to manually select individual payloads, overriding technique filtering.
-- **Audit Categories**: Checkboxes for scanner checks (e.g., `type_confusion`, `permission_confusion`). All categories are selected by default. Use "Select All" / "Clear All" for quick filtering.
+- **Audit Scanners**: Checkboxes for scanner checks (e.g., `injection`, `auth`, `token_exposure`, `permissions`). All scanners are selected by default. Use "Select All" / "Clear All" for quick filtering.
 
 **Provider requirement**: Yes. If no provider is configured, a warning appears with a link to Settings.
 
@@ -40,8 +40,8 @@ Generate payloads for document pipelines and validate ingestion behavior.
 - **Target name**: Identifier for the document pipeline being tested.
 - **Callback URL**: Listener endpoint where exfiltration callbacks are sent. Often the same across runs; defaults to your saved callback URL in Settings.
 - **Format**: Document type (`pdf`, `markdown`, `html`, `docx`, `ics`, `eml`).
-- **Payload style**: How obvious the payload is (`obvious`, `subtle`, `invisible`).
-- **Payload type**: Detection method (`callback` for outbound requests, `exfil` for embedded exfiltration).
+- **Payload style**: Social engineering wrapper for the hidden instruction (`obvious`, `citation`, `reviewer`, `helpful`, `academic`, `compliance`, `datasource`).
+- **Payload type**: What the agent is instructed to do (`callback` for proof of execution, `exfil_summary`, `exfil_context`, `ssrf_internal`, `instruction_override`, `tool_abuse`, `persistence`). Non-callback types require the `--dangerous` flag.
 - **Pre-validate retrieval rank with RXP** (optional): If enabled, RXP validates that poisoned documents achieve high retrieval rank before injection.
   - **Embedding model**: Model ID for vector embeddings (default: `all-MiniLM-L6-v2`).
   - **Profile**: Retrieval ranking profile (leave blank for custom).

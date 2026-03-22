@@ -124,7 +124,7 @@ The internal bridge token is used for secure communication between the UI and ba
 To rotate the bridge token:
 
 1. Stop the server (`Ctrl+C`)
-2. Delete `~/.qai/bridge_token` (if present)
+2. Delete `~/.qai/bridge.token`
 3. Restart with `qai`
 
 A new token is generated on next startup.
@@ -173,7 +173,7 @@ Settings configured in the Web UI are immediately available to CLI commands and 
 Example workflow:
 
 1. Configure a provider in the Web UI
-2. Use it in a CLI workflow: `qai audit --provider anthropic ...`
+2. Use it in a CLI command: `qai inject campaign --model anthropic/claude-sonnet-4-20250514`
 3. Return to Web UI; the provider is already available for selection
 
 ## Resetting Settings
