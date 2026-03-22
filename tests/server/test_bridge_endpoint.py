@@ -8,8 +8,6 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
-from q_ai.core.db import get_connection
-
 BRIDGE_URL = "/api/internal/ipi-hit"
 VALID_TOKEN = "deadbeef" * 4  # 32 hex chars
 BRIDGE_TOKEN_PATH = "q_ai.core.bridge_token.read_bridge_token"
@@ -27,8 +25,16 @@ SAMPLE_HIT: dict[str, Any] = {
 
 
 def _insert_hit(db_path: Path) -> None:
-    """Insert the sample hit row into the ipi_hits table."""
-    with get_connection(db_path) as conn:
+    """Insert the sample hit row into the ipi_hits table.
+
+    Uses a raw sqlite3 connection to avoid opening a second WAL-mode
+    connection via get_connection (which also re-runs migrate). This
+    prevents potential write-lock contention on Windows CI.
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(str(db_path))
+    try:
         conn.execute(
             "INSERT INTO ipi_hits"
             " (id, uuid, source_ip, user_agent, confidence, token_valid, timestamp, body)"
@@ -45,6 +51,8 @@ def _insert_hit(db_path: Path) -> None:
             ),
         )
         conn.commit()
+    finally:
+        conn.close()
 
 
 class TestInternalIpiHitEndpoint:
