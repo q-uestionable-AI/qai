@@ -2988,45 +2988,6 @@ async def api_audit_findings(request: Request, run_id: str) -> HTMLResponse:
 
 
 # ---------------------------------------------------------------------------
-# Inject API routes
-# ---------------------------------------------------------------------------
-
-
-@router.post("/api/inject/campaign")
-async def api_inject_campaign(request: Request) -> HTMLResponse:
-    """Start an inject campaign (placeholder -- returns status)."""
-    templates = _get_templates(request)
-    return templates.TemplateResponse(
-        request, "partials/inject_tab.html", {"campaign_status": "submitted"}
-    )
-
-
-@router.get("/api/inject/campaign/{run_id}/status")
-async def api_inject_campaign_status(request: Request, run_id: str) -> HTMLResponse:
-    """Return inject campaign progress partial."""
-    templates = _get_templates(request)
-    db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        run = get_run(conn, run_id)
-    status = run.status.name if run is not None else "UNKNOWN"
-    return templates.TemplateResponse(
-        request, "partials/inject_tab.html", {"campaign_status": status}
-    )
-
-
-@router.get("/api/inject/results/{run_id}")
-async def api_inject_results(request: Request, run_id: str) -> HTMLResponse:
-    """Return inject results partial for a specific campaign run."""
-    templates = _get_templates(request)
-    db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        findings = list_findings(conn, run_id=run_id)
-    return templates.TemplateResponse(
-        request, "partials/findings_table.html", {"findings": findings}
-    )
-
-
-# ---------------------------------------------------------------------------
 # Proxy API routes
 # ---------------------------------------------------------------------------
 
