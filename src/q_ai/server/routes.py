@@ -19,6 +19,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from q_ai.audit.reporting.csv_report import generate_csv_report
 from q_ai.audit.reporting.ndjson_report import generate_ndjson_report
+from q_ai.audit.scanner.registry import list_scanner_names
 from q_ai.core.config import delete_credential, get_credential, set_credential
 from q_ai.core.db import (
     create_target,
@@ -46,6 +47,7 @@ from q_ai.core.providers import (
     get_provider,
     migrate_default_model,
 )
+from q_ai.inject.models import InjectionTechnique
 from q_ai.orchestrator.registry import get_workflow, list_workflows
 from q_ai.orchestrator.runner import WorkflowRunner
 from q_ai.rxp._deps import is_available as rxp_is_available
@@ -124,6 +126,11 @@ async def launcher(request: Request) -> HTMLResponse:
             "default_model_id": default_model_id,
             "rxp_available": rxp_is_available(),
             "defaults": defaults,
+            "injection_techniques": [
+                {"value": t.value, "label": t.value.replace("_", " ").title()}
+                for t in InjectionTechnique
+            ],
+            "scanner_categories": list_scanner_names(),
         },
     )
 
@@ -2089,14 +2096,38 @@ def _build_assess_config(body: dict[str, Any], target_id: str) -> dict[str, Any]
             content={"detail": "rounds must be an integer between 1 and 10"},
         )
     rxp_enabled = bool(body.get("rxp_enabled", False))
+
+    # Extract inject technique filter
+    raw_techniques = body.get("techniques")
+    techniques: list[str] | None = None
+    if isinstance(raw_techniques, list) and raw_techniques:
+        techniques = [str(t) for t in raw_techniques]
+
+    # Extract explicit payload name filter (overrides techniques when set)
+    raw_payloads = body.get("payload_names")
+    payloads: list[str] | None = None
+    if isinstance(raw_payloads, list) and raw_payloads:
+        payloads = [str(p) for p in raw_payloads]
+
+    # Extract audit category filter
+    raw_checks = body.get("checks")
+    checks: list[str] | None = None
+    if isinstance(raw_checks, list) and raw_checks:
+        checks = [str(c) for c in raw_checks]
+
     return {
         "target_id": target_id,
         "transport": transport,
         "command": command,
         "url": url,
         "rxp_enabled": rxp_enabled,
-        "audit": {"checks": None},
-        "inject": {"model": model, "rounds": rounds},
+        "audit": {"checks": checks},
+        "inject": {
+            "model": model,
+            "rounds": rounds,
+            "techniques": techniques,
+            "payloads": payloads,
+        },
         "proxy": {"intercept": False},
     }
 
@@ -2673,6 +2704,13 @@ def _build_quick_action_config(action: str, body: dict[str, Any], target_id: str
     if action == "campaign":
         config["model"] = _str_field(body, "model")
         config["rounds"] = int(body.get("rounds", 1))
+        raw_techniques = body.get("techniques")
+        if isinstance(raw_techniques, list) and raw_techniques:
+            config["techniques"] = [str(t) for t in raw_techniques]
+    if action == "scan":
+        raw_checks = body.get("checks")
+        if isinstance(raw_checks, list) and raw_checks:
+            config["checks"] = [str(c) for c in raw_checks]
     return config
 
 

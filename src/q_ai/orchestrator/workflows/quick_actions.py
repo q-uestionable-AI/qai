@@ -36,7 +36,7 @@ async def quick_scan(runner: WorkflowRunner, config: dict[str, Any]) -> None:
         "command": config.get("command"),
         "url": config.get("url"),
         "target_id": config["target_id"],
-        "checks": None,
+        "checks": config.get("checks"),
     }
 
     try:
@@ -114,6 +114,10 @@ async def quick_campaign(runner: WorkflowRunner, config: dict[str, Any]) -> None
         "model": config["model"],
         "rounds": config.get("rounds", 1),
     }
+
+    # Pass technique filter if provided
+    if config.get("techniques"):
+        inject_config["techniques"] = config["techniques"]
 
     try:
         result = await InjectAdapter(runner, inject_config).run()

@@ -153,6 +153,21 @@
                                class="input input-bordered input-sm w-24" />
                     </div>
 
+                    {# ---- Inject: Technique Checkboxes ---- #}
+                    <fieldset class="border border-base-300/30 rounded-lg p-3 mt-2">
+                        <legend class="text-xs font-semibold text-base-content/60 px-1">Inject Techniques</legend>
+                        <div id="technique-checks-assess" class="flex flex-wrap gap-3">
+                            {% for tech in injection_techniques %}
+                            <label class="label cursor-pointer gap-2">
+                                <input type="checkbox" name="techniques" value="{{ tech.value }}"
+                                       class="checkbox checkbox-xs checkbox-primary" checked
+                                       onchange="onTechniqueChange('assess')" />
+                                <span class="label-text text-xs">{{ tech.label }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+
                     {% elif wf.id == 'test_docs' %}
                     {# ---- TEST DOCS FORM ---- #}
                     {{ target_name_field(wf.id, "doc-pipeline") }}
@@ -406,6 +421,21 @@
                         <input type="number" name="rounds" value="1" min="1" max="10"
                                class="input input-bordered input-sm w-24" />
                     </div>
+
+                    {# ---- Inject: Technique Checkboxes ---- #}
+                    <fieldset class="border border-base-300/30 rounded-lg p-3 mt-2">
+                        <legend class="text-xs font-semibold text-base-content/60 px-1">Techniques</legend>
+                        <div id="technique-checks-qa_campaign" class="flex flex-wrap gap-3">
+                            {% for tech in injection_techniques %}
+                            <label class="label cursor-pointer gap-2">
+                                <input type="checkbox" name="techniques" value="{{ tech.value }}"
+                                       class="checkbox checkbox-xs checkbox-primary" checked />
+                                <span class="label-text text-xs">{{ tech.label }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+
                     <div id="error-qa_campaign" class="text-error text-sm hidden"></div>
                     <div class="mt-4">
                         <button type="submit" class="btn btn-sm btn-launch">Launch</button>
@@ -524,6 +554,10 @@ async function loadChainExecutions(wfId) {
     } catch (err) { /* silently fail */ }
 }
 
+function onTechniqueChange(wfId) {
+    // Placeholder for technique checkbox change handling
+}
+
 var _launchInFlight = {};
 
 async function _doLaunch(e, wfId, url) {
@@ -536,7 +570,16 @@ async function _doLaunch(e, wfId, url) {
     _launchInFlight[wfId] = true;
     if (btn) btn.disabled = true;
     try {
-        var data = Object.fromEntries(new FormData(form));
+        var fd = new FormData(form);
+        var data = {};
+        for (var [key, val] of fd.entries()) {
+            if (key === 'techniques' || key === 'checks' || key === 'payload_names') {
+                if (!data[key]) data[key] = [];
+                data[key].push(val);
+            } else {
+                data[key] = val;
+            }
+        }
         if (data.rounds) data.rounds = parseInt(data.rounds, 10);
         if (data.include_evidence_pack) data.include_evidence_pack = true;
         var resp = await fetch(url, {
