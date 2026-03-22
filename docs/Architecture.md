@@ -191,7 +191,15 @@ WorkflowRunner.emit() ──► ConnectionManager.broadcast() ──► all conn
 
 **RXP Interpretive Bands:** The RXP results tab displays colored signal badges next to retrieval rate and mean rank metrics. Bands: strong (>=0.7 / <=2.0), borderline (0.3-0.7 / 2.0-5.0), weak (<0.3 / >5.0). These are presentation logic only — no model or DB changes. Each badge includes a tooltip with guidance on what to vary next.
 
-**Adjacent concern:** Inject and audit launcher controls and results drill-down are the next module-specific playbook views (Brief B).
+**Inject Launcher Controls:** The Assess form and Quick Inject Run include technique checkboxes (description_poisoning, output_injection, cross_tool_escalation) — all checked by default. A collapsed "Advanced: Payload Library" section in the Assess form lazy-loads all templates via `GET /api/inject/payloads` and allows individual payload selection, which overrides technique filtering. Config flows: form → `_build_assess_config()` → `inject.techniques`/`inject.payloads` → `InjectAdapter` → `filter_templates()`.
+
+**Inject Results Drill-Down:** The inject results tab uses a row-expansion pattern (matching the audit mitigation toggle). Each row expands to show the poisoned tool description and test query (resolved from `PayloadTemplate` by name via `load_all_templates()`), the model response (parsed from JSON evidence), and a static scoring rationale per outcome type. Long content fields have "Show more" truncation controls. Template-not-found falls back to "Template not found" rather than erroring.
+
+**Audit Launcher Controls:** The Assess form and Quick Audit Run include scanner category checkboxes — one per `list_scanner_names()` entry, all checked by default, with Select All / Clear All links. Categories flow through `audit.checks` config to `run_scan(check_names=...)`. The checkbox list is registry-driven, not hardcoded.
+
+**Enumerate Server:** A stateless quick action that connects to an MCP server and displays tools, resources, and prompts without scanning. Available as its own accordion row and as an "Enumerate first" button in the Assess form. `POST /api/audit/enumerate` calls `enumerate_server()` from `mcp/discovery.py` and returns JSON. Does not create a run or persist to the database.
+
+**SARIF Export:** A "Download SARIF" button in the run results overview header, stacked with existing export buttons. Enabled only when the run has audit findings; disabled with tooltip otherwise. `GET /api/runs/{run_id}/sarif` reconstructs `ScanFinding` objects from DB `Finding` rows, generates SARIF 2.1.0 via `generate_sarif_report()`, and returns a file download. SARIF is audit-scoped only — inject and proxy results are excluded per D16.
 
 ---
 
