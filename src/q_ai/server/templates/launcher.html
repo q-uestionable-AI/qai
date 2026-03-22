@@ -69,6 +69,7 @@
         <pre><code id="cli-preview-code-{{ wf_id }}"></code></pre>
         <button type="button" class="cli-preview-copy"
                 id="cli-copy-btn-{{ wf_id }}"
+                aria-label="Copy to clipboard"
                 onclick="copyCliPreview('{{ wf_id }}')" title="Copy to clipboard">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
                  fill="none" stroke="currentColor" stroke-width="2"
@@ -612,7 +613,8 @@
     padding: 0.25rem; border-radius: 0.25rem; font-size: 0.7rem;
 }
 .cli-preview-copy:hover { background: rgba(139, 92, 246, 0.15); }
-.cli-preview-code-wrap:hover .cli-preview-copy { opacity: 1; }
+.cli-preview-code-wrap:hover .cli-preview-copy,
+.cli-preview-code-wrap:focus-within .cli-preview-copy { opacity: 1; }
 .cli-preview-note {
     display: block; font-size: 0.65rem; opacity: 0.35;
     margin-top: 0.25rem; font-style: italic;
@@ -1079,8 +1081,11 @@ function _buildCliTestDocs(form) {
     if (rxpCb && rxpCb.checked) {
         var rxpModelEl = form.querySelector('input[name="rxp_model_id"]');
         var rxpModel = rxpModelEl ? rxpModelEl.value.trim() : '';
+        var rxpProfileEl = form.querySelector('input[name="rxp_profile_id"]');
+        var rxpProfile = rxpProfileEl ? rxpProfileEl.value.trim() : '';
         lines.push('# pre-validate retrieval rank');
-        lines.push('qai rxp measure --model ' + (rxpModel || '<model>') + ' ...');
+        lines.push('qai rxp validate --model ' + (rxpModel || '<model>') +
+            ' --profile-id ' + (rxpProfile || '<profile>'));
     }
 
     lines.push('# generate payloads');
