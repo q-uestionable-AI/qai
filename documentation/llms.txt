@@ -58,36 +58,36 @@
 - [CXP Objectives](https://docs.q-uestionable.ai/cxp/objectives): Test scenarios for coding assistant instruction poisoning
 - [Assistant Formats](https://docs.q-uestionable.ai/cxp/assistant-formats): Supported coding assistant instruction file formats
 - [CXP Validation](https://docs.q-uestionable.ai/cxp/validation): Validate whether generated code contains injected instructions
-- [CXP Deployment Playbook](https://docs.q-uestionable.ai/cxp/deployment-playbook): Deploy CXP testing using the web UI and guidance builder
+- [CXP Deployment Playbook](https://docs.q-uestionable.ai/cxp/deployment-playbook): Guided workflow for deploying and interpreting context file poisoning tests
 ### RXP — RAG Retrieval Poisoning
 
 - [RXP Overview](https://docs.q-uestionable.ai/rxp/overview): Measure and validate RAG retrieval poisoning vulnerabilities
 - [RXP CLI Reference](https://docs.q-uestionable.ai/rxp/cli): Command-line interface for RAG retrieval poisoning validation
-- [RXP Models and Profiles](https://docs.q-uestionable.ai/rxp/models-profiles): Embedding models and domain profiles for retrieval testing
-- [RXP Interpretive Bands](https://docs.q-uestionable.ai/rxp/interpretive-bands): Understanding retrieval poisoning risk scores
+- [Models and Profiles](https://docs.q-uestionable.ai/rxp/models-profiles): Embedding models and domain profiles for retrieval poisoning validation
+- [Interpretive Bands](https://docs.q-uestionable.ai/rxp/interpretive-bands): Severity thresholds for retrieval poisoning results
 ### Exports & Integrations
 
-- [JSON Schema Export](https://docs.q-uestionable.ai/exports/json-schema): Export qai audit runs as structured JSON with complete schema definition
-- [SARIF Format Export](https://docs.q-uestionable.ai/exports/sarif): Export qai findings in SARIF 2.1.0 format for CI/CD integration and GitHub Security alerts
-- [NDJSON Export Format](https://docs.q-uestionable.ai/exports/ndjson): Newline-delimited JSON export for streaming processing and log aggregation
-- [CSV Export Format](https://docs.q-uestionable.ai/exports/csv): Spreadsheet-compatible CSV export for reporting and analysis in Excel and Google Sheets
+- [JSON Bundle Export](https://docs.q-uestionable.ai/exports/json-schema): Complete run export in the run-bundle-v1 schema
+- [SARIF Export](https://docs.q-uestionable.ai/exports/sarif): SARIF 2.1.0 output for GitHub Code Scanning and CI/CD integration
+- [NDJSON Export](https://docs.q-uestionable.ai/exports/ndjson): Newline-delimited JSON for streaming processing and log aggregation
+- [CSV Export](https://docs.q-uestionable.ai/exports/csv): Flat spreadsheet export with one row per finding
 - [DefectDojo Integration](https://docs.q-uestionable.ai/integrations/defectdojo): Import qai audit findings into DefectDojo for centralized vulnerability management
-- [GitHub Security Integration](https://docs.q-uestionable.ai/integrations/github-security): Integrate qai with GitHub Advanced Security for native code scanning and Security tab alerts
+- [GitHub Security Integration](https://docs.q-uestionable.ai/integrations/github-security): Surface qai findings in GitHub Code Scanning via SARIF upload
 ### Configuration
 
-- [LLM Provider Configuration](https://docs.q-uestionable.ai/config/providers): Configure LLM providers and credentials for qai models
-- [MCP Transports Configuration](https://docs.q-uestionable.ai/config/transports): Configure Model Context Protocol transport types for qai connections
+- [LLM Provider Configuration](https://docs.q-uestionable.ai/config/providers): Configure LLM providers and credentials for injection campaigns and chain execution
+- [MCP Transport Types](https://docs.q-uestionable.ai/config/transports): Configure how qai connects to MCP servers
 - [Callback Server Configuration](https://docs.q-uestionable.ai/config/callback-server): Configure IPI callback listener and bridge token authentication
 - [Dangerous Payloads Configuration](https://docs.q-uestionable.ai/config/dangerous-payloads): Control access to high-risk payload injection types with the --dangerous flag
-- [Environment Variables Reference](https://docs.q-uestionable.ai/config/environment-variables): Complete reference of qai environment variables for configuration and credentials
+- [Environment Variables](https://docs.q-uestionable.ai/config/environment-variables): Environment variables recognized by qai
 ### Architecture
 
 - [Platform Overview](https://docs.q-uestionable.ai/architecture/overview): Architectural design and module organization of the qai platform
 - [Core Infrastructure](https://docs.q-uestionable.ai/architecture/core): Database schema, configuration system, and shared data models
-- [Audit Module Architecture](https://docs.q-uestionable.ai/architecture/audit-module): Scanner discovery, execution pipeline, and multi-format reporting
-- [Proxy Module Architecture](https://docs.q-uestionable.ai/architecture/proxy-module): MCP message interception, session recording, and evidence capture
-- [Inject Module Architecture](https://docs.q-uestionable.ai/architecture/inject-module): Multi-provider LLM campaigns, scoring, and evidence preservation
-- [Chain Module Architecture](https://docs.q-uestionable.ai/architecture/chain-module): Attack chain execution, blast radius analysis, and detection rule generation
-- [IPI Module Architecture](https://docs.q-uestionable.ai/architecture/ipi-module): Document generation, deployment, hit tracking, and playbook generation
-- [CXP Module Architecture](https://docs.q-uestionable.ai/architecture/cxp-module): Instruction generation, prompt injection rules, and assistant validation
-- [RXP Module Architecture](https://docs.q-uestionable.ai/architecture/rxp-module): Response validation, embedding-based detection, and anomaly interpretation
+- [Audit Module Architecture](https://docs.q-uestionable.ai/architecture/audit-module): Scanner pipeline, MCP connection, and multi-format reporting
+- [Proxy Module Architecture](https://docs.q-uestionable.ai/architecture/proxy-module): MCP traffic interception, session recording, and replay
+- [Inject Module Architecture](https://docs.q-uestionable.ai/architecture/inject-module): Multi-provider campaign execution, response normalization, and scoring
+- [Chain Module Architecture](https://docs.q-uestionable.ai/architecture/chain-module): Attack chain definitions, execution, blast radius, and detection rules
+- [IPI Module Architecture](https://docs.q-uestionable.ai/architecture/ipi-module): Document generation, callback tracking, and deployment playbooks
+- [CXP Module Architecture](https://docs.q-uestionable.ai/architecture/cxp-module): Context file poisoning for coding assistants
+- [RXP Module Architecture](https://docs.q-uestionable.ai/architecture/rxp-module): RAG retrieval poisoning measurement and validation
