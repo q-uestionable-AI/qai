@@ -30,7 +30,6 @@ from q_ai.core.db import (
     get_run,
     get_setting,
     get_target,
-    list_evidence,
     list_findings,
     list_runs,
     list_targets,
@@ -38,7 +37,7 @@ from q_ai.core.db import (
 )
 from q_ai.core.guidance import RunGuidance
 from q_ai.core.mitigation import MitigationGuidance, SourceType
-from q_ai.core.models import RunStatus, Severity
+from q_ai.core.models import Evidence, RunStatus, Severity
 from q_ai.core.providers import (
     PROVIDERS,
     ProviderType,
@@ -188,6 +187,7 @@ def _mitigation_section_label(section: Any) -> str:
 def _load_module_data(
     conn: Any,
     child_by_module: dict[str, Any],
+    findings: list[Any],
 ) -> dict[str, Any]:
     """Load module-specific data for audit, inject, and proxy child runs.
 
@@ -208,13 +208,30 @@ def _load_module_data(
             (audit_child.id,),
         ).fetchone()
         audit_scan = dict(row) if row else None
-        audit_findings = list_findings(conn, run_id=audit_child.id)
+
+        # Performance optimization:
+        # Instead of querying list_findings and list_evidence per finding (N+1),
+        # use the provided findings list and fetch evidence in bulk for the run.
+        audit_findings = [f for f in findings if f.run_id == audit_child.id]
+
         for af in audit_findings:
+            audit_evidence_map[af.id] = []
             af.mitigation_guidance = None
             if af.mitigation:
                 with contextlib.suppress(TypeError, ValueError):
                     af.mitigation_guidance = MitigationGuidance.from_dict(af.mitigation)
-            audit_evidence_map[af.id] = list_evidence(conn, finding_id=af.id)
+
+        if audit_findings:
+            finding_ids = [af.id for af in audit_findings]
+            ph = ", ".join("?" for _ in finding_ids)
+            ev_rows = conn.execute(
+                f"SELECT * FROM evidence WHERE finding_id IN ({ph}) ORDER BY created_at DESC",  # noqa: S608
+                finding_ids,
+            ).fetchall()
+            for ev_row in ev_rows:
+                ev = Evidence.from_row(dict(ev_row))
+                if ev.finding_id in audit_evidence_map:
+                    audit_evidence_map[ev.finding_id].append(ev)
 
     inject_child = child_by_module.get("inject")
     if inject_child:
@@ -294,7 +311,7 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
         )
         wf_modules = list(workflow.modules) if workflow else []
 
-        module_data = _load_module_data(conn, child_by_module)
+        module_data = _load_module_data(conn, child_by_module, findings)
 
         # Deserialize RunGuidance from child runs for playbook rendering
         child_guidance: dict[str, RunGuidance | None] = {}
