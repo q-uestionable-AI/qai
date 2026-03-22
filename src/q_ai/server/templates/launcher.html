@@ -153,6 +153,59 @@
                                class="input input-bordered input-sm w-24" />
                     </div>
 
+                    {# ---- Inject: Technique Checkboxes ---- #}
+                    <fieldset class="border border-base-300/30 rounded-lg p-3 mt-2">
+                        <legend class="text-xs font-semibold text-base-content/60 px-1">Inject Techniques</legend>
+                        <div id="technique-checks-assess" class="flex flex-wrap gap-3">
+                            {% for tech in injection_techniques %}
+                            <label class="label cursor-pointer gap-2">
+                                <input type="checkbox" name="techniques" value="{{ tech.value }}"
+                                       class="checkbox checkbox-xs checkbox-primary" checked
+                                       onchange="onTechniqueChange('assess')" />
+                                <span class="label-text text-xs">{{ tech.label }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+
+                    {# ---- Inject: Advanced Payload Library ---- #}
+                    <div class="mt-2">
+                        <span class="text-xs cursor-pointer select-none"
+                              style="color: #a78bfa;"
+                              onclick="togglePayloadLibrary('assess')"
+                              id="payload-lib-toggle-assess">
+                            Advanced: Payload Library <span class="mit-arrow" style="color: #fff;">&#x25BC;</span>
+                        </span>
+                        <div id="payload-library-assess" class="hidden mt-2">
+                            <div class="text-xs text-base-content/40 mb-2">
+                                Select individual payloads to override technique filtering.
+                            </div>
+                            <div id="payload-lib-content-assess" class="max-h-60 overflow-y-auto">
+                                <p class="text-xs text-base-content/40">Loading...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {# ---- Audit: Category Checkboxes ---- #}
+                    <fieldset class="border border-base-300/30 rounded-lg p-3 mt-2">
+                        <legend class="text-xs font-semibold text-base-content/60 px-1">Audit Categories</legend>
+                        <div class="flex gap-3 mb-2">
+                            <span class="text-xs cursor-pointer select-none" style="color: #a78bfa;"
+                                  onclick="toggleAllChecks('checks', 'assess', true)">Select All</span>
+                            <span class="text-xs cursor-pointer select-none" style="color: #a78bfa;"
+                                  onclick="toggleAllChecks('checks', 'assess', false)">Clear All</span>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {% for cat in scanner_categories %}
+                            <label class="label cursor-pointer gap-2">
+                                <input type="checkbox" name="checks" value="{{ cat }}"
+                                       class="checkbox checkbox-xs checkbox-primary" checked />
+                                <span class="label-text text-xs">{{ cat }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+
                     {% elif wf.id == 'test_docs' %}
                     {# ---- TEST DOCS FORM ---- #}
                     {{ target_name_field(wf.id, "doc-pipeline") }}
@@ -276,6 +329,20 @@
 
                     {% endif %}
 
+                    {% if wf.id == 'assess' %}
+                    {# ---- Enumerate First ---- #}
+                    <div class="flex items-center gap-3 mt-2">
+                        <button type="button" class="btn btn-xs btn-outline"
+                                style="border-color: #a78bfa; color: #a78bfa;"
+                                onclick="enumerateFirst('assess')">
+                            Enumerate first
+                        </button>
+                        <span id="enumerate-first-status-assess" class="text-xs text-base-content/40"></span>
+                    </div>
+                    <div id="enumerate-first-results-assess" class="hidden mt-2 p-3 bg-base-300/20 rounded-lg text-sm space-y-2 max-h-60 overflow-y-auto">
+                    </div>
+                    {% endif %}
+
                     <div id="error-{{ wf.id }}" class="text-error text-sm hidden"></div>
 
                     <div class="mt-4">
@@ -319,6 +386,27 @@
                     <input type="hidden" name="action" value="scan" />
                     {{ target_name_field('qa_scan', "my-mcp-server") }}
                     {{ transport_fields('qa_scan') }}
+
+                    {# ---- Audit: Category Checkboxes ---- #}
+                    <fieldset class="border border-base-300/30 rounded-lg p-3 mt-2">
+                        <legend class="text-xs font-semibold text-base-content/60 px-1">Categories</legend>
+                        <div class="flex gap-3 mb-2">
+                            <span class="text-xs cursor-pointer select-none" style="color: #a78bfa;"
+                                  onclick="toggleAllChecks('checks', 'qa_scan', true)">Select All</span>
+                            <span class="text-xs cursor-pointer select-none" style="color: #a78bfa;"
+                                  onclick="toggleAllChecks('checks', 'qa_scan', false)">Clear All</span>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {% for cat in scanner_categories %}
+                            <label class="label cursor-pointer gap-2">
+                                <input type="checkbox" name="checks" value="{{ cat }}"
+                                       class="checkbox checkbox-xs checkbox-primary" checked />
+                                <span class="label-text text-xs">{{ cat }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+
                     <div id="error-qa_scan" class="text-error text-sm hidden"></div>
                     <div class="mt-4">
                         <button type="submit" class="btn btn-sm btn-launch">Scan</button>
@@ -406,6 +494,21 @@
                         <input type="number" name="rounds" value="1" min="1" max="10"
                                class="input input-bordered input-sm w-24" />
                     </div>
+
+                    {# ---- Inject: Technique Checkboxes ---- #}
+                    <fieldset class="border border-base-300/30 rounded-lg p-3 mt-2">
+                        <legend class="text-xs font-semibold text-base-content/60 px-1">Techniques</legend>
+                        <div id="technique-checks-qa_campaign" class="flex flex-wrap gap-3">
+                            {% for tech in injection_techniques %}
+                            <label class="label cursor-pointer gap-2">
+                                <input type="checkbox" name="techniques" value="{{ tech.value }}"
+                                       class="checkbox checkbox-xs checkbox-primary" checked />
+                                <span class="label-text text-xs">{{ tech.label }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+
                     <div id="error-qa_campaign" class="text-error text-sm hidden"></div>
                     <div class="mt-4">
                         <button type="submit" class="btn btn-sm btn-launch">Launch</button>
@@ -413,6 +516,43 @@
                 </form>
                 </div>
                 {% endif %}
+            </div>
+        </div>
+
+        <div class="wf-connector"></div>
+        <div class="wf-row" id="wf-row-qa_enumerate"
+             style="--wf-bg: {{ wf_color_default.bg }}; --wf-border: {{ wf_color_default.border }}; --wf-color: {{ wf_color_default.color }};">
+            <div class="wf-row-header"
+                 onclick="toggleAccordion('qa_enumerate')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleAccordion('qa_enumerate');}"
+                 role="button" tabindex="0" aria-label="Toggle Enumerate Server">
+                <div class="wf-row-top">
+                    <div class="wf-row-left">
+                        <div class="wf-row-bar" style="background: {{ wf_color_default.color }};"></div>
+                        <span class="wf-row-name" style="color: {{ wf_color_default.color }};">Enumerate Server</span>
+                    </div>
+                    <span class="wf-row-chevron">&#9654;</span>
+                </div>
+                <div class="wf-row-modules">
+                    <span class="wf-module-pill-sm">audit</span>
+                </div>
+            </div>
+            <div class="wf-row-body">
+                <p class="wf-row-desc">Connect and list server capabilities (tools, resources, prompts) without scanning.</p>
+                <div class="wf-row-pills">
+                    <span class="wf-module-pill">audit</span>
+                </div>
+                <div class="wf-row-form">
+                <form id="form-qa_enumerate" class="space-y-4" onsubmit="return launchEnumerate(event)">
+                    {{ transport_fields('qa_enumerate') }}
+                    <div id="error-qa_enumerate" class="text-error text-sm hidden"></div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-sm btn-launch">Enumerate</button>
+                    </div>
+                </form>
+                <div id="enumerate-results" class="hidden mt-4 p-3 bg-base-300/20 rounded-lg text-sm space-y-3">
+                </div>
+                </div>
             </div>
         </div>
     </div>
@@ -524,6 +664,66 @@ async function loadChainExecutions(wfId) {
     } catch (err) { /* silently fail */ }
 }
 
+function onTechniqueChange(wfId) {
+    // Placeholder for technique checkbox change handling
+}
+
+function toggleAllChecks(name, wfId, checked) {
+    var form = document.getElementById('form-' + wfId);
+    if (!form) return;
+    form.querySelectorAll('input[name="' + name + '"]').forEach(function(cb) {
+        cb.checked = checked;
+    });
+}
+
+var _payloadLibLoaded = {};
+
+function togglePayloadLibrary(wfId) {
+    var panel = document.getElementById('payload-library-' + wfId);
+    var toggle = document.getElementById('payload-lib-toggle-' + wfId);
+    var arrow = toggle.querySelector('.mit-arrow');
+    panel.classList.toggle('hidden');
+    arrow.textContent = panel.classList.contains('hidden') ? '\u25BC' : '\u25B2';
+    if (!panel.classList.contains('hidden') && !_payloadLibLoaded[wfId]) {
+        loadPayloadLibrary(wfId);
+    }
+}
+
+async function loadPayloadLibrary(wfId) {
+    _payloadLibLoaded[wfId] = true;
+    var container = document.getElementById('payload-lib-content-' + wfId);
+    try {
+        var resp = await fetch('/api/inject/payloads');
+        var payloads = await resp.json();
+        var html = '<table class="table table-xs w-full"><thead><tr>' +
+            '<th></th><th>Name</th><th>Technique</th><th>OWASP</th><th>Description</th>' +
+            '</tr></thead><tbody>';
+        payloads.forEach(function(p) {
+            html += '<tr><td><input type="checkbox" name="payload_names" value="' +
+                p.name + '" class="checkbox checkbox-xs" onchange="onPayloadSelect(\'' +
+                wfId + '\')" /></td>' +
+                '<td class="font-mono text-xs">' + p.name + '</td>' +
+                '<td><span class="badge badge-ghost badge-xs">' + p.technique + '</span></td>' +
+                '<td class="text-xs">' + (p.owasp_ids || []).join(', ') + '</td>' +
+                '<td class="text-xs max-w-xs truncate">' + p.description + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = '<p class="text-xs text-error">Failed to load payloads.</p>';
+    }
+}
+
+function onPayloadSelect(wfId) {
+    var form = document.getElementById('form-' + wfId);
+    var selected = form.querySelectorAll('input[name="payload_names"]:checked');
+    var techContainer = document.getElementById('technique-checks-' + wfId);
+    if (techContainer) {
+        techContainer.style.opacity = selected.length > 0 ? '0.4' : '1';
+        techContainer.style.pointerEvents = selected.length > 0 ? 'none' : 'auto';
+    }
+}
+
 var _launchInFlight = {};
 
 async function _doLaunch(e, wfId, url) {
@@ -536,7 +736,21 @@ async function _doLaunch(e, wfId, url) {
     _launchInFlight[wfId] = true;
     if (btn) btn.disabled = true;
     try {
-        var data = Object.fromEntries(new FormData(form));
+        var fd = new FormData(form);
+        var data = {};
+        // Pre-seed empty arrays for checkbox groups present in the form
+        // so "all unchecked" sends [] rather than omitting the key
+        ['techniques', 'checks', 'payload_names'].forEach(function(name) {
+            if (form.querySelector('input[name="' + name + '"]')) data[name] = [];
+        });
+        for (var [key, val] of fd.entries()) {
+            if (key === 'techniques' || key === 'checks' || key === 'payload_names') {
+                if (!data[key]) data[key] = [];
+                data[key].push(val);
+            } else {
+                data[key] = val;
+            }
+        }
         if (data.rounds) data.rounds = parseInt(data.rounds, 10);
         if (data.include_evidence_pack) data.include_evidence_pack = true;
         var resp = await fetch(url, {
@@ -554,6 +768,130 @@ async function _doLaunch(e, wfId, url) {
 
 function launchWorkflow(e, wfId) { return _doLaunch(e, wfId, '/api/workflows/launch'); }
 function launchQuickAction(e, wfId) { return _doLaunch(e, wfId, '/api/quick-actions/launch'); }
+
+async function launchEnumerate(e) {
+    e.preventDefault();
+    var form = document.getElementById('form-qa_enumerate');
+    var errEl = document.getElementById('error-qa_enumerate');
+    var btn = form.querySelector('button[type="submit"]');
+    var resultsEl = document.getElementById('enumerate-results');
+    errEl.classList.add('hidden');
+    resultsEl.classList.add('hidden');
+    btn.disabled = true;
+    btn.textContent = 'Connecting...';
+    try {
+        var fd = new FormData(form);
+        var data = Object.fromEntries(fd);
+        var resp = await fetch('/api/audit/enumerate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+        });
+        var result = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = result.detail || 'Enumerate failed';
+            errEl.classList.remove('hidden');
+        } else {
+            renderEnumerateResults(resultsEl, result);
+            resultsEl.classList.remove('hidden');
+        }
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Enumerate';
+    }
+    return false;
+}
+
+async function enumerateFirst(wfId) {
+    var form = document.getElementById('form-' + wfId);
+    var statusEl = document.getElementById('enumerate-first-status-' + wfId);
+    var resultsEl = document.getElementById('enumerate-first-results-' + wfId);
+    statusEl.textContent = 'Connecting...';
+    statusEl.style.color = '';
+    resultsEl.classList.add('hidden');
+    try {
+        var fd = new FormData(form);
+        var data = Object.fromEntries(fd);
+        var resp = await fetch('/api/audit/enumerate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+        });
+        var result = await resp.json();
+        if (!resp.ok) {
+            statusEl.textContent = result.detail || 'Failed';
+            statusEl.style.color = '#f87171';
+        } else {
+            statusEl.textContent = '';
+            renderEnumerateResults(resultsEl, result);
+            resultsEl.classList.remove('hidden');
+        }
+    } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.style.color = '#f87171';
+    }
+}
+
+function renderEnumerateResults(container, data) {
+    // Safe DOM construction — no innerHTML with untrusted MCP server data
+    container.textContent = '';
+
+    if (data.server_info && data.server_info.name) {
+        var header = document.createElement('div');
+        header.className = 'font-semibold';
+        header.textContent = data.server_info.name;
+        if (data.server_info.version) {
+            var ver = document.createElement('span');
+            ver.className = 'text-xs text-base-content/40';
+            ver.textContent = ' v' + data.server_info.version;
+            header.appendChild(ver);
+        }
+        container.appendChild(header);
+    }
+
+    var summary = document.createElement('div');
+    summary.className = 'text-xs text-base-content/60';
+    summary.textContent = (data.tools || []).length + ' tools, ' +
+        (data.resources || []).length + ' resources, ' +
+        (data.prompts || []).length + ' prompts';
+    container.appendChild(summary);
+
+    function buildList(items, label, textFn) {
+        if (!items || items.length === 0) return;
+        var wrap = document.createElement('div');
+        var lbl = document.createElement('span');
+        lbl.className = 'font-semibold text-xs';
+        lbl.textContent = label;
+        wrap.appendChild(lbl);
+        var ul = document.createElement('ul');
+        ul.className = 'list-disc list-inside text-xs text-base-content/70';
+        items.forEach(function(item) {
+            var li = document.createElement('li');
+            var name = document.createElement('span');
+            name.className = 'font-mono';
+            name.textContent = textFn(item).name;
+            li.appendChild(name);
+            var desc = textFn(item).desc;
+            if (desc) li.appendChild(document.createTextNode(' \u2014 ' + desc));
+            ul.appendChild(li);
+        });
+        wrap.appendChild(ul);
+        container.appendChild(wrap);
+    }
+
+    buildList(data.tools, 'Tools:', function(t) {
+        return { name: t.name, desc: t.description ? t.description.substring(0, 80) : '' };
+    });
+    buildList(data.resources, 'Resources:', function(r) {
+        return { name: r.uri || r.name, desc: '' };
+    });
+    buildList(data.prompts, 'Prompts:', function(p) {
+        return { name: p.name, desc: p.description ? p.description.substring(0, 80) : '' };
+    });
+}
 </script>
 
 <script>

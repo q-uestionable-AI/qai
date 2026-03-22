@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any
 from q_ai.core.models import RunStatus
 from q_ai.inject.campaign import run_campaign
 from q_ai.inject.mapper import _OUTCOME_SEVERITY, persist_campaign
-from q_ai.inject.models import Campaign
-from q_ai.inject.payloads.loader import load_all_templates
+from q_ai.inject.models import Campaign, InjectionTechnique, PayloadTemplate
+from q_ai.inject.payloads.loader import filter_templates, load_all_templates
 
 if TYPE_CHECKING:
     from q_ai.orchestrator.runner import WorkflowRunner
@@ -71,6 +71,18 @@ class InjectAdapter:
             if payload_names:
                 name_set = set(payload_names)
                 templates = [t for t in templates if t.name in name_set]
+            elif "techniques" in self._config:
+                # Filter by techniques (empty list = no templates selected)
+                technique_strs = self._config["techniques"] or []
+                filtered: list[PayloadTemplate] = []
+                seen_names: set[str] = set()
+                for tech_str in technique_strs:
+                    tech = InjectionTechnique(tech_str)
+                    for t in filter_templates(templates, technique=tech):
+                        if t.name not in seen_names:
+                            filtered.append(t)
+                            seen_names.add(t.name)
+                templates = filtered
 
             total = len(templates)
             await self._runner.emit_progress(child_id, f"Testing {total} payloads...")

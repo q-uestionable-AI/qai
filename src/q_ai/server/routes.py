@@ -19,6 +19,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from q_ai.audit.reporting.csv_report import generate_csv_report
 from q_ai.audit.reporting.ndjson_report import generate_ndjson_report
+from q_ai.audit.scanner.registry import list_scanner_names
 from q_ai.core.config import delete_credential, get_credential, set_credential
 from q_ai.core.db import (
     create_target,
@@ -46,6 +47,7 @@ from q_ai.core.providers import (
     get_provider,
     migrate_default_model,
 )
+from q_ai.inject.models import InjectionTechnique
 from q_ai.orchestrator.registry import get_workflow, list_workflows
 from q_ai.orchestrator.runner import WorkflowRunner
 from q_ai.rxp._deps import is_available as rxp_is_available
@@ -124,6 +126,11 @@ async def launcher(request: Request) -> HTMLResponse:
             "default_model_id": default_model_id,
             "rxp_available": rxp_is_available(),
             "defaults": defaults,
+            "injection_techniques": [
+                {"value": t.value, "label": t.value.replace("_", " ").title()}
+                for t in InjectionTechnique
+            ],
+            "scanner_categories": list_scanner_names(),
         },
     )
 
@@ -243,7 +250,7 @@ def _load_module_data(
 
     Returns:
         Dict with keys: audit_scan, audit_findings, audit_evidence_map,
-        inject_results_data, proxy_session.
+        inject_results_data, payload_template_map, proxy_session.
     """
     audit_scan, audit_findings, audit_evidence_map = _load_audit_data(
         conn, child_by_module.get("audit"), findings
@@ -261,6 +268,17 @@ def _load_module_data(
             (inject_child.id,),
         ).fetchall()
         inject_results_data = [dict(r) for r in rows]
+
+    # Build payload template lookup for inject results drill-down
+    payload_template_map: dict[str, dict[str, Any]] = {}
+    if inject_results_data:
+        from q_ai.inject.payloads.loader import load_all_templates as _load_inject_templates
+
+        for tmpl in _load_inject_templates():
+            payload_template_map[tmpl.name] = {
+                "tool_description": tmpl.tool_description,
+                "test_query": tmpl.test_query or f"Use the {tmpl.tool_name} tool.",
+            }
 
     proxy_child = child_by_module.get("proxy")
     if proxy_child:
@@ -301,6 +319,7 @@ def _load_module_data(
         "audit_findings": audit_findings,
         "audit_evidence_map": audit_evidence_map,
         "inject_results_data": inject_results_data,
+        "payload_template_map": payload_template_map,
         "proxy_session": proxy_session,
         "mitigation_section_label": _mitigation_section_label,
         "ipi_campaigns": ipi_campaigns,
@@ -396,6 +415,7 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
             "previously_seen": previously_seen,
         }
         result.update(module_data)
+        result["has_audit_findings"] = bool(module_data.get("audit_findings"))
         return result
 
 
@@ -565,6 +585,7 @@ async def runs(
         "audit_findings": [],
         "audit_evidence_map": {},
         "inject_results_data": [],
+        "payload_template_map": {},
         "proxy_session": None,
         "report_run_id": None,
         "report_html": "",
@@ -2089,14 +2110,38 @@ def _build_assess_config(body: dict[str, Any], target_id: str) -> dict[str, Any]
             content={"detail": "rounds must be an integer between 1 and 10"},
         )
     rxp_enabled = bool(body.get("rxp_enabled", False))
+
+    # Extract inject technique filter (None = not specified, [] = none selected)
+    raw_techniques = body.get("techniques")
+    techniques: list[str] | None = None
+    if isinstance(raw_techniques, list):
+        techniques = [str(t) for t in raw_techniques]
+
+    # Extract explicit payload name filter (overrides techniques when set)
+    raw_payloads = body.get("payload_names")
+    payloads: list[str] | None = None
+    if isinstance(raw_payloads, list):
+        payloads = [str(p) for p in raw_payloads]
+
+    # Extract audit category filter (None = not specified, [] = none selected)
+    raw_checks = body.get("checks")
+    checks: list[str] | None = None
+    if isinstance(raw_checks, list):
+        checks = [str(c) for c in raw_checks]
+
     return {
         "target_id": target_id,
         "transport": transport,
         "command": command,
         "url": url,
         "rxp_enabled": rxp_enabled,
-        "audit": {"checks": None},
-        "inject": {"model": model, "rounds": rounds},
+        "audit": {"checks": checks},
+        "inject": {
+            "model": model,
+            "rounds": rounds,
+            "techniques": techniques,
+            "payloads": payloads,
+        },
         "proxy": {"intercept": False},
     }
 
@@ -2421,6 +2466,34 @@ def _prepare_output_dir(
     return None
 
 
+# ---------------------------------------------------------------------------
+# Inject API routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/inject/payloads")
+async def api_inject_payloads(request: Request) -> JSONResponse:
+    """Return all inject payload template metadata.
+
+    Returns:
+        JSONResponse with a list of payload template metadata objects,
+        each containing name, technique, owasp_ids, and description.
+    """
+    from q_ai.inject.payloads.loader import load_all_templates
+
+    templates = load_all_templates()
+    payload_data = [
+        {
+            "name": t.name,
+            "technique": t.technique.value,
+            "owasp_ids": t.owasp_ids,
+            "description": t.description,
+        }
+        for t in templates
+    ]
+    return JSONResponse(content=payload_data)
+
+
 @router.post("/api/workflows/launch")
 async def launch_workflow(request: Request) -> JSONResponse:
     """Launch a workflow.
@@ -2673,6 +2746,13 @@ def _build_quick_action_config(action: str, body: dict[str, Any], target_id: str
     if action == "campaign":
         config["model"] = _str_field(body, "model")
         config["rounds"] = int(body.get("rounds", 1))
+        raw_techniques = body.get("techniques")
+        if isinstance(raw_techniques, list):
+            config["techniques"] = [str(t) for t in raw_techniques]
+    if action == "scan":
+        raw_checks = body.get("checks")
+        if isinstance(raw_checks, list):
+            config["checks"] = [str(c) for c in raw_checks]
     return config
 
 
@@ -2975,6 +3055,57 @@ async def api_audit_scan_status(request: Request, run_id: str) -> HTMLResponse:
     return templates.TemplateResponse(request, "partials/audit_tab.html", {"scan_status": status})
 
 
+@router.post("/api/audit/enumerate")
+async def api_audit_enumerate(request: Request) -> JSONResponse:
+    """Enumerate an MCP server's capabilities without scanning.
+
+    Connects to the server, lists tools/resources/prompts, and returns
+    the result as JSON. Does not create a run or persist to the database.
+
+    Args:
+        request: The incoming HTTP request with JSON body containing
+            transport, command/url fields.
+
+    Returns:
+        JSONResponse with server_info, tools, resources, prompts on success,
+        or 422 on validation error, or 500 on connection failure.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
+    if not isinstance(body, dict):
+        return JSONResponse(
+            status_code=422, content={"detail": "Request body must be a JSON object"}
+        )
+
+    transport_error = _validate_transport_and_command(body)
+    if transport_error is not None:
+        return transport_error
+
+    from q_ai.audit.adapter import _build_connection
+    from q_ai.mcp.discovery import enumerate_server
+
+    try:
+        conn = _build_connection(body)
+        async with conn:
+            context = await enumerate_server(conn)
+        return JSONResponse(
+            content={
+                "server_info": context.server_info,
+                "tools": context.tools,
+                "resources": context.resources,
+                "prompts": context.prompts,
+            }
+        )
+    except Exception:
+        logger.exception("Enumerate failed")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to enumerate server"},
+        )
+
+
 @router.get("/api/audit/findings/{run_id}")
 async def api_audit_findings(request: Request, run_id: str) -> HTMLResponse:
     """Return findings partial for a specific scan run."""
@@ -2984,45 +3115,6 @@ async def api_audit_findings(request: Request, run_id: str) -> HTMLResponse:
         findings = list_findings(conn, run_id=run_id)
     return templates.TemplateResponse(
         request, "partials/audit_findings.html", {"findings": findings}
-    )
-
-
-# ---------------------------------------------------------------------------
-# Inject API routes
-# ---------------------------------------------------------------------------
-
-
-@router.post("/api/inject/campaign")
-async def api_inject_campaign(request: Request) -> HTMLResponse:
-    """Start an inject campaign (placeholder -- returns status)."""
-    templates = _get_templates(request)
-    return templates.TemplateResponse(
-        request, "partials/inject_tab.html", {"campaign_status": "submitted"}
-    )
-
-
-@router.get("/api/inject/campaign/{run_id}/status")
-async def api_inject_campaign_status(request: Request, run_id: str) -> HTMLResponse:
-    """Return inject campaign progress partial."""
-    templates = _get_templates(request)
-    db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        run = get_run(conn, run_id)
-    status = run.status.name if run is not None else "UNKNOWN"
-    return templates.TemplateResponse(
-        request, "partials/inject_tab.html", {"campaign_status": status}
-    )
-
-
-@router.get("/api/inject/results/{run_id}")
-async def api_inject_results(request: Request, run_id: str) -> HTMLResponse:
-    """Return inject results partial for a specific campaign run."""
-    templates = _get_templates(request)
-    db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        findings = list_findings(conn, run_id=run_id)
-    return templates.TemplateResponse(
-        request, "partials/findings_table.html", {"findings": findings}
     )
 
 
@@ -3194,4 +3286,99 @@ async def api_runs_proxy_messages(
             "has_next": has_next,
             "direction_filter": direction,
         },
+    )
+
+
+@router.get("/api/runs/{run_id}/sarif", response_model=None)
+async def api_run_sarif(request: Request, run_id: str) -> Response:
+    """Download audit findings as a SARIF 2.1.0 report.
+
+    Reconstructs ScanFinding objects from DB findings for the audit child
+    run, generates a SARIF report, and returns it as a file download.
+
+    Args:
+        request: The incoming HTTP request.
+        run_id: The parent workflow run ID.
+
+    Returns:
+        A JSON file download with SARIF content, or 404 if no audit
+        findings exist.
+    """
+    import shutil
+    import tempfile
+
+    from starlette.background import BackgroundTask
+
+    from q_ai.audit.orchestrator import ScanResult
+    from q_ai.audit.reporting.sarif_report import generate_sarif_report
+    from q_ai.mcp.models import ScanFinding
+    from q_ai.mcp.models import Severity as ScanSeverity
+
+    db_path = _get_db_path(request)
+
+    def _build_sarif() -> Path | None:
+        with get_connection(db_path) as conn:
+            parent = get_run(conn, run_id)
+            if parent is None:
+                return None
+
+            children = list_runs(conn, parent_run_id=run_id)
+            audit_child = next((c for c in children if c.module == "audit"), None)
+            if audit_child is None:
+                return None
+
+            findings = list_findings(conn, run_id=audit_child.id, module="audit")
+            if not findings:
+                return None
+
+            _sev_name_map = {
+                0: "info",
+                1: "low",
+                2: "medium",
+                3: "high",
+                4: "critical",
+            }
+            scan_findings: list[ScanFinding] = []
+            for f in findings:
+                sev_str = _sev_name_map.get(int(f.severity), "info")
+                scan_sev = ScanSeverity(sev_str)
+                framework_ids = f.framework_ids if f.framework_ids else {}
+
+                mitigation = None
+                if f.mitigation:
+                    with contextlib.suppress(Exception):
+                        mitigation = MitigationGuidance.from_dict(f.mitigation)
+
+                scan_findings.append(
+                    ScanFinding(
+                        rule_id=f.category,
+                        category=f.category,
+                        title=f.title,
+                        description=f.description or "",
+                        severity=scan_sev,
+                        framework_ids=framework_ids,
+                        mitigation=mitigation,
+                    )
+                )
+
+            scan_result = ScanResult(findings=scan_findings)
+
+            tmp = Path(tempfile.mkdtemp()) / "scan.sarif"
+            generate_sarif_report(scan_result, tmp)
+            return tmp
+
+    result_path = await asyncio.to_thread(_build_sarif)
+    if result_path is None:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "No audit findings for SARIF export"},
+        )
+
+    tmp_dir = str(result_path.parent)
+    return FileResponse(
+        path=str(result_path),
+        media_type="application/json",
+        filename="scan.sarif",
+        headers={"Content-Disposition": 'attachment; filename="scan.sarif"'},
+        background=BackgroundTask(shutil.rmtree, tmp_dir, ignore_errors=True),
     )
