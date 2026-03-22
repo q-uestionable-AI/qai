@@ -186,6 +186,26 @@
                         </div>
                     </div>
 
+                    {# ---- Audit: Category Checkboxes ---- #}
+                    <fieldset class="border border-base-300/30 rounded-lg p-3 mt-2">
+                        <legend class="text-xs font-semibold text-base-content/60 px-1">Audit Categories</legend>
+                        <div class="flex gap-3 mb-2">
+                            <span class="text-xs cursor-pointer select-none" style="color: #a78bfa;"
+                                  onclick="toggleAllChecks('checks', 'assess', true)">Select All</span>
+                            <span class="text-xs cursor-pointer select-none" style="color: #a78bfa;"
+                                  onclick="toggleAllChecks('checks', 'assess', false)">Clear All</span>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {% for cat in scanner_categories %}
+                            <label class="label cursor-pointer gap-2">
+                                <input type="checkbox" name="checks" value="{{ cat }}"
+                                       class="checkbox checkbox-xs checkbox-primary" checked />
+                                <span class="label-text text-xs">{{ cat }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+
                     {% elif wf.id == 'test_docs' %}
                     {# ---- TEST DOCS FORM ---- #}
                     {{ target_name_field(wf.id, "doc-pipeline") }}
@@ -352,6 +372,27 @@
                     <input type="hidden" name="action" value="scan" />
                     {{ target_name_field('qa_scan', "my-mcp-server") }}
                     {{ transport_fields('qa_scan') }}
+
+                    {# ---- Audit: Category Checkboxes ---- #}
+                    <fieldset class="border border-base-300/30 rounded-lg p-3 mt-2">
+                        <legend class="text-xs font-semibold text-base-content/60 px-1">Categories</legend>
+                        <div class="flex gap-3 mb-2">
+                            <span class="text-xs cursor-pointer select-none" style="color: #a78bfa;"
+                                  onclick="toggleAllChecks('checks', 'qa_scan', true)">Select All</span>
+                            <span class="text-xs cursor-pointer select-none" style="color: #a78bfa;"
+                                  onclick="toggleAllChecks('checks', 'qa_scan', false)">Clear All</span>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {% for cat in scanner_categories %}
+                            <label class="label cursor-pointer gap-2">
+                                <input type="checkbox" name="checks" value="{{ cat }}"
+                                       class="checkbox checkbox-xs checkbox-primary" checked />
+                                <span class="label-text text-xs">{{ cat }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+
                     <div id="error-qa_scan" class="text-error text-sm hidden"></div>
                     <div class="mt-4">
                         <button type="submit" class="btn btn-sm btn-launch">Scan</button>
@@ -574,6 +615,14 @@ async function loadChainExecutions(wfId) {
 
 function onTechniqueChange(wfId) {
     // Placeholder for technique checkbox change handling
+}
+
+function toggleAllChecks(name, wfId, checked) {
+    var form = document.getElementById('form-' + wfId);
+    if (!form) return;
+    form.querySelectorAll('input[name="' + name + '"]').forEach(function(cb) {
+        cb.checked = checked;
+    });
 }
 
 var _payloadLibLoaded = {};
