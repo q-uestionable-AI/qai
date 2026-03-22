@@ -3054,6 +3054,57 @@ async def api_audit_scan_status(request: Request, run_id: str) -> HTMLResponse:
     return templates.TemplateResponse(request, "partials/audit_tab.html", {"scan_status": status})
 
 
+@router.post("/api/audit/enumerate")
+async def api_audit_enumerate(request: Request) -> JSONResponse:
+    """Enumerate an MCP server's capabilities without scanning.
+
+    Connects to the server, lists tools/resources/prompts, and returns
+    the result as JSON. Does not create a run or persist to the database.
+
+    Args:
+        request: The incoming HTTP request with JSON body containing
+            transport, command/url fields.
+
+    Returns:
+        JSONResponse with server_info, tools, resources, prompts on success,
+        or 422 on validation error, or 500 on connection failure.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
+    if not isinstance(body, dict):
+        return JSONResponse(
+            status_code=422, content={"detail": "Request body must be a JSON object"}
+        )
+
+    transport_error = _validate_transport_and_command(body)
+    if transport_error is not None:
+        return transport_error
+
+    from q_ai.audit.adapter import _build_connection
+    from q_ai.mcp.discovery import enumerate_server
+
+    try:
+        conn = _build_connection(body)
+        async with conn:
+            context = await enumerate_server(conn)
+        return JSONResponse(
+            content={
+                "server_info": context.server_info,
+                "tools": context.tools,
+                "resources": context.resources,
+                "prompts": context.prompts,
+            }
+        )
+    except Exception as exc:
+        logger.exception("Enumerate failed")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Failed to enumerate server: {exc}"},
+        )
+
+
 @router.get("/api/audit/findings/{run_id}")
 async def api_audit_findings(request: Request, run_id: str) -> HTMLResponse:
     """Return findings partial for a specific scan run."""

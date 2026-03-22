@@ -249,3 +249,31 @@ class TestPayloadLibraryEndpoint:
             assert isinstance(entry["technique"], str)
             assert isinstance(entry["owasp_ids"], list)
             assert isinstance(entry["description"], str)
+
+
+class TestEnumerateEndpoint:
+    """POST /api/audit/enumerate validates transport fields."""
+
+    def test_enumerate_missing_transport(self, client: TestClient) -> None:
+        """Returns 422 when transport is missing."""
+        resp = client.post(
+            "/api/audit/enumerate",
+            json={"command": "npx server"},
+        )
+        assert resp.status_code == 422
+
+    def test_enumerate_stdio_missing_command(self, client: TestClient) -> None:
+        """Returns 422 when stdio transport lacks command."""
+        resp = client.post(
+            "/api/audit/enumerate",
+            json={"transport": "stdio"},
+        )
+        assert resp.status_code == 422
+
+    def test_enumerate_sse_missing_url(self, client: TestClient) -> None:
+        """Returns 422 when sse transport lacks url."""
+        resp = client.post(
+            "/api/audit/enumerate",
+            json={"transport": "sse"},
+        )
+        assert resp.status_code == 422

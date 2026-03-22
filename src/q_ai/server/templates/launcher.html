@@ -329,6 +329,20 @@
 
                     {% endif %}
 
+                    {% if wf.id == 'assess' %}
+                    {# ---- Enumerate First ---- #}
+                    <div class="flex items-center gap-3 mt-2">
+                        <button type="button" class="btn btn-xs btn-outline"
+                                style="border-color: #a78bfa; color: #a78bfa;"
+                                onclick="enumerateFirst('assess')">
+                            Enumerate first
+                        </button>
+                        <span id="enumerate-first-status-assess" class="text-xs text-base-content/40"></span>
+                    </div>
+                    <div id="enumerate-first-results-assess" class="hidden mt-2 p-3 bg-base-300/20 rounded-lg text-sm space-y-2 max-h-60 overflow-y-auto">
+                    </div>
+                    {% endif %}
+
                     <div id="error-{{ wf.id }}" class="text-error text-sm hidden"></div>
 
                     <div class="mt-4">
@@ -502,6 +516,43 @@
                 </form>
                 </div>
                 {% endif %}
+            </div>
+        </div>
+
+        <div class="wf-connector"></div>
+        <div class="wf-row" id="wf-row-qa_enumerate"
+             style="--wf-bg: {{ wf_color_default.bg }}; --wf-border: {{ wf_color_default.border }}; --wf-color: {{ wf_color_default.color }};">
+            <div class="wf-row-header"
+                 onclick="toggleAccordion('qa_enumerate')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleAccordion('qa_enumerate');}"
+                 role="button" tabindex="0" aria-label="Toggle Enumerate Server">
+                <div class="wf-row-top">
+                    <div class="wf-row-left">
+                        <div class="wf-row-bar" style="background: {{ wf_color_default.color }};"></div>
+                        <span class="wf-row-name" style="color: {{ wf_color_default.color }};">Enumerate Server</span>
+                    </div>
+                    <span class="wf-row-chevron">&#9654;</span>
+                </div>
+                <div class="wf-row-modules">
+                    <span class="wf-module-pill-sm">audit</span>
+                </div>
+            </div>
+            <div class="wf-row-body">
+                <p class="wf-row-desc">Connect and list server capabilities (tools, resources, prompts) without scanning.</p>
+                <div class="wf-row-pills">
+                    <span class="wf-module-pill">audit</span>
+                </div>
+                <div class="wf-row-form">
+                <form id="form-qa_enumerate" class="space-y-4" onsubmit="return launchEnumerate(event)">
+                    {{ transport_fields('qa_enumerate') }}
+                    <div id="error-qa_enumerate" class="text-error text-sm hidden"></div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-sm btn-launch">Enumerate</button>
+                    </div>
+                </form>
+                <div id="enumerate-results" class="hidden mt-4 p-3 bg-base-300/20 rounded-lg text-sm space-y-3">
+                </div>
+                </div>
             </div>
         </div>
     </div>
@@ -712,6 +763,115 @@ async function _doLaunch(e, wfId, url) {
 
 function launchWorkflow(e, wfId) { return _doLaunch(e, wfId, '/api/workflows/launch'); }
 function launchQuickAction(e, wfId) { return _doLaunch(e, wfId, '/api/quick-actions/launch'); }
+
+async function launchEnumerate(e) {
+    e.preventDefault();
+    var form = document.getElementById('form-qa_enumerate');
+    var errEl = document.getElementById('error-qa_enumerate');
+    var btn = form.querySelector('button[type="submit"]');
+    var resultsEl = document.getElementById('enumerate-results');
+    errEl.classList.add('hidden');
+    resultsEl.classList.add('hidden');
+    btn.disabled = true;
+    btn.textContent = 'Connecting...';
+    try {
+        var fd = new FormData(form);
+        var data = Object.fromEntries(fd);
+        var resp = await fetch('/api/audit/enumerate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+        });
+        var result = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = result.detail || 'Enumerate failed';
+            errEl.classList.remove('hidden');
+        } else {
+            renderEnumerateResults(resultsEl, result);
+            resultsEl.classList.remove('hidden');
+        }
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Enumerate';
+    }
+    return false;
+}
+
+async function enumerateFirst(wfId) {
+    var form = document.getElementById('form-' + wfId);
+    var statusEl = document.getElementById('enumerate-first-status-' + wfId);
+    var resultsEl = document.getElementById('enumerate-first-results-' + wfId);
+    statusEl.textContent = 'Connecting...';
+    statusEl.style.color = '';
+    resultsEl.classList.add('hidden');
+    try {
+        var fd = new FormData(form);
+        var data = Object.fromEntries(fd);
+        var resp = await fetch('/api/audit/enumerate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+        });
+        var result = await resp.json();
+        if (!resp.ok) {
+            statusEl.textContent = result.detail || 'Failed';
+            statusEl.style.color = '#f87171';
+        } else {
+            statusEl.textContent = '';
+            renderEnumerateResults(resultsEl, result);
+            resultsEl.classList.remove('hidden');
+        }
+    } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.style.color = '#f87171';
+    }
+}
+
+function renderEnumerateResults(container, data) {
+    var html = '';
+    if (data.server_info && data.server_info.name) {
+        html += '<div class="font-semibold">' + data.server_info.name;
+        if (data.server_info.version) html += ' <span class="text-xs text-base-content/40">v' + data.server_info.version + '</span>';
+        html += '</div>';
+    }
+    html += '<div class="text-xs text-base-content/60">';
+    html += (data.tools || []).length + ' tools, ';
+    html += (data.resources || []).length + ' resources, ';
+    html += (data.prompts || []).length + ' prompts';
+    html += '</div>';
+    if (data.tools && data.tools.length > 0) {
+        html += '<div><span class="font-semibold text-xs">Tools:</span>';
+        html += '<ul class="list-disc list-inside text-xs text-base-content/70">';
+        data.tools.forEach(function(t) {
+            html += '<li><span class="font-mono">' + t.name + '</span>';
+            if (t.description) html += ' \u2014 ' + t.description.substring(0, 80);
+            html += '</li>';
+        });
+        html += '</ul></div>';
+    }
+    if (data.resources && data.resources.length > 0) {
+        html += '<div><span class="font-semibold text-xs">Resources:</span>';
+        html += '<ul class="list-disc list-inside text-xs text-base-content/70">';
+        data.resources.forEach(function(r) {
+            html += '<li><span class="font-mono">' + (r.uri || r.name) + '</span></li>';
+        });
+        html += '</ul></div>';
+    }
+    if (data.prompts && data.prompts.length > 0) {
+        html += '<div><span class="font-semibold text-xs">Prompts:</span>';
+        html += '<ul class="list-disc list-inside text-xs text-base-content/70">';
+        data.prompts.forEach(function(p) {
+            html += '<li><span class="font-mono">' + p.name + '</span>';
+            if (p.description) html += ' \u2014 ' + p.description.substring(0, 80);
+            html += '</li>';
+        });
+        html += '</ul></div>';
+    }
+    container.innerHTML = html;
+}
 </script>
 
 <script>
