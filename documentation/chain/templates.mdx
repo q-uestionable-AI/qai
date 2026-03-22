@@ -169,39 +169,40 @@ steps:
 
 **Category:** rag_pipeline
 
-Escalate from RAG retrieval poisoning to agent control. Inject malicious documents into retrieval, trigger agent behavior deviation, then exploit trust boundaries between retrieval and generation.
+Poison a tool description to inject malicious instructions, escalate through cross-tool agent delegation, then exfiltrate data via output injection. Demonstrates three trust boundary crossings in a single attack path.
 
 ```yaml
 id: rag-trust-escalation
 name: RAG Trust Escalation
 category: rag_pipeline
 description: >
-  Escalate from RAG retrieval poisoning to agent control.
-  Inject malicious documents, trigger behavior deviation,
-  and exploit trust boundaries between retrieval and LLM.
+  Poison a tool description to inject malicious instructions,
+  escalate through cross-tool agent delegation, then exfiltrate
+  data via output injection. Demonstrates three trust boundary
+  crossings in a single attack path.
 
 steps:
-  - id: poison-retrieval
-    name: Poison RAG document store
+  - id: poison-tool
+    name: Inject payload via poisoned tool description
     module: inject
-    technique: retrieval_poisoning
-    trust_boundary: document-to-agent
-    on_success: trigger-deviation
+    technique: description_poisoning
+    trust_boundary: agent-to-tool
+    on_success: escalate-cross-tool
     on_failure: abort
 
-  - id: trigger-deviation
-    name: Trigger agent behavior deviation
-    module: cxp
-    technique: behavior_deviation
-    trust_boundary: retrieval-to-agent
-    on_success: escalate-control
+  - id: escalate-cross-tool
+    name: Escalate through cross-tool delegation
+    module: inject
+    technique: cross_tool_escalation
+    trust_boundary: agent-to-agent
+    on_success: exfil-output
     on_failure: abort
 
-  - id: escalate-control
-    name: Escalate to full agent control
+  - id: exfil-output
+    name: Exfiltrate data via output injection
     module: inject
-    technique: llm_instruction_override
-    trust_boundary: llm-to-agent
+    technique: output_injection
+    trust_boundary: agent-to-data
     terminal: true
 ```
 

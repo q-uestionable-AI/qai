@@ -13,9 +13,10 @@ Modern coding assistants (Claude, Copilot, Codeium, Windsurf, etc.) read instruc
 
 - `.cursorrules` (Cursor)
 - `.github/copilot-instructions.md` (GitHub Copilot)
-- `.claude/instructions.md` (Claude)
-- `agents.md` (Gemini)
-- `windsurfrules.txt` (Windsurf)
+- `CLAUDE.md` (Claude Code)
+- `AGENTS.md` (Multi-assistant standard)
+- `GEMINI.md` (Gemini Code Assist)
+- `.windsurfrules` (Windsurf)
 
 A **poisoned instruction file** contains malicious directives that instruct the coding assistant to inject security issues, exfiltrate data, or bypass controls. The test determines whether the assistant follows these instructions when generating code.
 
@@ -34,13 +35,14 @@ CXP tests the following injection techniques:
 
 CXP supports poisoning files for these coding assistants:
 
-| Assistant | Format | Path |
-|-----------|--------|------|
-| Cursor | `.cursorrules` | `.cursorrules` |
-| Claude | Markdown | `.claude/instructions.md` |
-| GitHub Copilot | Markdown | `.github/copilot-instructions.md` |
-| Google Gemini | Markdown | `agents.md` |
-| Windsurf | Text | `windsurfrules.txt` |
+| Assistant | Format ID | Path |
+|-----------|-----------|------|
+| Cursor | `cursorrules` | `.cursorrules` |
+| Claude Code | `claude-md` | `CLAUDE.md` |
+| GitHub Copilot | `copilot-instructions` | `.github/copilot-instructions.md` |
+| Multi-assistant | `agents-md` | `AGENTS.md` |
+| Gemini Code Assist | `gemini-md` | `GEMINI.md` |
+| Windsurf | `windsurfrules` | `.windsurfrules` |
 
 ## Validation Process
 

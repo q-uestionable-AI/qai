@@ -7,11 +7,11 @@ A campaign systematically tests poisoned tool payloads against an LLM model, mea
 
 ## Prerequisites
 
-Store API credentials for your target provider using `qai config set-credential`:
+Store API credentials for your target provider (prompts for key with masked input):
 
 ```bash
-qai config set-credential anthropic --key $ANTHROPIC_API_KEY
-qai config set-credential openai --key $OPENAI_API_KEY
+qai config set-credential anthropic
+qai config set-credential openai
 ```
 
 Alternatively, set provider environment variables: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.
