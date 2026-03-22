@@ -71,19 +71,18 @@ class InjectAdapter:
             if payload_names:
                 name_set = set(payload_names)
                 templates = [t for t in templates if t.name in name_set]
-            else:
-                # Filter by techniques if specified
-                technique_strs = self._config.get("techniques")
-                if technique_strs:
-                    filtered: list[PayloadTemplate] = []
-                    seen_names: set[str] = set()
-                    for tech_str in technique_strs:
-                        tech = InjectionTechnique(tech_str)
-                        for t in filter_templates(templates, technique=tech):
-                            if t.name not in seen_names:
-                                filtered.append(t)
-                                seen_names.add(t.name)
-                    templates = filtered
+            elif "techniques" in self._config:
+                # Filter by techniques (empty list = no templates selected)
+                technique_strs = self._config["techniques"] or []
+                filtered: list[PayloadTemplate] = []
+                seen_names: set[str] = set()
+                for tech_str in technique_strs:
+                    tech = InjectionTechnique(tech_str)
+                    for t in filter_templates(templates, technique=tech):
+                        if t.name not in seen_names:
+                            filtered.append(t)
+                            seen_names.add(t.name)
+                templates = filtered
 
             total = len(templates)
             await self._runner.emit_progress(child_id, f"Testing {total} payloads...")

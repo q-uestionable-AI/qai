@@ -2111,22 +2111,22 @@ def _build_assess_config(body: dict[str, Any], target_id: str) -> dict[str, Any]
         )
     rxp_enabled = bool(body.get("rxp_enabled", False))
 
-    # Extract inject technique filter
+    # Extract inject technique filter (None = not specified, [] = none selected)
     raw_techniques = body.get("techniques")
     techniques: list[str] | None = None
-    if isinstance(raw_techniques, list) and raw_techniques:
+    if isinstance(raw_techniques, list):
         techniques = [str(t) for t in raw_techniques]
 
     # Extract explicit payload name filter (overrides techniques when set)
     raw_payloads = body.get("payload_names")
     payloads: list[str] | None = None
-    if isinstance(raw_payloads, list) and raw_payloads:
+    if isinstance(raw_payloads, list):
         payloads = [str(p) for p in raw_payloads]
 
-    # Extract audit category filter
+    # Extract audit category filter (None = not specified, [] = none selected)
     raw_checks = body.get("checks")
     checks: list[str] | None = None
-    if isinstance(raw_checks, list) and raw_checks:
+    if isinstance(raw_checks, list):
         checks = [str(c) for c in raw_checks]
 
     return {
@@ -2747,11 +2747,11 @@ def _build_quick_action_config(action: str, body: dict[str, Any], target_id: str
         config["model"] = _str_field(body, "model")
         config["rounds"] = int(body.get("rounds", 1))
         raw_techniques = body.get("techniques")
-        if isinstance(raw_techniques, list) and raw_techniques:
+        if isinstance(raw_techniques, list):
             config["techniques"] = [str(t) for t in raw_techniques]
     if action == "scan":
         raw_checks = body.get("checks")
-        if isinstance(raw_checks, list) and raw_checks:
+        if isinstance(raw_checks, list):
             config["checks"] = [str(c) for c in raw_checks]
     return config
 
@@ -3304,7 +3304,10 @@ async def api_run_sarif(request: Request, run_id: str) -> Response:
         A JSON file download with SARIF content, or 404 if no audit
         findings exist.
     """
+    import shutil
     import tempfile
+
+    from starlette.background import BackgroundTask
 
     from q_ai.audit.orchestrator import ScanResult
     from q_ai.audit.reporting.sarif_report import generate_sarif_report
@@ -3371,9 +3374,11 @@ async def api_run_sarif(request: Request, run_id: str) -> Response:
             content={"detail": "No audit findings for SARIF export"},
         )
 
+    tmp_dir = str(result_path.parent)
     return FileResponse(
         path=str(result_path),
         media_type="application/json",
         filename="scan.sarif",
         headers={"Content-Disposition": 'attachment; filename="scan.sarif"'},
+        background=BackgroundTask(shutil.rmtree, tmp_dir, ignore_errors=True),
     )

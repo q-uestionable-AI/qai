@@ -738,6 +738,11 @@ async function _doLaunch(e, wfId, url) {
     try {
         var fd = new FormData(form);
         var data = {};
+        // Pre-seed empty arrays for checkbox groups present in the form
+        // so "all unchecked" sends [] rather than omitting the key
+        ['techniques', 'checks', 'payload_names'].forEach(function(name) {
+            if (form.querySelector('input[name="' + name + '"]')) data[name] = [];
+        });
         for (var [key, val] of fd.entries()) {
             if (key === 'techniques' || key === 'checks' || key === 'payload_names') {
                 if (!data[key]) data[key] = [];
@@ -831,46 +836,61 @@ async function enumerateFirst(wfId) {
 }
 
 function renderEnumerateResults(container, data) {
-    var html = '';
+    // Safe DOM construction — no innerHTML with untrusted MCP server data
+    container.textContent = '';
+
     if (data.server_info && data.server_info.name) {
-        html += '<div class="font-semibold">' + data.server_info.name;
-        if (data.server_info.version) html += ' <span class="text-xs text-base-content/40">v' + data.server_info.version + '</span>';
-        html += '</div>';
+        var header = document.createElement('div');
+        header.className = 'font-semibold';
+        header.textContent = data.server_info.name;
+        if (data.server_info.version) {
+            var ver = document.createElement('span');
+            ver.className = 'text-xs text-base-content/40';
+            ver.textContent = ' v' + data.server_info.version;
+            header.appendChild(ver);
+        }
+        container.appendChild(header);
     }
-    html += '<div class="text-xs text-base-content/60">';
-    html += (data.tools || []).length + ' tools, ';
-    html += (data.resources || []).length + ' resources, ';
-    html += (data.prompts || []).length + ' prompts';
-    html += '</div>';
-    if (data.tools && data.tools.length > 0) {
-        html += '<div><span class="font-semibold text-xs">Tools:</span>';
-        html += '<ul class="list-disc list-inside text-xs text-base-content/70">';
-        data.tools.forEach(function(t) {
-            html += '<li><span class="font-mono">' + t.name + '</span>';
-            if (t.description) html += ' \u2014 ' + t.description.substring(0, 80);
-            html += '</li>';
+
+    var summary = document.createElement('div');
+    summary.className = 'text-xs text-base-content/60';
+    summary.textContent = (data.tools || []).length + ' tools, ' +
+        (data.resources || []).length + ' resources, ' +
+        (data.prompts || []).length + ' prompts';
+    container.appendChild(summary);
+
+    function buildList(items, label, textFn) {
+        if (!items || items.length === 0) return;
+        var wrap = document.createElement('div');
+        var lbl = document.createElement('span');
+        lbl.className = 'font-semibold text-xs';
+        lbl.textContent = label;
+        wrap.appendChild(lbl);
+        var ul = document.createElement('ul');
+        ul.className = 'list-disc list-inside text-xs text-base-content/70';
+        items.forEach(function(item) {
+            var li = document.createElement('li');
+            var name = document.createElement('span');
+            name.className = 'font-mono';
+            name.textContent = textFn(item).name;
+            li.appendChild(name);
+            var desc = textFn(item).desc;
+            if (desc) li.appendChild(document.createTextNode(' \u2014 ' + desc));
+            ul.appendChild(li);
         });
-        html += '</ul></div>';
+        wrap.appendChild(ul);
+        container.appendChild(wrap);
     }
-    if (data.resources && data.resources.length > 0) {
-        html += '<div><span class="font-semibold text-xs">Resources:</span>';
-        html += '<ul class="list-disc list-inside text-xs text-base-content/70">';
-        data.resources.forEach(function(r) {
-            html += '<li><span class="font-mono">' + (r.uri || r.name) + '</span></li>';
-        });
-        html += '</ul></div>';
-    }
-    if (data.prompts && data.prompts.length > 0) {
-        html += '<div><span class="font-semibold text-xs">Prompts:</span>';
-        html += '<ul class="list-disc list-inside text-xs text-base-content/70">';
-        data.prompts.forEach(function(p) {
-            html += '<li><span class="font-mono">' + p.name + '</span>';
-            if (p.description) html += ' \u2014 ' + p.description.substring(0, 80);
-            html += '</li>';
-        });
-        html += '</ul></div>';
-    }
-    container.innerHTML = html;
+
+    buildList(data.tools, 'Tools:', function(t) {
+        return { name: t.name, desc: t.description ? t.description.substring(0, 80) : '' };
+    });
+    buildList(data.resources, 'Resources:', function(r) {
+        return { name: r.uri || r.name, desc: '' };
+    });
+    buildList(data.prompts, 'Prompts:', function(p) {
+        return { name: p.name, desc: p.description ? p.description.substring(0, 80) : '' };
+    });
 }
 </script>
 

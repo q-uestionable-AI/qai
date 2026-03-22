@@ -102,6 +102,34 @@ class TestAssessConfigTechniques:
         result = _build_assess_config(body, "")
         assert result["audit"]["checks"] is None
 
+    def test_assess_config_preserves_empty_techniques_list(self) -> None:
+        """Empty techniques list is preserved (not collapsed to None)."""
+        from q_ai.server.routes import _build_assess_config
+
+        body = {
+            "transport": "stdio",
+            "command": "npx server",
+            "model": "openai/gpt-4",
+            "rounds": 1,
+            "techniques": [],
+        }
+        result = _build_assess_config(body, "")
+        assert result["inject"]["techniques"] == []
+
+    def test_assess_config_preserves_empty_checks_list(self) -> None:
+        """Empty checks list is preserved (not collapsed to None)."""
+        from q_ai.server.routes import _build_assess_config
+
+        body = {
+            "transport": "stdio",
+            "command": "npx server",
+            "model": "openai/gpt-4",
+            "rounds": 1,
+            "checks": [],
+        }
+        result = _build_assess_config(body, "")
+        assert result["audit"]["checks"] == []
+
 
 class TestQuickActionConfigTechniques:
     """Quick action config builder passes techniques and checks."""
@@ -151,6 +179,32 @@ class TestQuickActionConfigTechniques:
         }
         config = _build_quick_action_config("scan", body, "target-123")
         assert config.get("checks") is None
+
+    def test_campaign_config_preserves_empty_techniques(self) -> None:
+        """Empty techniques list is forwarded, not dropped."""
+        from q_ai.server.routes import _build_quick_action_config
+
+        body = {
+            "transport": "stdio",
+            "command": "npx server",
+            "model": "openai/gpt-4",
+            "rounds": 1,
+            "techniques": [],
+        }
+        config = _build_quick_action_config("campaign", body, "target-123")
+        assert config["techniques"] == []
+
+    def test_scan_config_preserves_empty_checks(self) -> None:
+        """Empty checks list is forwarded, not dropped."""
+        from q_ai.server.routes import _build_quick_action_config
+
+        body = {
+            "transport": "stdio",
+            "command": "npx server",
+            "checks": [],
+        }
+        config = _build_quick_action_config("scan", body, "target-123")
+        assert config["checks"] == []
 
 
 class TestInjectAdapterTechniqueFiltering:

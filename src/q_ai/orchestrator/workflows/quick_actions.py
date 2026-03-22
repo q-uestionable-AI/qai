@@ -115,8 +115,8 @@ async def quick_campaign(runner: WorkflowRunner, config: dict[str, Any]) -> None
         "rounds": config.get("rounds", 1),
     }
 
-    # Pass technique filter if provided
-    if config.get("techniques"):
+    # Pass technique filter if provided (empty list = none selected)
+    if "techniques" in config:
         inject_config["techniques"] = config["techniques"]
 
     try:
