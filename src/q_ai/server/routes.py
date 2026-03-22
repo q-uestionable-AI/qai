@@ -3098,11 +3098,11 @@ async def api_audit_enumerate(request: Request) -> JSONResponse:
                 "prompts": context.prompts,
             }
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Enumerate failed")
         return JSONResponse(
             status_code=500,
-            content={"detail": f"Failed to enumerate server: {exc}"},
+            content={"detail": "Failed to enumerate server"},
         )
 
 
