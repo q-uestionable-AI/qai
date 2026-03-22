@@ -1,342 +1,67 @@
 ---
-title: "RXP Interpretive Bands"
-description: "Understanding retrieval poisoning risk scores"
+title: "Interpretive Bands"
+description: "Severity thresholds for retrieval poisoning results"
 ---
 
-# Interpretive Bands
+RXP maps retrieval poisoning results to severity bands based on the **poison retrieval rate** — the percentage of queries where the poisoned document appears in the top-k results.
 
-RXP v0.5.0+ includes interpretive bands to help you understand retrieval poisoning risk. Bands categorize ranking scores into risk levels, making it easier to assess the practical impact of poisoning vulnerabilities.
+## Band Thresholds
 
-## What Are Bands?
+| Band | Retrieval Rate | Severity | Meaning |
+|------|---------------|----------|---------|
+| **Critical** | ≥ 75% | CRITICAL | Poisoned document reliably retrieved across most queries. Very high likelihood of reaching the LLM context window. |
+| **High** | ≥ 50% | HIGH | Poisoned document retrieved for a majority of queries. Likely to influence LLM behavior in many interactions. |
+| **Medium** | ≥ 25% | MEDIUM | Poisoned document retrieved for some queries. Impact depends on which queries are affected. |
+| **Low** | < 25% | LOW | Poisoned document rarely retrieved. Poisoning is ineffective for this corpus/query combination. |
 
-Bands are scored ranges that categorize how effectively a poisoned document would reach a language model. Each band represents a different risk level.
+These thresholds are applied in the RXP adapter when generating findings for orchestrated workflows. The severity level appears on the finding in both the web UI and CLI output.
 
-The band is determined by the **rank position** of the poisoned document when retrieving documents for a query.
+## How Retrieval Rate Is Calculated
 
-## Band Definitions
-
-### Critical
-
-**Rank Position:** Top 3
-**Risk Level:** Extreme
-**Likelihood:** Almost certain to reach LLM
-
-A poisoned document in the top-3 results has a very high probability of being included in the RAG context window. Most LLMs include top-3 or top-5 results, making critical-band poisoning nearly guaranteed to reach the model.
-
-**Implications:**
-- Malicious instructions will almost certainly be executed
-- Poisoning attack is highly effective for this query
-- Requires immediate mitigation if discovered
-
-**Example:**
-```
-Query: "What is our password policy?"
-Retrieval Results:
-  1. password_policy.txt (legitimate)
-  2. poisoned_doc.txt ← CRITICAL (rank 2)
-  3. security_guidelines.txt (legitimate)
-
-Likelihood: 95%+ that poisoned doc reaches LLM
-```
-
-### High
-
-**Rank Position:** 4-10
-**Risk Level:** Severe
-**Likelihood:** Very likely to reach LLM
-
-Poisoned documents in the 4-10 range are still very likely to be included. Most RAG systems retrieve 5-10 documents by default, so high-band documents have a strong chance of being used.
-
-**Implications:**
-- Poisoning attack is very effective
-- Likely to influence LLM behavior
-- Should be treated as a serious vulnerability
-
-**Example:**
-```
-Query: "What benefits are available?"
-Retrieval Results:
-  1. benefits.txt (legitimate, score: 0.91)
-  2. hr_policy.txt (legitimate, score: 0.87)
-  3. compensation.txt (legitimate, score: 0.84)
-  4. payroll_guide.txt (legitimate, score: 0.81)
-  5. poisoned_doc.txt ← HIGH (rank 5, score: 0.78)
-
-Likelihood: 75-85% that poisoned doc reaches LLM
-```
-
-### Medium
-
-**Rank Position:** 11-20
-**Risk Level:** Moderate
-**Likelihood:** Possible if context window is large
-
-Medium-band poisoning is less likely to be retrieved, but still possible. Depends on:
-
-- **Context window size** — Larger windows (100+ tokens) may include rank 11-20
-- **Retrieval strategy** — Some RAG systems use all retrieved documents, others filter
-- **Query specificity** — Vague queries retrieve more documents
-
-**Implications:**
-- Poisoning can work with large context windows
-- Requires lucky query formulation
-- Lower priority for remediation but should still be monitored
-
-**Example:**
-```
-Query: "Tell me about company policies"
-Retrieval Results (top 20):
-  1-10. Various legitimate documents
-  15. poisoned_doc.txt ← MEDIUM (rank 15, score: 0.62)
-
-Likelihood: 30-50% that poisoned doc reaches LLM
-  - 5% if context window = top-5
-  - 30% if context window = top-10
-  - 90% if context window = top-20
-```
-
-### Low
-
-**Rank Position:** 21+
-**Risk Level:** Low
-**Likelihood:** Unlikely to reach LLM
-
-Low-band poisoning is far down the ranking and unlikely to be retrieved unless the context window is exceptionally large (100+ documents). In typical RAG scenarios, documents ranked 21+ rarely reach the LLM.
-
-**Implications:**
-- Poisoning ineffective for this query with standard retrieval
-- Would require unusual configuration to be exploited
-- Generally acceptable risk level
-- Focus resources on critical and high-band vulnerabilities
-
-**Example:**
-```
-Query: "What should I wear to work?"
-Retrieval Results (top 50):
-  1-20. Various legitimate documents
-  42. poisoned_doc.txt ← LOW (rank 42, score: 0.35)
-
-Likelihood: 5-10% that poisoned doc reaches LLM
-  - Only if context window exceptionally large
-  - Or if model retrieves bottom-ranked documents
-```
-
-## Band Summary Table
-
-| Band | Rank | Likelihood | Risk | Action |
-|------|------|-----------|------|--------|
-| Critical | 1-3 | 90%+ | Extreme | Immediate remediation |
-| High | 4-10 | 70%+ | Severe | Urgent remediation |
-| Medium | 11-20 | 30-50% | Moderate | Monitor and plan mitigation |
-| Low | 21+ | <10% | Low | Accept or monitor |
-
-## Interpreting Results
-
-### Example Validation Output
+For each query in the test set, RXP checks whether the poisoned document appears in the top-k retrieved results. The retrieval rate is:
 
 ```
-RXP Validation Results for HR Knowledge Base
-==============================================
-
-Profile: hr_policy
-Model: openai
-Queries: 5
-
-Results by Band:
-
-CRITICAL (Rank 1-3):    2 queries
-  ✗ "What is the vacation policy?" — Rank 2, Score 0.92
-  ✗ "How do I reset my password?" — Rank 3, Score 0.89
-
-HIGH (Rank 4-10):       2 queries
-  ✗ "How do I request time off?" — Rank 7, Score 0.78
-  ✗ "What benefits are available?" — Rank 8, Score 0.71
-
-MEDIUM (Rank 11-20):    1 query
-  ✗ "What is the dress code policy?" — Rank 15, Score 0.52
-
-Summary:
-  Total Vulnerable: 5/5 queries (100%)
-  Critical/High: 4/5 queries (80%)
-  Overall Risk: CRITICAL
+retrieval_rate = (queries where poison was in top-k) / (total queries)
 ```
 
-**Analysis:**
-- 80% of queries retrieve poisoned document in critical/high bands
-- Poisoning attack would be highly effective against this knowledge base
-- Requires immediate mitigation
+The default top-k is 5 (configurable via `--top-k` on the CLI or the web UI form).
 
-### Risk Assessment by Band Distribution
+## Example
 
-**All Critical (dangerous):**
-```
-Critical: 100%, High: 0%, Medium: 0%, Low: 0%
-→ Poisoning extremely reliable. Attacker needs only 1-3 good queries.
-```
+A validation run with 5 queries and top-k of 5:
 
-**Mostly High (very concerning):**
 ```
-Critical: 40%, High: 50%, Medium: 10%, Low: 0%
-→ Poisoning very effective across most queries. Serious vulnerability.
+Results for minilm-l6:
+  Retrieval rate: 4/5 (80.0%)
+  Mean poison rank: 2.3 (when retrieved)
 ```
 
-**Balanced distribution (concerning):**
-```
-Critical: 20%, High: 40%, Medium: 30%, Low: 10%
-→ Poisoning works well for many queries. Needs mitigation.
-```
-
-**Mostly Low (acceptable):**
-```
-Critical: 0%, High: 10%, Medium: 20%, Low: 70%
-→ Poisoning ineffective. Low risk with standard RAG configuration.
-```
+80% retrieval rate → **Critical** band. The poisoned document appears in the top-5 for 4 out of 5 queries, and when it does appear, it averages rank 2.3.
 
 ## Factors Affecting Band Placement
 
-### 1. Document Relevance
+**Corpus size** — Larger knowledge bases increase competition. A poisoned document that ranks in top-5 with 10 corpus documents may fall to rank 50 with 500 documents, reducing the retrieval rate.
 
-More semantically similar documents rank higher:
+**Embedding model** — Different models produce different similarity scores. Test across models with `--model all` to see if poisoning effectiveness varies.
 
-```python
-# Poor poisoning (Low band)
-Query: "What is the vacation policy?"
-Poisoned Doc: "Ancient history of Rome"
-Similarity: 0.15
-Rank: 87
+**Query specificity** — Broad queries ("tell me about company policies") retrieve more diverse documents. Specific queries ("what is the vacation policy?") may rank a topically-matched poison document higher.
 
-# Good poisoning (Critical band)
-Query: "What is the vacation policy?"
-Poisoned Doc: "New vacation policy guidelines for Q2 2025"
-Similarity: 0.92
-Rank: 2
-```
+**Poison document quality** — Documents that are semantically closer to the target queries rank higher. A poison document about "vacation policy guidelines" will outrank one about "general HR information" for vacation-related queries.
 
-### 2. Corpus Size
+## Using Bands for Decision-Making
 
-Larger knowledge bases increase competition:
+**Critical/High** — The poisoned document reliably reaches the LLM. If this were a real attack, the injected instructions would likely execute. Review document upload controls, implement content validation, and consider retrieval-time filtering.
 
-```
-Small corpus (5 documents):
-  Poisoned doc rank: 2 (likely High band)
+**Medium** — Inconsistent retrieval. The attack works for some queries but not others. Lower priority but worth monitoring, especially if the affected queries are high-value.
 
-Large corpus (500 documents):
-  Poisoned doc rank: 47 (likely Low band)
-```
+**Low** — Poisoning is ineffective with this configuration. Standard RAG retrieval adequately dilutes the poisoned document. Acceptable risk in most scenarios.
 
-### 3. Embedding Model
+## Comparing Across Models
 
-Different models produce different similarities:
-
-```
-OpenAI embedding:
-  Poisoned vs Query similarity: 0.92 → Rank 2 (Critical)
-
-Mistral embedding:
-  Poisoned vs Query similarity: 0.63 → Rank 18 (Medium)
-
-Ollama-Nomic embedding:
-  Poisoned vs Query similarity: 0.58 → Rank 22 (Low)
-```
-
-## Remediation by Band
-
-### Critical (Rank 1-3)
-
-**Action required:** Immediate
-
-1. Remove poisoned document from knowledge base
-2. Review access controls for document uploads
-3. Implement document verification/validation
-4. Retrain embeddings after cleanup
-5. Audit for similar poisoned documents
+Run validation with `--model all` to compare bands across every registered embedding model:
 
 ```bash
-# Validate after removing poisoned doc
-qai rxp validate \
-  --profile hr_policy \
-  --corpus-dir ./kb_cleaned \
-  --poison-file ./poison.txt \
-  --output results_after_remediation.json
+qai rxp validate --profile hr-policy --model all --output comparison.json
 ```
 
-### High (Rank 4-10)
-
-**Action required:** Urgent (within 1 week)
-
-1. Review document authenticity
-2. Implement content filtering
-3. Add poisoning detection to upload pipeline
-4. Monitor for variant poisoned documents
-5. Consider reducing context window size
-
-### Medium (Rank 11-20)
-
-**Action required:** Plan mitigation
-
-1. Add to security roadmap
-2. Monitor for exploitation
-3. Implement retrieval-time filtering
-4. Consider alternative embeddings
-5. Document as known issue
-
-### Low (Rank 21+)
-
-**Action required:** Monitor
-
-1. Accept the risk if poisoning is unlikely
-2. Include in security training
-3. Re-validate quarterly
-4. Look for patterns (are multiple attacks possible?)
-
-## Testing Different Scenarios
-
-### Variant Poisoning (Changing the poisoned document)
-
-Test how sensitive band placement is to exact wording:
-
-```bash
-# Original poison document
-qai rxp validate \
-  --profile hr_policy \
-  --corpus-dir ./kb \
-  --poison-file ./poison_v1.txt \
-  --output results_v1.json
-
-# Slightly different poisoned document
-qai rxp validate \
-  --profile hr_policy \
-  --corpus-dir ./kb \
-  --poison-file ./poison_v2_rephrased.txt \
-  --output results_v2.json
-```
-
-If v1 is Critical but v2 is Low, the vulnerability is specific to exact wording. If both are Critical, the vulnerability is more robust.
-
-### Model Consistency
-
-Test across embedding models:
-
-```bash
-for model in openai mistral ollama-mistral; do
-  qai rxp validate \
-    --profile hr_policy \
-    --corpus-dir ./kb \
-    --poison-file ./poison.txt \
-    --model $model \
-    --output results_$model.json
-done
-```
-
-If all models put poisoned doc in Critical band, it's a serious vulnerability. If results vary, the risk depends on which embedding model the RAG system uses.
-
-## Band Evolution
-
-Bands may shift as:
-
-- **Knowledge base grows** → More documents compete, lower ranks
-- **Embeddings improve** → Better semantic matching
-- **Queries change** → Different relevance scores
-- **Poisoned document updated** → Different similarity
-
-Monitor band changes over time to track vulnerability evolution.
+If all models place the poison in Critical band, the vulnerability is robust. If only one model is affected, the risk depends on which model the target RAG system uses.
