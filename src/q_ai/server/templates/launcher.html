@@ -61,6 +61,26 @@
 </div>
 {% endmacro %}
 
+{# ---- Reusable macro for CLI preview block ---- #}
+{% macro cli_preview(wf_id) %}
+<div class="cli-preview-block" id="cli-preview-{{ wf_id }}">
+    <span class="cli-preview-label">Equivalent CLI</span>
+    <div class="cli-preview-code-wrap">
+        <pre><code id="cli-preview-code-{{ wf_id }}"></code></pre>
+        <button type="button" class="cli-preview-copy"
+                id="cli-copy-btn-{{ wf_id }}"
+                onclick="copyCliPreview('{{ wf_id }}')" title="Copy to clipboard">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+        </button>
+    </div>
+    <span class="cli-preview-note">implicit defaults omitted</span>
+</div>
+{% endmacro %}
 
 {# ---- Workflow color config — unified violet for all rows ---- #}
 {% set wf_color_default = {'color': '#a78bfa', 'border': 'rgba(139,92,246,0.35)', 'bg': 'rgba(139,92,246,0.06)'} %}
@@ -343,6 +363,8 @@
                     </div>
                     {% endif %}
 
+                    {{ cli_preview(wf.id) }}
+
                     <div id="error-{{ wf.id }}" class="text-error text-sm hidden"></div>
 
                     <div class="mt-4">
@@ -407,6 +429,7 @@
                         </div>
                     </fieldset>
 
+                    {{ cli_preview('qa_scan') }}
                     <div id="error-qa_scan" class="text-error text-sm hidden"></div>
                     <div class="mt-4">
                         <button type="submit" class="btn btn-sm btn-launch">Scan</button>
@@ -444,6 +467,7 @@
                     <input type="hidden" name="action" value="intercept" />
                     {{ target_name_field('qa_intercept', "my-mcp-server") }}
                     {{ transport_fields('qa_intercept') }}
+                    {{ cli_preview('qa_intercept') }}
                     <div id="error-qa_intercept" class="text-error text-sm hidden"></div>
                     <div class="mt-4">
                         <button type="submit" class="btn btn-sm btn-launch">Intercept</button>
@@ -509,6 +533,7 @@
                         </div>
                     </fieldset>
 
+                    {{ cli_preview('qa_campaign') }}
                     <div id="error-qa_campaign" class="text-error text-sm hidden"></div>
                     <div class="mt-4">
                         <button type="submit" class="btn btn-sm btn-launch">Launch</button>
@@ -545,6 +570,7 @@
                 <div class="wf-row-form">
                 <form id="form-qa_enumerate" class="space-y-4" onsubmit="return launchEnumerate(event)">
                     {{ transport_fields('qa_enumerate') }}
+                    {{ cli_preview('qa_enumerate') }}
                     <div id="error-qa_enumerate" class="text-error text-sm hidden"></div>
                     <div class="mt-4">
                         <button type="submit" class="btn btn-sm btn-launch">Enumerate</button>
@@ -557,6 +583,41 @@
         </div>
     </div>
 </div>
+
+<style>
+.cli-preview-block { margin-top: 1rem; }
+.cli-preview-label {
+    display: block; font-size: 0.7rem; font-weight: 600;
+    opacity: 0.5; margin-bottom: 0.25rem;
+    text-transform: uppercase; letter-spacing: 0.05em;
+}
+.cli-preview-code-wrap {
+    position: relative;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    overflow-x: auto;
+}
+.cli-preview-code-wrap pre { margin: 0; white-space: pre; }
+.cli-preview-code-wrap code {
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.78rem; line-height: 1.5; color: #e2e8f0;
+}
+.cli-preview-comment { opacity: 0.45; }
+.cli-preview-copy {
+    position: absolute; top: 0.5rem; right: 0.5rem;
+    background: transparent; border: none; color: #a78bfa;
+    cursor: pointer; opacity: 0; transition: opacity 0.15s;
+    padding: 0.25rem; border-radius: 0.25rem; font-size: 0.7rem;
+}
+.cli-preview-copy:hover { background: rgba(139, 92, 246, 0.15); }
+.cli-preview-code-wrap:hover .cli-preview-copy { opacity: 1; }
+.cli-preview-note {
+    display: block; font-size: 0.65rem; opacity: 0.35;
+    margin-top: 0.25rem; font-style: italic;
+}
+</style>
 
 <script>
 var _targetCheckTimers = {};
@@ -674,6 +735,7 @@ function toggleAllChecks(name, wfId, checked) {
     form.querySelectorAll('input[name="' + name + '"]').forEach(function(cb) {
         cb.checked = checked;
     });
+    updateCliPreview(wfId);
 }
 
 var _payloadLibLoaded = {};
@@ -892,6 +954,280 @@ function renderEnumerateResults(container, data) {
         return { name: p.name, desc: p.description ? p.description.substring(0, 80) : '' };
     });
 }
+
+/* ---- CLI Preview ---- */
+
+/**
+ * Returns the selected transport value from a form, or a placeholder.
+ * @param {HTMLFormElement} form - The form element
+ * @returns {string} Transport value or '<transport>'
+ */
+function _cliTransport(form) {
+    var r = form.querySelector('input[name="transport"]:checked');
+    return r ? r.value : '<transport>';
+}
+
+/**
+ * Returns the CLI connection flag and value string for a given transport.
+ * @param {HTMLFormElement} form - The form element
+ * @param {string} transport - Current transport value
+ * @param {string} cmdFlag - Flag name for stdio (e.g. '--command')
+ * @param {string} urlFlag - Flag name for network (e.g. '--url')
+ * @returns {string} Flag and value string
+ */
+function _cliConnectionArg(form, transport, cmdFlag, urlFlag) {
+    if (transport === 'stdio' || transport === '<transport>') {
+        var cmdEl = form.querySelector('input[name="command"]');
+        var cmdVal = cmdEl ? cmdEl.value.trim() : '';
+        if (!cmdVal) return cmdFlag + ' <cmd>';
+        if (cmdVal.indexOf(' ') !== -1) cmdVal = '"' + cmdVal + '"';
+        return cmdFlag + ' ' + cmdVal;
+    }
+    var urlEl = form.querySelector('input[name="url"]');
+    var urlVal = urlEl ? urlEl.value.trim() : '';
+    return urlFlag + ' ' + (urlVal || '<url>');
+}
+
+/**
+ * Returns the selected model value from a form, or a placeholder.
+ * @param {HTMLFormElement} form - The form element
+ * @returns {string} Model ID or '<model>'
+ */
+function _cliModel(form) {
+    var el = form.querySelector('[name="model"]');
+    if (!el) return '<model>';
+    var val = el.value.trim();
+    if (!val || val === '__custom__') return '<model>';
+    return val;
+}
+
+/**
+ * Returns inject campaign command string(s) based on technique/payload state.
+ * @param {HTMLFormElement} form - The form element
+ * @param {string} model - Model value or placeholder
+ * @param {string} roundsVal - Rounds value from the form
+ * @returns {string[]} Array of command strings (no comment lines)
+ */
+function _cliInjectCmds(form, model, roundsVal) {
+    var roundsArg = (roundsVal && roundsVal !== '1') ? ' --rounds ' + roundsVal : '';
+    var base = 'qai inject campaign --model ' + model;
+
+    var payloads = [];
+    form.querySelectorAll('input[name="payload_names"]:checked').forEach(function(cb) {
+        payloads.push(cb.value);
+    });
+    if (payloads.length > 0) {
+        return [base + ' --payloads ' + payloads.join(',') + roundsArg];
+    }
+
+    var allTechs = form.querySelectorAll('input[name="techniques"]');
+    var checkedTechs = [];
+    form.querySelectorAll('input[name="techniques"]:checked').forEach(function(cb) {
+        checkedTechs.push(cb.value);
+    });
+
+    if (checkedTechs.length === 0 || checkedTechs.length === allTechs.length) {
+        return [base + roundsArg];
+    }
+    return checkedTechs.map(function(t) {
+        return base + ' --technique ' + t + roundsArg;
+    });
+}
+
+/** Builds CLI preview lines for the Assess workflow. */
+function _buildCliAssess(form) {
+    var transport = _cliTransport(form);
+    var auditConn = _cliConnectionArg(form, transport, '--command', '--url');
+    var proxyConn = _cliConnectionArg(form, transport, '--target-command', '--target-url');
+    var model = _cliModel(form);
+    var roundsEl = form.querySelector('input[name="rounds"]');
+    var roundsVal = roundsEl ? roundsEl.value : '1';
+
+    var allChecks = form.querySelectorAll('input[name="checks"]');
+    var checked = form.querySelectorAll('input[name="checks"]:checked');
+    var checksArg = '';
+    if (checked.length > 0 && checked.length < allChecks.length) {
+        var vals = [];
+        checked.forEach(function(cb) { vals.push(cb.value); });
+        checksArg = ' --checks ' + vals.join(',');
+    }
+
+    var lines = [
+        '# audit',
+        'qai audit scan --transport ' + transport + ' ' + auditConn + checksArg,
+        '# proxy',
+        'qai proxy start --transport ' + transport + ' ' + proxyConn
+    ];
+    lines.push('# inject');
+    _cliInjectCmds(form, model, roundsVal).forEach(function(cmd) {
+        lines.push(cmd);
+    });
+    return lines;
+}
+
+/** Builds CLI preview lines for the Test Document Ingestion workflow. */
+function _buildCliTestDocs(form) {
+    var callbackEl = form.querySelector('input[name="callback_url"]');
+    var callback = callbackEl ? callbackEl.value.trim() : '';
+    var format = form.querySelector('select[name="format"]').value;
+    var style = form.querySelector('select[name="payload_style"]').value;
+    var ptype = form.querySelector('select[name="payload_type"]').value;
+
+    var lines = [];
+
+    var rxpCb = form.querySelector('input[name="rxp_enabled"]');
+    if (rxpCb && rxpCb.checked) {
+        var rxpModelEl = form.querySelector('input[name="rxp_model_id"]');
+        var rxpModel = rxpModelEl ? rxpModelEl.value.trim() : '';
+        lines.push('# pre-validate retrieval rank');
+        lines.push('qai rxp measure --model ' + (rxpModel || '<model>') + ' ...');
+    }
+
+    lines.push('# generate payloads');
+    lines.push('qai ipi generate --callback ' + (callback || '<callback_url>') +
+        ' --format ' + format +
+        ' --payload-style ' + style +
+        ' --payload-type ' + ptype);
+    lines.push('# start listener (run in a separate terminal)');
+    lines.push('qai ipi listen --port <port>');
+    return lines;
+}
+
+/** Builds CLI preview lines for the Test Context Poisoning workflow. */
+function _buildCliTestAssistant(form) {
+    var format = form.querySelector('select[name="format_id"]').value;
+    var repoEl = form.querySelector('input[name="repo_name"]');
+    var repoVal = repoEl ? repoEl.value.trim() : '';
+    var cmd = 'qai cxp generate --format ' + format;
+    if (repoVal) cmd += ' --repo-name ' + repoVal;
+    return [cmd];
+}
+
+/** Builds CLI preview lines for the Trace an Attack Path workflow. */
+function _buildCliTracePath(form) {
+    var sel = form.querySelector('select[name="chain_template_id"]');
+    var templateName = '<template>';
+    if (sel && sel.value) {
+        templateName = sel.options[sel.selectedIndex].textContent.split(' (')[0].trim();
+    }
+    var model = _cliModel(form);
+    var cmd = 'qai chain run --chain-file ' + templateName + '.yaml';
+    if (model !== '<model>') cmd += ' --inject-model ' + model;
+    return [cmd];
+}
+
+/** Builds CLI preview lines for the Measure Blast Radius workflow. */
+function _buildCliBlastRadius(form) {
+    var sel = form.querySelector('select[name="chain_execution_id"]');
+    var execName = '<execution>';
+    if (sel && sel.value) {
+        execName = sel.options[sel.selectedIndex].textContent.split(' \u2014 ')[0].trim();
+    }
+    return ['qai chain blast-radius --results ' + execName + '.json'];
+}
+
+/** Builds CLI preview lines for Quick Audit Run. */
+function _buildCliQaScan(form) {
+    var transport = _cliTransport(form);
+    var conn = _cliConnectionArg(form, transport, '--command', '--url');
+    var allChecks = form.querySelectorAll('input[name="checks"]');
+    var checked = form.querySelectorAll('input[name="checks"]:checked');
+    var checksArg = '';
+    if (checked.length > 0 && checked.length < allChecks.length) {
+        var vals = [];
+        checked.forEach(function(cb) { vals.push(cb.value); });
+        checksArg = ' --checks ' + vals.join(',');
+    }
+    return ['qai audit scan --transport ' + transport + ' ' + conn + checksArg];
+}
+
+/** Builds CLI preview lines for Quick Proxy Run. */
+function _buildCliQaIntercept(form) {
+    var transport = _cliTransport(form);
+    var conn = _cliConnectionArg(form, transport, '--target-command', '--target-url');
+    return ['qai proxy start --transport ' + transport + ' ' + conn];
+}
+
+/** Builds CLI preview lines for Quick Inject Run. */
+function _buildCliQaCampaign(form) {
+    var model = _cliModel(form);
+    var roundsEl = form.querySelector('input[name="rounds"]');
+    var roundsVal = roundsEl ? roundsEl.value : '1';
+    return _cliInjectCmds(form, model, roundsVal);
+}
+
+/** Builds CLI preview lines for Enumerate Server. */
+function _buildCliQaEnumerate(form) {
+    var transport = _cliTransport(form);
+    var conn = _cliConnectionArg(form, transport, '--command', '--url');
+    return ['qai audit enumerate --transport ' + transport + ' ' + conn];
+}
+
+/** @type {Object<string, function(HTMLFormElement): string[]>} */
+var _CLI_BUILDERS = {
+    'assess': _buildCliAssess,
+    'test_docs': _buildCliTestDocs,
+    'test_assistant': _buildCliTestAssistant,
+    'trace_path': _buildCliTracePath,
+    'blast_radius': _buildCliBlastRadius,
+    'qa_scan': _buildCliQaScan,
+    'qa_intercept': _buildCliQaIntercept,
+    'qa_campaign': _buildCliQaCampaign,
+    'qa_enumerate': _buildCliQaEnumerate
+};
+
+/**
+ * Renders CLI preview lines into a code element using safe DOM construction.
+ * @param {HTMLElement} codeEl - The <code> element to render into
+ * @param {string[]} lines - Array of command/comment lines
+ */
+function _renderCliPreview(codeEl, lines) {
+    codeEl.textContent = '';
+    lines.forEach(function(line, i) {
+        if (i > 0) codeEl.appendChild(document.createTextNode('\n'));
+        if (line.startsWith('#')) {
+            var span = document.createElement('span');
+            span.className = 'cli-preview-comment';
+            span.textContent = line;
+            codeEl.appendChild(span);
+        } else {
+            codeEl.appendChild(document.createTextNode(line));
+        }
+    });
+}
+
+/**
+ * Updates the CLI preview for a given form by calling its builder.
+ * @param {string} formId - The form identifier (e.g. 'assess', 'qa_scan')
+ */
+function updateCliPreview(formId) {
+    var form = document.getElementById('form-' + formId);
+    var codeEl = document.getElementById('cli-preview-code-' + formId);
+    if (!form || !codeEl) return;
+    var builder = _CLI_BUILDERS[formId];
+    if (!builder) return;
+    _renderCliPreview(codeEl, builder(form));
+}
+
+/**
+ * Copies the CLI preview text to the clipboard with brief feedback.
+ * @param {string} formId - The form identifier
+ */
+function copyCliPreview(formId) {
+    var codeEl = document.getElementById('cli-preview-code-' + formId);
+    if (!codeEl) return;
+    navigator.clipboard.writeText(codeEl.textContent).then(function() {
+        var btn = document.getElementById('cli-copy-btn-' + formId);
+        if (!btn) return;
+        var original = btn.innerHTML;
+        btn.textContent = 'Copied!';
+        btn.style.opacity = '1';
+        setTimeout(function() {
+            btn.innerHTML = original;
+            btn.style.opacity = '';
+        }, 1500);
+    });
+}
 </script>
 
 <script>
@@ -903,6 +1239,24 @@ document.addEventListener('DOMContentLoaded', function() {
             htmx.ajax('GET',
                 '/api/providers/' + sel.value + '/models?default=' + encodeURIComponent(defaultModel) + '&selector_id=' + selectorId,
                 {target: '#' + selectorId + '-model-area'});
+        }
+    });
+
+    /* Wire CLI preview updates via event delegation on all launcher forms */
+    document.querySelectorAll('form[id^="form-"]').forEach(function(form) {
+        var formId = form.id.replace('form-', '');
+        if (!_CLI_BUILDERS[formId]) return;
+        form.addEventListener('input', function() { updateCliPreview(formId); });
+        form.addEventListener('change', function() { updateCliPreview(formId); });
+        updateCliPreview(formId);
+    });
+
+    /* Update previews after HTMX swaps (e.g. model selector loaded) */
+    document.addEventListener('htmx:afterSettle', function(e) {
+        var form = e.target.closest('form[id^="form-"]');
+        if (form) {
+            var formId = form.id.replace('form-', '');
+            updateCliPreview(formId);
         }
     });
 });
