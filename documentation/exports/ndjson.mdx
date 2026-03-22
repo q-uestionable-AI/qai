@@ -1,272 +1,71 @@
 ---
-title: NDJSON Export Format
-description: Newline-delimited JSON export for streaming processing and log aggregation
+title: NDJSON Export
+description: Newline-delimited JSON for streaming processing and log aggregation
 ---
 
-# NDJSON Export Format
+NDJSON (Newline Delimited JSON) exports one finding per line as a self-contained JSON object. Each line can be processed independently, making this format ideal for streaming pipelines, log aggregation systems, and tools that process records one at a time.
 
-Export audit findings in NDJSON (Newline Delimited JSON) format for streaming processing, log aggregation systems, and real-time analysis pipelines.
+## Generating NDJSON
 
-## Overview
+**CLI:**
 
-NDJSON (also known as JSON Lines) is a text format where each line contains a complete, valid JSON object. This format excels at:
-
-- **Streaming processing**: Process results as they arrive without loading entire file into memory
-- **Log aggregation**: Direct ingestion into Elasticsearch, Splunk, CloudWatch, and similar systems
-- **Pipeline efficiency**: Process one finding at a time with constant memory overhead
-- **Concatenation**: Combine multiple audit results by concatenating files
-- **Real-time analysis**: Process findings immediately as they're written
-
-## Format Structure
-
-Each line is an independent JSON object representing a finding:
-
-```
-{"id":"finding_001","severity":"high","title":"SQL Injection Vulnerability","file":"src/database.py","line":45}
-{"id":"finding_002","severity":"medium","title":"Weak Cryptography","file":"src/crypto.py","line":78}
-{"id":"finding_003","severity":"info","title":"Debug Logs Enabled","file":"src/config.py","line":12}
+```bash
+qai audit scan --transport stdio --command "npx @modelcontextprotocol/server-memory" \
+  --format ndjson --output results.ndjson
 ```
 
-No trailing newline is required, but NDJSON readers expect a newline between objects.
+Or convert an existing scan:
 
-## Finding Object Structure
+```bash
+qai audit report --input results/scan.json --format ndjson --output results.ndjson
+```
 
-Each NDJSON line contains a finding object with consistent properties:
+**Web UI:** NDJSON is available through the audit CLI report command. The web UI Export JSON button produces the full JSON bundle instead.
+
+## Record Format
+
+Each line is a complete JSON object with these fields:
 
 ```json
-{
-  "id": "finding_001",
-  "severity": "high",
-  "title": "SQL Injection Vulnerability",
-  "description": "User input concatenated into SQL query",
-  "file": "src/database.py",
-  "line": 45,
-  "column": 20,
-  "evidence": "query = f'SELECT * FROM users WHERE id={user_id}'",
-  "remediation": "Use parameterized queries",
-  "category": "CWE-89",
-  "cvss_score": 7.0,
-  "confidence": "high",
-  "timestamp": "2024-03-22T10:30:15Z",
-  "run_id": "run_12345abcde"
-}
+{"category":"command_injection","severity":"high","title":"Tool parameter allows shell injection","description":"...","framework_ids":{"owasp_mcp_top10":"MCP05","mitre_atlas":"AML.T0054"},"mitigation":null,"source_ref":"injection","created_at":"2026-03-22T10:30:15+00:00"}
 ```
 
-<Note>
-Each line is a complete JSON object. Parsing tools read lines independently, so all data for a finding must fit on one line.
-</Note>
+### Fields
 
-## Severity and Confidence
+| Field | Type | Description |
+|-------|------|-------------|
+| `category` | string | Finding category (e.g., `command_injection`, `auth`, `token_exposure`) |
+| `severity` | string | Severity name: `critical`, `high`, `medium`, `low`, `info` |
+| `title` | string | Short finding title |
+| `description` | string | Detailed description |
+| `framework_ids` | object | Framework mappings (e.g., `{"owasp_mcp_top10": "MCP05"}`) |
+| `mitigation` | object/null | Mitigation guidance data if available |
+| `source_ref` | string/null | Scanner or source reference |
+| `created_at` | string/null | ISO timestamp |
 
-Findings include structured severity and confidence levels:
+When run metadata is provided, additional fields (`run_id`, `target_name`) are merged into each record.
 
-| Severity | Impact | CVSS Range |
-|----------|--------|-----------|
-| critical | Immediate exploitation risk | 9.0-10.0 |
-| high | Significant security impact | 7.0-8.9 |
-| medium | Moderate risk, important to address | 4.0-6.9 |
-| low | Minor issues, fix during maintenance | 0.1-3.9 |
-| info | Informational, no security risk | 0.0 |
-
-| Confidence | Meaning |
-|------------|---------|
-| high | Finding is very likely accurate |
-| medium | Finding has strong evidence but may have false positives |
-| low | Finding requires manual verification |
-
-## Processing NDJSON
-
-NDJSON is designed for line-by-line processing:
-
-<CodeGroup>
-
-```python Python with Streaming
-with open('audit_results.ndjson', 'r') as f:
-    for line in f:
-        finding = json.loads(line)
-        if finding['severity'] in ['critical', 'high']:
-            print(f"{finding['title']} in {finding['file']}")
-```
-
-```javascript Node.js with Streaming
-const fs = require('fs');
-const readline = require('readline');
-
-const rl = readline.createInterface({
-  input: fs.createReadStream('audit_results.ndjson'),
-  crlfDelay: Infinity
-});
-
-rl.on('line', (line) => {
-  const finding = JSON.parse(line);
-  if (finding.severity === 'critical') {
-    console.log(`CRITICAL: ${finding.title}`);
-  }
-});
-```
-
-```bash Bash with jq
-# Process line by line
-cat audit_results.ndjson | jq 'select(.severity=="high")'
-
-# Count findings by severity
-cat audit_results.ndjson | jq -s 'group_by(.severity) | map({severity: .[0].severity, count: length})'
-
-# Extract files with findings
-cat audit_results.ndjson | jq -r '.file' | sort | uniq
-```
-
-</CodeGroup>
-
-## Elasticsearch Ingestion
-
-NDJSON is the native bulk ingestion format for Elasticsearch:
-
-```bash
-# Using Elasticsearch bulk API
-curl -X POST "localhost:9200/security-findings/_bulk" \
-  -H "Content-Type: application/x-ndjson" \
-  -d @audit_results.ndjson
-
-# Or with authentication
-curl -X POST "https://elastic:password@elasticsearch:9200/security-findings/_bulk" \
-  --data-binary @audit_results.ndjson
-```
-
-The bulk API expects alternating metadata and data lines:
-
-```
-{"index":{"_index":"security-findings"}}
-{"id":"finding_001","severity":"high",...}
-{"index":{"_index":"security-findings"}}
-{"id":"finding_002","severity":"medium",...}
-```
-
-<Tip>
-Use the `qai export elasticsearch` command to automatically format with metadata lines for Elasticsearch bulk ingestion.
-</Tip>
-
-## Splunk Ingestion
-
-Forward NDJSON to Splunk using the HTTP Event Collector:
-
-```bash
-curl -X POST http://splunk-server:8088/services/collector \
-  -H "Authorization: Splunk your-token-here" \
-  -d '{"event": '"$(cat audit_results.ndjson | jq -c .)"'}'
-
-# Or send individual lines
-while IFS= read -r line; do
-  curl -X POST http://splunk-server:8088/services/collector \
-    -H "Authorization: Splunk your-token-here" \
-    -d "{\"event\": $line}"
-done < audit_results.ndjson
-```
-
-## CloudWatch Logs
-
-Send NDJSON findings to AWS CloudWatch:
-
-```bash
-aws logs put-log-events \
-  --log-group-name /qai/audit-results \
-  --log-stream-name $(date +%Y-%m-%d) \
-  --log-events "$(cat audit_results.ndjson | jq -R -s -c '@json')"
-```
-
-## File Concatenation
-
-Combine multiple NDJSON audit runs:
-
-```bash
-# Append new findings to existing results
-cat audit_run_1.ndjson audit_run_2.ndjson > combined_results.ndjson
-
-# Deduplicate identical findings
-cat *.ndjson | sort -u > deduplicated.ndjson
-
-# Keep latest findings only
-cat audit_run_*.ndjson | sort -k 2 -t: -u > latest.ndjson
-```
-
-## Memory-Efficient Processing
-
-For very large NDJSON files, process streaming to maintain constant memory usage:
-
-```python
-import json
-from collections import Counter
-
-def process_findings(filename):
-    severity_count = Counter()
-    file_count = Counter()
-
-    with open(filename, 'r') as f:
-        for line in f:
-            if line.strip():
-                finding = json.loads(line)
-                severity_count[finding['severity']] += 1
-                file_count[finding['file']] += 1
-
-                # Process finding immediately
-                yield finding
-
-    print(f"Severity distribution: {dict(severity_count)}")
-    print(f"Files affected: {len(file_count)}")
-
-# Process without loading entire file
-for finding in process_findings('audit_results.ndjson'):
-    if finding['severity'] == 'critical':
-        remediate(finding)
-```
-
-## Filtering and Transformation
-
-Filter or transform NDJSON using standard tools:
+## Processing
 
 ```bash
 # Filter high-severity findings
-jq 'select(.severity=="high" or .severity=="critical")' \
-  audit_results.ndjson > high_priority.ndjson
+cat results.ndjson | jq 'select(.severity == "high" or .severity == "critical")'
 
-# Extract specific fields
-jq -c '{title: .title, file: .file, line: .line}' \
-  audit_results.ndjson
+# Count by category
+cat results.ndjson | jq -s 'group_by(.category) | map({category: .[0].category, count: length})'
 
-# Add derived fields
-jq '{...., priority: (if .severity=="critical" then 1 elif .severity=="high" then 2 else 3 end)}' \
-  audit_results.ndjson
-
-# Group by file
-jq -s 'group_by(.file) | .[] | {file: .[0].file, findings: length}' \
-  audit_results.ndjson
+# Extract titles only
+cat results.ndjson | jq -r '.title'
 ```
 
-## Performance Characteristics
+```python
+import json
 
-NDJSON offers excellent performance advantages:
+with open("results.ndjson") as f:
+    for line in f:
+        finding = json.loads(line)
+        if finding["severity"] in ("critical", "high"):
+            print(f"{finding['severity'].upper()}: {finding['title']}")
+```
 
-| Metric | Benefit |
-|--------|---------|
-| Memory | Constant regardless of file size (line-by-line processing) |
-| Processing Speed | Fast - no parsing of large structures |
-| Network | Streamable - send as data arrives |
-| Storage | Compact - minimal overhead compared to pretty-printed JSON |
-| Concatenation | O(1) - just append files |
-
-## Comparison with Other Formats
-
-| Feature | NDJSON | JSON | CSV | SARIF |
-|---------|--------|------|-----|-------|
-| Streaming | ✓ | ✗ | ✓ | ✗ |
-| Memory Efficient | ✓ | ✗ | ✓ | ✗ |
-| Log Aggregation | ✓ | ✗ | Limited | ✗ |
-| Human Readable | ✓ | ✓ | ✓ | ✓ |
-| Preserves Type | ✓ | ✓ | ✗ | ✓ |
-
-## Next Steps
-
-- Export audit findings as NDJSON for streaming analysis
-- Send directly to log aggregation platforms
-- Build real-time processing pipelines
-- Combine with other tools using the NDJSON standard
+NDJSON is the native bulk format for Elasticsearch and works well with Splunk HEC, CloudWatch, and other log aggregation systems that accept one JSON record per line.

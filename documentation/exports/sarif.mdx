@@ -1,314 +1,128 @@
 ---
-title: SARIF Format Export
-description: Export qai findings in SARIF 2.1.0 format for CI/CD integration and GitHub Security alerts
+title: SARIF Export
+description: SARIF 2.1.0 output for GitHub Code Scanning and CI/CD integration
 ---
 
-# SARIF Format Export
+Audit findings export in SARIF (Static Analysis Results Interchange Format) 2.1.0 for native integration with GitHub Code Scanning, IDE security views, and CI/CD pipelines.
 
-Export audit findings in SARIF (Static Analysis Results Interchange Format) 2.1.0 for native integration with GitHub Security, code review platforms, and CI/CD pipelines.
+## Generating SARIF
 
-## Overview
+**CLI:**
 
-SARIF is an industry-standard format for reporting static analysis results. Exporting to SARIF enables:
+```bash
+qai audit scan --transport stdio --command "npx @modelcontextprotocol/server-memory" \
+  --format sarif --output findings.sarif
+```
 
-- Direct GitHub Security tab integration without additional plugins
-- Compatibility with GitHub Advanced Security features
-- Native support in VS Code, JetBrains IDEs, and other tools
-- Standardized result exchange between security tools
-- Automated remediation workflows in CI/CD systems
+Or convert an existing scan:
 
-## SARIF 2.1.0 Structure
+```bash
+qai audit report --input results/scan.json --format sarif --output findings.sarif
+```
 
-A SARIF report contains complete findings metadata structured for automated processing:
+**Web UI:** Click **Download SARIF** on a completed run's overview header (only available when the audit module ran).
+
+## SARIF Structure
+
+The output conforms to SARIF 2.1.0 with one run containing the q-ai tool driver, deduplicated rules, and one result per finding.
+
+### Tool Driver
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-  "version": "2.1.0",
-  "runs": [
-    {
-      "tool": {
-        "driver": {
-          "name": "qai",
-          "version": "0.5.1",
-          "informationUri": "https://qai.dev"
-        }
-      },
-      "results": [
-        {
-          "ruleId": "security/sql-injection",
-          "message": {
-            "text": "User input concatenated directly into SQL query"
-          },
-          "severity": "error",
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "src/database.py"
-                },
-                "region": {
-                  "startLine": 45
-                }
-              }
-            }
-          ],
-          "properties": {
-            "mitigation": "Use parameterized queries with placeholders",
-            "category": "CWE-89",
-            "cvss_score": 9.0
-          }
-        }
-      ]
-    }
-  ]
+  "name": "q-ai",
+  "version": "0.5.1",
+  "informationUri": "https://github.com/q-uestionable-AI/qai",
+  "rules": [ ... ]
+}
+```
+
+### Rules
+
+Each unique `rule_id` from the scan produces one rule entry:
+
+```json
+{
+  "id": "QAI-INJ-tool-parameter-injection",
+  "name": "Tool parameter allows shell injection",
+  "shortDescription": { "text": "Tool parameter allows shell injection" },
+  "fullDescription": { "text": "Detailed description..." },
+  "defaultConfiguration": { "level": "error" },
+  "helpUri": "https://github.com/q-uestionable-AI/qai/blob/main/docs/owasp_mapping.md#MCP05",
+  "properties": {
+    "security-severity": "7.0",
+    "tags": ["security", "command_injection"]
+  }
+}
+```
+
+### Results
+
+One result per finding, referencing the rule by ID and index:
+
+```json
+{
+  "ruleId": "QAI-INJ-tool-parameter-injection",
+  "ruleIndex": 0,
+  "level": "error",
+  "message": { "text": "Detailed description..." },
+  "properties": {
+    "category": "command_injection",
+    "tool_name": "memory_store",
+    "evidence": "...",
+    "remediation": "Validate and sanitize tool parameters...",
+    "metadata": { ... }
+  }
 }
 ```
 
 ## Severity Mapping
 
-qai maps security severity levels to SARIF levels and CVSS scores:
+| qai Severity | SARIF Level | security-severity Score |
+|-------------|-------------|:-----------------------:|
+| Critical | error | 9.0 |
+| High | error | 7.0 |
+| Medium | warning | 4.0 |
+| Low | note | 0.1 |
+| Info | note | 0.0 |
 
-| qai Severity | SARIF Level | CVSS Base Score | Description |
-|--------------|-------------|-----------------|-------------|
-| Critical | error | 9.0 | Immediate risk, requires urgent fix |
-| High | error | 7.0 | Significant impact, fix soon |
-| Medium | warning | 4.0 | Moderate impact, address regularly |
-| Low | note | 0.1 | Minor issue, informational |
-| Info | note | 0.0 | No security risk, reference only |
+The `security-severity` property in rule properties enables GitHub Code Scanning to sort findings by security impact.
 
-## SARIF Result Properties
+## GitHub Code Scanning Integration
 
-Each result (finding) includes:
+Upload SARIF results to GitHub's Security tab using the `codeql-action/upload-sarif` action:
 
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `ruleId` | string | Yes | Unique identifier for the vulnerability class |
-| `message` | object | Yes | Message object with detailed finding text |
-| `severity` | string | No | SARIF severity: error, warning, note, none |
-| `level` | string | Yes | Explicit level: error, warning, note, pass, notApplicable, open, review |
-| `locations` | array | Yes | Array of physical locations where issue occurs |
-| `ruleIndex` | integer | No | Index into rules array |
-| `rank` | number | No | Confidence/priority rank (0-100, default 50) |
+```yaml
+name: MCP Security Audit
 
-## Property Extensions
-
-qai extends SARIF results with custom properties:
-
-```json
-{
-  "properties": {
-    "mitigation": "Use prepared statements with parameter binding",
-    "evidence": "Found query at line 45: `query = f'SELECT * FROM users WHERE id={user_id}'`",
-    "category": "CWE-89: Improper Neutralization of Special Elements used in an SQL Command",
-    "tool_name": "qai-audit",
-    "confidence": "high",
-    "impact": "Database compromise, data exfiltration",
-    "tags": ["owasp-a1", "injection", "critical-risk"]
-  }
-}
-```
-
-<Note>
-The `properties` object is extensible. Custom properties help integrate with downstream tools while remaining SARIF-compliant.
-</Note>
-
-## Rule Definitions
-
-SARIF includes rule definitions to classify findings:
-
-```json
-{
-  "runs": [
-    {
-      "tool": {
-        "driver": {
-          "rules": [
-            {
-              "id": "security/sql-injection",
-              "shortDescription": {
-                "text": "SQL Injection vulnerability"
-              },
-              "fullDescription": {
-                "text": "User input is concatenated directly into SQL queries without parameterization, allowing attackers to execute arbitrary SQL commands."
-              },
-              "defaultConfiguration": {
-                "level": "error"
-              },
-              "helpUri": "https://owasp.org/www-community/attacks/SQL_Injection",
-              "relationships": [
-                {
-                  "target": {
-                    "id": "CWE-89"
-                  },
-                  "kinds": ["remediatedBy"]
-                }
-              ]
-            }
-          ]
-        }
-      }
-    }
-  ]
-}
-```
-
-## GitHub Security Integration
-
-GitHub automatically detects SARIF uploads in GitHub Actions and populates the Security tab:
-
-<CodeGroup>
-
-```yaml GitHub Action
-name: QAI Security Audit
-
-on: [push, pull_request]
+on: [push]
 
 jobs:
-  qai-audit:
+  audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run qai audit
-        run: qai audit --export sarif --output-file audit-results.sarif
+      - name: Install qai
+        run: pip install q-uestionable-ai
 
-      - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+      - name: Run audit
+        run: |
+          qai audit scan \
+            --transport stdio \
+            --command "npx @modelcontextprotocol/server-memory" \
+            --format sarif \
+            --output results.sarif
+
+      - name: Upload to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: audit-results.sarif
-          category: qai-security-audit
+          sarif_file: results.sarif
+          category: qai-mcp-audit
 ```
 
-```bash Manual Upload
-# After running qai audit with SARIF export
-gh code-scanning upload-sarif audit-results.sarif --category=qai
-```
+Findings appear in the repository's Security tab under Code Scanning alerts.
 
-</CodeGroup>
-
-## Artifact Locations
-
-SARIF uses URI references for file locations. The URI format depends on your repository:
-
-```json
-{
-  "locations": [
-    {
-      "physicalLocation": {
-        "artifactLocation": {
-          "uri": "src/api/handlers.py",
-          "uriBaseId": "SRCROOT"
-        },
-        "region": {
-          "startLine": 42,
-          "startColumn": 12,
-          "endLine": 42,
-          "endColumn": 35,
-          "snippet": {
-            "text": "query = f'SELECT * FROM users WHERE id={id}'"
-          }
-        }
-      }
-    }
-  ]
-}
-```
-
-<Tip>
-GitHub automatically converts relative URIs to links in the Security tab. Use relative paths from repository root for best results.
-</Tip>
-
-## Filtering Results
-
-SARIF supports baseline files to suppress known or accepted findings:
-
-```json
-{
-  "version": "2.1.0",
-  "runs": [
-    {
-      "baselineSourceUri": "baseline.sarif",
-      "results": [
-        {
-          "baselineState": "new",
-          "ruleId": "security/sql-injection",
-          "message": { "text": "..." }
-        }
-      ]
-    }
-  ]
-}
-```
-
-## OWASP and CWE Mapping
-
-Results include references to industry-standard vulnerability classifications:
-
-<CodeGroup>
-
-```json CWE Reference
-{
-  "locations": [...],
-  "ruleId": "security/sql-injection",
-  "relationships": [
-    {
-      "target": {
-        "id": "CWE-89",
-        "index": -1,
-        "toolComponent": {
-          "name": "CweTop25"
-        }
-      }
-    }
-  ]
-}
-```
-
-```json OWASP Reference
-{
-  "properties": {
-    "tags": ["owasp-a03:2021-injection"],
-    "category": "Injection Flaws"
-  }
-}
-```
-
-</CodeGroup>
-
-## Size Considerations
-
-SARIF files can be large with extensive metadata. Tips for optimization:
-
-- Suppress low-severity findings if not needed: `--min-severity medium`
-- Exclude evidence/snippet text for sensitive codebases: `--no-snippets`
-- Use baseline files to track only new findings
-- Compress before archiving: `gzip audit-results.sarif`
-
-<Warning>
-GitHub has a 100MB limit per SARIF file upload. For very large audits, filter results or split across multiple runs.
-</Warning>
-
-## Validation
-
-Validate SARIF compliance using the official schema:
-
-```bash
-# Using Python
-python -m json_schema_validator \
-  sarif-schema-2.1.0.json \
-  audit-results.sarif
-
-# Using ajv (Node.js)
-ajv validate \
-  -s sarif-schema-2.1.0.json \
-  -d audit-results.sarif
-```
-
-## Next Steps
-
-- Generate SARIF exports from qai audit runs
-- Upload to GitHub Security using Actions
-- View results in the Security tab
-- Integrate with DefectDojo or other platforms via SARIF import
+<Note>
+SARIF export is currently generated by the audit module only. Other modules (inject, ipi, cxp, rxp) export findings via the JSON bundle format.
+</Note>

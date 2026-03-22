@@ -1,307 +1,72 @@
 ---
-title: CSV Export Format
-description: Spreadsheet-compatible CSV export for reporting and analysis in Excel and Google Sheets
+title: CSV Export
+description: Flat spreadsheet export with one row per finding
 ---
 
-# CSV Export Format
+CSV exports produce a flat file with one row per finding, suitable for Excel, Google Sheets, database import, and reporting workflows.
 
-Export audit findings in CSV (Comma-Separated Values) format for easy analysis in spreadsheets, databases, and reporting tools.
+## Generating CSV
 
-## Overview
+**CLI:**
 
-CSV format is ideal for:
-
-- **Excel/Sheets analysis**: Open directly in Microsoft Excel, Google Sheets, or LibreOffice Calc
-- **Database import**: Load into SQL databases for querying and analysis
-- **Reporting**: Create pivot tables, charts, and custom reports
-- **Stakeholder communication**: Share findings in familiar spreadsheet format
-- **Remediation tracking**: Track fix status across security findings
-
-## CSV Structure
-
-The CSV export contains one row per finding with columns for all relevant metadata:
-
-```
-id,severity,title,description,file,line,column,category,cvss_score,confidence,remediation,evidence,run_id,timestamp
-finding_001,high,SQL Injection Vulnerability,User input concatenated into SQL query,src/database.py,45,20,CWE-89,7.0,high,Use parameterized queries,"query = f'SELECT * FROM users WHERE id={user_id}'",run_12345abcde,2024-03-22T10:30:15Z
-finding_002,medium,Weak Cryptography,MD5 used for password hashing,src/auth.py,78,12,CWE-327,4.5,high,Switch to bcrypt or argon2,"password_hash = hashlib.md5(password).hexdigest()",run_12345abcde,2024-03-22T10:30:15Z
+```bash
+qai audit scan --transport stdio --command "npx @modelcontextprotocol/server-memory" \
+  --format csv --output results.csv
 ```
 
-## Column Reference
+Or convert an existing scan:
 
-The CSV includes the following standard columns:
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | string | Unique finding identifier |
-| `severity` | string | critical, high, medium, low, info |
-| `title` | string | Vulnerability title |
-| `description` | string | Detailed vulnerability description |
-| `file` | string | Source file path relative to repository root |
-| `line` | integer | Line number where issue occurs |
-| `column` | integer | Column number (if available) |
-| `category` | string | CWE-XXX classification or framework category |
-| `cvss_score` | float | CVSS v3.1 base score (0-10) |
-| `confidence` | string | high, medium, or low confidence in finding |
-| `remediation` | string | Steps to fix the vulnerability |
-| `evidence` | string | Code snippet or proof of vulnerability |
-| `run_id` | string | Unique audit run identifier |
-| `timestamp` | ISO 8601 | When the audit completed |
-| `framework` | string | Security framework used |
-| `tool_version` | string | Version of qai that generated findings |
-
-<Note>
-Text fields containing commas, quotes, or newlines are properly escaped per RFC 4180. Most spreadsheet applications handle this automatically.
-</Note>
-
-## Opening in Spreadsheet Applications
-
-### Excel
-
-1. Open Excel
-2. File > Open > Select CSV file
-3. Text Import Wizard appears automatically
-4. Confirm delimiter is comma
-5. Click Finish
-
-### Google Sheets
-
-```
-1. Go to sheets.google.com
-2. Create new spreadsheet
-3. File > Import > Upload > Select CSV file
-4. Choose import location (new sheet or existing)
-5. Click Import data
+```bash
+qai audit report --input results/scan.json --format csv --output results.csv
 ```
 
-### LibreOffice Calc
+## Columns
 
-1. File > Open
-2. Select CSV file
-3. Confirm character set (UTF-8)
-4. Select comma as field separator
-5. Click OK
+| Column | Description |
+|--------|-------------|
+| `run_id` | Run identifier |
+| `target_name` | Target name |
+| `category` | Finding category (e.g., `command_injection`, `auth`) |
+| `severity` | Severity level (`critical`, `high`, `medium`, `low`, `info`) |
+| `title` | Finding title |
+| `description` | Detailed description |
 
-## Formatting and Analysis in Excel
+| `tool_name` | MCP tool name associated with the finding |
+| `owasp_mcp_id` | OWASP MCP Top 10 identifier (e.g., `MCP05`) |
+| `remediation` | Recommended fix |
+| `mitigation_summary` | Condensed mitigation guidance (first action item or "See full report") |
+| `framework_ids` | All framework mappings as semicolon-separated `key=value` pairs |
+| `timestamp` | ISO timestamp of when the finding was created |
 
-Create pivot tables and charts from the CSV data:
+## Example Output
 
-<CodeGroup>
-
-```vba VBA Macro (Excel)
-Sub AnalyzeFindingsCSV()
-    Dim ws As Worksheet
-    Set ws = ActiveSheet
-
-    ' Create pivot table
-    Dim pc As PivotCache
-    Set pc = ActiveWorkbook.PivotCaches.Create(xlDatabase, ws.UsedRange)
-
-    ' Group by severity
-    pc.CreatePivotTable TableDestination:=ws.Range("P1"), TableName:="FindingsPivot"
-
-    With ActiveSheet.PivotTables("FindingsPivot")
-        .AddFields RowFields:="severity", ColumnFields:="file"
-        .DataFields.Add2 Field:="id", Function:=xlCount
-    End With
-End Sub
+```csv
+run_id,target_name,category,severity,title,description,tool_name,owasp_mcp_id,remediation,mitigation_summary,framework_ids,timestamp
+a1b2c3d4,memory-server,command_injection,high,Tool parameter allows shell injection,...,memory_store,MCP05,...,...,owasp_mcp_top10=MCP05; mitre_atlas=AML.T0054,2026-03-22T10:30:15
 ```
 
-```excel Excel Formula
-=COUNTIF(A:A,"high")  // Count high-severity findings
-=SUMIF(C:C,"CWE-89",D:D)  // Sum CVSS scores for SQL injection
-=UNIQUE(B:B)  // List unique categories
-```
+## Usage
 
-</CodeGroup>
+Open directly in Excel or Google Sheets. All text fields containing commas, quotes, or newlines are properly escaped per RFC 4180.
 
-## Importing into Databases
-
-Load CSV findings into a SQL database for advanced querying:
-
-<CodeGroup>
-
-```sql SQL Server
-BULK INSERT findings
-FROM 'C:\audit_results.csv'
-WITH (
-    FIELDTERMINATOR = ',',
-    ROWTERMINATOR = '\n',
-    FIRSTROW = 2
-);
-```
-
-```sql PostgreSQL
-COPY findings(id, severity, title, description, file, line, category, cvss_score)
-FROM '/tmp/audit_results.csv'
-WITH (FORMAT csv, HEADER, DELIMITER ',');
-```
-
-```sql MySQL
-LOAD DATA LOCAL INFILE '/tmp/audit_results.csv'
-INTO TABLE findings
-FIELDS TERMINATED BY ','
-ENCLOSED BY '"'
-LINES TERMINATED BY '\n'
-IGNORE 1 ROWS;
-```
-
-</CodeGroup>
-
-## Querying Findings in SQL
-
-Once imported, query findings using SQL:
+For database import:
 
 ```sql
--- High and critical findings by file
-SELECT file, severity, COUNT(*) as count
-FROM findings
-WHERE severity IN ('high', 'critical')
-GROUP BY file, severity
-ORDER BY count DESC;
-
--- CVSS score distribution
-SELECT
-    CASE
-        WHEN cvss_score >= 9.0 THEN 'Critical'
-        WHEN cvss_score >= 7.0 THEN 'High'
-        WHEN cvss_score >= 4.0 THEN 'Medium'
-        ELSE 'Low'
-    END as risk_level,
-    COUNT(*) as findings
-FROM findings
-GROUP BY risk_level;
-
--- Most common vulnerability categories
-SELECT category, COUNT(*) as occurrences
-FROM findings
-GROUP BY category
-ORDER BY occurrences DESC
-LIMIT 10;
+-- PostgreSQL
+COPY findings FROM '/path/results.csv' WITH (FORMAT csv, HEADER);
 ```
 
-## Filtering and Sorting
-
-Use spreadsheet features to focus on priority findings:
-
-1. **Select all data**: Ctrl+A (or Cmd+A)
-2. **Apply AutoFilter**: Data > Filter > AutoFilter
-3. **Filter by severity**: Click severity column dropdown
-4. **Sort by CVSS**: Click cvss_score column, choose Sort Z→A
-5. **Create custom view**: View > Spotlight > Select columns
-
-## Combining Multiple Audits
-
-Merge CSV results from multiple audit runs:
+For command-line analysis:
 
 ```bash
-# Combine all CSV files
-cat audit_run_1.csv audit_run_2.csv audit_run_3.csv > combined.csv
+# Count findings by severity
+cut -d, -f4 results.csv | sort | uniq -c | sort -rn
 
-# Remove duplicate header lines (keep only first)
-head -1 audit_run_1.csv > combined.csv
-tail -n +2 audit_run_*.csv >> combined.csv
-
-# Sort by severity and file
-(head -1 combined.csv; tail -n +2 combined.csv | sort -t, -k2,2r -k5,5) > sorted.csv
+# Filter high-severity only
+head -1 results.csv > high.csv
+grep ',high,' results.csv >> high.csv
 ```
 
-## Data Validation
-
-Validate CSV integrity before processing:
-
-<CodeGroup>
-
-```python Python Validation
-import csv
-from datetime import datetime
-
-def validate_csv(filename):
-    issues = []
-    with open(filename, 'r') as f:
-        reader = csv.DictReader(f)
-        for row_num, row in enumerate(reader, start=2):
-            # Validate required fields
-            if not row['id']:
-                issues.append(f"Row {row_num}: Missing id")
-
-            # Validate severity values
-            if row['severity'] not in ['critical', 'high', 'medium', 'low', 'info']:
-                issues.append(f"Row {row_num}: Invalid severity '{row['severity']}'")
-
-            # Validate CVSS score
-            try:
-                cvss = float(row['cvss_score'])
-                if not (0 <= cvss <= 10):
-                    issues.append(f"Row {row_num}: CVSS score out of range: {cvss}")
-            except ValueError:
-                issues.append(f"Row {row_num}: Invalid CVSS score '{row['cvss_score']}'")
-
-    return issues
-
-errors = validate_csv('audit_results.csv')
-if errors:
-    for error in errors:
-        print(f"ERROR: {error}")
-```
-
-```bash Bash Validation
-# Check for required columns
-head -1 audit_results.csv | tr ',' '\n' | nl
-
-# Count rows
-wc -l audit_results.csv
-
-# Check for inconsistent field counts
-awk -F',' '{print NF}' audit_results.csv | sort | uniq -c
-```
-
-</CodeGroup>
-
-## Handling Special Characters
-
-CSV properly escapes special characters:
-
-| Character | In CSV | Example |
-|-----------|--------|---------|
-| Comma | Quoted field | `"Contains, comma"` |
-| Quote | Doubled | `"Quote: "" here"` |
-| Newline | Quoted field | `"Multiline\ntext"` |
-| Unicode | UTF-8 encoded | `Café, π, 中文` |
-
-<Tip>
-When editing CSV in Excel, be careful with commas and quotes. Excel may not escape them correctly when saving. Always re-validate after manual edits.
-</Tip>
-
-## Performance Considerations
-
-CSV files scale well but have some limitations:
-
-| Aspect | Notes |
-|--------|-------|
-| **File Size** | CSV is text-based; large audits produce large files |
-| **Processing** | Fast to read, suitable for tools with no JSON support |
-| **Memory** | Can load entire file into memory; use streaming readers for massive exports |
-| **Compatibility** | Nearly universal support; works everywhere |
-
-## Exporting Subset of Columns
-
-Customize CSV export to include only relevant columns:
-
-```bash
-# Extract specific columns using cut
-cut -d, -f1,2,3,5,6,8,10 audit_results.csv > simplified.csv
-
-# Or using awk
-awk -F',' '{print $1 FS $2 FS $3 FS $5 FS $6 FS $8 FS $10}' audit_results.csv > simplified.csv
-
-# Or using csvcut (csvkit)
-csvcut -c id,severity,title,file,line,category,cvss_score audit_results.csv > simplified.csv
-```
-
-## Next Steps
-
-- Export audit findings as CSV for analysis
-- Import into Excel or Google Sheets for reporting
-- Load into databases for complex queries
-- Share findings with non-technical stakeholders
+<Note>
+CSV flattens the framework_ids dict into a single string column. For structured framework data, use the JSON bundle or NDJSON exports.
+</Note>

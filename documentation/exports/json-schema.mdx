@@ -1,196 +1,82 @@
 ---
-title: JSON Schema Export
-description: Export qai audit runs as structured JSON with complete schema definition
+title: JSON Bundle Export
+description: Complete run export in the run-bundle-v1 schema
 ---
 
-# JSON Schema Export
+The JSON export produces a complete run bundle containing the parent run, child runs, findings, evidence references, target, and module-specific data. This is the most comprehensive export format — everything about a workflow execution in one file.
 
-Export your qai audit runs in JSON format with full schema definition for integration with external systems and tooling.
+## Generating a JSON Bundle
 
-## Overview
+**Web UI:** Click **Export JSON** on a completed run's overview header.
 
-The JSON Schema export produces a structured JSON file containing all findings, metadata, and configuration details from an audit run. This format is ideal for:
+**CLI:** Use the web UI route directly — the JSON bundle is generated server-side at `/api/runs/{run_id}/export`.
 
-- Building custom integrations and workflows
-- Archiving audit results in structured formats
-- Integrating with data lakes and analytics platforms
-- CI/CD pipeline automation
-- Version control tracking of security findings
-
-## Export Structure
-
-The JSON export follows a consistent schema with the following top-level sections:
+## Schema: `run-bundle-v1`
 
 ```json
 {
-  "metadata": {
-    "timestamp": "2024-03-22T10:30:00Z",
-    "qai_version": "0.5.1",
-    "run_id": "run_12345abcde",
-    "framework": "owasp-top-10",
-    "duration_seconds": 145.32
-  },
-  "configuration": {
-    "model": "anthropic/claude-sonnet-4-20250514",
-    "parameters": {
-      "temperature": 0.0,
-      "max_tokens": 4096
-    }
-  },
-  "findings": [
-    {
-      "id": "finding_001",
-      "severity": "high",
-      "title": "SQL Injection Vulnerability",
-      "description": "User input is directly concatenated into SQL queries",
-      "location": {
-        "file": "src/database.py",
-        "line": 45
-      },
-      "evidence": "Code snippet showing vulnerable query construction",
-      "remediation": "Use parameterized queries or ORM methods"
-    }
-  ],
-  "summary": {
-    "total_findings": 12,
-    "by_severity": {
-      "critical": 1,
-      "high": 3,
-      "medium": 5,
-      "low": 3
-    }
-  }
+  "schema_version": "run-bundle-v1",
+  "run": { ... },
+  "child_runs": [ ... ],
+  "findings": [ ... ],
+  "evidence": [ ... ],
+  "target": { ... },
+  "audit_scans": [ ... ],
+  "inject_results": [ ... ],
+  "proxy_sessions": [ ... ],
+  "chain_executions": [ ... ],
+  "chain_step_outputs": [ ... ],
+  "ipi_payloads": [ ... ],
+  "cxp_test_results": [ ... ],
+  "rxp_validations": [ ... ]
 }
 ```
 
-## Severity Levels
+### `run`
 
-Findings are categorized by severity:
+The parent workflow run with fields: `id` (UUID hex), `module`, `status` (int), `parent_run_id`, `name` (workflow ID), `target_id`, `config` (JSON string), `started_at`, `finished_at`, `guidance` (JSON string or null).
 
-| Severity | Description |
-|----------|-------------|
-| Critical | Immediate exploitation risk, requires urgent remediation |
-| High | Significant security impact, remediate within days |
-| Medium | Moderate impact, remediate within weeks |
-| Low | Minor issues, address during regular maintenance |
-| Info | Informational only, no action required |
+### `child_runs`
 
-## Finding Properties
+Array of child run objects (same structure as `run`). One per module that executed in the workflow (e.g., audit, proxy, inject child runs for an "Assess an MCP Server" workflow).
 
-Each finding object includes:
+### `findings`
 
-<Note>
-All finding objects are required to have `id`, `severity`, and `title` at minimum. Other fields may be present depending on the framework and audit configuration.
-</Note>
+Array of finding objects: `id`, `run_id`, `module`, `category` (e.g., `command_injection`), `severity` (0-4 int), `title`, `description`, `framework_ids` (JSON dict mapping framework names to IDs), `mitigation` (JSON dict or null), `source_ref`, `created_at`.
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `id` | string | Unique identifier for this finding |
-| `severity` | string | One of: critical, high, medium, low, info |
-| `title` | string | Brief title of the vulnerability |
-| `description` | string | Detailed description of the issue |
-| `location` | object | File path and line number where issue was found |
-| `evidence` | string | Code snippets or evidence supporting the finding |
-| `remediation` | string | Steps to fix the vulnerability |
-| `category` | string | OWASP category or classification |
-| `mitigation` | string | Temporary mitigation if permanent fix is pending |
-| `confidence` | string | Level of confidence in finding: high, medium, low |
-| `cvss_score` | number | CVSS v3.1 base score (0-10) |
-| `references` | array | URLs to documentation or proof-of-concept |
+### `evidence`
 
-## Metadata Fields
+Array of evidence reference objects (metadata only, no inline content): `id`, `type`, `mime_type`, `storage` (`inline` or `file`), `path`, `finding_id`, `run_id`, `hash`, `created_at`.
 
-The metadata section contains:
+### `target`
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `timestamp` | ISO 8601 | When the audit run completed |
-| `qai_version` | string | Version of qai used for this audit |
-| `run_id` | string | Unique identifier for this audit run |
-| `framework` | string | Security framework used (e.g., owasp-top-10) |
-| `duration_seconds` | number | Time taken to complete the audit |
-| `target` | string | Application or URL that was audited |
-| `scanner_version` | string | Version of underlying security scanner |
+Target object: `id`, `type`, `name`, `uri`, `metadata`, `created_at`. Null if no target was created for the run.
 
-## Integration Example
+### Module-Specific Tables
 
-<CodeGroup>
+Each key contains rows from the corresponding database table for all runs in the bundle:
 
-```python Python
-import json
+- `audit_scans` — Audit scan metadata
+- `inject_results` — Injection campaign results
+- `proxy_sessions` — Session metadata (without message content)
+- `chain_executions` and `chain_step_outputs` — Chain execution and per-step results
+- `ipi_payloads` — Generated IPI payload records
+- `cxp_test_results` — CXP test recordings
+- `rxp_validations` — RXP retrieval validation results
 
-with open('audit_results.json', 'r') as f:
-    audit_data = json.load(f)
-
-# Process findings
-for finding in audit_data['findings']:
-    if finding['severity'] in ['critical', 'high']:
-        print(f"Priority: {finding['title']}")
-        print(f"Fix: {finding['remediation']}\n")
-```
-
-```javascript JavaScript
-const fs = require('fs');
-
-const auditResults = JSON.parse(
-  fs.readFileSync('audit_results.json', 'utf8')
-);
-
-const criticalFindings = auditResults.findings.filter(
-  f => f.severity === 'critical'
-);
-
-console.log(`Found ${criticalFindings.length} critical issues`);
-```
-
-```bash Bash
-jq '.findings[] | select(.severity=="high") | .title' audit_results.json
-```
-
-</CodeGroup>
-
-## Validating the JSON
-
-Use a JSON Schema validator to ensure your exports comply with the official schema:
+## Processing the Bundle
 
 ```bash
-# Validate against JSON Schema
-ajv validate -s qai-export-schema.json -d audit_results.json
+# Extract high-severity findings
+jq '.findings[] | select(.severity >= 3) | {title, category, severity}' bundle.json
+
+# List child runs with status
+jq '.child_runs[] | {module, status, started_at}' bundle.json
+
+# Count findings per module
+jq '[.findings[] | .module] | group_by(.) | map({module: .[0], count: length})' bundle.json
 ```
 
-<Tip>
-The JSON export can be quite large for comprehensive audits. Consider using streaming JSON parsers for processing very large exports.
-</Tip>
+## Integration
 
-## Querying Findings
-
-The JSON structure supports standard JSON Query Language (JQ) for filtering and analysis:
-
-```bash
-# Find all high-severity findings with CVSS score
-jq '.findings[] | select(.severity=="high" and .cvss_score > 7.0)' results.json
-
-# Count findings by severity
-jq '.findings | group_by(.severity) | map({severity: .[0].severity, count: length})' results.json
-
-# Extract unique categories
-jq '.findings | map(.category) | unique' results.json
-```
-
-## Schema Versioning
-
-The JSON schema is versioned. Always check the `schema_version` field in the metadata to ensure compatibility:
-
-- **v1.0**: Initial release with basic finding structure
-- **v1.1**: Added cvss_score and confidence fields
-- **v1.2**: Added mitigation and evidence extensions (current)
-
-<Warning>
-If you have schema version conflicts between qai versions, the latest version maintains backward compatibility. However, older tools may not recognize new fields added in later versions.
-</Warning>
-
-## Next Steps
-
-- Export audit runs using `/exports/json-schema`
-- Integrate JSON results with your CI/CD pipeline
-- See [integrations](/integrations/defectdojo) for connecting to DefectDojo or other platforms
+The JSON bundle is the input format for the [DefectDojo integration](/integrations/defectdojo) and can be loaded into any JSON-capable analysis tool. See also [NDJSON](/exports/ndjson) for a streaming-friendly alternative and [CSV](/exports/csv) for spreadsheet analysis.
