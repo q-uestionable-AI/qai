@@ -262,37 +262,25 @@ qai chain run --chain-file my_chain.yaml \
 
 ## Module & Technique Reference
 
+Chain steps reference two modules. The validator checks that each step's `module` and `technique` are valid.
+
 ### audit module
 
-Techniques for vulnerability discovery:
+Any of the 10 audit scanner names can be used as a technique. These are the same names used with `--checks` on `qai audit scan`:
 
-- `injection` — Command/code injection detection
-- `auth` — Authentication weakness scanning
-- `tool_poisoning` — Tool definition compromise detection
+`injection`, `auth`, `token_exposure`, `permissions`, `tool_poisoning`, `prompt_injection`, `audit_telemetry`, `supply_chain`, `shadow_servers`, `context_sharing`
 
 ### inject module
 
-Techniques for payload injection and escalation:
+Three injection technique categories:
 
-- `output_injection` — Inject code into tool output
-- `cross_tool_escalation` — Pivot between tools
-- `description_poisoning` — Manipulate tool descriptions
-- `retrieval_poisoning` — Corrupt RAG retrieval
-- `llm_instruction_override` — Override LLM directives
+- `description_poisoning` — Embed instructions in MCP tool descriptions
+- `output_injection` — Inject instructions into tool response content
+- `cross_tool_escalation` — Chain trust across multiple tools to escalate
 
-### cxp module
-
-Techniques for cross-execution pattern analysis:
-
-- `behavior_deviation` — Detect deviation from expected behavior
-- `trust_boundary_analysis` — Identify weak trust boundaries
-
-### ipi module
-
-Techniques for indirect prompt injection:
-
-- `direct_injection` — Direct prompt manipulation
-- `indirect_injection` — Indirect injection via context
+<Note>
+Only `audit` and `inject` are valid chain modules. CXP, IPI, RXP, and proxy cannot be used as chain steps — they operate outside the MCP tool interaction model that chains test.
+</Note>
 
 ## Best Practices
 

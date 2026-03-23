@@ -51,12 +51,10 @@ Chains target specific AI system architectures:
 
 Each step declares which qai module provides its technique:
 
-| Module | Purpose | Example Techniques |
-|--------|---------|-------------------|
-| `audit` | Vulnerability scanning | injection, auth, tool_poisoning |
+| Module | Purpose | Valid Techniques |
+|--------|---------|-----------------|
+| `audit` | Vulnerability scanning | Any of the 10 scanner names (injection, auth, token_exposure, permissions, tool_poisoning, prompt_injection, audit_telemetry, supply_chain, shadow_servers, context_sharing) |
 | `inject` | Payload injection and escalation | output_injection, cross_tool_escalation, description_poisoning |
-| `cxp` | Cross-execution patterns | agent behavior analysis |
-| `ipi` | Prompt injection testing | direct_injection, indirect_injection |
 
 ## Trust Boundaries
 
