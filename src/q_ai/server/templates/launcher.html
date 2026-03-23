@@ -235,8 +235,9 @@
                         <label class="label"><span class="label-text">Callback URL</span></label>
                         <input type="text" name="callback_url" required
                                value="{{ defaults.ipi_callback_url }}"
-                               placeholder="https://your-listener.example.com/callback"
+                               placeholder="http://your-ip:8080/callback"
                                class="input input-bordered input-sm w-full" />
+                        <label class="label"><span class="label-text-alt text-base-content/40">Your IP address where <code>qai ipi listen</code> is running. Must be reachable by the target system. The payload phones home here when executed.</span></label>
                     </div>
 
                     <div class="form-control">
@@ -369,7 +370,7 @@
                     <div id="error-{{ wf.id }}" class="text-error text-sm hidden"></div>
 
                     <div class="mt-4">
-                        <button type="submit" class="btn btn-sm btn-launch">Launch</button>
+                        <button type="submit" class="btn btn-sm btn-launch">{{ 'Generate' if wf.id == 'test_assistant' else 'Launch' }}</button>
                     </div>
                 </form>
                 </div>
