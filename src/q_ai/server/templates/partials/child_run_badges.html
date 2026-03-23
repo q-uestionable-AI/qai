@@ -7,6 +7,6 @@
     {% elif run.status.value == 5 %}badge-warning
     {% elif run.status.value == 6 %}badge-warning
     {% else %}badge-ghost{% endif %}">
-    {{ run.module }}: {{ run.status.name.lower() }}
+    {{ run.module }}: {{ run.status.name | format_status | lower }}
 </span>
 {% endfor %}

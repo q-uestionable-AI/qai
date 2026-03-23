@@ -176,7 +176,7 @@ class TestOverviewHeader:
     def test_overview_header_shows_status_badge(self, client: TestClient, tmp_db: Path) -> None:
         parent_id, _, _ = _setup_completed_assess_run(tmp_db)
         resp = client.get(f"/runs?run_id={parent_id}")
-        assert "COMPLETED" in resp.text
+        assert "Completed" in resp.text
         assert "badge-success" in resp.text
 
     def test_overview_header_shows_finding_counts(self, client: TestClient, tmp_db: Path) -> None:

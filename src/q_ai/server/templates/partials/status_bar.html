@@ -8,17 +8,17 @@
         {% if workflow_run %}
             {% set status_name = workflow_run.status.name %}
             {% if status_name == 'COMPLETED' %}
-                <span id="workflow-status-badge" class="badge badge-sm badge-success">{{ status_name }}</span>
+                <span id="workflow-status-badge" class="badge badge-sm badge-success">{{ status_name | format_status }}</span>
             {% elif status_name == 'FAILED' %}
-                <span id="workflow-status-badge" class="badge badge-sm badge-error">{{ status_name }}</span>
+                <span id="workflow-status-badge" class="badge badge-sm badge-error">{{ status_name | format_status }}</span>
             {% elif status_name == 'RUNNING' %}
-                <span id="workflow-status-badge" class="badge badge-sm badge-info">{{ status_name }}</span>
+                <span id="workflow-status-badge" class="badge badge-sm badge-info">{{ status_name | format_status }}</span>
             {% elif status_name == 'PARTIAL' %}
-                <span id="workflow-status-badge" class="badge badge-sm badge-warning">{{ status_name }}</span>
+                <span id="workflow-status-badge" class="badge badge-sm badge-warning">{{ status_name | format_status }}</span>
             {% elif status_name == 'WAITING_FOR_USER' %}
-                <span id="workflow-status-badge" class="badge badge-sm badge-warning">{{ status_name }}</span>
+                <span id="workflow-status-badge" class="badge badge-sm badge-warning">{{ status_name | format_status }}</span>
             {% else %}
-                <span id="workflow-status-badge" class="badge badge-sm badge-ghost">{{ status_name }}</span>
+                <span id="workflow-status-badge" class="badge badge-sm badge-ghost">{{ status_name | format_status }}</span>
             {% endif %}
             <span id="workflow-name" class="text-sm font-medium">{{ workflow_display_name or workflow_run.name or 'Workflow' }}</span>
             <span id="workflow-progress" class="text-sm text-base-content/50"></span>

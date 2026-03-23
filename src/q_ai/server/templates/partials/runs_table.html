@@ -15,7 +15,7 @@
                 {% elif run.status.name == 'FAILED' %}badge-error
                 {% elif run.status.name == 'CANCELLED' %}badge-warning
                 {% else %}badge-ghost{% endif %}">
-                {{ run.status.name }}
+                {{ run.status.name | format_status }}
             </span>
         </td>
         <td class="id-truncated">{{ run.target_id[:8] if run.target_id else "—" }}</td>

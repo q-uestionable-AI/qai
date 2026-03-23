@@ -31,7 +31,7 @@
         </table>
     </div>
         {% endif %}
-        {% if block.items %}
+        {% if block.items and not (block.metadata and block.metadata.rows) %}
     <p class="text-xs text-base-content/50 mt-2">
             {% for item in block.items %}
         {{ item }}{% if not loop.last %}<br>{% endif %}

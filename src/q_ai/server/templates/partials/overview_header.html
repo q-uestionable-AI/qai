@@ -3,46 +3,46 @@
         <div class="flex items-center gap-3">
             {% set status_name = workflow_run.status.name %}
             {% if status_name == 'COMPLETED' %}
-                <span class="badge badge-sm badge-success">{{ status_name }}</span>
+                <span class="badge badge-sm badge-success">{{ status_name | format_status }}</span>
             {% elif status_name == 'FAILED' %}
-                <span class="badge badge-sm badge-error">{{ status_name }}</span>
+                <span class="badge badge-sm badge-error">{{ status_name | format_status }}</span>
             {% elif status_name == 'PARTIAL' %}
-                <span class="badge badge-sm badge-warning">{{ status_name }}</span>
+                <span class="badge badge-sm badge-warning">{{ status_name | format_status }}</span>
             {% else %}
-                <span class="badge badge-sm badge-ghost">{{ status_name }}</span>
+                <span class="badge badge-sm badge-ghost">{{ status_name | format_status }}</span>
             {% endif %}
             <span class="text-lg font-semibold">{{ workflow_display_name }}</span>
         </div>
         <div class="flex flex-col items-end gap-2">
             {% if report_run_id %}
             <a href="/api/exports/{{ report_run_id }}/report"
-               class="btn btn-sm btn-outline btn-primary" download>
+               class="btn btn-sm btn-outline btn-primary min-w-[12rem] text-center" download>
                 Download Report
             </a>
             {% elif workflow_run.status.value in (2, 3, 6) and target %}
             <button id="generate-report-btn"
-                    class="btn btn-sm btn-outline btn-primary"
+                    class="btn btn-sm btn-outline btn-primary min-w-[12rem] text-center"
                     onclick="generateReport(this, {{ target.id | tojson }})">
                 Generate Report
             </button>
             {% endif %}
             {% if has_evidence_zip and report_run_id %}
             <a href="/api/exports/{{ report_run_id }}/evidence"
-               class="btn btn-sm btn-outline btn-accent" download>
+               class="btn btn-sm btn-outline btn-accent min-w-[12rem] text-center" download>
                 Download Evidence Pack
             </a>
             {% endif %}
             <a href="/api/runs/{{ workflow_run.id }}/export"
-               class="btn btn-sm btn-outline btn-secondary" download>
+               class="btn btn-sm btn-outline btn-secondary min-w-[12rem] text-center" download>
                 Export JSON
             </a>
             {% if has_audit_findings %}
             <a href="/api/runs/{{ workflow_run.id }}/sarif"
-               class="btn btn-sm btn-outline btn-secondary" download>
+               class="btn btn-sm btn-outline btn-secondary min-w-[12rem] text-center" download>
                 Download SARIF
             </a>
             {% else %}
-            <span class="btn btn-sm btn-outline btn-secondary btn-disabled tooltip"
+            <span class="btn btn-sm btn-outline btn-secondary btn-disabled min-w-[12rem] text-center tooltip"
                   data-tip="SARIF export requires Audit module results">
                 Download SARIF
             </span>
@@ -77,7 +77,7 @@
             {% elif child.status.value == 5 %}badge-warning
             {% elif child.status.value == 6 %}badge-warning
             {% else %}badge-ghost{% endif %}">
-            {{ child.module }}: {{ child.status.name.lower() }}
+            {{ child.module }}: {{ child.status.name | format_status | lower }}
         </span>
         {% endfor %}
     </div>

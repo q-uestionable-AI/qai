@@ -19,8 +19,8 @@
     var parentTerminal = false; // true once parent reaches terminal status
 
     var STATUS_LABELS = {
-        0: 'PENDING', 1: 'RUNNING', 2: 'COMPLETED',
-        3: 'FAILED', 4: 'CANCELLED', 5: 'WAITING_FOR_USER', 6: 'PARTIAL',
+        0: 'Pending', 1: 'Running', 2: 'Completed',
+        3: 'Failed', 4: 'Cancelled', 5: 'Waiting For User', 6: 'Partial',
     };
     var STATUS_CLASSES = {
         0: 'badge-ghost', 1: 'badge-info', 2: 'badge-success',
@@ -381,4 +381,44 @@
 
     initElapsedTimer();
     connect();
+
+    // --- Polling fallback for terminal status detection ---
+    // Catches cases where the WebSocket misses the terminal event
+    // (e.g., workflow completes before WS connects). Polls the
+    // status bar endpoint and reloads when terminal status is found.
+    var pollTimer = null;
+    var POLL_INTERVAL_MS = 5000;
+
+    function startStatusPolling() {
+        if (pollTimer || !runId || parentTerminal) return;
+        pollTimer = setInterval(function () {
+            if (parentTerminal) { stopStatusPolling(); return; }
+            var bar = getStatusBar();
+            if (!bar) { stopStatusPolling(); return; }
+            fetch('/api/operations/workflow-status-bar?run_id=' + runId)
+                .then(function (r) { return r.text(); })
+                .then(function (html) {
+                    var m = html.match(/data-workflow-status="(\d+)"/);
+                    if (m) {
+                        var status = parseInt(m[1], 10);
+                        if (TERMINAL_STATUSES.indexOf(status) !== -1) {
+                            parentTerminal = true;
+                            stopStatusPolling();
+                            stopElapsedTimer();
+                            window.location.reload();
+                        }
+                    }
+                })
+                .catch(function () { /* ignore fetch errors */ });
+        }, POLL_INTERVAL_MS);
+    }
+
+    function stopStatusPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    // Only poll when viewing an active (non-terminal) run
+    if (runId && getStatusBar()) {
+        startStatusPolling();
+    }
 })();

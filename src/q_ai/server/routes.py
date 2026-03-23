@@ -47,6 +47,7 @@ from q_ai.core.providers import (
     get_provider,
     migrate_default_model,
 )
+from q_ai.cxp.formats import list_formats as list_cxp_formats
 from q_ai.inject.models import InjectionTechnique
 from q_ai.orchestrator.registry import get_workflow, list_workflows
 from q_ai.orchestrator.runner import WorkflowRunner
@@ -69,6 +70,26 @@ def _get_db_path(request: Request) -> Path | None:
     """Get the database path from app state."""
     result: Path | None = request.app.state.db_path
     return result
+
+
+def _detect_local_ip() -> str:
+    """Detect the local network IP address for callback URL suggestion.
+
+    Uses a UDP socket connection to determine which interface the OS
+    would route to an external address. Does not send any traffic.
+
+    Returns:
+        Local IP address string, or "127.0.0.1" on failure.
+    """
+    import socket
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            addr: str = s.getsockname()[0]
+            return addr
+    except OSError:
+        return "127.0.0.1"
 
 
 # ---------------------------------------------------------------------------
@@ -109,8 +130,9 @@ async def launcher(request: Request) -> HTMLResponse:
         default_provider = get_setting(conn, "default_provider") or ""
         default_model_id = get_setting(conn, "default_model_id") or ""
         default_transport = get_setting(conn, "audit.default_transport") or "stdio"
+        saved_callback_url = get_setting(conn, "ipi.default_callback_url") or ""
         defaults = {
-            "ipi_callback_url": get_setting(conn, "ipi.default_callback_url") or "",
+            "ipi_callback_url": saved_callback_url or f"http://{_detect_local_ip()}:8080/callback",
             "audit_default_transport": default_transport,
         }
 
@@ -131,6 +153,7 @@ async def launcher(request: Request) -> HTMLResponse:
                 for t in InjectionTechnique
             ],
             "scanner_categories": list_scanner_names(),
+            "cxp_formats": list_cxp_formats(),
         },
     )
 
@@ -1270,6 +1293,143 @@ def export_evidence(request: Request, run_id: str) -> Response:
         path=zip_path,
         media_type="application/zip",
         filename=f"evidence-{run_id[:12]}.zip",
+    )
+
+
+def _sync_generate_sarif(db_path: Path | None, run_id: str) -> bytes | None:
+    """Generate a SARIF report from audit findings stored in the database.
+
+    Reconstructs ScanFinding objects from DB Finding rows and passes them
+    through the standard SARIF generator. Best-effort conversion — evidence
+    and remediation are already merged into the description field during
+    persistence.
+
+    Args:
+        db_path: Path to the SQLite database.
+        run_id: The parent workflow run ID.
+
+    Returns:
+        SARIF JSON bytes on success, or None if no audit findings exist.
+    """
+    import tempfile as _tempfile
+    from dataclasses import dataclass, field
+    from datetime import UTC, datetime
+
+    from q_ai.audit.reporting.sarif_report import generate_sarif_report
+    from q_ai.core.mitigation import MitigationGuidance
+    from q_ai.mcp.models import ScanFinding
+    from q_ai.mcp.models import Severity as ScanSeverity
+
+    severity_map = {
+        4: ScanSeverity.CRITICAL,
+        3: ScanSeverity.HIGH,
+        2: ScanSeverity.MEDIUM,
+        1: ScanSeverity.LOW,
+        0: ScanSeverity.INFO,
+    }
+
+    with get_connection(db_path) as conn:
+        run = get_run(conn, run_id)
+        if run is None:
+            return None
+        child_runs = list_runs(conn, parent_run_id=run_id)
+        audit_child = next((c for c in child_runs if c.module == "audit"), None)
+        if audit_child is None:
+            return None
+        findings = list_findings(conn, run_id=audit_child.id)
+        if not findings:
+            return None
+
+        # Load audit_scans metadata
+        scan_row = conn.execute(
+            "SELECT * FROM audit_scans WHERE run_id = ? LIMIT 1",
+            (audit_child.id,),
+        ).fetchone()
+
+    scan_meta = dict(scan_row) if scan_row else {}
+
+    # Convert DB Finding → ScanFinding
+    scan_findings: list[ScanFinding] = []
+    for f in findings:
+        mitigation_obj = None
+        if f.mitigation:
+            with contextlib.suppress(TypeError, ValueError):
+                mitigation_obj = MitigationGuidance.from_dict(f.mitigation)
+        scan_findings.append(
+            ScanFinding(
+                rule_id=f.category,
+                category=f.category,
+                title=f.title,
+                description=f.description or "",
+                severity=severity_map.get(f.severity.value, ScanSeverity.INFO),
+                tool_name=f.source_ref or "",
+                framework_ids=f.framework_ids or {},
+                timestamp=f.created_at or datetime.now(UTC),
+                mitigation=mitigation_obj,
+            )
+        )
+
+    # Build minimal ScanResult-like object
+    @dataclass
+    class _SarifData:
+        findings: list[ScanFinding] = field(default_factory=list)
+        server_info: dict = field(default_factory=dict)
+        tools_scanned: int = 0
+        scanners_run: list[str] = field(default_factory=list)
+        started_at: datetime | None = None
+        finished_at: datetime | None = None
+        errors: list[dict] = field(default_factory=list)
+
+    try:
+        scanners_run = _json.loads(scan_meta.get("scanners_run", "[]"))
+    except (ValueError, TypeError):
+        logger.warning("Malformed scanners_run JSON in scan metadata; defaulting to []")
+        scanners_run = []
+    sarif_data = _SarifData(
+        findings=scan_findings,
+        server_info={
+            "name": scan_meta.get("server_name", "unknown"),
+            "version": scan_meta.get("server_version", "unknown"),
+        },
+        tools_scanned=0,
+        scanners_run=scanners_run if isinstance(scanners_run, list) else [],
+        started_at=audit_child.started_at,
+        finished_at=audit_child.finished_at,
+    )
+
+    with _tempfile.NamedTemporaryFile(suffix=".sarif", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        generate_sarif_report(sarif_data, tmp_path)
+        return tmp_path.read_bytes()
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+@router.get("/api/runs/{run_id}/sarif", response_model=None)
+async def api_export_sarif(request: Request, run_id: str) -> Response:
+    """Export audit findings as a SARIF 2.1.0 report.
+
+    Generates SARIF from the audit child run's findings stored in the
+    database. Returns 404 if no audit findings exist for the run.
+
+    Args:
+        request: The incoming FastAPI request.
+        run_id: The parent workflow run ID.
+
+    Returns:
+        SARIF JSON file download, or 404 if no audit findings.
+    """
+    db_path = _get_db_path(request)
+    data = await asyncio.to_thread(_sync_generate_sarif, db_path, run_id)
+    if data is None:
+        return JSONResponse(status_code=404, content={"detail": "No audit findings for this run"})
+    return Response(
+        content=data,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="scan-{run_id[:12]}.sarif"',
+        },
     )
 
 
@@ -3286,99 +3446,4 @@ async def api_runs_proxy_messages(
             "has_next": has_next,
             "direction_filter": direction,
         },
-    )
-
-
-@router.get("/api/runs/{run_id}/sarif", response_model=None)
-async def api_run_sarif(request: Request, run_id: str) -> Response:
-    """Download audit findings as a SARIF 2.1.0 report.
-
-    Reconstructs ScanFinding objects from DB findings for the audit child
-    run, generates a SARIF report, and returns it as a file download.
-
-    Args:
-        request: The incoming HTTP request.
-        run_id: The parent workflow run ID.
-
-    Returns:
-        A JSON file download with SARIF content, or 404 if no audit
-        findings exist.
-    """
-    import shutil
-    import tempfile
-
-    from starlette.background import BackgroundTask
-
-    from q_ai.audit.orchestrator import ScanResult
-    from q_ai.audit.reporting.sarif_report import generate_sarif_report
-    from q_ai.mcp.models import ScanFinding
-    from q_ai.mcp.models import Severity as ScanSeverity
-
-    db_path = _get_db_path(request)
-
-    def _build_sarif() -> Path | None:
-        with get_connection(db_path) as conn:
-            parent = get_run(conn, run_id)
-            if parent is None:
-                return None
-
-            children = list_runs(conn, parent_run_id=run_id)
-            audit_child = next((c for c in children if c.module == "audit"), None)
-            if audit_child is None:
-                return None
-
-            findings = list_findings(conn, run_id=audit_child.id, module="audit")
-            if not findings:
-                return None
-
-            _sev_name_map = {
-                0: "info",
-                1: "low",
-                2: "medium",
-                3: "high",
-                4: "critical",
-            }
-            scan_findings: list[ScanFinding] = []
-            for f in findings:
-                sev_str = _sev_name_map.get(int(f.severity), "info")
-                scan_sev = ScanSeverity(sev_str)
-                framework_ids = f.framework_ids if f.framework_ids else {}
-
-                mitigation = None
-                if f.mitigation:
-                    with contextlib.suppress(Exception):
-                        mitigation = MitigationGuidance.from_dict(f.mitigation)
-
-                scan_findings.append(
-                    ScanFinding(
-                        rule_id=f.category,
-                        category=f.category,
-                        title=f.title,
-                        description=f.description or "",
-                        severity=scan_sev,
-                        framework_ids=framework_ids,
-                        mitigation=mitigation,
-                    )
-                )
-
-            scan_result = ScanResult(findings=scan_findings)
-
-            tmp = Path(tempfile.mkdtemp()) / "scan.sarif"
-            generate_sarif_report(scan_result, tmp)
-            return tmp
-
-    result_path = await asyncio.to_thread(_build_sarif)
-    if result_path is None:
-        return JSONResponse(
-            status_code=404,
-            content={"detail": "No audit findings for SARIF export"},
-        )
-
-    tmp_dir = str(result_path.parent)
-    return FileResponse(
-        path=str(result_path),
-        media_type="application/json",
-        filename="scan.sarif",
-        headers={"Content-Disposition": 'attachment; filename="scan.sarif"'},
-        background=BackgroundTask(shutil.rmtree, tmp_dir, ignore_errors=True),
     )
