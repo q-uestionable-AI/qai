@@ -1,11 +1,11 @@
 # {q-AI} Documentation
-> Offensive security platform for agentic AI infrastructure
+> Security testing for MCP servers and agentic AI systems
 
 ## Pages
 
 ### Getting Started
 
-- [Introduction](https://docs.q-uestionable.ai/introduction): Offensive security platform for agentic AI infrastructure
+- [Introduction](https://docs.q-uestionable.ai/introduction): Security testing for MCP servers and agentic AI systems
 - [Quickstart](https://docs.q-uestionable.ai/quickstart): Install q-ai and run your first MCP server security assessment
 - [Core Concepts](https://docs.q-uestionable.ai/concepts): MCP protocol, OWASP mapping, module methodologies, and threat model
 - [Responsible Use](https://docs.q-uestionable.ai/responsible-use): Authorized use requirements and responsible disclosure

@@ -5,17 +5,9 @@ description: Tool poisoning and prompt injection testing against LLM-powered age
 
 The inject module is a framework for tool poisoning and prompt injection testing. It loads adversarial payload templates, serves them as MCP tools via a poisoned server, and runs automated campaigns against LLM models to measure susceptibility and document attack vectors.
 
-## Why Inject Matters
+## What It Tests
 
-MCP tool descriptions are trusted inputs to AI agents. When an attacker controls or compromises an MCP server, they can:
-
-- **Redirect behavior** — Embed instructions in tool descriptions to override agent goals
-- **Exfiltrate data** — Craft poisoned tools that capture and transmit sensitive data
-- **Escalate access** — Use tool metadata to trick agents into invoking dangerous operations
-- **Degrade transparency** — Hide actions from the user by instructing agents not to disclose tool usage
-- **Manipulate reasoning** — Exploit agent preference for certain tools to steer decisions
-
-The inject module measures how effectively these attacks work against different LLM models and agents, providing evidence for security posture assessment.
+MCP tool descriptions are trusted inputs to AI agents. When an attacker controls or compromises an MCP server, they can embed instructions in tool descriptions to redirect behavior, exfiltrate data, escalate access, or hide actions from the user. The inject module measures how effectively these attacks work against different LLM models.
 
 ## How It Works
 

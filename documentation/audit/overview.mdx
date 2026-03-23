@@ -3,19 +3,11 @@ title: Overview
 description: Automated MCP server security scanning mapped to OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10
 ---
 
-The audit module is a comprehensive security scanner for MCP servers. It runs static and dynamic analysis checks mapped to the OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10, then produces structured findings with severity ratings and remediation guidance.
+The audit module scans MCP servers by enumerating exposed tools, resources, and prompts, then running security checks mapped to the OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10. It produces structured findings with severity ratings and remediation guidance.
 
-## Why Audit Matters
+## What It Tests
 
-MCP servers are trusted tool providers for AI agents. When an MCP server is compromised or misconfigured, attackers can:
-
-- **Steal credentials** — Exfiltrate API keys, database passwords, and authentication tokens from tool descriptions or responses
-- **Escalate privileges** — Craft tool definitions that grant agents unauthorized capabilities
-- **Inject malicious instructions** — Poison tool descriptions to redirect agent behavior
-- **Compromise supply chain** — Introduce vulnerable or backdoored tools into agent workflows
-- **Execute arbitrary commands** — Inject payloads into tool parameters that execute on the host system
-
-The audit module systematically checks for these issues before they cause damage.
+MCP servers execute real actions — running commands, querying databases, writing files. When misconfigured or compromised, they can leak credentials, escalate privileges, inject instructions into agent workflows, or execute arbitrary commands. The audit module checks for these issues systematically.
 
 ## How It Works
 

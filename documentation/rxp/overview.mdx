@@ -89,7 +89,7 @@ RXP v0.5.0+ maps retrieval rates to severity levels:
 - **Critical** — ≥75% of queries retrieve the poisoned document (very high risk)
 - **High** — ≥50% retrieval rate
 - **Medium** — ≥25% retrieval rate
-- **Low** — <25% retrieval rate (poisoning ineffective)
+- **Low** — Below 25% retrieval rate (poisoning ineffective)
 
 These bands help you understand the practical impact of poisoning.
 
@@ -149,12 +149,12 @@ With 80% retrieval rate, this is a **critical** severity finding — the poisone
 - **Different queries** — Test with more varied questions
 - **Different models** — Try other embedding models to see consistency
 
-## Common Use Cases
+## When To Use RXP
 
-**Security research:** Measure how vulnerable popular RAG systems are to poisoning
-**Product testing:** Validate that your RAG implementation handles adversarial documents
-**Knowledge base hardening:** Identify document pairs where poisoning would be effective
-**Vendor evaluation:** Compare embedding models and vector databases for robustness
+- Measuring whether a specific RAG system is vulnerable to document poisoning
+- Comparing embedding models to see if poisoning results are consistent across models
+- Identifying which document/query pairs are most susceptible to poisoning
+- Validating retrieval-layer defenses against adversarial documents
 
 ## Next Steps
 
