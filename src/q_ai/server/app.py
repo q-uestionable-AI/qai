@@ -56,6 +56,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     app.state.bridge_token = read_bridge_token()
 
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+    templates.env.filters["format_status"] = lambda s: s.replace("_", " ").title() if s else s
     app.state.templates = templates
 
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")

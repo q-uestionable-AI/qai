@@ -23,7 +23,7 @@
                     {% elif left_run.status.name == 'FAILED' %}badge-error
                     {% elif left_run.status.name == 'PARTIAL' %}badge-warning
                     {% else %}badge-ghost{% endif %}">
-                    {{ left_run.status.name }}
+                    {{ left_run.status.name | format_status }}
                 </span>
                 <span class="font-semibold">{{ left_display }}</span>
             </div>
@@ -43,7 +43,7 @@
                     {% elif right_run.status.name == 'FAILED' %}badge-error
                     {% elif right_run.status.name == 'PARTIAL' %}badge-warning
                     {% else %}badge-ghost{% endif %}">
-                    {{ right_run.status.name }}
+                    {{ right_run.status.name | format_status }}
                 </span>
                 <span class="font-semibold">{{ right_display }}</span>
             </div>

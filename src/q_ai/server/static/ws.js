@@ -19,8 +19,8 @@
     var parentTerminal = false; // true once parent reaches terminal status
 
     var STATUS_LABELS = {
-        0: 'PENDING', 1: 'RUNNING', 2: 'COMPLETED',
-        3: 'FAILED', 4: 'CANCELLED', 5: 'WAITING_FOR_USER', 6: 'PARTIAL',
+        0: 'Pending', 1: 'Running', 2: 'Completed',
+        3: 'Failed', 4: 'Cancelled', 5: 'Waiting For User', 6: 'Partial',
     };
     var STATUS_CLASSES = {
         0: 'badge-ghost', 1: 'badge-info', 2: 'badge-success',
