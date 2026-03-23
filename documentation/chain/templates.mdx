@@ -61,7 +61,7 @@ steps:
 |-------|------|----------|-------------|
 | `id` | string | Yes | Unique step identifier within the chain |
 | `name` | string | Yes | Human-readable step description |
-| `module` | string | Yes | Which qai module provides this step: `audit`, `inject`, `cxp`, or `ipi` |
+| `module` | string | Yes | Which qai module provides this step: `audit` or `inject` |
 | `technique` | string | Yes | Specific technique within the module |
 | `depends_on` | array | No | List of step IDs that must succeed before this step |
 | `trust_boundary` | string | No | System boundary crossed by this step |
@@ -217,7 +217,7 @@ steps:
   - id: reconnaissance
     name: Identify target tools
     module: audit
-    technique: inventory
+    technique: injection
     on_success: exploitation
 
   - id: exploitation
