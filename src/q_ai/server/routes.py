@@ -1380,7 +1380,11 @@ def _sync_generate_sarif(db_path: Path | None, run_id: str) -> bytes | None:
         finished_at: datetime | None = None
         errors: list[dict] = field(default_factory=list)
 
-    scanners_run = _json.loads(scan_meta.get("scanners_run", "[]"))
+    try:
+        scanners_run = _json.loads(scan_meta.get("scanners_run", "[]"))
+    except (ValueError, TypeError):
+        logger.warning("Malformed scanners_run JSON in scan metadata; defaulting to []")
+        scanners_run = []
     sarif_data = _SarifData(
         findings=scan_findings,
         server_info={
