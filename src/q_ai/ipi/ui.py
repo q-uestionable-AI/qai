@@ -34,10 +34,7 @@ async def dashboard(request: Request) -> HTMLResponse:
     Returns:
         Rendered dashboard HTML page.
     """
-    return templates.TemplateResponse(
-        "dashboard.html",
-        {"request": request, "active": "dashboard"},
-    )
+    return templates.TemplateResponse(request, "dashboard.html", {"active": "dashboard"})
 
 
 @ui_router.get("/campaigns", response_class=HTMLResponse)
@@ -59,9 +56,9 @@ async def campaigns_list(request: Request) -> HTMLResponse:
         hit_counts[h.uuid] = hit_counts.get(h.uuid, 0) + 1
 
     return templates.TemplateResponse(
+        request,
         "campaigns.html",
         {
-            "request": request,
             "active": "campaigns",
             "campaigns": campaigns,
             "hit_counts": hit_counts,
@@ -85,9 +82,9 @@ async def campaign_detail(request: Request, uuid: str) -> Response:
         return RedirectResponse(url="/ui/campaigns", status_code=302)
     hits = db.get_hits(uuid=uuid)
     return templates.TemplateResponse(
+        request,
         "campaign_detail.html",
         {
-            "request": request,
             "active": "campaigns",
             "campaign": campaign,
             "hits": hits,
@@ -105,10 +102,7 @@ async def hits_page(request: Request) -> HTMLResponse:
     Returns:
         Rendered hits HTML page.
     """
-    return templates.TemplateResponse(
-        "hits.html",
-        {"request": request, "active": "hits"},
-    )
+    return templates.TemplateResponse(request, "hits.html", {"active": "hits"})
 
 
 @ui_router.get("/generate", response_class=HTMLResponse)
@@ -129,9 +123,9 @@ async def generate_page(request: Request) -> HTMLResponse:
     technique_names = [t.value for t in techs]
 
     return templates.TemplateResponse(
+        request,
         "generate.html",
         {
-            "request": request,
             "active": "generate",
             "formats": [f.value for f in Format],
             "techniques": technique_names,

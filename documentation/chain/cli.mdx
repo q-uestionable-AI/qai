@@ -1,147 +1,267 @@
 ---
-title: Chain CLI Reference
-description: Command reference for qai chain
+title: "Chain CLI Commands"
+description: "Run, validate, and analyze attack chains from the command line"
 ---
 
-Multi-agent attack chain framework. Define declarative attack chains that link audit and inject modules into multi-step exploitation paths, then validate and trace them.
+## qai chain
 
-## chain
+Execute and analyze multi-step attack chains.
+
+```bash
+qai chain [COMMAND] [OPTIONS]
+```
+
+## Commands
 
 ### chain validate
 
-Validate an attack chain definition without executing it. Checks syntax, step references, module/technique validity, and graph structure.
+Validate a chain definition without executing it.
 
 ```bash
-qai chain validate [OPTIONS]
+qai chain validate --chain-file FILE
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--chain-file` | Yes | Path to chain definition to validate |
+**Options:**
+
+| Option | Required | Type | Description |
+|--------|----------|------|-------------|
+| `--chain-file` | Yes | string | Path to chain YAML definition |
+
+**Example:**
 
 ```bash
-qai chain validate --chain-file chain.yaml
+qai chain validate --chain-file delegation_hijack.yaml
 ```
 
-Exits with code 0 on success, code 1 if validation errors are found. Error output includes the step ID, field, and description for each problem.
+**Output on success:**
+
+```
+Validating chain: Agent Delegation Hijack (delegation-hijack)
+  3 steps, category: agent_delegation
+  [+] All module references valid
+  [+] All technique references valid
+  [+] Step graph valid (no cycles, all reachable)
+  [+] Chain definition is valid
+```
+
+**Validation checks:**
+- Step syntax and required fields
+- Module and technique availability
+- Step graph for cycles and reachability
+- Trust boundary values
+- Dependency resolution
 
 ### chain list-templates
 
-List available attack chain templates.
+List available chain templates.
 
 ```bash
 qai chain list-templates [OPTIONS]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--category` | No | Filter by category: `rag_pipeline`, `agent_delegation`, `mcp_ecosystem`, `hybrid` |
+**Options:**
+
+| Option | Required | Type | Description |
+|--------|----------|------|-------------|
+| `--category` | No | string | Filter by architecture category |
+
+**Valid categories:**
+- `rag_pipeline`
+- `agent_delegation`
+- `mcp_ecosystem`
+- `hybrid`
+
+**Example:**
 
 ```bash
-qai chain list-templates
-qai chain list-templates --category mcp_ecosystem
+qai chain list-templates --category agent_delegation
+```
+
+**Output:**
+
+```
+ID                          Name                             Category            Steps
+agent-delegation-hijack     Agent Delegation Hijack          agent_delegation    3
+mcp-server-compromise       MCP Server Compromise            mcp_ecosystem       4
+rag-trust-escalation        RAG Trust Escalation             rag_pipeline        3
 ```
 
 ### chain run
 
-Execute an attack chain against a target architecture. Default mode is dry-run (simulation only) which traces the success path without executing destructive steps. Use `--no-dry-run` for live execution against configured targets.
+Execute an attack chain against a target architecture.
 
 ```bash
-qai chain run [OPTIONS]
+qai chain run --chain-file FILE [OPTIONS]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--chain-file` | Yes | Path to attack chain definition (YAML) |
-| `--dry-run` / `--no-dry-run` | No | Trace path without executing destructive steps (default: `--dry-run`) |
-| `--output` | No | Output file for execution result JSON |
-| `--verbose` / `-v` | No | Verbose output |
-| `--targets` | No | Path to `chain-targets.yaml` config file. Falls back to `~/.qai/chain-targets.yaml`. |
-| `--inject-model` | No | Override inject model from targets config |
+**Options:**
+
+| Option | Required | Type | Description |
+|--------|----------|------|-------------|
+| `--chain-file` | Yes | string | Path to chain YAML definition |
+| `--dry-run / --no-dry-run` | No | flag | Dry run traces the path without live execution (default: dry-run enabled). Use `--no-dry-run` for live execution. |
+| `--output` | No | string | Save execution results to JSON file |
+| `--verbose`, `-v` | No | flag | Enable verbose output during execution |
+| `--targets` | No | string | Path to chain-targets.yaml config file |
+| `--inject-model` | No | string | Override inject model from config (format: `provider/model`) |
+
+**Examples:**
 
 <CodeGroup>
-```bash Dry run
-qai chain run --chain-file chain.yaml --dry-run
-qai chain run --chain-file chain.yaml --output trace.json -v
-```
-
-```bash Live execution
+```bash dry-run
 qai chain run \
-  --chain-file chain.yaml \
-  --no-dry-run \
-  --targets chain-targets.yaml \
+  --chain-file delegation_hijack.yaml \
+  --dry-run \
   --output trace.json
 ```
 
-```bash Live with model override
+```bash live execution
 qai chain run \
-  --chain-file chain.yaml \
+  --chain-file delegation_hijack.yaml \
   --no-dry-run \
-  --targets chain-targets.yaml \
-  --inject-model claude-sonnet-4-6 \
-  --output trace.json
+  --targets ~/.qai/chain-targets.yaml \
+  --output results.json
+```
+
+```bash override model
+qai chain run \
+  --chain-file delegation_hijack.yaml \
+  --no-dry-run \
+  --targets ~/.qai/chain-targets.yaml \
+  --inject-model "anthropic/claude-sonnet-4-20250514" \
+  --output results.json
 ```
 </CodeGroup>
 
-#### Target Configuration
+**Dry-run output:**
 
-Live execution requires a `chain-targets.yaml` file that specifies how to connect to audit targets and which model to use for inject campaigns.
-
-```yaml
-# chain-targets.yaml
-audit:
-  transport: stdio
-  command: "python my_server.py"
-
-inject:
-  model: claude-sonnet-4-6
 ```
+Chain: Agent Delegation Hijack
+Mode: DRY RUN (no live execution)
 
-| Section | Key | Description |
-|---------|-----|-------------|
-| `audit.transport` | `stdio`, `sse`, or `streamable-http` | Transport for connecting to the target MCP server |
-| `audit.command` | String | Command to launch the server (required for `stdio` transport) |
-| `audit.url` | URL | Server URL (required for `sse` and `streamable-http` transports) |
-| `inject.model` | String | Anthropic model ID for injection campaigns. Falls back to `QAI_MODEL` env var. |
+Execution trace (success path):
+  1. [inject] inject-output -- Inject instructions via tool output
+     Technique: output_injection
+     Trust boundary: tool-to-agent -> cross-tool-pivot
 
-If `--targets` is not provided, the CLI looks for `~/.qai/chain-targets.yaml`.
+  2. [inject] cross-tool-pivot -- Pivot through cross-tool delegation
+     Technique: cross_tool_escalation
+     Trust boundary: agent-to-agent -> poison-downstream
 
-<Note>
-Live execution requires `ANTHROPIC_API_KEY` for inject steps. Audit-only chains do not require an API key.
-</Note>
+  3. [inject] poison-downstream -- Poison downstream agent tool descriptions
+     Technique: description_poisoning
+     Trust boundary: agent-to-tool -> [terminal]
+
+Trust boundaries crossed: tool-to-agent -> agent-to-agent -> agent-to-tool
+```
 
 ### chain blast-radius
 
-Analyze blast radius from a completed chain execution. Quantifies what the attacker reached: data, systems, actions, and persistence.
+Analyze blast radius from completed chain execution.
 
 ```bash
-qai chain blast-radius [OPTIONS]
+qai chain blast-radius --results FILE [OPTIONS]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--results-dir` | Yes | Path to completed chain results |
-| `--format` | No | Output format: `html` or `json` (default: `html`) |
-| `--output` | No | Output file path |
+**Options:**
 
-<Note>
-Blast radius analysis is not yet implemented. The command is defined but returns a stub.
-</Note>
+| Option | Required | Type | Description |
+|--------|----------|------|-------------|
+| `--results` | Yes | string | Path to chain execution result JSON file |
+| `--format` | No | string | Output format: `json` or `html` (default: json) |
+| `--output` | No | string | Output file path (stdout if omitted) |
+
+**Examples:**
+
+<CodeGroup>
+```bash JSON output
+qai chain blast-radius \
+  --results execution_results.json \
+  --format json \
+  --output blast_radius.json
+```
+
+```bash HTML report
+qai chain blast-radius \
+  --results execution_results.json \
+  --format html \
+  --output blast_radius.html
+```
+</CodeGroup>
+
+**Blast radius analysis includes:**
+- Data reached (findings, artifacts, payload details)
+- Systems touched (modules and transports involved)
+- Trust boundaries crossed
+- Ordered attack path
+- Success/failure determination
 
 ### chain detect
 
-Generate detection rules from observed attack patterns. Produces Sigma or Wazuh rules that would detect the chain's execution in a monitored environment.
+Generate detection rules from observed attack patterns.
 
 ```bash
-qai chain detect [OPTIONS]
+qai chain detect --results FILE [OPTIONS]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--results-dir` | Yes | Path to completed chain results |
-| `--format` | No | Rule format: `sigma` or `wazuh` (default: `sigma`) |
-| `--output` | No | Output directory for detection rules |
+**Options:**
+
+| Option | Required | Type | Description |
+|--------|----------|------|-------------|
+| `--results` | Yes | string | Path to chain execution result JSON file |
+| `--format` | No | string | Rule format: `sigma` or `wazuh` (default: sigma) |
+| `--output` | No | string | Output file or directory for rules (stdout if omitted) |
+
+**Examples:**
+
+<CodeGroup>
+```bash Sigma rules
+qai chain detect \
+  --results execution_results.json \
+  --format sigma \
+  --output detection_rules.yaml
+```
+
+```bash Wazuh rules
+qai chain detect \
+  --results execution_results.json \
+  --format wazuh \
+  --output wazuh_rules/
+```
+</CodeGroup>
+
+**Generated rules include:**
+- MITRE ATT&CK mappings for each step
+- Technique identification and categorization
+- Detection signatures for vulnerable patterns
+- Wazuh XML format with event correlation
+- Sigma format with filter conditions
 
 <Note>
-Detection rule generation is not yet implemented. The command is defined but returns a stub.
+Detection rules are auto-generated from successful execution steps. If a chain run has no successful steps, no rules are generated.
 </Note>
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Command error (invalid options, file not found, validation failure) |
+| 130 | Interrupted by user (Ctrl+C) |
+
+## Model Selection
+
+When running chains in live mode, the `--inject-model` option overrides the model specified in targets config:
+
+```bash
+qai chain run \
+  --chain-file my_chain.yaml \
+  --targets ~/.qai/chain-targets.yaml \
+  --inject-model "openai/gpt-4o"
+```
+
+Model format: `provider/model`. Bare model names default to Anthropic.
+
+<Tip>
+Always start with `--dry-run` to trace the execution path and validate your chain before running live.
+</Tip>

@@ -1,147 +1,63 @@
 ---
 title: Audit Module Architecture
-description: Scanner framework, orchestrator, and payload system internals
+description: Scanner pipeline, MCP connection, and multi-format reporting
 ---
 
-The audit module is an automated security scanner for MCP servers. It runs 10 scanner modules — one per OWASP MCP Top 10 category — against a target server and produces structured findings.
+The audit module (`q_ai.audit`) scans MCP servers for security vulnerabilities. It connects to a server, enumerates its tools/resources/prompts, runs scanner checks against them, and produces findings mapped to security frameworks.
 
-## File layout
+## Module Structure
 
 ```
-src/q_ai/audit/
-├── cli.py              # Typer subcommands (scan, list-checks, enumerate, report)
-├── orchestrator.py     # ScanResult dataclass + run_scan() entry point
+audit/
+├── orchestrator.py      # run_scan() — coordinates connection, enumeration, scanning
 ├── scanner/
-│   ├── base.py         # BaseScanner ABC + re-exports from core.models
-│   ├── registry.py     # Scanner registry — maps CLI names to scanner classes
-│   ├── injection.py    # MCP05 — Command Injection
-│   ├── auth.py         # MCP07 — Authentication/Authorization
-│   ├── token_exposure.py   # MCP01 — Token Mismanagement
-│   ├── permissions.py      # MCP02 — Privilege Escalation
-│   ├── tool_poisoning.py   # MCP03 — Tool Poisoning
-│   ├── supply_chain.py     # MCP04 — Supply Chain & Integrity
-│   ├── prompt_injection.py # MCP06 — Indirect Prompt Injection
-│   ├── audit_telemetry.py  # MCP08 — Audit & Telemetry
-│   ├── shadow_servers.py   # MCP09 — Shadow MCP Servers
-│   └── context_sharing.py  # MCP10 — Context Over-Sharing
-├── payloads/           # Injection payload generators
+│   ├── registry.py      # Scanner registration and lookup
+│   └── *.py             # Individual scanner implementations (one per OWASP MCP category)
 ├── reporting/
-│   ├── json_report.py  # JSON output (base format)
-│   ├── html_report.py  # HTML report generation
-│   ├── sarif_report.py # SARIF output for CI/CD integration
-│   └── severity.py     # Severity display utilities
-├── mcp_client/         # Re-export shims → core.connection, core.discovery
-└── utils/              # Scan-specific utilities
+│   ├── json_report.py
+│   ├── sarif_report.py
+│   ├── html_report.py
+│   ├── ndjson_report.py
+│   └── csv_report.py
+├── cli.py               # scan, enumerate, list-checks, report commands
+├── adapter.py           # AuditAdapter for orchestrator integration
+└── mapper.py            # persist_scan() — bridges ScanFinding → core Finding for DB
 ```
 
-## Data flow
+## Scan Pipeline
 
-```mermaid
-flowchart TD
-    CLI["CLI: qai audit scan"] --> CONN["MCPConnection"]
-    CONN --> ORCH["run_scan()"]
-    ORCH --> ENUM["enumerate_server()"]
-    ENUM --> CTX["ScanContext\n(tools, resources, prompts)"]
-    CTX --> REG["Scanner registry"]
-    REG --> S1["Scanner 1\n(MCP01)"]
-    REG --> S2["Scanner 2\n(MCP02)"]
-    REG --> SN["...\nScanner 10\n(MCP10)"]
-    S1 --> AGG["Aggregate findings"]
-    S2 --> AGG
-    SN --> AGG
-    AGG --> RES["ScanResult"]
-    RES --> JSON["JSON report"]
-    RES --> HTML["HTML report"]
-    RES --> SARIF["SARIF report"]
-```
+1. **Connect** — `MCPConnection` (from `q_ai.mcp`) opens a stdio, SSE, or Streamable HTTP connection to the target server
+2. **Enumerate** — `enumerate_server()` discovers tools, resources, and prompts
+3. **Scan** — `run_scan()` runs all registered scanners (or a filtered subset via `--checks`) against the enumerated capabilities
+4. **Map** — Each scanner produces `ScanFinding` objects with a `category` field (e.g., `command_injection`, `auth`). The `FrameworkResolver` populates `framework_ids` with OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10 mappings.
+5. **Report** — Results serialize to JSON, SARIF, HTML, NDJSON, or CSV
+6. **Persist** — `persist_scan()` maps `ScanFinding` → core `Finding` model for database storage
 
-## Key components
+## Scanner Registry
 
-### BaseScanner
+Scanners are registered in `scanner/registry.py`. Each scanner targets one OWASP MCP Top 10 category:
 
-Abstract base class in `scanner/base.py`. Every scanner extends this and implements a single method:
+| Category | Scanner | What It Checks |
+|----------|---------|---------------|
+| `command_injection` | injection | Tool parameters susceptible to injection |
+| `auth` | auth | Authentication and authorization gaps |
+| `token_exposure` | token_exposure | Secret and token exposure in responses |
+| `permissions` | permissions | Privilege escalation via tool capabilities |
+| `tool_poisoning` | tool_poisoning | Malicious tool descriptions |
+| `prompt_injection` | prompt_injection | Indirect prompt injection vectors |
+| `audit_telemetry` | audit_telemetry | Missing logging and monitoring |
+| `supply_chain` | supply_chain | Supply chain integrity risks |
+| `shadow_servers` | shadow_servers | Unauthorized MCP server detection |
+| `context_sharing` | context_sharing | Cross-context information leakage |
 
-```python
-async def scan(self, context: ScanContext) -> list[Finding]
-```
+Use `qai audit list-checks` to see available scanners and their framework mappings.
 
-Each scanner declares three class attributes:
+## Adapter
 
-| Attribute | Example | Description |
-|-----------|---------|-------------|
-| `name` | `"injection"` | CLI name used for `--checks` filtering |
-| `owasp_id` | `"MCP05"` | OWASP MCP Top 10 category |
-| `description` | `"Tests for command injection..."` | Human-readable description |
+`AuditAdapter` integrates the audit module with the orchestrator for workflow execution. It creates a child run, calls `run_scan()`, persists results, and emits findings via the workflow runner.
 
-### Scanner registry (`registry.py`)
+## Reporting
 
-A static dictionary mapping CLI name strings to scanner classes:
+All report generators take a `ScanResult` object (containing findings, server info, scanner metadata) and produce formatted output. The `--format` flag on `qai audit scan` and `qai audit report` selects the format.
 
-```python
-_REGISTRY: dict[str, type[BaseScanner]] = {
-    "injection": InjectionScanner,
-    "auth": AuthScanner,
-    "permissions": PermissionsScanner,
-    # ... 10 total
-}
-```
-
-The CLI's `--checks` option filters by these names. `get_scanner(name)` instantiates a single scanner; `get_all_scanners()` returns instances of all ten.
-
-### Orchestrator (`orchestrator.py`)
-
-`run_scan(conn, check_names)` coordinates the full scan lifecycle:
-
-1. Calls `enumerate_server(conn)` to populate a `ScanContext`
-2. Resolves the scanner list from the registry (all, or filtered by `check_names`)
-3. Runs each scanner's `scan()` sequentially, collecting findings
-4. Catches and logs per-scanner errors without aborting the run
-5. Returns a `ScanResult` with all findings and metadata
-
-### ScanResult
-
-Dataclass aggregating scan output:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `findings` | `list[Finding]` | All findings from all scanners |
-| `server_info` | `dict[str, Any]` | Server metadata from MCP handshake |
-| `tools_scanned` | `int` | Number of tools tested |
-| `scanners_run` | `list[str]` | Names of scanners that executed |
-| `started_at` | `datetime` | Scan start time |
-| `finished_at` | `datetime \| None` | Scan completion time |
-| `errors` | `list[dict[str, str]]` | Per-scanner errors |
-
-### Reporting pipeline
-
-Three output formats, all generated from the same `ScanResult`:
-
-| Format | File | Use case |
-|--------|------|----------|
-| **JSON** | `json_report.py` | Base format — machine-readable findings with full metadata |
-| **HTML** | `html_report.py` | Human-readable report with severity summaries and finding details |
-| **SARIF** | `sarif_report.py` | Static Analysis Results Interchange Format for CI/CD integration |
-
-## Test layout
-
-```
-tests/audit/
-├── conftest.py                 # Shared fixtures
-├── test_orchestrator.py        # Orchestrator unit tests
-├── test_smoke.py               # CLI smoke tests
-├── test_html_report.py         # HTML report generation tests
-├── test_sarif_report.py        # SARIF report generation tests
-├── test_scanners/              # Per-scanner unit tests
-│   ├── test_injection.py       # MCP05
-│   ├── test_auth.py            # MCP07
-│   ├── test_token_exposure.py  # MCP01
-│   ├── test_permissions.py     # MCP02
-│   ├── test_tool_poisoning.py  # MCP03
-│   ├── test_supply_chain.py    # MCP04
-│   ├── test_prompt_injection.py # MCP06
-│   ├── test_audit_telemetry.py # MCP08
-│   ├── test_shadow_servers.py  # MCP09
-│   └── test_context_sharing.py # MCP10
-└── test_mcp_client/
-    └── test_integration.py     # MCP transport integration tests
-```
+SARIF output follows the OASIS SARIF 2.1.0 schema and is compatible with GitHub Code Scanning.

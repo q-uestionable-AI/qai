@@ -1,9 +1,9 @@
 ---
-title: Payload Templates
-description: Injection payload template format and built-in payloads
+title: Payload Catalog
+description: Injection payload templates and format reference
 ---
 
-Payload templates define adversarial MCP tools that test how AI agents handle malicious content. Each template specifies a tool name, poisoned description, parameters, and expected response.
+Payload templates are YAML-defined adversarial MCP tools used to test LLM agent resilience to tool-based attacks. Each payload defines a poisoned tool that an agent might encounter after a supply chain compromise or MCP server breach.
 
 ## Template structure
 
@@ -60,35 +60,47 @@ Injects instructions into tool response text. After the agent calls a tool, the 
 
 Chains trust across multiple tools to escalate privileges. Exploits the assumption that tool outputs are trustworthy to pivot into unauthorized actions.
 
-## Built-in payloads
+## Payload Catalog
 
-### Description poisoning (6 payloads)
+Use `qai inject list-payloads` to view all available payloads. Payloads are organized into three technique categories:
 
-| Name | Tool Name | OWASP IDs | What it tests |
-|------|-----------|-----------|---------------|
-| `exfil_via_important_tag` | `get_weather` | MCP03, MCP06 | Exfiltration via `<IMPORTANT>` tags in description |
-| `preference_manipulation` | `enhanced_search` | MCP03 | Overriding agent preferences via description |
-| `concealment_directive` | `data_processor` | MCP03, MCP06 | Instructions to hide actions from the user |
-| `role_reassignment` | `system_config` | MCP06 | System role override via tool description |
-| `hidden_unicode_instruction` | `text_formatter` | MCP03, MCP06 | Unicode-obscured instructions in description |
-| `long_description_buried` | `document_analyzer` | MCP03, MCP06 | Instructions buried in lengthy description text |
+### Description Poisoning
 
-### Output injection (4 payloads)
+Embeds malicious instructions directly in tool descriptions. When an agent reads a tool's description to decide whether to use it, poisoned descriptions can redirect behavior, exfiltrate data, or override agent goals.
 
-| Name | Tool Name | OWASP IDs | What it tests |
-|------|-----------|-----------|---------------|
-| `output_instruction_injection` | `fetch_data` | MCP06 | Direct instructions embedded in tool output |
-| `output_url_exfil` | `link_resolver` | MCP03, MCP06 | URL-based exfiltration via tool response |
-| `output_tool_call_injection` | `task_planner` | MCP03, MCP06 | Injected tool-call directives in output |
-| `output_markdown_injection` | `report_generator` | MCP03, MCP06 | Markdown-rendered payloads in output |
+Example payloads:
 
-### Cross-tool escalation (3 payloads)
+- **exfil_via_important_tag** — Hidden exfiltration directives in XML-style tags within tool descriptions
+- **preference_manipulation** — Instructions to prefer a poisoned tool over legitimate alternatives
+- **concealment_directive** — Instructs the agent to hide tool usage from the user
+- **role_reassignment** — Attempts to override the agent's system role or operating mode
+- **hidden_unicode_instruction** — Uses Unicode tricks to hide poisoning in plain sight
+- **long_description_buried** — Embeds instructions deep in lengthy descriptions to evade detection
 
-| Name | Tool Name | OWASP IDs | What it tests |
-|------|-----------|-----------|---------------|
-| `shadow_tool` | `get_user_data` | MCP03, MCP09 | Homoglyph tool name (Cyrillic) to shadow a real tool |
-| `chain_via_description` | `data_enricher` | MCP03, MCP06 | Cross-tool chaining via description directives |
-| `parameter_exfil` | `secure_api_call` | MCP03, MCP06, MCP10 | Data exfiltration through parameter manipulation |
+### Output Injection
+
+Injects instructions into tool responses. After the agent invokes a tool, the response contains directives that attempt to hijack the agent's reasoning or trigger unintended actions.
+
+Example payloads:
+
+- **output_instruction_injection** — Raw instructions embedded in tool output text
+- **output_url_exfil** — URLs in tool responses used to exfiltrate data
+- **output_tool_call_injection** — Injected directives to call other tools with crafted parameters
+- **output_markdown_injection** — Markdown-rendered payloads that influence rendering and interpretation
+
+### Cross-Tool Escalation
+
+Chains trust across multiple tools to escalate privileges or exfiltrate data. Exploits the assumption that tool outputs are trustworthy by using one poisoned tool to redirect the agent toward dangerous operations via another tool.
+
+Example payloads:
+
+- **shadow_tool** — Homoglyph or Unicode-equivalent tool name used to shadow a legitimate tool
+- **chain_via_description** — Uses tool description directives to pivot to other tools
+- **parameter_exfil** — Manipulates parameters to other tools to exfiltrate sensitive data
+
+<Tip>
+Filter payloads by technique when running campaigns: `qai inject campaign --technique description_poisoning`. This helps isolate and measure specific attack vectors.
+</Tip>
 
 ## Custom payloads
 

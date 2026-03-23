@@ -1,0 +1,79 @@
+---
+title: CSV Export
+description: Flat spreadsheet export with one row per finding
+---
+
+CSV exports produce a flat file with one row per finding, suitable for Excel, Google Sheets, database import, and reporting workflows.
+
+## Generating CSV
+
+**CLI:**
+
+```bash
+qai audit scan --transport stdio --command "npx @modelcontextprotocol/server-memory" \
+  --format csv --output results.csv
+```
+
+Or convert an existing scan:
+
+```bash
+qai audit report --input results/scan.json --format csv --output results.csv
+```
+
+## Columns
+
+| Column | Description |
+|--------|-------------|
+| `run_id` | Run identifier |
+| `target_name` | Target name |
+| `category` | Finding category (e.g., `command_injection`, `auth`) |
+| `severity` | Severity level (`critical`, `high`, `medium`, `low`, `info`) |
+| `title` | Finding title |
+| `description` | Detailed description |
+
+| `tool_name` | MCP tool name associated with the finding |
+| `owasp_mcp_id` | OWASP MCP Top 10 identifier (e.g., `MCP05`) |
+| `remediation` | Recommended fix |
+| `mitigation_summary` | Condensed mitigation guidance (first action item or "See full report") |
+| `framework_ids` | All framework mappings as semicolon-separated `key=value` pairs |
+| `timestamp` | ISO timestamp of when the finding was created |
+
+## Example Output
+
+```csv
+run_id,target_name,category,severity,title,description,tool_name,owasp_mcp_id,remediation,mitigation_summary,framework_ids,timestamp
+a1b2c3d4,memory-server,command_injection,high,Tool parameter allows shell injection,...,memory_store,MCP05,...,...,owasp_mcp_top10=MCP05; mitre_atlas=AML.T0054,2026-03-22T10:30:15
+```
+
+## Usage
+
+Open directly in Excel or Google Sheets. All text fields containing commas, quotes, or newlines are properly escaped per RFC 4180.
+
+For database import:
+
+```sql
+-- PostgreSQL
+COPY findings FROM '/path/results.csv' WITH (FORMAT csv, HEADER);
+```
+
+For command-line analysis, use a CSV-aware tool to handle quoted fields and newlines correctly (plain `cut`/`grep` can break on RFC 4180 CSV):
+
+```bash
+# Using csvkit (pip install csvkit)
+csvcut -c severity results.csv | sort | uniq -c | sort -rn   # Count by severity
+csvgrep -c severity -m high results.csv > high.csv           # Filter high-severity
+
+# Using Python's csv module
+python -c "
+import csv, sys
+with open('results.csv') as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        if row['severity'] == 'high':
+            print(row['title'])
+"
+```
+
+<Note>
+CSV flattens the framework_ids dict into a single string column. For structured framework data, use the JSON bundle or NDJSON exports.
+</Note>

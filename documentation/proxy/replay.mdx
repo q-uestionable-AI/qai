@@ -1,13 +1,13 @@
 ---
-title: Replay
-description: Re-send captured MCP tool calls against a live server
+title: "Session Replay"
+description: "Re-send captured MCP messages against a live server for testing and validation"
 ---
 
-The replay engine re-sends captured client-to-server messages from a session file against a live MCP server, collecting new responses for comparison.
+Session replay sends previously captured client-to-server messages against a live MCP server, collecting responses for analysis, testing, and reproduction.
 
-## Workflow
+## Basic Workflow
 
-1. **Capture** a session with `proxy start --session-file`:
+1. **Capture** a session:
 
 ```bash
 qai proxy start \
@@ -16,87 +16,208 @@ qai proxy start \
   --session-file session.json
 ```
 
-2. **Replay** the captured messages against a server:
+Interact with your agent or client normally. The proxy saves all messages to `session.json`.
+
+2. **Replay** the captured messages:
 
 ```bash
 qai proxy replay \
   --session-file session.json \
-  --target-command "python my_server.py"
+  --target-command "python my_server.py" \
+  --output results.json
 ```
 
-## Command reference
+The replay engine resends client-to-server messages and captures new responses.
+
+## Replay Command Reference
 
 ```bash
-qai proxy replay [OPTIONS]
+qai proxy replay --session-file FILE [OPTIONS]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--session-file` | Yes | Path to a saved session file |
-| `--target-command` | Yes* | Server command for replay (stdio) |
-| `--target-url` | No | Server URL for replay (SSE/HTTP) |
-| `--output` | No | Save replay results to JSON |
-| `--timeout` | No | Per-message response timeout in seconds (default: `10.0`) |
-| `--no-handshake` | No | Skip auto-handshake if session already includes initialize |
+**Options:**
+
+| Option | Required | Type | Description |
+|--------|----------|------|-------------|
+| `--session-file` | Yes | string | Path to the captured session file |
+| `--target-command` | Yes* | string | Command to start the target server (stdio) |
+| `--target-url` | Yes* | string | URL of the target server (SSE/HTTP) |
+| `--output` | No | string | Save replay results to JSON file |
+| `--timeout` | No | float | Per-message response timeout in seconds (default: 10.0) |
+| `--no-handshake` | No | flag | Skip synthetic handshake (only if session already includes initialize) |
 
 \* Either `--target-command` or `--target-url` is required.
 
-## Auto-handshake
+## Auto-Handshake
 
-By default, the replay engine sends a synthetic `initialize` / `notifications/initialized` handshake before replaying messages. This ensures the server is ready to accept tool calls. Use `--no-handshake` if your session file already starts with the initialize sequence and you want to replay it exactly.
+By default, replay sends a synthetic MCP handshake before replaying messages:
 
-## Modifying arguments
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "__handshake__",
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {},
+    "clientInfo": {
+      "name": "mcp-proxy-replay",
+      "version": "0.1.0"
+    }
+  }
+}
+```
 
-Replay sends messages exactly as captured. To modify arguments before replaying:
+This ensures the server is ready to accept tool calls. Use `--no-handshake` only if:
+- Your captured session already starts with an `initialize` request
+- You want to replay the exact sequence as captured (including handshake)
 
-1. Export or inspect the session to find the message you want to change
-2. Edit the session JSON file directly — modify the `payload` field of the target message
-3. Replay the edited session
+## Modifying Arguments Before Replay
 
-## Saving results
+Replay sends messages exactly as captured. To modify arguments:
 
-Use `--output` to save replay results as JSON:
+1. Export the session JSON or inspect it to find the target message
+2. Edit the message's `payload` field directly in the JSON file
+3. Replay the modified session
+
+**Example:**
+
+```json
+{
+  "proxy_id": "msg-001",
+  "sequence": 5,
+  "direction": "client_to_server",
+  "payload": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "search",
+      "arguments": {
+        "query": "modified search term"
+      }
+    }
+  }
+}
+```
+
+## Output Format
+
+Replay results are written to JSON with a detailed record of each message:
+
+```json
+{
+  "results": [
+    {
+      "original_request": {
+        "id": "msg-001",
+        "method": "tools/call",
+        "jsonrpc_id": 1
+      },
+      "sent_message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": { ... }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": { ... }
+      },
+      "error": null,
+      "duration_ms": 145.2
+    }
+  ]
+}
+```
+
+**Result fields:**
+
+| Field | Description |
+|-------|-------------|
+| `original_request` | The ProxyMessage from the captured session |
+| `sent_message` | The actual SessionMessage sent to the server |
+| `response` | The server's response (null if notification or timeout) |
+| `error` | Error description if replay failed (null on success) |
+| `duration_ms` | Round-trip time in milliseconds |
+
+## Handling Timeouts
+
+Use `--timeout` to adjust the per-message timeout:
 
 ```bash
 qai proxy replay \
   --session-file session.json \
-  --target-command "python my_server.py" \
-  --output replay-results.json
+  --target-command "python slow_server.py" \
+  --timeout 30.0 \
+  --output results.json
 ```
 
-The output includes the original request, sent message, server response, error (if any), and round-trip duration in milliseconds for each replayed message.
+Messages that exceed the timeout are recorded with a timeout error and continue to the next message.
 
-## Timeout
+## Filtering Replayed Messages
 
-The `--timeout` option sets the per-message response timeout in seconds (default: `10.0`). Increase this for slow servers:
+Only client-to-server messages are replayed. Server-to-client messages in the session are skipped:
 
-```bash
-qai proxy replay \
-  --session-file session.json \
-  --target-command "python my_server.py" \
-  --timeout 30.0
-```
+- `client_to_server` messages (requests and notifications) are replayed in order
+- `server_to_client` messages (responses and notifications) are ignored
+- Notifications (no JSON-RPC id) are sent without waiting for a response
 
-Messages that exceed the timeout are recorded with a timeout error.
+## Use Cases
 
-## Use case: reproducing findings
+### Reproduce Security Findings
 
-Replay is useful for reproducing audit findings. After a scan identifies a vulnerability, capture a targeted interaction with the proxy, then replay the exact message sequence to confirm the finding is reproducible:
+Capture a vulnerable interaction, then replay it to confirm the finding:
 
 ```bash
-# 1. Capture the interaction
+# 1. Capture the attack sequence
 qai proxy start \
   --transport stdio \
-  --target-command "python my_server.py" \
-  --session-file evidence.json
+  --target-command "python app.py" \
+  --session-file attack.json
 
-# 2. Replay to confirm
+# 2. Replay against the target to confirm
 qai proxy replay \
-  --session-file evidence.json \
-  --target-command "python my_server.py" \
+  --session-file attack.json \
+  --target-command "python app.py" \
   --output confirmation.json
+
+# 3. Compare responses
+```
+
+### Test Compatibility
+
+Verify a new server version behaves the same as the old:
+
+```bash
+# Replay sessions against new server
+qai proxy replay \
+  --session-file v1_capture.json \
+  --target-command "python server_v2.py" \
+  --output v2_results.json
+
+# Compare with original v1_results.json
+```
+
+### Debug Intermittent Issues
+
+Capture a failing interaction, then replay it repeatedly:
+
+```bash
+qai proxy replay \
+  --session-file failing_session.json \
+  --target-command "python server.py" \
+  --output replay_1.json
+
+qai proxy replay \
+  --session-file failing_session.json \
+  --target-command "python server.py" \
+  --output replay_2.json
+
+# Compare results to identify variability
 ```
 
 <Note>
-Only client-to-server messages (requests and notifications) are replayed. Server-to-client messages in the session file are skipped.
+Only client-to-server messages are replayed. Server responses are discarded from the original session and newly captured during replay. This allows testing the server against the same client sequence while isolating server-side changes.
 </Note>

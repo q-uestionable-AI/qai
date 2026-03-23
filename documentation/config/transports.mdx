@@ -1,90 +1,81 @@
 ---
-title: Transport Types
-description: stdio, SSE, and Streamable HTTP — when to use each transport
+title: MCP Transport Types
+description: Configure how qai connects to MCP servers
 ---
 
-q-ai supports three MCP transport types for connecting to servers. Each module accepts a `--transport` flag to select the connection method.
+qai supports three MCP transport types for connecting to target servers. The transport determines how messages are exchanged between qai and the server under test.
+
+## Transport Types
+
+| Transport | Flag Value | Connection | Use Case |
+|-----------|-----------|------------|----------|
+| **stdio** | `stdio` | Spawns server as child process, communicates via stdin/stdout | Local servers, npm packages, Python servers |
+| **SSE** | `sse` | HTTP connection with Server-Sent Events | Remote servers using the legacy SSE transport |
+| **Streamable HTTP** | `streamable-http` | Bidirectional HTTP streaming | Remote servers using the current MCP spec |
 
 ## stdio
 
-Spawns the server as a child process and communicates over stdin/stdout. Best for local testing where the server runs on the same machine.
+The most common transport. qai spawns the server as a child process and communicates over standard input/output. It is the default for web UI workflow launches, but CLI commands require an explicit `--transport stdio` flag.
 
-**When to use:** Local development, CI pipelines, testing servers you can run directly.
+**CLI usage:**
 
-**Configuration:** Provide the server command via `--command` (audit/proxy) or run the inject server directly.
+```bash
+# Audit a local MCP server
+qai audit scan --transport stdio --command "npx @modelcontextprotocol/server-memory"
 
-<CodeGroup>
-```bash audit
-qai audit scan \
-  --transport stdio \
-  --command "python my_server.py"
-```
+# Proxy a local server
+qai proxy start --transport stdio --target-command "python my_server.py"
 
-```bash proxy
-qai proxy start \
-  --transport stdio \
-  --target-command "python my_server.py"
-```
-
-```bash inject
+# Inject with a local target
 qai inject serve --transport stdio
 ```
-</CodeGroup>
 
-## SSE (Server-Sent Events)
+The `--command` flag specifies the shell command to start the server. qai handles process lifecycle (spawn, communicate, terminate).
 
-Connects to a remote server over HTTP using the legacy SSE transport. The server must already be running and listening for SSE connections.
+**When to use:** Local development, testing npm or Python MCP servers, CI pipelines where the server runs on the same machine.
 
-**When to use:** Remote servers using the older SSE-based MCP transport protocol.
+## SSE
 
-**Configuration:** Provide the server URL via `--url`.
+Server-Sent Events over HTTP. Connect to a remote MCP server that implements the legacy SSE transport.
 
-<CodeGroup>
-```bash audit
-qai audit scan \
-  --transport sse \
-  --url "http://localhost:3000/sse"
+**CLI usage:**
+
+```bash
+qai audit scan --transport sse --url "https://mcp-server.example.com/sse"
+
+qai proxy start --transport sse --target-url "https://mcp-server.example.com/sse"
 ```
 
-```bash proxy
-qai proxy start \
-  --transport sse \
-  --target-url "http://localhost:3000/sse"
-```
-</CodeGroup>
+The `--url` flag specifies the server's SSE endpoint.
+
+**When to use:** Remote servers using the older MCP SSE protocol, servers behind firewalls that allow HTTP.
 
 ## Streamable HTTP
 
-Connects to a remote server over the current MCP Streamable HTTP transport standard. The server must already be running and listening for HTTP connections.
+Bidirectional HTTP streaming. Connect to a remote MCP server implementing the current Streamable HTTP transport specification.
 
-**When to use:** Remote servers using the current Streamable HTTP MCP transport (recommended for new deployments).
+**CLI usage:**
 
-**Configuration:** Provide the server URL via `--url` (audit/proxy) or `--port` (inject).
+```bash
+qai audit scan --transport streamable-http --url "https://mcp-server.example.com/mcp"
 
-<CodeGroup>
-```bash audit
-qai audit scan \
-  --transport streamable-http \
-  --url "http://localhost:3000/mcp"
+qai proxy start --transport streamable-http --target-url "https://mcp-server.example.com/mcp"
 ```
 
-```bash proxy
-qai proxy start \
-  --transport streamable-http \
-  --target-url "http://localhost:3000/mcp"
-```
+**When to use:** Modern MCP servers, cloud deployments, servers requiring bidirectional communication.
 
-```bash inject
-qai inject serve \
-  --transport streamable-http \
-  --port 8888
-```
-</CodeGroup>
+## Default Transport
 
-## Module support matrix
+The default transport is `stdio`. You can set a different default in the web UI under **Settings > Defaults > Audit Transport**, which applies to workflow launches from the web UI.
 
-| Transport | audit | proxy | inject serve |
-|-----------|-------|-------|--------------|
-| stdio | Yes | Yes | Yes |
-| SSE | Yes | Yes | No |
-| Streamable HTTP | Yes | Yes | Yes |
+CLI commands always require an explicit `--transport` flag — there is no global CLI default.
+
+## Module-Specific Notes
+
+**Audit:** Uses `--transport`, `--command` (stdio), and `--url` (SSE/HTTP) flags on `qai audit scan` and `qai audit enumerate`.
+
+**Proxy:** Uses `--transport`, `--target-command` (stdio), and `--target-url` (SSE/HTTP) flags on `qai proxy start` and `qai proxy replay`.
+
+**Inject:** The inject server (`qai inject serve`) uses `--transport` to control how the malicious MCP server is exposed. Campaigns use the litellm backend (not MCP transport) to communicate with LLM providers.
+
+**Chain:** Transport for chain execution is configured in `chain-targets.yaml` (per-target transport and connection details).

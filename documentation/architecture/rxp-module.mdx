@@ -1,133 +1,72 @@
 ---
 title: RXP Module Architecture
-description: Embedding model registry, retrieval validation engine, and ChromaDB integration
+description: RAG retrieval poisoning measurement and validation
 ---
 
-The RXP module lives at `src/q_ai/rxp/` and implements a retrieval poisoning validation engine. It measures whether adversarial documents achieve retrieval rank in vector similarity searches across configurable embedding models.
+The RXP (RAG Retrieval Poisoning) module measures whether adversarial documents win vector similarity battles in RAG retrieval layers. It validates that a poisoned document ranks in the top-k results for target queries, indicating it would reach the LLM context window in a real RAG system.
+
+RXP requires optional dependencies: `pip install "q-uestionable-ai[rxp]"` (sentence-transformers, chromadb).
 
 ## Module Structure
 
 ```
-src/q_ai/rxp/
-├── __init__.py         # Module docstring
-├── _deps.py            # Optional dependency guard
-├── cli.py              # Typer CLI commands
-├── collection.py       # RetrievalCollection (ChromaDB wrapper)
-├── embedder.py         # Embedder abstraction (sentence-transformers)
-├── models.py           # Data models (dataclasses)
-├── registry.py         # Embedding model registry and resolution
-├── validator.py        # Validation engine orchestration
-└── profiles/           # Built-in domain profiles
-    ├── __init__.py     # Profile loader
-    └── hr_policy/      # HR policy test scenario
+rxp/
+├── validator.py         # validate_retrieval() — core validation logic
+├── embedder.py          # Embedding model interface (sentence-transformers)
+├── collection.py        # ChromaDB collection management
+├── registry.py          # Embedding model registry (list_models, resolve_model)
+├── models.py            # CorpusDocument, ValidationResult, QueryResult, ModelConfig
+├── profiles/            # Built-in domain profiles (YAML + corpus/poison .txt files)
+├── db.py                # RXP-specific DB operations
+├── cli.py               # validate, list-models, list-profiles commands
+├── adapter.py           # RXPAdapter for orchestrator integration
+├── mapper.py            # persist_validation() — bridges to core DB
+└── _deps.py             # require_rxp_deps() — lazy import guard
 ```
 
----
+## Validation Pipeline
 
-## Data Flow
+`validate_retrieval()` is the core function:
 
-A `validate` run follows this pipeline:
+1. **Ingest corpus** — Load legitimate documents and poison documents into a ChromaDB collection
+2. **Embed** — Generate embeddings for all documents using the selected model (sentence-transformers)
+3. **Query** — For each query, retrieve top-k documents by cosine similarity
+4. **Measure** — Check whether the poison document appears in the top-k results
+5. **Return** — `ValidationResult` with retrieval_rate, mean_poison_rank, and per-query details
 
-```mermaid
-flowchart TD
-    A["CLI (cli.py)"] --> B["resolve inputs\ncorpus · poison docs · queries"]
-    B --> C["require_rxp_deps()\nguard chromadb + sentence_transformers"]
-    C --> D["validate_retrieval()\norchestrator — validator.py"]
-    D --> E["resolve_model()\nregistry shortcut or ad-hoc HuggingFace name"]
-    E --> F["get_embedder()\nSentenceTransformer, process-cached"]
-    F --> G["RetrievalCollection()\nephemeral ChromaDB, UUID-suffixed"]
-    G --> H["ingest()\nencode docs via Embedder, add to ChromaDB"]
-    H --> I["query()\nencode query, nearest-neighbor search"]
-    I --> J["QueryResult\nhits · poison_retrieved · poison_rank"]
-    J --> K["ValidationResult\nretrieval_rate · mean_poison_rank"]
-    K --> L["print results / write JSON"]
-```
+## Key Data Models
 
----
+**CorpusDocument** — `id`, `text`, `source` (file path), `is_poison` (boolean flag)
+
+**ValidationResult** — `model_id`, `poison_retrievals` (count), `total_queries`, `retrieval_rate` (float 0–1, where 1.0 = 100%), `mean_poison_rank` (when retrieved), `query_results` (list of QueryResult)
+
+**QueryResult** — `query` (string), `poison_retrieved` (boolean), `poison_rank` (int or None)
+
+## Domain Profiles
+
+Built-in profiles provide pre-configured corpus documents, poison documents, and test queries for common domains. Each profile is a YAML file under `profiles/` referencing `.txt` files for corpus and poison content.
+
+Use `qai rxp list-profiles` to see available profiles. Use `--profile` on validate to load one.
 
 ## Embedding Model Registry
 
-**Source:** `registry.py`
+Models are registered in `registry.py`. Each `ModelConfig` has an `id`, `name`, `dimensions`, and `description`. Use `qai rxp list-models` to see available models.
 
-The registry maps shortcut IDs (e.g. `minilm-l6`) to `EmbeddingModelConfig` dataclasses containing the full HuggingFace model name, vector dimensions, and description.
+Default model: `minilm-l6` (MiniLM-L6-v2, local, no API key needed). Use `--model all` to compare across all registered models.
 
-Three models are registered by default. The `resolve_model()` function first checks the registry; if the ID is not found, it creates an ad-hoc config using the ID as the HuggingFace model name. This allows arbitrary model names (e.g. `BAAI/bge-m3`) to pass through without registry changes.
+## Severity Thresholds
 
----
+The RXP adapter maps retrieval rates to severity levels for findings:
 
-## Embedder Abstraction
+| Rate (0–1) | Percentage | Severity |
+|------------|------------|----------|
+| ≥ 0.75 | ≥ 75% | CRITICAL |
+| ≥ 0.50 | ≥ 50% | HIGH |
+| ≥ 0.25 | ≥ 25% | MEDIUM |
+| < 0.25 | < 25% | LOW |
 
-**Source:** `embedder.py`
+See [Interpretive Bands](/rxp/interpretive-bands) for details.
 
-The `Embedder` class wraps `sentence_transformers.SentenceTransformer` with two methods:
+## Adapter
 
-- **`encode(texts)`** — Batch-encode a list of strings into float vectors
-- **`similarity(query, candidates)`** — Cosine similarity via NumPy (available but not used in the current pipeline — ChromaDB handles nearest-neighbor search internally)
-
-Embedder instances are cached by model name in a module-level dictionary (`get_embedder()`). The cache avoids reloading models when running `--model all`.
-
----
-
-## RetrievalCollection
-
-**Source:** `collection.py`
-
-`RetrievalCollection` wraps a ChromaDB ephemeral client. Key design decisions:
-
-- **Ephemeral storage** — Uses `chromadb.Client()` (in-memory). No data persists between runs. Each validation is a clean-room test.
-- **Pre-computed embeddings** — Documents are encoded by the injected `Embedder`, not by ChromaDB's built-in embedding functions. This gives full control over which model produces the vectors.
-- **UUID-suffixed collection names** — Prevents collisions when multiple collections exist in the same process.
-- **Poison tracking** — `is_poison` and `source` metadata are stored as ChromaDB document metadata. Poison document IDs are tracked in a set for O(1) lookup during query result mapping.
-
-Methods:
-
-| Method | Description |
-|--------|-------------|
-| `ingest(documents)` | Encode and store a list of `CorpusDocument` objects |
-| `query(query_text, top_k)` | Embed the query, run nearest-neighbor search, return `RetrievalHit` list |
-| `reset()` | Delete and recreate the collection |
-| `count` | Number of stored documents |
-
----
-
-## Validation Engine
-
-**Source:** `validator.py`
-
-The `validate_retrieval()` function orchestrates a single validation run:
-
-1. Resolve the model config from the registry (or create ad-hoc)
-2. Get or create a cached `Embedder` instance
-3. Create a `RetrievalCollection` and ingest corpus + poison documents
-4. Run each query and build `QueryResult` objects (recording whether the poison document was retrieved and at what rank)
-5. Aggregate into a `ValidationResult` with retrieval rate and mean poison rank
-
-The CLI handles the multi-model loop — when `--model all` is used, it calls `validate_retrieval()` once per registered model and prints a comparison table.
-
----
-
-## Domain Profile Loading
-
-**Source:** `profiles/__init__.py`
-
-Profiles are auto-discovered by scanning subdirectories of the `profiles/` package for `profile.yaml` files. No registration is required — drop a new directory with the right structure and it appears in `list-profiles`.
-
-The loader uses `yaml.safe_load` (not `yaml.load`) for safety. Corpus and poison documents are loaded from `corpus/*.txt` and `poison/*.txt` within the profile directory, with the filename stem used as the document ID.
-
----
-
-## Optional Dependency Guard
-
-**Source:** `_deps.py`
-
-RXP depends on `sentence-transformers` and `chromadb`, which are heavy optional dependencies. The `require_rxp_deps()` function checks for their presence at runtime and raises `ImportError` with install instructions if either is missing.
-
-The guard is called inside the `validate` command body, after argument parsing. This means `--help`, `list-models`, and `list-profiles` all work without the optional dependencies installed. Users only need the heavy packages when actually running validation.
-
-Install with:
-
-```bash
-pip install q-uestionable-ai[rxp]
-# or
-uv sync --extra rxp
-```
+`RXPAdapter` wraps `validate_retrieval()` for orchestrator workflows. It runs via `asyncio.to_thread()` (CPU-bound embedding work), persists results, and emits findings with severity based on the retrieval rate thresholds. Uses `best_effort` error handling.

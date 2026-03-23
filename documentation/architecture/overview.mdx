@@ -1,96 +1,91 @@
 ---
-title: Architecture Overview
-description: Platform architecture, package layout, and module system
+title: Platform Overview
+description: Architectural design and module organization of the qai platform
 ---
 
-q-ai is a single Python package (`q-uestionable-ai`) with seven security modules, a shared core layer, a web UI, and workflow orchestration — all installed together.
+The qai platform is a modular, layered system with seven security assessment modules unified through a shared core infrastructure. Each module operates independently while leveraging common data storage, configuration, and runtime services.
 
-## Package layout
+## Architecture Layers
+
+**Web UI Layer** — FastAPI application server with HTMX for dynamic interactions, Jinja2 server-side rendering, and WebSocket channels for real-time run status and IPI hit notifications. Launched by running `qai` with no subcommand.
+
+**Orchestrator Layer** — Workflow registry, WorkflowRunner for background task execution, module adapters for lifecycle management. Manages parent/child run relationships and cross-module coordination.
+
+**Module Layer** — Seven security modules (audit, proxy, inject, chain, ipi, cxp, rxp), each with a CLI subcommand (Typer), adapter class for orchestrator integration, and mapper for DB persistence.
+
+**Shared Core Layer** — SQLite database (WAL mode, schema V10), configuration management (YAML + keyring + DB settings), FrameworkResolver for OWASP MCP Top 10 / MITRE ATLAS / CWE / OWASP Agentic Top 10 mapping, MitigationResolver for structured finding guidance, RunGuidance for deployment playbooks, LLM provider abstraction via litellm.
+
+**MCP Layer** — Shared MCP connection utilities (`q_ai.mcp`) for stdio, SSE, and Streamable HTTP transports. Used by audit, proxy, and inject modules.
+
+## Modules
+
+| Module | Purpose | Key Features |
+|--------|---------|-------------|
+| **audit** | MCP server vulnerability scanning | 10 scanners mapped to OWASP MCP Top 10, multi-format reports (JSON, SARIF, HTML, NDJSON, CSV) |
+| **proxy** | MCP traffic interception | Interactive TUI, session recording, replay against live servers |
+| **inject** | Tool poisoning and prompt injection | Multi-provider campaigns via litellm, NormalizedResponse scoring, evidence preservation |
+| **chain** | Multi-step attack paths | YAML chain definitions, blast radius analysis, detection rule generation (Sigma, Wazuh) |
+| **ipi** | Indirect prompt injection | 7 document formats, callback tracking with confidence scoring, deployment playbooks |
+| **cxp** | Context file poisoning | Coding assistant instruction files, rule catalog, output validation |
+| **rxp** | RAG retrieval poisoning | Embedding model validation, domain profiles, retrieval rate measurement |
+
+## CLI Structure
+
+All modules share a consistent CLI structure via Typer subcommands:
 
 ```
-src/q_ai/
-├── __init__.py         # Package version
-├── __main__.py         # python -m q_ai support
-├── cli.py              # Root Typer app — mounts all module subcommands
-├── core/               # Shared DB, config, models, framework resolver, LLM provider client
-├── server/             # FastAPI + HTMX + WebSocket web UI
-├── orchestrator/       # Workflow runner, adapter registry, event system
-├── audit/              # MCP server security scanner (OWASP MCP Top 10)
-├── proxy/              # MCP traffic interceptor
-├── inject/             # Tool poisoning & prompt injection framework
-├── chain/              # Multi-agent attack chain exploitation
-├── ipi/                # Indirect prompt injection testing
-├── cxp/                # Context file poisoning research harness
-├── rxp/                # RAG retrieval poisoning validation
-└── mcp/                # MCP protocol utilities
+qai                              # Launch web UI
+qai audit scan                   # Scan an MCP server
+qai audit enumerate              # List server capabilities
+qai inject campaign              # Run injection campaign
+qai ipi generate                 # Generate adversarial documents
+qai ipi listen                   # Start callback listener
+qai chain run                    # Execute attack chain
+qai cxp generate                 # Build poisoned instruction files
+qai rxp validate                 # Measure retrieval rank
+qai runs list                    # View run history
+qai findings list                # View all findings
+qai config set-credential        # Store provider API key
+qai update-frameworks            # Check for upstream framework changes
 ```
 
-Each module has its own `cli.py` defining Typer subcommands, its own models, and its own test directory under `tests/`.
+## Data Flow
 
-## CLI hierarchy
+1. **Run creation** — User launches a workflow via web UI or CLI. The orchestrator creates a parent run and child runs per module.
+2. **Module execution** — Each module adapter runs its domain logic (scan, campaign, generate, validate). Results persist to SQLite via mapper functions.
+3. **Finding emission** — Modules emit findings with severity, category, and framework IDs. The MitigationResolver generates structured remediation guidance per finding.
+4. **Real-time updates** — WebSocket broadcasts run status changes, progress messages, and IPI hit notifications to the web UI.
+5. **Export** — Results export as JSON bundles, SARIF, NDJSON, CSV, or HTML reports.
 
-The root `cli.py` creates a Typer app and mounts subcommand groups via `app.add_typer()`:
+## Configuration Precedence
 
-```mermaid
-flowchart LR
-    ROOT["qai"] --> AUDIT["audit"]
-    ROOT --> PROXY["proxy"]
-    ROOT --> INJECT["inject"]
-    ROOT --> CHAIN["chain"]
-    ROOT --> IPI["ipi"]
-    ROOT --> CXP["cxp"]
-    ROOT --> RXP["rxp"]
-    ROOT --> CONFIG["config"]
-    ROOT --> RUNS["runs"]
-    ROOT --> FINDINGS["findings"]
-    ROOT --> TARGETS["targets"]
+```
+CLI flags (highest priority)
+  → Environment variables
+    → Database settings (via Settings UI or qai config set)
+      → YAML config file (~/.qai/config.yaml)
+        → Built-in defaults (lowest priority)
 ```
 
-Running `qai` with no subcommand starts the web UI server and opens a browser.
+Credentials follow a separate chain: environment variable → OS keyring → error.
 
-## Technology stack
+## Key Infrastructure Components
 
-| Component | Technology | Rationale |
-|-----------|-----------|-----------|
-| Language | Python >=3.11 | Async-native, rich ecosystem for security tooling |
-| MCP SDK | mcp v1.x | Official SDK, stable API |
-| CLI | Typer + Rich | Declarative CLI with auto-generated help |
-| Web UI | FastAPI + HTMX + Jinja2 + WebSocket | Server-rendered UI with live updates |
-| LLM providers | litellm | 100+ providers behind a unified interface |
-| Credentials | keyring | OS-native secret storage |
-| Database | SQLite (WAL mode) | Single-file, zero-config, schema-versioned |
-| Async | asyncio (stdlib), anyio at MCP SDK boundary | Standard library async |
-| Serialization | Pydantic | Type-safe data models with validation |
-| Testing | pytest + pytest-asyncio + pytest-timeout | Async test support, fixture-based |
-| Linting | ruff | Fast, unified linter and formatter |
-| Type checking | mypy (strict) | Static type verification |
-| Packaging | hatchling + uv | Modern Python packaging with fast dependency resolution |
+**FrameworkResolver** — Loads `frameworks.yaml`, maps assessment categories to OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10 technique IDs. Used by audit findings and displayed as pill badges in the web UI.
 
-## Shared core
+**MitigationResolver** — Generates structured, tiered remediation guidance for findings. Loads `mitigations.yaml` covering all 10 OWASP MCP categories. Per-section provenance tracking.
 
-The `core/` package provides infrastructure shared across all modules:
+**RunGuidance** — Per-run deployment playbooks generated by IPI and CXP module adapters. Contains ordered GuidanceBlocks (inventory, trigger prompts, deployment steps, monitoring/interpretation).
 
-- **Database** — SQLite with WAL pragma, schema migration via `PRAGMA user_version`, common CRUD for runs, findings, targets, evidence, settings
-- **Config** — Config file loader, credential management via OS keyring, settings precedence resolver (CLI flag → env var → DB setting → config file → built-in default)
-- **Models** — Shared data models: `Run`, `Target`, `Finding`, `Evidence`, `Severity`, `RunStatus`
-- **Framework resolver** — Maps findings to OWASP MCP Top 10, OWASP Agentic, MITRE ATLAS, CWE from YAML definitions
-- **LLM provider client** — `ProviderClient` protocol backed by litellm, `NormalizedResponse` for cross-provider response handling
+**Provider Registry** — Manages LLM providers for inject campaigns and chain execution. Supports cloud providers (Anthropic, OpenAI, Groq, OpenRouter) and local providers (Ollama, LM Studio) via litellm. Credentials stored in OS keyring.
 
-## Web UI and orchestration
+**Bridge Token** — Shared secret at `~/.qai/bridge.token` for IPI callback listener ↔ web UI communication. Auto-generated on first use, no expiry.
 
-The **server** package provides a FastAPI application with HTMX-driven pages: a workflow launcher, operations view (live status via WebSocket), research management (runs, findings, targets), and settings (provider configuration, defaults, infrastructure status).
+**WorkflowRunner** — Manages background task execution, parent/child run lifecycle, and WebSocket event broadcasting.
 
-The **orchestrator** package provides `WorkflowRunner` for parent/child run lifecycle management, thin module adapters (e.g., `AuditAdapter`, `InjectAdapter`, `IPIAdapter`), and event broadcasting to connected WebSocket clients.
+## Next Steps
 
-## Module architecture pages
-
-Each module has a dedicated architecture page:
-
-- [Shared Core](/architecture/core) — database, config, models, framework resolver, LLM client
-- [Audit Module](/architecture/audit-module) — scanner framework, orchestrator, reporting
-- [Proxy Module](/architecture/proxy-module) — pipeline, intercept engine
-- [Inject Module](/architecture/inject-module) — payload loading, server builder, campaigns
-- [Chain Module](/architecture/chain-module) — loader, validator, graph analysis, tracer
-- [IPI Module](/architecture/ipi-module) — generator framework, callback server, dashboard
-- [CXP Module](/architecture/cxp-module) — builder pipeline, evidence store, validator, reporter
-- [RXP Module](/architecture/rxp-module) — embedding registry, retrieval validation
+- [Core Infrastructure](/architecture/core) — Database, configuration, and shared models
+- [Audit Module](/architecture/audit-module) — Scanner architecture and reporting
+- [Inject Module](/architecture/inject-module) — Multi-provider campaign execution
+- [IPI Module](/architecture/ipi-module) — Document generation and callback tracking

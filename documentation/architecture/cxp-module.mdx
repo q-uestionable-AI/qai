@@ -1,147 +1,79 @@
 ---
 title: CXP Module Architecture
-description: Builder engine, rule catalog, TUI, and evidence pipeline
+description: Context file poisoning for coding assistants
 ---
 
-The CXP module lives at `src/q_ai/cxp/` and implements a research harness for context file poisoning. It assembles poisoned instruction files from clean base templates and researcher-selected rules, generates test repositories, and provides an evidence pipeline for tracking results across assistants and models.
+The CXP (Context File Poisoning) module builds poisoned instruction files for coding assistants and validates whether the assistant's output follows the injected rules. It tests whether AI coding tools blindly trust workspace configuration files.
 
 ## Module Structure
 
 ```
-src/q_ai/cxp/
-├── __init__.py        # Module docstring
-├── cli.py             # Typer CLI commands + TUI launch
-├── models.py          # Rule, BuildResult, AssistantFormat, TestResult, etc.
-├── catalog.py         # Rule catalog loader (built-in + user rules)
-├── base_loader.py     # Base template loading, rule insertion, marker stripping
-├── builder.py         # Test repository generator (build function)
-├── prompt_reference.py # Prompt reference companion file generator
-├── evidence.py        # SQLite evidence store (~/.qai/cxp.db)
-├── validator.py       # Output validation against detection rules
-├── reporter.py        # Comparison matrix and PoC package generation
-├── bases/             # Clean base templates (one per format)
-├── rules/             # Built-in insecure coding rule definitions (YAML)
-├── formats/           # Assistant format definitions
-├── objectives/        # Detection rule categories (used by validator)
-└── tui/               # Textual TUI screens
-    ├── __init__.py    # CXPApp (Textual App subclass)
-    ├── format_screen.py
-    ├── rules_screen.py
-    ├── preview_screen.py
-    ├── generate_screen.py
-    └── record_screen.py
+cxp/
+├── builder.py           # build() — generates poisoned test repositories
+├── catalog.py           # Rule catalog (get_rule, list_rules)
+├── validator.py         # validate() — checks generated code against detection rules
+├── guidance_builder.py  # build_cxp_guidance() — deployment playbook generation
+├── models.py            # BuildResult, Rule, CampaignRecord, ValidationResult
+├── formats/             # Format definitions for each assistant type
+├── bases/               # Base repository templates
+├── objectives/          # Attack objectives
+├── rules/               # Rule definitions (YAML)
+├── techniques/          # Technique implementations
+├── prompt_reference.py  # Reference prompt generation
+├── reporter.py          # generate_matrix(), export_poc()
+├── db.py                # CXP-specific DB operations (campaigns, results)
+├── cli.py               # formats, generate, record, campaigns, validate, report commands
+├── adapter.py           # CXPAdapter for orchestrator integration
+├── mapper.py            # persist to core DB
+└── base_loader.py       # Base template loading
 ```
 
----
+## Supported Formats
 
-## Data Flow
+Each format targets a specific coding assistant's instruction file convention:
 
-```mermaid
-flowchart TD
-    A["TUI or CLI\nselect format + rules"] --> B["base_loader.py\nload base → insert rules → strip markers"]
-    B --> C["builder.py\nassemble repo: context file + skeleton + prompt reference"]
-    C --> D["Test repository on disk"]
-    D --> E["Researcher opens repo in coding assistant\nissues trigger prompt from prompt reference"]
-    E --> F["Capture assistant output"]
-    F --> G["evidence.py\nrecord result to cxp.db"]
-    G --> H["validator.py\napply detection rules"]
-    H --> I["ValidationResult\nhit / partial / miss"]
-    I --> J["reporter.py\nmatrix or PoC package"]
-```
+| Format ID | Filename | Target Assistant |
+|-----------|----------|-----------------|
+| `cursorrules` | `.cursorrules` | Cursor IDE |
+| `claude-md` | `.claude/instructions.md` | Claude |
+| `copilot-instructions` | `.github/copilot-instructions.md` | GitHub Copilot |
+| `agents-md` | `agents.md` | Gemini (agents) |
+| `gemini-md` | `.gemini/instructions.md` | Gemini |
+| `windsurfrules` | `.windsurfrules` | Windsurf IDE |
 
----
+## Build Pipeline
 
-## Rule Catalog
+`build()` generates a test repository:
 
-**Source:** `catalog.py`, `rules/`
+1. Creates the repository directory structure from a base template
+2. Writes the format-specific instruction file with injected rules
+3. Generates a prompt reference file (suggested trigger prompts)
+4. Returns `BuildResult` with repo_dir, context_file path, rules_inserted list, prompt_reference_path
 
-Rules are YAML files defining insecure coding patterns. Each rule has content variants for markdown and plaintext syntax, a target section in the base template, and suggested trigger prompts.
+## Rule System
 
-Two sources:
-- **Built-in rules** — 8 rules shipped with the package in `rules/`, loaded via `importlib.resources`
-- **User rules** — `~/.qai/cxp/rules/*.yaml`, loaded at runtime, override built-in rules with the same ID
+Rules are the injected instructions. Each rule has an `id`, `description`, and `category`. Examples: `hardcoded-secrets` (embed API keys), `shell-true` (use shell=True in subprocess), `extra-index-url` (add malicious package index).
 
-Freestyle rules can be created at runtime via the TUI without writing YAML.
+Rules are defined in YAML files under `rules/`. The catalog (`catalog.py`) provides lookup and listing.
 
----
+## Validation
 
-## Base Templates
+`validate()` checks whether generated code follows the injected rules. Takes raw output text and a technique ID, returns a `ValidationResult` with verdict, matched rules, and detail text.
 
-**Source:** `bases/`, `base_loader.py`
+## Guidance Builder
 
-One base template per assistant format — clean, legitimate project configuration files with invisible section markers. The builder inserts rule content at these markers, then strips all markers from the final output.
+`build_cxp_guidance()` generates a `RunGuidance` with four blocks:
+- **INVENTORY** — Active rules with descriptions and categories
+- **TRIGGER_PROMPTS** — Format-specific curated prompts with override slot
+- **DEPLOYMENT_STEPS** — Instructions for opening the repo, verifying context file detection, triggering generation, and recording results
+- **INTERPRETATION** — How to evaluate vulnerable vs. clean responses, with per-rule indicators
 
-Section markers:
-- Markdown formats: `<!-- cxp:section:dependencies -->`, `<!-- cxp:section:error-handling -->`, `<!-- cxp:section:api-routes -->`
-- Plaintext formats: `# cxp:section:dependencies`, `# cxp:section:error-handling`, `# cxp:section:api-routes`
+The trigger prompt can be overridden via `POST /api/cxp/{run_id}/trigger-override`.
 
----
+## Adapter
 
-## Builder
+`CXPAdapter` wraps `build()` for orchestrator workflows. It runs via `asyncio.to_thread()`, builds guidance, and transitions to `WAITING_FOR_USER` status (since testing the assistant is manual). The conclude campaign action marks the workflow as complete.
 
-**Source:** `builder.py`
+## Reporting
 
-The `build()` function assembles a test repository:
-
-1. Load the base template for the selected format
-2. Resolve each rule's content for the format's syntax type (markdown or plaintext)
-3. Insert rules at their target section markers
-4. Strip all section markers from the assembled content
-5. Write the context file to the repo directory
-6. Copy the project skeleton
-7. Generate the prompt reference companion file
-8. Write the manifest with build metadata
-
-Returns a `BuildResult` with paths and metadata.
-
----
-
-## TUI
-
-**Source:** `tui/`
-
-Textual-based interactive interface. Five screens:
-
-| Screen | Purpose |
-|--------|---------|
-| FormatScreen | Select target assistant format |
-| RulesScreen | Browse catalog, toggle rules, add freestyle |
-| PreviewScreen | View assembled context file with rule highlights |
-| GenerateScreen | Run builder, display paths and prompt suggestions |
-| RecordScreen | Record test results to evidence store |
-
-App-level state on `CXPApp` enables cross-screen data sharing. Navigation uses `push_screen()`/`pop_screen()` with Backspace for back navigation.
-
----
-
-## Evidence Store
-
-**Source:** `evidence.py`
-
-SQLite database at `~/.qai/cxp.db`. Schema version tracked via `PRAGMA user_version`.
-
-| Table | Purpose |
-|-------|---------|
-| `campaigns` | Test campaigns with ID, name, description, timestamps |
-| `test_results` | Captured outputs with technique, assistant, model, rules_inserted, format_id, validation status |
-
----
-
-## Validator
-
-**Source:** `validator.py`
-
-Applies detection rules organized by category (backdoor, exfil, depconfusion, permescalation, cmdexec) against captured assistant output. Each category defines regex patterns that match indicators of compliance with the poisoned instructions.
-
-Validation outcomes: **hit** (high-severity match), **partial** (medium/low match), **miss** (no match).
-
----
-
-## Reporter
-
-**Source:** `reporter.py`
-
-Two output modes:
-
-- **Comparison matrix** — Pass/fail table across rules and assistants (Markdown or JSON)
-- **PoC package** — ZIP archive with poisoned file, trigger prompt, captured output, and validation results for responsible disclosure
+`report matrix` generates an assistant × technique comparison matrix (markdown or JSON). `report poc` exports a bounty-ready ZIP package for a specific test result.

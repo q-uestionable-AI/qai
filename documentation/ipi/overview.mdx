@@ -1,37 +1,95 @@
 ---
 title: Overview
-description: Indirect prompt injection testing with callback-verified payload execution
+description: Test AI agent indirect prompt injection vulnerabilities through document poisoning and callback tracking
 ---
 
-IPI tests whether documents ingested by AI systems can redirect agent behavior through hidden instructions embedded in the document content.
+## What Is IPI?
 
-## Why IPI Matters
+Indirect Prompt Injection (IPI) is a security testing module that lets you test whether AI systems are vulnerable to hidden instructions embedded in external documents. You create adversarial documents, deploy them to a target system, and track execution via HTTP callbacks — proof that the hidden payload actually ran.
 
-AI pipelines that ingest external documents — RAG systems, knowledge bases, web fetch tools — are vulnerable to adversarial content in those documents. Unlike output analysis, IPI confirms execution via out-of-band HTTP callbacks: the payload fires a request to your listener, providing proof of execution independent of model output.
+IPI is the only qai module where documents are uploaded to third-party AI services. **This requires explicit authorization.**
 
 ## How It Works
 
-The IPI workflow follows five steps:
+The workflow is straightforward:
 
-1. **Start the listener** — Launch the callback server on your machine to receive execution confirmations
-2. **Generate payloads** — Create payload documents using a technique and format combination
-3. **Deploy** — Place the document in the target pipeline (upload to knowledge base, RAG corpus, or web-accessible URL)
-4. **Wait for callbacks** — The callback fires when the agent ingests and acts on the payload
-5. **Review results** — Check execution status in the web dashboard or via `ipi status`
+1. **Start the callback listener** — Run `qai ipi listen` on a server you control. This opens an HTTP endpoint that receives proof-of-execution callbacks.
+2. **Generate poisoned documents** — Use `qai ipi generate` to create documents with hidden payloads using your choice of format (PDF, Word, Markdown, etc.) and hiding technique (white ink text, metadata, comments, etc.).
+3. **Deploy to target** — Upload the poisoned document to the target system's document ingestion pipeline (knowledge base, RAG system, email service, calendar app, etc.).
+4. **Trigger payload execution** — Send a prompt that causes the target to ingest and process your document.
+5. **Verify execution** — Monitor your callback listener for HTTP requests. A callback confirms the target executed your hidden payload.
 
-## Built-in Components
+## What You Can Test
 
-- **34 techniques** across 3 categories: social engineering, instruction override, context manipulation
-- **7 output formats** — Markdown, plain text, HTML, PDF, DOCX, CSV, JSON
-- **Callback server** — Authenticated listener with HMAC verification
-- **Web dashboard** — Real-time callback monitoring and campaign management
-- **Deterministic seeding** — Reproducible payload generation for consistent testing
+IPI supports **7 document formats** and **3+ techniques per format**:
+
+- **PDF** — Two phases of techniques: white ink, metadata, form fields, JavaScript, etc.
+- **DOCX (Word)** — Hidden text, comments, metadata, headers/footers
+- **Markdown** — HTML comments, zero-width Unicode, hidden blocks
+- **HTML** — Meta tags, data attributes, CSS positioning tricks
+- **Image** (PNG/JPG) — Visible/subtle text overlays, EXIF metadata
+- **ICS** (Calendar) — Event descriptions, alarms, custom properties
+- **EML** (Email) — Headers, hidden HTML, attachments
+
+Each technique hides your payload in a different way, making it harder to detect by automated scanning tools.
+
+## Payload Styles and Types
+
+You control how the payload is presented and what it does:
+
+**Payload Styles** (how it blends into the document):
+- **Obvious** — Direct injection markers for baseline testing
+- **Citation** — Disguised as a document reference
+- **Reviewer** — Appears as a note to an editor
+- **Helpful** — Framed as helpful supplementary content
+- **Academic** — Academic cross-reference format
+- **Compliance** — Looks like a verification requirement
+- **Datasource** — Appears as data source attribution
+
+**Payload Types** (attack objectives):
+- **callback** — Proof of execution (safe, default)
+- **exfil_summary** — Attempts to extract document summary
+- **exfil_context** — Attempts to extract conversation context
+- **ssrf_internal** — Server-side request forgery to internal endpoints
+- **instruction_override** — Attempts to override system instructions
+- **tool_abuse** — Attempts to misuse agent tools
+- **persistence** — Attempts to persist instructions across sessions
+
+Non-callback types require the `--dangerous` flag and are intended for authorized security testing only.
+
+## Callback Tracking
+
+The callback listener records incoming HTTP requests and assigns a **confidence level** to each:
+
+- **HIGH** — Valid campaign token present in the callback URL. Strong proof that the specific poisoned document was executed.
+- **MEDIUM** — No token, but User-Agent indicates a programmatic HTTP client (python-requests, httpx, curl, etc.). Likely automated execution.
+- **LOW** — No token and browser/scanner User-Agent. May be incidental traffic or scanner noise, not definitive proof.
+
+All hits are stored in the database and accessible via `qai ipi status` or the web dashboard.
+
+## Safety and Authorization
+
+<Warning>
+IPI documents may be uploaded to third-party AI services. This requires explicit authorization before generating payloads.
+</Warning>
+
+Non-callback payload types (exfil, SSRF, instruction override, etc.) require the `--dangerous` flag. This is a safety gate to ensure you're intentionally running a high-risk test.
+
+The callback listener returns a spoofed HTTP 404 response to avoid alerting the target system that the payload was detected.
+
+## Key Components
+
+- **CLI** (`qai ipi` commands) — Generate payloads, manage campaigns, monitor hits
+- **Callback Server** — FastAPI listener that receives and logs execution confirmations
+- **Database** — Stores campaigns, hits, and campaign metadata
+- **Web UI** — IPI tab in run results with live hit feed and deployment playbook (when running through the web UI)
+- **Guidance Builder** — Generates deployment workflows and trigger prompts tailored to your format and target platform
 
 ## Next Steps
 
-- [IPI CLI Reference](/ipi/cli) — Command reference for `qai ipi`
-- [Techniques](/ipi/techniques) — Social engineering, instruction override, and context manipulation techniques
-- [Formats](/ipi/formats) — Supported output formats for payload generation
-- [Payloads](/ipi/payloads) — Payload structure and customization
-- [Callbacks](/ipi/callbacks) — Callback server setup and HMAC verification
-- [Web Dashboard](/ipi/dashboard) — Real-time monitoring interface
+- [CLI Reference](/ipi/cli) — All `qai ipi` commands and options
+- [Techniques](/ipi/techniques) — Detailed breakdown of all hiding techniques by format
+- [Formats](/ipi/formats) — Implementation status and format-specific capabilities
+- [Payloads](/ipi/payloads) — Payload styles, types, and the `--dangerous` safety gate
+- [Callbacks](/ipi/callbacks) — Listener setup, hit tracking, and confidence scoring
+- [Deployment Playbook](/ipi/deployment-playbook) — Guided workflow for poisoning and monitoring

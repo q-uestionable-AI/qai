@@ -1,0 +1,88 @@
+---
+title: JSON Bundle Export
+description: Complete run export in the run-bundle-v1 schema
+---
+
+The JSON export produces a run bundle containing the parent run, child runs, findings, evidence references, target, and module-specific data — everything about a workflow execution in one file.
+
+## Generating a JSON Bundle
+
+**Web UI:** Click **Export JSON** on a completed run's overview header.
+
+**CLI:** The JSON bundle is generated server-side. Fetch it via the HTTP endpoint:
+
+```bash
+curl -o bundle.json http://localhost:8000/api/runs/{run_id}/export
+```
+
+This is the same export used by the Web UI's Export JSON button.
+
+## Schema: `run-bundle-v1`
+
+```json
+{
+  "schema_version": "run-bundle-v1",
+  "run": { ... },
+  "child_runs": [ ... ],
+  "findings": [ ... ],
+  "evidence": [ ... ],
+  "target": { ... },
+  "audit_scans": [ ... ],
+  "inject_results": [ ... ],
+  "proxy_sessions": [ ... ],
+  "chain_executions": [ ... ],
+  "chain_step_outputs": [ ... ],
+  "ipi_payloads": [ ... ],
+  "cxp_test_results": [ ... ],
+  "rxp_validations": [ ... ]
+}
+```
+
+### `run`
+
+The parent workflow run with fields: `id` (UUID hex), `module`, `status` (int — 0=pending, 1=running, 2=completed, 3=failed, 4=cancelled, 5=waiting_for_user, 6=partial; see `RunStatus` in [Core Infrastructure](/architecture/core)), `parent_run_id`, `name` (workflow ID), `target_id`, `config` (JSON string), `started_at`, `finished_at`, `guidance` (JSON string or null).
+
+### `child_runs`
+
+Array of child run objects (same structure as `run`). One per module that executed in the workflow (e.g., audit, proxy, inject child runs for an "Assess an MCP Server" workflow).
+
+### `findings`
+
+Array of finding objects: `id`, `run_id`, `module`, `category` (e.g., `command_injection`), `severity` (0-4 int), `title`, `description`, `framework_ids` (JSON dict mapping framework names to IDs), `mitigation` (JSON dict or null), `source_ref`, `created_at`.
+
+### `evidence`
+
+Array of evidence reference objects (metadata only, no inline content): `id`, `type`, `mime_type`, `storage` (`inline` or `file`), `path`, `finding_id`, `run_id`, `hash`, `created_at`.
+
+### `target`
+
+Target object: `id`, `type`, `name`, `uri`, `metadata`, `created_at`. Null if no target was created for the run.
+
+### Module-Specific Tables
+
+Each key contains rows from the corresponding database table for all runs in the bundle:
+
+- `audit_scans` — Audit scan metadata
+- `inject_results` — Injection campaign results
+- `proxy_sessions` — Session metadata (without message content)
+- `chain_executions` and `chain_step_outputs` — Chain execution and per-step results
+- `ipi_payloads` — Generated IPI payload records
+- `cxp_test_results` — CXP test recordings
+- `rxp_validations` — RXP retrieval validation results
+
+## Processing the Bundle
+
+```bash
+# Extract high-severity findings
+jq '.findings[] | select(.severity >= 3) | {title, category, severity}' bundle.json
+
+# List child runs with status
+jq '.child_runs[] | {module, status, started_at}' bundle.json
+
+# Count findings per module
+jq '[.findings[] | .module] | group_by(.) | map({module: .[0], count: length})' bundle.json
+```
+
+## Integration
+
+The JSON bundle is the input format for the [DefectDojo integration](/integrations/defectdojo) and can be loaded into any JSON-capable analysis tool. See also [NDJSON](/exports/ndjson) for a streaming-friendly alternative and [CSV](/exports/csv) for spreadsheet analysis.

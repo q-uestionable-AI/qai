@@ -1,139 +1,157 @@
 ---
-title: Shared Core
-description: Database, configuration, models, framework resolver, and LLM provider client
+title: Core Infrastructure
+description: Database schema, configuration system, and shared data models
 ---
 
-The `core/` package provides types and utilities shared across all modules. All modules import from core rather than defining their own base types.
+The core layer (`q_ai.core`) provides shared services: persistent data storage, configuration management, framework mapping, mitigation guidance, and LLM provider abstraction.
 
-## File layout
+## SQLite Database
 
-```
-src/q_ai/core/
-├── __init__.py
-├── db.py              # SQLite connection manager, shared CRUD, schema migration
-├── schema.py          # DDL for shared tables, PRAGMA user_version migration runner
-├── models.py          # Shared data models (Run, Target, Finding, Evidence, Severity, RunStatus)
-├── config.py          # Config file loader, credential management, settings precedence
-├── frameworks.py      # FrameworkResolver — maps categories to OWASP/MITRE/CWE IDs
-├── llm.py             # ProviderClient protocol, litellm integration, NormalizedResponse
-├── data/
-│   └── frameworks.yaml  # Framework mapping data
-└── cli/
-    ├── config.py      # qai config get/set/set-credential/list-providers
-    ├── findings.py    # qai findings list
-    ├── runs.py        # qai runs list
-    └── targets.py     # qai targets list/add
-```
+The platform uses SQLite with WAL mode for concurrent access and foreign key enforcement. The database lives at `~/.qai/qai.db` and auto-initializes with schema migrations on first access. Current schema version: **V10**.
 
-## Database
+<Note>
+WAL mode requires the `.db`, `-wal`, and `-shm` files to remain in the same directory.
+</Note>
 
-SQLite with WAL pragma, stored at `~/.qai/qai.db`. Schema versioned via `PRAGMA user_version` with automatic migration on connect.
+## Core Data Models
 
-### Shared tables
+### Run
 
-| Table | Purpose |
-|-------|---------|
-| `runs` | Workflow and module execution records with parent/child lineage |
-| `targets` | Registered scan targets (MCP servers, AI pipelines) |
-| `findings` | Security findings with severity, category, OWASP mapping |
-| `evidence` | Supporting evidence attached to findings |
-| `settings` | Key-value configuration store |
-
-### Module-specific tables
-
-| Table | Module |
-|-------|--------|
-| `audit_scans` | audit |
-| `inject_results` | inject |
-| `proxy_sessions` | proxy |
-| `chain_executions`, `chain_step_outputs` | chain |
-| `ipi_hits`, `ipi_payloads` | ipi |
-| `cxp_test_results` | cxp |
-| `rxp_validations` | rxp |
-
-## Key types
-
-### Severity
-
-Integer enum with five CVSS-aligned levels:
-
-| Level | Usage |
-|-------|-------|
-| `CRITICAL` | Remote code execution, full compromise |
-| `HIGH` | Data exfiltration, privilege escalation |
-| `MEDIUM` | Information disclosure, partial access |
-| `LOW` | Minor issues, defense-in-depth gaps |
-| `INFO` | Informational observations, best-practice notes |
-
-### RunStatus
-
-Integer enum tracking run lifecycle:
-
-| Status | Value | Description |
-|--------|-------|-------------|
-| `PENDING` | 0 | Created, not yet started |
-| `RUNNING` | 1 | Actively executing |
-| `COMPLETED` | 2 | Finished successfully |
-| `FAILED` | 3 | Finished with error |
-| `CANCELLED` | 4 | Cancelled by user |
-| `WAITING_FOR_USER` | 5 | Paused, awaiting human input |
-| `PARTIAL` | 6 | Some steps completed, others failed |
-
-### Finding
-
-Dataclass representing a single security finding:
+Represents a top-level operation or module execution. IDs are UUID strings.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `rule_id` | `str` | Unique check identifier (e.g., `MCP05-001`) |
-| `category` | `str` | Internal taxonomy category |
-| `title` | `str` | Short human-readable title |
-| `description` | `str` | Detailed vulnerability description |
-| `severity` | `Severity` | CVSS-aligned severity level |
-| `evidence` | `str` | Raw evidence supporting the finding |
-| `remediation` | `str` | Recommended fix or mitigation |
-| `metadata` | `dict[str, Any]` | Additional context |
+| `id` | str | UUID identifier |
+| `module` | str | Module name (audit, proxy, inject, chain, ipi, cxp, rxp) |
+| `status` | RunStatus | Execution status |
+| `parent_run_id` | str \| None | Parent run for workflow child runs |
+| `name` | str \| None | Human-readable name (e.g., workflow ID) |
+| `target_id` | str \| None | Reference to the target being tested |
+| `config` | dict \| None | Run configuration (serialized as JSON) |
+| `started_at` | datetime \| None | Start timestamp |
+| `finished_at` | datetime \| None | Completion timestamp |
+| `guidance` | str \| None | JSON-serialized RunGuidance (IPI/CXP playbooks) |
 
-## Configuration
+**RunStatus values:**
 
-### Credential management
+| Status | Value | Description |
+|--------|-------|-------------|
+| PENDING | 0 | Awaiting execution |
+| RUNNING | 1 | Currently executing |
+| COMPLETED | 2 | Successfully finished |
+| FAILED | 3 | Terminated with error |
+| CANCELLED | 4 | User-initiated stop |
+| WAITING_FOR_USER | 5 | Awaiting user interaction (e.g., IPI callback, CXP manual test) |
+| PARTIAL | 6 | Completed with some module failures |
 
-API keys are stored via the `keyring` library in the OS-native secret store. Resolution order: **environment variable → OS keyring → error** (no plaintext fallback).
+### Target
 
-```python
-from q_ai.core.config import get_credential, set_credential
+Represents a scan or test target.
 
-set_credential("anthropic", "sk-ant-...")
-key = get_credential("anthropic")  # Returns str or None
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | str | UUID identifier |
+| `type` | str | Target type (e.g., "server") |
+| `name` | str | Human-readable name |
+| `uri` | str \| None | Connection URI or address |
+| `metadata` | dict \| None | Additional target properties |
 
-### Settings precedence
+### Finding
 
-For non-secret settings, the resolution chain is: **CLI flag → environment variable → DB setting → config file → built-in default**.
+A security finding produced by a module run.
 
-```python
-from q_ai.core.config import resolve
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | str | UUID identifier |
+| `run_id` | str | The run that produced this finding |
+| `module` | str | Module name |
+| `category` | str | Finding category (e.g., `command_injection`, `auth`, `tool_poisoning`) |
+| `severity` | Severity | INFO (0), LOW (1), MEDIUM (2), HIGH (3), CRITICAL (4) |
+| `title` | str | Short human-readable title |
+| `description` | str \| None | Detailed description |
+| `framework_ids` | dict \| None | Framework mappings (e.g., `{"owasp_mcp_top10": "MCP05", "mitre_atlas": "AML.T0054"}`) |
+| `mitigation` | dict \| None | Persisted mitigation guidance data |
+| `source_ref` | str \| None | Scanner or source reference |
 
-value, source = resolve("default_model")
-# source: "cli", "env", "db", "file", or "default"
-```
+### Evidence
 
-## Framework resolver
+Structured proof attached to findings.
 
-`FrameworkResolver` loads `data/frameworks.yaml` and maps internal finding categories to external framework IDs (OWASP MCP Top 10, OWASP Agentic, MITRE ATLAS, CWE).
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | str | UUID identifier |
+| `finding_id` | str | Parent finding |
+| `evidence_type` | str | Type of evidence (e.g., "request", "response", "tool_call") |
+| `content` | str | Raw evidence content |
+| `metadata` | dict \| None | Additional structured data |
 
-```python
-from q_ai.core.frameworks import FrameworkResolver
+## Configuration System
 
-resolver = FrameworkResolver()
-ids = resolver.resolve("command_injection")
-# {"owasp_mcp": "MCP05", "cwe": "CWE-78", ...}
-```
+Configuration merges from multiple sources with precedence ordering:
 
-## LLM provider client
+1. **CLI flags** (highest)
+2. **Environment variables**
+3. **Database settings** (SQLite `settings` table, managed via Settings UI or `qai config set`)
+4. **YAML config file** (`~/.qai/config.yaml`)
+5. **Built-in defaults** (lowest)
 
-`q_ai.core.llm` provides the `ProviderClient` protocol backed by litellm, supporting 100+ providers. All provider responses are normalized to `NormalizedResponse` before scoring or analysis. Raw provider responses are preserved separately for evidence and research.
+Use `qai config get <key>` to see the resolved value and its source for any setting.
 
-Model strings use the `provider/model` format (e.g., `anthropic/claude-sonnet-4-20250514`, `ollama/llama3`). Bare strings fall back to `anthropic/` for backward compatibility.
+## Credential Management
 
-Tool calling is a hard prerequisite for inject campaigns — the client fails fast if the selected model doesn't support tool use.
+Provider API keys are stored in the OS keyring (Windows Credential Manager, macOS Keychain, Linux Secret Service). The keyring service name is `q-ai`.
+
+Resolution order for credentials: environment variable (`{PROVIDER}_API_KEY`) → OS keyring → error.
+
+CLI commands for credential management:
+
+- `qai config set-credential <provider>` — prompts for key with masked input
+- `qai config delete-credential <provider>` — removes key from keyring
+- `qai config list-providers` — shows credential status for known providers
+- `qai config import-legacy-credentials` — one-time migration from plaintext `config.yaml` to keyring
+
+## FrameworkResolver
+
+Loads framework definitions from `q_ai/core/data/frameworks.yaml` and maps assessment categories (e.g., `command_injection`, `auth`, `tool_poisoning`) to technique IDs across four frameworks:
+
+- **OWASP MCP Top 10** — MCP01 through MCP10
+- **MITRE ATLAS** — AML technique IDs (reviewed against v5.4.0)
+- **CWE** — Common Weakness Enumeration IDs
+- **OWASP Agentic Top 10** — Agentic AI security categories
+
+Used by audit scanners to populate `framework_ids` on findings. The `qai update-frameworks` CLI command checks for upstream changes to ATLAS and OWASP MCP Top 10.
+
+## MitigationResolver
+
+Generates structured, tiered remediation guidance for audit findings. Loads `mitigations.yaml` which covers all 10 OWASP MCP categories with recommended actions, platform support notes, and risk decision guidance.
+
+Each finding receives a `MitigationGuidance` object with `GuidanceSection` entries. Each section tracks its provenance (`SourceType`: baseline YAML, scanner-contributed, or runtime-enriched).
+
+MitigationGuidance is per-finding and generated at report time. This is separate from RunGuidance (which is per-run and generated at workflow start).
+
+## RunGuidance
+
+Per-run deployment playbooks generated by IPI and CXP module adapters at workflow start. Stored as JSON in the `guidance` column of the runs table.
+
+**Structure:**
+
+- `RunGuidance` — container with `blocks`, `schema_version` (currently 1), `generated_at`, `module`
+- `GuidanceBlock` — individual block with `kind` (BlockKind enum), `label`, `items` (list of strings), `metadata` (dict)
+
+**BlockKind values:** `inventory`, `trigger_prompts`, `deployment_steps`, `monitoring`, `interpretation`, `factors`
+
+IPI builds four blocks (inventory, trigger prompts, deployment steps, monitoring). CXP builds four blocks (inventory, trigger prompts, deployment steps, interpretation).
+
+The web UI renders these blocks as collapsible cards in the IPI and CXP run results tabs.
+
+## Bridge Token
+
+Shared secret for IPI callback listener ↔ web UI internal communication. Stored at `~/.qai/bridge.token` as a 32-character hex string. Auto-generated on first access using `secrets.token_hex(16)` with exclusive file creation (race-safe). File permissions are `0600` on POSIX.
+
+Both the IPI listener and the web server read from the same file. The listener includes the token in internal HTTP POST notifications to the web server when a callback hit arrives.
+
+## Provider Registry
+
+The `q_ai.core.providers` module manages LLM provider metadata for the Settings UI. Defines known providers (Anthropic, OpenAI, Groq, OpenRouter, Ollama, LM Studio, custom) with their type (cloud/local) and model fetching logic. The Settings UI uses this to populate provider dropdowns and validate credentials.
+
+LLM calls go through `q_ai.core.llm` which defines a `ProviderClient` protocol. The implementation in `q_ai.core.llm_litellm` wraps litellm for actual API calls, returning `NormalizedResponse` objects that abstract away provider-specific response formats.

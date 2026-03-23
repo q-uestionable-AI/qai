@@ -1,61 +1,44 @@
 ---
 title: Dangerous Payloads
-description: Exfil, SSRF, and behavior modification payloads — gating and responsible use
+description: The --dangerous flag and non-callback IPI payload types
 ---
 
-q-ai gates payload types that go beyond proof-of-execution callbacks behind the `--dangerous` flag. This page explains what dangerous payloads are, why they're gated, and how to use them responsibly.
+The `--dangerous` flag on `qai ipi generate` enables payload types that go beyond proof-of-execution callbacks. These types instruct the target AI to perform actions with real consequences — exfiltrating data, making SSRF requests, or overriding instructions.
 
----
+## Payload Type Safety Tiers
 
-## What "Dangerous" Means
+**Always available (no flag needed):**
 
-Dangerous payloads instruct the AI agent to take actions beyond firing a simple HTTP callback. These actions could cause real harm if directed at unintended targets:
+| Type | Action |
+|------|--------|
+| `callback` | HTTP GET to the listener URL — benign proof that the hidden instruction was executed |
 
-| Payload Type | What It Does | Risk if Misdirected |
-|-------------|-------------|---------------------|
-| `exfil_summary` | Instructs the agent to send a document summary to the listener | Leaks document content to an attacker-controlled server |
-| `exfil_context` | Instructs the agent to send conversation context to the listener | Leaks private conversation data including user messages |
-| `ssrf_internal` | Directs the agent to make requests to internal network endpoints | Enables reconnaissance or exploitation of internal services |
-| `instruction_override` | Attempts to override the agent's system instructions | Hijacks agent behavior, potentially affecting all users |
-| `tool_abuse` | Instructs the agent to misuse its available tools | Unauthorized file access, code execution, or API calls |
-| `persistence` | Attempts to persist instructions across agent sessions | Long-term compromise without re-injection |
+**Requires `--dangerous`:**
 
-The `callback` payload type is always available — it only proves that the agent executed the instruction, without causing any side effects beyond a single HTTP GET.
+| Type | Action |
+|------|--------|
+| `exfil_summary` | POST document summary text to the listener |
+| `exfil_context` | POST conversation/session context to the listener |
+| `ssrf_internal` | HTTP request to an internal endpoint from the target |
+| `instruction_override` | Attempt to override system instructions |
+| `tool_abuse` | Attempt to misuse agent tools |
+| `persistence` | Attempt to persist instructions across sessions |
 
----
-
-## Why They're Gated
-
-The `--dangerous` flag exists to prevent accidental deployment:
-
-- **Explicit opt-in** — You must consciously decide to use dangerous payloads, not accidentally include them through a default setting
-- **Authorization confirmation** — The flag serves as documentation that the operator understood the payload's behavior
-- **Audit trail** — The payload type is recorded in the campaign database, making it clear what was tested
-
----
-
-## How to Enable
-
-Add `--dangerous` to the `ipi generate` command:
+## Using the Flag
 
 ```bash
-# Callback only — no flag needed
+# This works — callback is always available
 qai ipi generate --callback http://localhost:8080
 
-# Exfil payload — requires --dangerous
-qai ipi generate \
-  --callback http://localhost:8080 \
-  --payload-type exfil_summary \
-  --dangerous
+# This fails — exfil requires --dangerous
+qai ipi generate --callback http://localhost:8080 --payload-type exfil_summary
 
-# SSRF payload — requires --dangerous
-qai ipi generate \
-  --callback http://localhost:8080 \
-  --payload-type ssrf_internal \
-  --dangerous
+# This works — dangerous flag enables the exfil type
+qai ipi generate --callback http://localhost:8080 \
+  --payload-type exfil_summary --dangerous
 ```
 
-When `--dangerous` is active, the CLI displays a warning banner before generating:
+When `--dangerous` is used, the CLI displays a warning banner before generating payloads:
 
 ```
 ============================================================
@@ -65,25 +48,23 @@ When `--dangerous` is active, the CLI displays a warning banner before generatin
 ============================================================
 ```
 
-Without the flag, attempting to use a non-callback payload type exits with an error:
+## What the Flag Does NOT Do
 
-```
-X Payload type 'exfil_summary' requires --dangerous flag
-  Non-callback payloads can cause real harm to target systems.
-  Use --dangerous to confirm authorized testing.
-```
+The `--dangerous` flag is a CLI safety gate. It does not:
 
----
+- Enable sandbox or isolation modes (there are none)
+- Require additional approval workflows
+- Change how the payload is generated or delivered
+- Apply to any module other than IPI
 
-## Safety Guidelines
+It exists to prevent accidentally generating payloads that cause target systems to exfiltrate data, make SSRF requests, or modify their own behavior. The flag forces you to explicitly opt in.
+
+## When to Use Dangerous Payloads
+
+Use callback payloads first. Callback proves execution without side effects — the target makes a single HTTP GET and the listener records it. That's sufficient evidence for most testing.
+
+Use dangerous types when you need to demonstrate specific attack outcomes (data exfiltration, SSRF, instruction override) to stakeholders who need to see the actual impact, not just proof that execution is possible.
 
 <Warning>
-Dangerous payloads are designed for authorized security testing only. Misuse may violate laws, regulations, or organizational policies.
+Dangerous payloads cause real actions on the target system. Exfil payloads POST data to your listener. SSRF payloads make the target issue outbound requests. Only use these in environments where you control the blast radius and have explicit authorization.
 </Warning>
-
-- **Only test systems you own or have explicit written authorization to test.** Deploying dangerous payloads against third-party systems without permission may constitute unauthorized access.
-- **Use isolated test environments where possible.** This limits the blast radius if a payload behaves unexpectedly.
-- **Exfil payloads will send data to your listener.** Ensure no sensitive or regulated data (PII, PHI, financial records) is at risk in the test environment. The listener stores captured data in the local SQLite database.
-- **SSRF payloads will cause the target to make outbound HTTP requests.** Verify that the target's network egress is acceptable — the agent may attempt to reach internal services that could be affected by the request.
-- **Instruction override and persistence payloads affect agent behavior.** Test in isolated agent instances that don't serve other users. Reset the agent state after testing.
-- **Document your authorization.** Record the scope, systems, and payload types authorized for each test engagement.

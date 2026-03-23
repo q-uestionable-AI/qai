@@ -1,67 +1,24 @@
 ---
-title: Vulnerable Test Fixtures
-description: Intentionally vulnerable MCP servers for validation and training
+title: Test Fixtures
+description: Vulnerable MCP server fixtures used in the test suite
 ---
 
-q-ai ships intentionally vulnerable MCP servers in `fixtures/vulnerable_servers/` for scanner validation, CI testing, and learning. Each fixture demonstrates a specific OWASP MCP Top 10 vulnerability category.
+The qai test suite includes intentionally vulnerable MCP server fixtures for scanner validation. These are internal test infrastructure — they live in the test suite, not as user-facing tools.
 
-## Fixture servers
+## Where Fixtures Live
 
-| Fixture | OWASP ID | Vulnerability demonstrated |
-|---------|----------|---------------------------|
-| `vuln_token_exposure.py` | MCP01 | Leaks secrets through tool parameters, responses, error messages, and configuration data |
-| `vuln_permissions.py` | MCP02 | Overprivileged tool set with shell execution, file system, database, and credential management |
-| `vuln_tool_poison.py` | MCP03 | Poisoned tool descriptions with embedded instructions, hidden Unicode, and homoglyph names |
-| `vuln_supply_chain.py` | MCP04 | Reports a known-vulnerable server identity (CVE-2025-49596) with namespace-confused tools |
-| `vuln_injection.py` | MCP05 | Passes user input directly to shell commands without sanitization |
-| `vuln_argument_injection.py` | MCP05 | Accepts unsanitized subprocess arguments and file paths, enabling argument injection and path traversal |
-| `vuln_prompt_inject.py` | MCP06 | Returns tool responses containing prompt injection patterns, suspicious URLs, and cross-tool manipulation |
-| `vuln_auth.py` | MCP07 | Exposes sensitive tools with no authentication or authorization controls |
-| `vuln_audit_telemetry.py` | MCP08 | Missing version identification, leaks stack traces and credentials in error messages |
-| `vuln_shadow_servers.py` | MCP09 | Shadow deployment characteristics with test/debug naming and exposed debug tools |
-| `vuln_context.py` | MCP10 | Over-shares context in responses, leaks session identifiers, exposes unscoped resources with credentials |
+Vulnerable server fixtures are defined as test helpers within the `tests/` directory structure. They are not standalone scripts in a `fixtures/` directory.
 
-## Running a fixture scan
+Each scanner's test module creates minimal vulnerable MCP server configurations to validate that the scanner correctly identifies the target vulnerability class.
 
-All fixtures are stdio MCP servers. Scan one with:
+## Writing Your Own Test Targets
 
-```bash
-qai audit scan \
-  --transport stdio \
-  --command "python fixtures/vulnerable_servers/vuln_injection.py"
-```
-
-Run a specific scanner against its matching fixture:
-
-```bash
-qai audit scan \
-  --transport stdio \
-  --command "python fixtures/vulnerable_servers/vuln_auth.py" \
-  --checks auth
-```
-
-Verify connectivity before scanning:
-
-```bash
-qai audit enumerate \
-  --transport stdio \
-  --command "python fixtures/vulnerable_servers/vuln_injection.py"
-```
-
-## Writing custom fixtures
-
-A fixture is any MCP server with intentional vulnerabilities. To create one:
-
-1. Write a standard MCP server using `mcp.server.fastmcp.FastMCP`
-2. Register tools that exhibit the vulnerability you want to test
-3. Run it with `qai audit scan --transport stdio --command "python your_fixture.py"`
-
-Follow the existing fixture pattern — each file is a self-contained MCP server that can be spawned via stdio:
+To validate scanner behavior against a specific vulnerability, create a minimal MCP server using `mcp.server.fastmcp.FastMCP`:
 
 ```python
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("my-vulnerable-server")
+mcp = FastMCP("my-test-server")
 
 @mcp.tool()
 def vulnerable_tool(user_input: str) -> str:
@@ -74,6 +31,14 @@ if __name__ == "__main__":
     mcp.run(transport="stdio")
 ```
 
-<Tip>
-Custom fixtures are useful for validating scanner behavior against specific vulnerability patterns and for training teams on MCP security risks.
-</Tip>
+Scan it with:
+
+```bash
+qai audit scan \
+  --transport stdio \
+  --command "python my_test_server.py"
+```
+
+<Note>
+Each scanner targets one OWASP MCP Top 10 category. See [Scanner Catalog](/audit/scanners) for what each scanner checks and how to run specific scanners with `--checks`.
+</Note>

@@ -1,13 +1,13 @@
 ---
 title: SARIF Output
-description: Generate SARIF 2.1.0 reports for GitHub Code Scanning and CI/CD integration
+description: SARIF 2.1.0 report format and GitHub Code Scanning integration
 ---
 
-q-ai generates [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html) reports compatible with GitHub Code Scanning and other SARIF-compatible tools.
+q-ai generates [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html)-compliant reports that integrate with GitHub Code Scanning, VS Code, and other SARIF-compatible security tools.
 
 ## What is SARIF?
 
-SARIF (Static Analysis Results Interchange Format) is a standard JSON format for security scan results. Version 2.1.0 is supported by GitHub Code Scanning, VS Code, and most security analysis platforms. q-ai maps each finding to a SARIF `result` object with `ruleId` set to the finding's rule ID (e.g., `MCP05-001`) and the OWASP ID (e.g., `MCP05`) included as a tag.
+SARIF (Static Analysis Results Interchange Format) is a standardized JSON format for security analysis results. Each finding is mapped to a SARIF result with rule metadata, severity level, and security-severity score for integration into security dashboards and CI/CD pipelines.
 
 ## Generating SARIF output
 

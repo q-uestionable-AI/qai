@@ -16,6 +16,7 @@ from q_ai.audit.reporting.prompt import build_audit_interpret_prompt
 from q_ai.mcp.models import ScanFinding, Severity
 
 _REPO_URL = "https://github.com/q-uestionable-AI/qai"
+_FRAMEWORK_COVERAGE_PATH = "blob/main/documentation/audit/framework-coverage.mdx"
 
 # SARIF severity mapping: ScanFinding.severity → (SARIF level, security-severity score)
 _SEVERITY_MAP: dict[Severity, tuple[str, float]] = {
@@ -81,7 +82,7 @@ def _build_rules(findings: list[ScanFinding]) -> list[dict[str, Any]]:
             "shortDescription": {"text": finding.title},
             "fullDescription": {"text": finding.description},
             "defaultConfiguration": {"level": level},
-            "helpUri": (f"{_REPO_URL}/blob/main/docs/owasp_mapping.md#{owasp_id}"),
+            "helpUri": f"{_REPO_URL}/{_FRAMEWORK_COVERAGE_PATH}#{owasp_id}",
             "properties": {
                 "security-severity": str(score),
                 "tags": ["security", finding.category],

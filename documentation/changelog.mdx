@@ -3,6 +3,56 @@ title: Changelog
 description: Release history for the q-ai platform
 ---
 
+## v0.5.1
+
+PyPI and Python version classifier updates.
+
+- PyPI classifier update: Development Status → Alpha, Python 3.12/3.13 classifiers added
+
+## v0.5.0
+
+Guidance builders, playbooks, RXP bands, IPI WebSocket bridge, CXP triggers, technique selection, and audit scanner enumeration.
+
+- RunGuidance model + GuidanceBlock dataclasses, DB migration V10
+- Conclude Campaign endpoint + button
+- IPI/CXP deployment playbook tabs with guidance builders
+- RXP interpretive bands
+- IPI hit WebSocket bridge (internal HTTP POST, bridge token auth, notify-by-ID)
+- CXP trigger override endpoint
+- `--notify-url` on `ipi listen`
+- Inject technique checkboxes + payload library in web UI
+- Inject results drill-down
+- Audit scanner selection + enumerate action in web UI
+- SARIF export button in web UI
+- CLI command preview in launcher (Swagger-style, live-updating)
+- Bandit SAST added to CI, CI restructured (lint / test matrix / security-scan)
+
+## v0.4.1
+
+Settings UI fixes, launcher redesign, and findings sidebar removal.
+
+- Settings defaults UI fix (empty dropdowns, blank forms)
+- Providers list shows only configured entries
+- Launcher: accordion rows replace capsule buttons
+- Quick action rows (Quick Audit Run, Quick Proxy Run, Quick Inject Run)
+- Findings sidebar removed
+- Mitigation toggle restyled
+- Run history in panel, severity title case, panel contrast boost
+
+## v0.4.0
+
+Mitigation guidance system, multi-format exports, web UI redesign, multi-provider support, and provider registry.
+
+- Mitigation guidance system: MitigationResolver, structured GuidanceSection with per-section provenance, mitigations.yaml for all 10 OWASP MCP categories
+- Export formats: NDJSON, CSV, JSON bundle schema (run-bundle-v1)
+- Web UI redesign: Operations → Runs rename, run results view with overview header, scoped module tabs, findings drill-down with mitigation toggle
+- Research page removed (export-first strategy)
+- Provider/model selection: two-step provider → model selector, provider registry, settings schema split
+- Multi-provider inject: litellm integration, provider/model format, OS keyring credentials
+- "Previously Seen" badge on findings (cross-run awareness)
+- Content sanitization for hostile evidence rendering
+- Pre-release fixes: WebSocket terminal status, Generate Report endpoint, inject summary scoring
+
 ## v0.3.3
 
 Framework coverage, MCP connection hardening, and CodeRabbit integration.

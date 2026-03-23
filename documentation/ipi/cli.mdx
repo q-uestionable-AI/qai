@@ -139,7 +139,7 @@ Start the callback listener server.
 qai ipi listen [OPTIONS]
 ```
 
-Launches the FastAPI server that receives and logs callback requests from AI agents that execute the hidden payloads. Also serves the web dashboard at `/ui/`.
+Launches the FastAPI server that receives and logs callback requests from AI agents that execute the hidden payloads.
 
 ### Options
 
@@ -147,6 +147,7 @@ Launches the FastAPI server that receives and logs callback requests from AI age
 |--------|------|----------|---------|-------------|
 | `--port`, `-p` | INT | No | `8080` | Port to listen on |
 | `--host`, `-h` | TEXT | No | `127.0.0.1` | Host to bind to |
+| `--notify-url` | TEXT | No | `http://127.0.0.1:8899` | Main qai server URL for hit notifications |
 
 ### Examples
 
@@ -161,7 +162,7 @@ qai ipi listen --host 0.0.0.0 --port 9090
 </CodeGroup>
 
 <Tip>
-The dashboard is available at `http://localhost:<port>/ui/` once the listener starts.
+Hit notifications are sent to the main qai web server via `--notify-url` for real-time WebSocket updates in the IPI tab.
 </Tip>
 
 ---

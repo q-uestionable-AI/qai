@@ -3,53 +3,51 @@ title: Audit CLI Reference
 description: Command reference for qai audit
 ---
 
-q-ai is organized into subcommands. The top-level entry point is `qai`.
+Use the `qai audit` subcommand to scan MCP servers, enumerate capabilities, and generate security reports.
 
 ```bash
-qai --help
+qai audit --help
 ```
 
-## audit
+## qai audit scan
 
-Security scanner for MCP servers. Maps findings to the OWASP MCP Top 10.
-
-### audit scan
-
-Scan an MCP server for security vulnerabilities.
+Scan an MCP server for security vulnerabilities across all 10 OWASP MCP Top 10 categories.
 
 ```bash
-qai audit scan [OPTIONS]
+qai audit scan --transport <type> [OPTIONS]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--transport` | Yes | Transport type: `stdio`, `sse`, or `streamable-http` |
-| `--command` | When `--transport stdio` | Server command to spawn (e.g., `"python my_server.py"`) |
-| `--url` | When `--transport sse` or `streamable-http` | Server URL to connect to |
-| `--checks` | No | Comma-separated scanner list (e.g., `"injection,auth"`) |
-| `--output` | No | Output file path (default: `results/scan.json`) |
-| `--format` | No | Output format: `json` or `sarif` (default: `json`) |
-| `--verbose` / `-v` | No | Enable debug logging |
+### Options
 
-<CodeGroup>
-```bash stdio
+| Flag | Type | Required | Description |
+|------|------|----------|-------------|
+| `--transport` | enum | Yes | Transport type: `stdio`, `sse`, or `streamable-http` |
+| `--command` | string | When transport=stdio | Server command to spawn (e.g., `"python my_server.py"`) |
+| `--url` | string | When transport=sse or streamable-http | Server URL to connect to |
+| `--checks` | string | No | Comma-separated scanner names (e.g., `injection,auth,token_exposure`). Omit to run all 10. |
+| `--format` | enum | No | Output format: `json`, `sarif`, `html`, `ndjson`, `csv` (default: `json`) |
+| `--output` | string | No | Output file path (default: `results/scan.{format_ext}`) |
+| `--verbose` / `-v` | flag | No | Enable debug logging |
+
+### Examples
+
+Scan via stdio transport:
+
+```bash
 qai audit scan \
   --transport stdio \
   --command "python my_server.py"
 ```
 
-```bash SSE
+Scan via SSE and output SARIF:
+
+```bash
 qai audit scan \
   --transport sse \
-  --url "http://localhost:3000/sse"
+  --url "http://localhost:3000/sse" \
+  --format sarif \
+  --output audit-report.sarif
 ```
-
-```bash Streamable HTTP
-qai audit scan \
-  --transport streamable-http \
-  --url "http://localhost:3000/mcp"
-```
-</CodeGroup>
 
 Run specific scanners only:
 
@@ -57,27 +55,34 @@ Run specific scanners only:
 qai audit scan \
   --transport stdio \
   --command "python my_server.py" \
-  --checks injection,auth \
-  --output results/my-scan.json
+  --checks injection,auth,token_exposure
 ```
+
+<Note>
+Audit results are automatically saved to the database. Use the database ID returned in the output to retrieve or compare scan results over time.
+</Note>
 
 <Tip>
-Use `--format sarif` with `audit scan` or `audit report` to generate SARIF 2.1.0 reports compatible with GitHub Code Scanning.
+Use `--format sarif` to generate reports compatible with GitHub Code Scanning integration.
 </Tip>
 
-### audit enumerate
+## qai audit enumerate
 
-Enumerate MCP server capabilities without running security checks.
+Enumerate MCP server capabilities without running security checks. Useful for discovery and asset inventory.
 
 ```bash
-qai audit enumerate [OPTIONS]
+qai audit enumerate --transport <type> [OPTIONS]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--transport` | Yes | Transport type: `stdio`, `sse`, or `streamable-http` |
-| `--command` | When `--transport stdio` | Server command to spawn |
-| `--url` | When `--transport sse` or `streamable-http` | Server URL to connect to |
+### Options
+
+| Flag | Type | Required | Description |
+|------|------|----------|-------------|
+| `--transport` | enum | Yes | Transport type: `stdio`, `sse`, or `streamable-http` |
+| `--command` | string | When transport=stdio | Server command to spawn |
+| `--url` | string | When transport=sse or streamable-http | Server URL to connect to |
+
+### Example
 
 ```bash
 qai audit enumerate \
@@ -85,28 +90,55 @@ qai audit enumerate \
   --command "python my_server.py"
 ```
 
-Lists the server's name, protocol version, tools, resources, and prompts.
+Output includes server name, protocol version, and lists of all tools, resources, and prompts.
 
-### audit list-checks
+## qai audit list-checks
 
-List all available scanner modules and their OWASP mappings.
-
-```bash
-qai audit list-checks
-```
-
-No options. Prints a table of scanner modules with OWASP ID, description, and readiness status.
-
-### audit report
-
-Generate a report from saved scan results.
+List all available scanner modules with their OWASP MCP Top 10 mappings.
 
 ```bash
-qai audit report [OPTIONS]
+qai audit list-checks [OPTIONS]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--input` | Yes | Path to saved scan results JSON file |
-| `--format` | No | Report format: `html`, `json`, or `sarif` (default: `html`) |
-| `--output` | No | Output file path (defaults to input path with new extension) |
+### Options
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--framework` | string | Show framework IDs for a specific framework: `owasp_mcp_top10`, `owasp_agentic_top10`, `mitre_atlas`, `cwe`, or `all` |
+
+### Example
+
+```bash
+qai audit list-checks --framework owasp_mcp_top10
+```
+
+Output is a table with scanner module name, category, description, status (Ready/Planned), and framework mappings if `--framework` is specified.
+
+## qai audit report
+
+Generate a report from previously saved scan results in JSON format.
+
+```bash
+qai audit report --input <path> [OPTIONS]
+```
+
+### Options
+
+| Flag | Type | Required | Description |
+|------|------|----------|-------------|
+| `--input` | string | Yes | Path to saved scan results JSON file (from `qai audit scan`) |
+| `--format` | enum | No | Output format: `json`, `sarif`, `html`, `ndjson`, `csv` (default: `sarif`) |
+| `--output` | string | No | Output file path (default: input path with new extension) |
+
+### Example
+
+```bash
+qai audit report \
+  --input results/scan.json \
+  --format sarif \
+  --output security-findings.sarif
+```
+
+<Tip>
+Use `qai audit report` to regenerate findings in different formats without re-scanning the server. The `--input` file must be the JSON export from `qai audit scan` (not SARIF, HTML, or CSV). If you only have a non-JSON export, re-export the scan from the database first.
+</Tip>

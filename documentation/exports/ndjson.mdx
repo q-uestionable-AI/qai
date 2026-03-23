@@ -1,0 +1,71 @@
+---
+title: NDJSON Export
+description: Newline-delimited JSON for streaming processing and log aggregation
+---
+
+NDJSON (Newline Delimited JSON) exports one finding per line as a self-contained JSON object. Each line can be processed independently — useful for streaming pipelines, log aggregation systems, and tools that process records one at a time.
+
+## Generating NDJSON
+
+**CLI:**
+
+```bash
+qai audit scan --transport stdio --command "npx @modelcontextprotocol/server-memory" \
+  --format ndjson --output results.ndjson
+```
+
+Or convert an existing scan:
+
+```bash
+qai audit report --input results/scan.json --format ndjson --output results.ndjson
+```
+
+**Web UI:** NDJSON is available through the audit CLI report command. The web UI Export JSON button produces the full JSON bundle instead.
+
+## Record Format
+
+Each line is a complete JSON object with these fields:
+
+```json
+{"category":"command_injection","severity":"high","title":"Tool parameter allows shell injection","description":"...","framework_ids":{"owasp_mcp_top10":"MCP05","mitre_atlas":"AML.T0054"},"mitigation":null,"source_ref":"injection","created_at":"2026-03-22T10:30:15+00:00"}
+```
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `category` | string | Finding category (e.g., `command_injection`, `auth`, `token_exposure`) |
+| `severity` | string | Severity name: `critical`, `high`, `medium`, `low`, `info` |
+| `title` | string | Short finding title |
+| `description` | string | Detailed description |
+| `framework_ids` | object | Framework mappings (e.g., `{"owasp_mcp_top10": "MCP05"}`) |
+| `mitigation` | object/null | Mitigation guidance data if available |
+| `source_ref` | string/null | Scanner or source reference |
+| `created_at` | string/null | ISO timestamp |
+
+When run metadata is provided, additional fields (`run_id`, `target_name`) are merged into each record.
+
+## Processing
+
+```bash
+# Filter high-severity findings
+cat results.ndjson | jq 'select(.severity == "high" or .severity == "critical")'
+
+# Count by category
+cat results.ndjson | jq -s 'group_by(.category) | map({category: .[0].category, count: length})'
+
+# Extract titles only
+cat results.ndjson | jq -r '.title'
+```
+
+```python
+import json
+
+with open("results.ndjson") as f:
+    for line in f:
+        finding = json.loads(line)
+        if finding["severity"] in ("critical", "high"):
+            print(f"{finding['severity'].upper()}: {finding['title']}")
+```
+
+NDJSON is the native bulk format for Elasticsearch and works well with Splunk HEC, CloudWatch, and other log aggregation systems that accept one JSON record per line.

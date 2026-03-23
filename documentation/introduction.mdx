@@ -1,9 +1,13 @@
 ---
 title: "Introduction"
-description: "Offensive security platform for agentic AI infrastructure"
+description: "Security testing for MCP servers and agentic AI systems"
 ---
 
-Offensive security platform for AI agents and MCP infrastructure. Seven modules cover the full attack surface — from server scanning to document poisoning to retrieval manipulation.
+## What is q-ai?
+
+q-ai tests the security of MCP (Model Context Protocol) servers and agentic AI systems. It scans servers for vulnerabilities, tests whether models follow poisoned tool descriptions, intercepts MCP traffic, and measures whether adversarial documents survive RAG retrieval.
+
+All findings are mapped to four security frameworks: OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, and CWE.
 
 ## Modules
 
@@ -19,8 +23,15 @@ Offensive security platform for AI agents and MCP infrastructure. Seven modules 
 
 ## Quick start
 
+Install via pip (requires Python 3.11+):
+
 ```bash
 pip install q-uestionable-ai
+```
+
+Run your first audit scan against an MCP server:
+
+```bash
 qai audit scan --transport stdio --command "npx @modelcontextprotocol/server-memory"
 ```
 
@@ -30,4 +41,13 @@ Or launch the web UI:
 qai
 ```
 
+## Mitigation guidance system
+
+Every finding includes automated mitigation guidance. The guidance system maps findings to remediation strategies grouped by severity and remediation effort. Use the web UI to toggle guidance on/off per finding, or access it via the CLI.
+
+## Learn more
+
+- [Quick Start](/quickstart) — Install, configure a provider, run your first scan
+- [Core Concepts](/concepts) — MCP threat model, framework mappings, module methodologies
+- [Responsible Use](/responsible-use) — Authorization requirements and responsible disclosure
 - [GitHub](https://github.com/q-uestionable-AI/qai)

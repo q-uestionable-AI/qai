@@ -1,0 +1,149 @@
+---
+title: DefectDojo Integration
+description: Import qai audit findings into DefectDojo for centralized vulnerability management
+---
+
+Import qai findings into DefectDojo to consolidate MCP server security results alongside your other security tools.
+
+## Prerequisites
+
+- DefectDojo instance (self-hosted or cloud) with API access
+- qai v0.5.1 or later
+- A completed qai audit scan with JSON export
+
+## Workflow
+
+1. Run a qai audit scan and export as JSON
+2. Transform the findings to DefectDojo's expected format
+3. Submit via DefectDojo's findings import API
+
+## Step 1: Run Audit and Export
+
+```bash
+qai audit scan \
+  --transport stdio \
+  --command "npx @modelcontextprotocol/server-memory" \
+  --format json \
+  --output results/scan.json
+```
+
+Or export a completed run via the web UI: click **Export JSON** on the run overview.
+
+## Step 2: Transform Findings
+
+qai findings are MCP server security results — not source code findings. Map them to DefectDojo fields:
+
+| qai Finding Field | DefectDojo Field | Notes |
+|-------------------|------------------|-------|
+| `title` | `title` | Finding title (e.g., "Tool parameter allows shell injection") |
+| `description` | `description` | Detailed finding description |
+| `severity` | `severity` | Maps directly: critical→Critical, high→High, medium→Medium, low→Low |
+| `category` | `vuln_id_from_tool` | OWASP MCP category (e.g., `command_injection`) |
+| `framework_ids.owasp_mcp_top10` | `references` | OWASP MCP Top 10 ID (e.g., `MCP05`) |
+| `mitigation` | `mitigation` | Remediation guidance |
+
+Example transformation script:
+
+```python
+import json
+
+with open("results/scan.json") as f:
+    scan = json.load(f)
+
+severity_map = {0: "Info", 1: "Low", 2: "Medium", 3: "High", 4: "Critical"}
+
+findings = []
+for f in scan.get("findings", []):
+    fw = f.get("framework_ids") or {}
+    owasp = fw.get("owasp_mcp_top10", "")
+    findings.append({
+        "title": f["title"],
+        "description": f.get("description", ""),
+        "severity": severity_map.get(f.get("severity", 0), "Info"),
+        "vuln_id_from_tool": f.get("category", ""),
+        "references": f"OWASP MCP Top 10: {owasp}" if owasp else "",
+        "mitigation": json.dumps(f.get("mitigation")) if f.get("mitigation") else "",
+        "active": True,
+        "verified": False,
+    })
+
+print(json.dumps(findings, indent=2))
+```
+
+## Step 3: Submit to DefectDojo
+
+Use the DefectDojo v2 API to create findings:
+
+```bash
+# Generate API token in DefectDojo: Settings > API Tokens
+export DEFECTDOJO_URL="https://defectdojo.example.com"
+export DEFECTDOJO_API_TOKEN="your-token-here"
+
+# Create or identify your engagement
+curl -X GET "$DEFECTDOJO_URL/api/v2/engagements/?product=1" \
+  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" | jq '.results[] | {id, name}'
+
+# Submit findings
+curl -X POST "$DEFECTDOJO_URL/api/v2/findings/" \
+  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @transformed_findings.json
+```
+
+### SARIF Import Alternative
+
+DefectDojo also supports SARIF import. Generate SARIF from qai and import directly:
+
+```bash
+qai audit scan \
+  --transport stdio \
+  --command "npx @modelcontextprotocol/server-memory" \
+  --format sarif \
+  --output results/scan.sarif
+
+# Import SARIF via DefectDojo reimport endpoint
+curl -X POST "$DEFECTDOJO_URL/api/v2/reimport-scan/" \
+  -H "Authorization: Token $DEFECTDOJO_API_TOKEN" \
+  -F "file=@results/scan.sarif" \
+  -F "scan_type=SARIF" \
+  -F "engagement=42"
+```
+
+## CI/CD Integration
+
+Automate the scan-and-import workflow in GitHub Actions:
+
+```yaml
+name: MCP Audit to DefectDojo
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly Monday 2 AM
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install qai
+        run: pip install q-uestionable-ai
+
+      - name: Run audit
+        run: |
+          qai audit scan \
+            --transport stdio \
+            --command "npx @modelcontextprotocol/server-memory" \
+            --format sarif \
+            --output scan.sarif
+
+      - name: Import to DefectDojo
+        run: |
+          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/reimport-scan/" \
+            -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
+            -F "file=@scan.sarif" \
+            -F "scan_type=SARIF" \
+            -F "engagement=${{ vars.DEFECTDOJO_ENGAGEMENT_ID }}"
+```
+
+<Note>
+DefectDojo automatically deduplicates SARIF findings on reimport. Repeated scans update existing findings rather than creating duplicates.
+</Note>

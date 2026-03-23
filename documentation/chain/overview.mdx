@@ -1,36 +1,96 @@
 ---
-title: Overview
-description: Declarative multi-step attack chain definition, tracing, and live execution
+title: "Chain Overview"
+description: "Compose multi-step attack chains to test complex vulnerabilities across agent architectures"
 ---
 
-The chain module is a declarative framework for defining, validating, and executing multi-step attack paths that sequence audit findings and inject techniques into exploitation chains.
+The Chain module enables declarative composition of multi-step attack chains targeting complex AI system architectures. Define chains as YAML, execute them step-by-step, analyze blast radius, and generate detection rules.
 
-## Why Chain Matters
+## Core Concepts
 
-Real attacks against AI agent infrastructure are multi-step — compromise one server, escalate trust, pivot to the next. Chain provides a structured way to model these sequences, validate them against actual scanner and technique coverage, trace execution paths, and execute real attack chains against live targets.
+### Attack Chains
 
-## How It Works
+An attack chain is a sequence of coordinated steps exploiting related vulnerabilities to achieve a specific objective. Chains model real-world attack paths:
 
-The chain workflow follows five steps:
+- **Steps** — Individual attack techniques (injection, escalation, poisoning)
+- **Dependencies** — Control flow: which steps execute and in what order
+- **Trust Boundaries** — Cross-system boundaries like agent-to-tool or agent-to-agent
+- **Evidence** — Artifacts and findings collected at each step
 
-1. **Define** — Write an attack chain in YAML with ordered steps referencing audit scanners or inject techniques
-2. **Validate** — Check module and technique references, graph structure, and reachability
-3. **Trace** — Run the success path in dry-run mode to preview the execution sequence
-4. **Execute** — Run the chain against real targets with `--no-dry-run`, collecting step evidence and artifacts
-5. **Analyze** — Review the JSON report with step-by-step outcomes, trust boundaries crossed, and the AI-evaluation interpret prompt
+### Categories
 
-## Built-in Components
+Chains target specific AI system architectures:
 
-- **YAML chain loader** — Structural and semantic validation of chain definitions
-- **Graph analysis** — Cycle detection and reachability analysis across chain steps
-- **Dry-run tracer** — Produces ordered step traces without executing live campaigns
-- **Live execution engine** — Dispatches steps to audit/inject, accumulates artifacts, routes on success/failure
-- **Variable resolution** — Pass artifacts between steps via `$step_id.artifact_name` references
-- **Target configuration** — `chain-targets.yaml` for audit connection details and inject model selection
-- **3 built-in templates** — Delegation hijack, MCP server compromise, and RAG trust escalation
+- **RAG Pipeline** — Document retrieval systems with augmented generation
+- **Agent Delegation** — Multi-agent systems with tool sharing
+- **MCP Ecosystem** — Model Context Protocol server deployments
+- **Hybrid** — Mixed architectures with multiple interaction patterns
+
+### Dry-Run vs. Live Execution
+
+**Dry-run (default)**
+- Traces the chain path without executing tool calls
+- Shows which steps would execute and trust boundaries crossed
+- Fast feedback for chain validation
+- Useful for planning and analysis
+
+**Live execution**
+- Executes each step against real target systems
+- Collects actual findings and artifacts
+- Measures true blast radius
+- Requires target configuration
+
+## Execution Flow
+
+1. **Load** — Parse and validate chain YAML
+2. **Plan** — Resolve step dependencies and build execution graph
+3. **Execute** — Run each step in dependency order (or trace path in dry-run)
+4. **Collect** — Gather findings and trust boundary crossings
+5. **Report** — Generate results with blast radius analysis and detection rules
+
+## Key Modules
+
+Each step declares which qai module provides its technique:
+
+| Module | Purpose | Valid Techniques |
+|--------|---------|-----------------|
+| `audit` | Vulnerability scanning | Any of the 10 scanner names (injection, auth, token_exposure, permissions, tool_poisoning, prompt_injection, audit_telemetry, supply_chain, shadow_servers, context_sharing) |
+| `inject` | Payload injection and escalation | output_injection, cross_tool_escalation, description_poisoning |
+
+## Trust Boundaries
+
+Chains record which system boundaries are crossed during an attack:
+
+- `tool-to-agent` — Tool output reaches agent reasoning
+- `agent-to-tool` — Agent reasoning reaches tool invocation
+- `agent-to-agent` — One agent influences another
+- `llm-to-agent` — LLM output shapes agent decisions
+- `user-to-system` — External input enters the system
+- `client-to-server` — External input entering the server
+- `agent-to-data` — Agent accessing data stores or retrieval layers
+
+These boundaries identify the critical points where an attacker gained influence or access.
+
+## Built-in Templates
+
+QAI includes reference chains for common architectures:
+
+- **delegation-hijack** — Exploit weak tool trust in agent delegation
+- **mcp-server-compromise** — Attack MCP server implementations
+- **rag-trust-escalation** — Escalate from RAG retrieval to agent control
+
+Use templates as starting points for custom chains.
+
+## Typical Workflow
+
+1. **Define** a chain in YAML describing your attack hypothesis
+2. **Validate** with `qai chain validate` to catch structural issues
+3. **Dry-run** with `qai chain run --dry-run` to trace the path
+4. **Execute** with `qai chain run` against real targets (live mode)
+5. **Analyze** blast radius with `qai chain blast-radius`
+6. **Detect** with `qai chain detect` to generate detection rules
 
 ## Next Steps
 
-- [Chain CLI Reference](/chain/cli) — Command reference for `qai chain`
-- [Chain Templates](/chain/templates) — Built-in chain templates and custom chain authoring
-- [Chain Architecture](/architecture/chain-module) — Module internals and execution engine design
+- **[CLI Commands](./cli.mdx)** — Execute, validate, and analyze chains
+- **[Chain Templates](./templates.mdx)** — YAML format and built-in templates
+- **[Architecture Guide](/architecture/chain-module)** — Deep dive into chain execution model

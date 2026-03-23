@@ -1,0 +1,131 @@
+---
+title: GitHub Security Integration
+description: Surface qai findings in GitHub Code Scanning via SARIF upload
+---
+
+Upload qai SARIF output to GitHub Code Scanning to surface MCP server findings in the Security tab, pull request checks, and security alerts.
+
+## Prerequisites
+
+- GitHub repository with Actions enabled
+- GitHub Advanced Security (required for private repos; free for public repos)
+- qai v0.5.1 or later
+
+## Basic Workflow
+
+Create `.github/workflows/qai-security.yml`:
+
+```yaml
+name: MCP Security Audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  qai-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install qai
+        run: pip install q-uestionable-ai
+
+      - name: Run MCP server audit
+        run: |
+          qai audit scan \
+            --transport stdio \
+            --command "npx @modelcontextprotocol/server-memory" \
+            --format sarif \
+            --output results.sarif
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: qai-mcp-audit
+        if: always()
+```
+
+## How It Works
+
+1. The workflow installs qai and runs `audit scan` with `--format sarif`
+2. The SARIF file contains findings mapped to rules (one per scanner category) with severity levels
+3. `upload-sarif` pushes results to GitHub Code Scanning
+4. Findings appear in the repository's **Security > Code scanning alerts** tab
+
+## What Shows Up in GitHub
+
+Each qai finding becomes a Code Scanning alert with:
+
+- **Rule ID** — Scanner rule identifier (e.g., `QAI-INJ-CWE-078-shell_injection`)
+- **Severity** — Mapped from qai severity: CRITICAL/HIGH → `error`, MEDIUM → `warning`, LOW/INFO → `note`
+- **Security severity score** — Numeric score for GitHub's severity ranking (9.0 for critical, 7.0 for high, 4.0 for medium)
+- **Description** — Full finding description with evidence
+- **Properties** — Category, tool name, evidence, remediation, and mitigation data
+
+## Scanning Specific Checks
+
+Use `--checks` to run only specific scanners in CI for faster, focused scans:
+
+```yaml
+- name: Run injection checks only
+  run: |
+    qai audit scan \
+      --transport stdio \
+      --command "npx @modelcontextprotocol/server-memory" \
+      --checks injection,auth,token_exposure \
+      --format sarif \
+      --output results.sarif
+```
+
+## Branch Protection
+
+Block merges when high-severity findings are detected:
+
+1. Go to **Settings > Branches > Branch protection rules**
+2. Enable **Require status checks to pass before merging**
+3. Add the **MCP Security Audit** job as a required check
+
+<Note>
+The `upload-sarif` action does **not** fail the workflow based on alert severity — it only errors on upload or validation failures. To block merges on findings, add an explicit CI gate step in the **MCP Security Audit** job that parses the SARIF output and exits non-zero when findings exceed your severity/threshold policy. Branch protection requires the named status check to pass, but blocking on finding severity requires this custom gate.
+</Note>
+
+## Managing Alerts
+
+In the Security tab, each alert supports:
+
+- **Open** — Active finding, needs attention
+- **Fixed** — Resolved in a subsequent scan (GitHub detects automatically)
+- **Dismissed** — Manually closed with a reason (false positive, won't fix, used in tests)
+
+Dismissed alerts won't reappear on future scans unless the dismissal reason is changed.
+
+## Troubleshooting
+
+**Results not appearing:** Verify the workflow has `security-events: write` permission. Check the Actions log for upload errors. Allow ~30 seconds for the Security tab to update after upload.
+
+**SARIF validation errors:** Validate the file before upload: `python -m json.tool results.sarif > /dev/null`
+
+<Warning>
+GitHub has a 100MB SARIF file size limit. For large scans, filter with `--checks` to reduce output size.
+</Warning>
+
+## See Also
+
+- [SARIF Export](/exports/sarif) — SARIF format details and severity mapping
+- [Audit CLI](/audit/cli) — Full scan command reference
+- [DefectDojo Integration](/integrations/defectdojo) — Alternative vulnerability management platform
