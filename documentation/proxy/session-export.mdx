@@ -82,7 +82,7 @@ A session file contains a `ProxySession` object with metadata and an ordered lis
 | `id` | string | Unique session UUID |
 | `started_at` | ISO 8601 timestamp | When the proxy started |
 | `ended_at` | ISO 8601 timestamp or null | When the proxy ended (null if still active) |
-| `transport` | string | Transport type: `stdio`, `sse`, or `streamable_http` |
+| `transport` | string | Transport type: `stdio`, `sse`, or `streamable-http` |
 | `server_command` | string or null | Server startup command (stdio only) |
 | `server_url` | string or null | Server endpoint URL (SSE/HTTP only) |
 | `messages` | array | Ordered list of ProxyMessage objects |
@@ -96,7 +96,7 @@ A session file contains a `ProxySession` object with metadata and an ordered lis
 | `sequence` | integer | Monotonic sequence number (0-based) within the session |
 | `timestamp` | ISO 8601 timestamp | When the proxy received this message |
 | `direction` | string | `client_to_server` or `server_to_client` |
-| `transport` | string | Transport type (`stdio`, `sse`, or `streamable_http`) |
+| `transport` | string | Transport type (`stdio`, `sse`, or `streamable-http`) |
 | `jsonrpc_id` | integer, string, or null | JSON-RPC id field (null for notifications) |
 | `method` | string or null | JSON-RPC method name (null for responses) |
 | `correlated_id` | string or null | Proxy ID of the request this response correlates to |

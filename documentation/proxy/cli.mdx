@@ -150,20 +150,27 @@ Transport: stdio
 Server command: python my_server.py
 Messages: 12
 
-  #000 > initialize id=1
-  #001 < (response) id=1
-  #002 > notifications/initialized
-  #003 > tools/call id=2
+  #000 → initialize id=1
+  #001 ← (response) id=1
+  #002 → notifications/initialized
+  #003 → tools/call id=2
 ```
 
 Add `-v` to include full JSON payloads.
 
 ## Message Direction
 
-In the TUI and output:
+In `inspect` output:
 
-- `>` denotes client-to-server messages (requests and notifications sent to the server)
-- `<` denotes server-to-client messages (responses and notifications from the server)
+- `→` denotes client-to-server messages (requests and notifications sent to the server)
+- `←` denotes server-to-client messages (responses and notifications from the server)
+
+In the TUI (`proxy start`):
+
+- `▶` denotes client-to-server messages
+- `◀` denotes server-to-client messages
+- `⏸` prefix on held messages (intercept mode)
+- `✕` prefix on dropped messages
 
 ## Exit Codes
 

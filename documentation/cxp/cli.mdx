@@ -55,7 +55,7 @@ qai cxp record --technique TECHNIQUE --assistant ASSISTANT --trigger-prompt PROM
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--technique` | Yes | Technique ID (e.g., `backdoor`, `cmdexec`, `exfil`) |
+| `--technique` | Yes | Technique ID: `{objective}-{format}` (e.g., `backdoor-cursorrules`, `exfil-claude-md`) |
 | `--assistant` | Yes | Assistant under test (e.g., `cursor`, `claude`, `copilot`) |
 | `--trigger-prompt` | Yes | The user prompt that generated the code |
 | `--file` | No* | Path to assistant-generated code file(s). Repeatable. |
@@ -70,7 +70,7 @@ qai cxp record --technique TECHNIQUE --assistant ASSISTANT --trigger-prompt PROM
 
 ```bash
 qai cxp record \
-  --technique exfil \
+  --technique exfil-cursorrules \
   --assistant cursor \
   --trigger-prompt "Build a login endpoint" \
   --file generated_auth.py
@@ -101,7 +101,7 @@ qai cxp validate [OPTIONS]
 | Option | Required | Description |
 |--------|----------|-------------|
 | `--result` | No* | Stored result ID to validate |
-| `--technique` | No* | Technique ID (required for file validation) |
+| `--technique` | No* | Technique ID in `{objective}-{format}` form (required for file validation) |
 | `--file` | No | Path to file(s) to validate (repeatable) |
 
 \* Either `--result` or `--technique` is required.
@@ -117,7 +117,7 @@ qai cxp validate --result abc123-def456
 Validate files directly:
 
 ```bash
-qai cxp validate --technique exfil --file generated_code.py
+qai cxp validate --technique exfil-cursorrules --file generated_code.py
 ```
 
 Output shows verdict, matched rules, and detail text.

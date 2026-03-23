@@ -43,9 +43,9 @@ Each unique `rule_id` from the scan produces one rule entry:
 
 ```json
 {
-  "id": "QAI-INJ-tool-parameter-injection",
-  "name": "Tool parameter allows shell injection",
-  "shortDescription": { "text": "Tool parameter allows shell injection" },
+  "id": "QAI-INJ-CWE-078-shell_injection",
+  "name": "Command injection in 'execute' parameter 'cmd'",
+  "shortDescription": { "text": "Command injection in 'execute' parameter 'cmd'" },
   "fullDescription": { "text": "Detailed description..." },
   "defaultConfiguration": { "level": "error" },
   "helpUri": "https://github.com/q-uestionable-AI/qai/blob/main/docs/owasp_mapping.md#MCP05",
@@ -62,7 +62,7 @@ One result per finding, referencing the rule by ID and index:
 
 ```json
 {
-  "ruleId": "QAI-INJ-tool-parameter-injection",
+  "ruleId": "QAI-INJ-CWE-078-shell_injection",
   "ruleIndex": 0,
   "level": "error",
   "message": { "text": "Detailed description..." },

@@ -66,13 +66,13 @@ When testing an HR knowledge base, RXP runs these queries and measures how well 
 
 ### Embedding Models
 
-RXP uses embedding models to convert text to vectors:
+RXP uses local sentence-transformers models to convert text to vectors. Three models are registered by default:
 
-- **OpenAI** (paid)
-- **Mistral** (open-source)
-- **Local models** (ollama, etc.)
+- **minilm-l6** — MiniLM-L6-v2, 384 dimensions (default)
+- **minilm-l12** — MiniLM-L12-v2, 384 dimensions
+- **bge-small** — BGE small English v1.5, 384 dimensions
 
-Different embedding models produce different results. A poisoned document might rank high for one model but low for another.
+Any HuggingFace sentence-transformers model can also be passed directly by name. Different models may produce different retrieval results for the same corpus.
 
 ### Retrieval Effectiveness
 

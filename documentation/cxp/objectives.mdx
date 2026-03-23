@@ -150,11 +150,11 @@ os.chmod("config.json", 0o666)  # World-readable and writable
 
 ## Selecting Objectives
 
-When recording a test result:
+When recording a test result, use the compound technique ID (`{objective}-{format}`):
 
 ```bash
 qai cxp record \
-  --technique backdoor \
+  --technique backdoor-cursorrules \
   --assistant cursor \
   --trigger-prompt "Create a user authentication function" \
   --file generated.py
@@ -164,7 +164,7 @@ When validating:
 
 ```bash
 qai cxp validate \
-  --technique exfil \
+  --technique exfil-cursorrules \
   --file generated.py
 ```
 
@@ -175,8 +175,8 @@ Choose the objective that matches what you're testing. The validator will look f
 To test multiple objectives in a campaign:
 
 ```bash
-# Test same code against multiple objectives
-for technique in backdoor cmdexec exfil; do
+# Test same code against multiple technique IDs
+for technique in backdoor-cursorrules cmdexec-cursorrules exfil-cursorrules; do
   qai cxp validate --technique $technique --file generated.py
 done
 ```

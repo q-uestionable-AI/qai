@@ -60,11 +60,13 @@ Each step declares which qai module provides its technique:
 
 Chains record which system boundaries are crossed during an attack:
 
-- `tool_to_agent` — Tool output reaches agent reasoning
-- `agent_to_tool` — Agent reasoning reaches tool invocation
-- `agent_to_agent` — One agent influences another
-- `llm_to_agent` — LLM output shapes agent decisions
-- `user_to_system` — External input enters the system
+- `tool-to-agent` — Tool output reaches agent reasoning
+- `agent-to-tool` — Agent reasoning reaches tool invocation
+- `agent-to-agent` — One agent influences another
+- `llm-to-agent` — LLM output shapes agent decisions
+- `user-to-system` — External input enters the system
+- `client-to-server` — External input entering the server
+- `agent-to-data` — Agent accessing data stores or retrieval layers
 
 These boundaries identify the critical points where an attacker gained influence or access.
 

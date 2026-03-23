@@ -28,10 +28,10 @@ The proxy interface displays three panels:
 
 **Message List (left)**
 - Scrollable list of all intercepted messages in chronological order
-- Client-to-server messages prefixed with `>`
-- Server-to-client messages prefixed with `<`
-- Held messages show a pause icon (`‖`)
-- Dropped messages show a cross mark (`✗`)
+- Client-to-server messages prefixed with `▶`
+- Server-to-client messages prefixed with `◀`
+- Held messages show a pause icon (`⏸`)
+- Dropped messages show a cross mark (`✕`)
 - Select any message with arrow keys or mouse
 
 **Message Detail (right)**
@@ -71,6 +71,7 @@ Dropping messages may cause the other side to timeout or report protocol errors.
 | `Ctrl+S` | | Confirm edit and send modified message |
 | `Escape` | | Cancel edit (forward message as-is) |
 | `s` | | Save session to file |
+| `r` | `F9` | Replay the selected message against the server |
 | `/` | | Focus the filter input for searching messages |
 | Arrow keys | | Navigate message list and edit mode |
 

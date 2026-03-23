@@ -152,6 +152,6 @@ Both the IPI listener and the web server read from the same file. The listener i
 
 ## Provider Registry
 
-The `q_ai.core.providers` module manages LLM provider metadata for the Settings UI. Defines known providers (Anthropic, OpenAI, Groq, Mistral, Cohere, Ollama, Azure) with their type (cloud/local) and model fetching logic. The Settings UI uses this to populate provider dropdowns and validate credentials.
+The `q_ai.core.providers` module manages LLM provider metadata for the Settings UI. Defines known providers (Anthropic, OpenAI, Groq, OpenRouter, Ollama, LM Studio, custom) with their type (cloud/local) and model fetching logic. The Settings UI uses this to populate provider dropdowns and validate credentials.
 
 LLM calls go through `q_ai.core.llm` which defines a `ProviderClient` protocol. The implementation in `q_ai.core.llm_litellm` wraps litellm for actual API calls, returning `NormalizedResponse` objects that abstract away provider-specific response formats.
