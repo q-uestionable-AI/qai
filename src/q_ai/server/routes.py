@@ -47,6 +47,7 @@ from q_ai.core.providers import (
     get_provider,
     migrate_default_model,
 )
+from q_ai.cxp.formats import list_formats as list_cxp_formats
 from q_ai.inject.models import InjectionTechnique
 from q_ai.orchestrator.registry import get_workflow, list_workflows
 from q_ai.orchestrator.runner import WorkflowRunner
@@ -131,6 +132,7 @@ async def launcher(request: Request) -> HTMLResponse:
                 for t in InjectionTechnique
             ],
             "scanner_categories": list_scanner_names(),
+            "cxp_formats": list_cxp_formats(),
         },
     )
 

@@ -307,11 +307,9 @@
                     <div class="form-control">
                         <label class="label"><span class="label-text">Format</span></label>
                         <select name="format_id" class="select select-bordered select-sm w-full">
-                            <option value="python">python</option>
-                            <option value="javascript">javascript</option>
-                            <option value="typescript">typescript</option>
-                            <option value="go">go</option>
-                            <option value="rust">rust</option>
+                            {% for fmt in cxp_formats %}
+                            <option value="{{ fmt.id }}">{{ fmt.assistant }} ({{ fmt.filename }})</option>
+                            {% endfor %}
                         </select>
                     </div>
 
