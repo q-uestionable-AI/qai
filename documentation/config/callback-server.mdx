@@ -94,6 +94,10 @@ The server exposes a health endpoint at `/health` that returns `{"status": "ok"}
 
 ## Network Considerations
 
+<Warning>
+The callback listener (`qai ipi listen`) is **separate** from the qai Web UI. Only the callback listener should be exposed to external networks. The Web UI must bind to `127.0.0.1` (localhost) only unless you have configured proper authentication. **Do not** forward or publish the Web UI host/port via ngrok, Cloudflare Tunnel, or public IPs — doing so exposes an unauthenticated management interface.
+</Warning>
+
 For testing against cloud-hosted AI targets, the listener must be reachable from the target system:
 
 - **Local testing:** `http://localhost:8080` works when the agent runs on the same machine

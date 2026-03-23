@@ -38,7 +38,7 @@ rxp/
 
 **CorpusDocument** — `id`, `text`, `source` (file path), `is_poison` (boolean flag)
 
-**ValidationResult** — `model_id`, `poison_retrievals` (count), `total_queries`, `retrieval_rate` (float 0-1), `mean_poison_rank` (when retrieved), `query_results` (list of QueryResult)
+**ValidationResult** — `model_id`, `poison_retrievals` (count), `total_queries`, `retrieval_rate` (float 0–1, where 1.0 = 100%), `mean_poison_rank` (when retrieved), `query_results` (list of QueryResult)
 
 **QueryResult** — `query` (string), `poison_retrieved` (boolean), `poison_rank` (int or None)
 
@@ -58,12 +58,12 @@ Default model: `minilm-l6` (MiniLM-L6-v2, local, no API key needed). Use `--mode
 
 The RXP adapter maps retrieval rates to severity levels for findings:
 
-| Rate | Severity |
-|------|----------|
-| ≥ 75% | CRITICAL |
-| ≥ 50% | HIGH |
-| ≥ 25% | MEDIUM |
-| < 25% | LOW |
+| Rate (0–1) | Percentage | Severity |
+|------------|------------|----------|
+| ≥ 0.75 | ≥ 75% | CRITICAL |
+| ≥ 0.50 | ≥ 50% | HIGH |
+| ≥ 0.25 | ≥ 25% | MEDIUM |
+| < 0.25 | < 25% | LOW |
 
 See [Interpretive Bands](/rxp/interpretive-bands) for details.
 

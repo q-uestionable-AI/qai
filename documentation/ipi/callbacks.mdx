@@ -22,7 +22,7 @@ flowchart LR
 2. The payload instructs the agent to make an HTTP request (GET or POST) to a callback URL
 3. The callback listener receives the request and extracts the campaign UUID, token, source IP, and User-Agent
 4. The listener validates the token against the database and scores the hit's confidence
-5. The hit is persisted to `~/.qai/ipi.db` and logged to the console
+5. The hit is persisted to `~/.qai/qai.db` and logged to the console
 6. The listener returns a fake 404 response to avoid alerting the target system
 
 ---

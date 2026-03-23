@@ -99,7 +99,10 @@ Block merges when high-severity findings are detected:
 1. Go to **Settings > Branches > Branch protection rules**
 2. Enable **Require status checks to pass before merging**
 3. Add the **MCP Security Audit** job as a required check
-4. High/critical findings in SARIF cause the upload step to create error-level alerts, which can fail the check
+
+<Note>
+The `upload-sarif` action does **not** fail the workflow based on alert severity — it only errors on upload or validation failures. To block merges on findings, add an explicit CI gate step in the **MCP Security Audit** job that parses the SARIF output and exits non-zero when findings exceed your severity/threshold policy. Branch protection requires the named status check to pass, but blocking on finding severity requires this custom gate.
+</Note>
 
 ## Managing Alerts
 

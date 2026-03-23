@@ -40,8 +40,7 @@ A session file contains a `ProxySession` object with metadata and an ordered lis
             "version": "0.5.1"
           }
         }
-      },
-      "original_payload": null
+      }
     },
     {
       "proxy_id": "msg-002",
@@ -64,8 +63,7 @@ A session file contains a `ProxySession` object with metadata and an ordered lis
             "version": "1.0.0"
           }
         }
-      },
-      "original_payload": null
+      }
     }
   ],
   "metadata": {
@@ -245,9 +243,9 @@ qai proxy export \
   --output audit_evidence.json
 ```
 
-<Tip>
-Session files are self-contained JSON — no external dependencies. Share them via email, commit to repositories, or attach to bug reports. Use `--verbose` mode in `inspect` to see full payloads when reviewing manually.
-</Tip>
+<Warning>
+Raw session captures may contain sensitive data — prompts, tokens, tool arguments, and server responses. **Do not** commit session files to public repositories or share them via unsecured channels. Redact or encrypt sensitive fields before sharing, and store exports only in private, access-controlled locations. Use `inspect --verbose` only on sanitized data when reviewing full payloads.
+</Warning>
 
 ## File Size Considerations
 

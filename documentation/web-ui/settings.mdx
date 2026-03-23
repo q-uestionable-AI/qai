@@ -139,18 +139,36 @@ All settings are stored in the local SQLite database (`~/.qai/qai.db`). This inc
 
 ### Backing Up Settings
 
-Export your configuration:
+Stop the qai server before copying the database to ensure a consistent snapshot:
 
 ```bash
+# Stop the server first (Ctrl+C in the terminal, or kill the process)
+pkill -f 'qai' || true
+
+# Copy the main DB and WAL/SHM files if present
 cp ~/.qai/qai.db ~/backup-qai.db
+cp ~/.qai/qai.db-wal ~/backup-qai.db-wal 2>/dev/null || true
+cp ~/.qai/qai.db-shm ~/backup-qai.db-shm 2>/dev/null || true
 ```
 
 Restore from backup:
 
 ```bash
+# Stop the server first
+pkill -f 'qai' || true
+
+# Restore all DB files
 cp ~/backup-qai.db ~/.qai/qai.db
-qai  # restart the server
+cp ~/backup-qai.db-wal ~/.qai/qai.db-wal 2>/dev/null || true
+cp ~/backup-qai.db-shm ~/.qai/qai.db-shm 2>/dev/null || true
+
+# Restart the server
+qai
 ```
+
+<Note>
+SQLite WAL mode uses `-wal` and `-shm` companion files. Copying only `qai.db` while the server is running can produce a corrupted backup. Always stop the server and include all three files.
+</Note>
 
 ### Credential Storage
 
@@ -184,6 +202,10 @@ To completely reset settings:
 2. Restart the server: `qai`
 
 A fresh database is created with no defaults or providers configured.
+
+<Note>
+Deleting `qai.db` only resets the database — provider API keys stored in the OS keyring are **not** removed. To fully clear credentials, manually remove provider entries from your system keyring (via your OS keyring manager or the `keyring` CLI) after deleting the database.
+</Note>
 
 <Tip>
 Use this approach if you encounter credential issues or want to start fresh. Your run history will be lost; export results before resetting if needed.

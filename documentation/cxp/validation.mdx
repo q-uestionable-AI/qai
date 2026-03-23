@@ -24,10 +24,10 @@ qai cxp validate --result <result-id>
 Validate code files against a specific technique without a stored result:
 
 ```bash
-qai cxp validate --technique exfil --file generated_code.py
+qai cxp validate --technique exfil-cursorrules --file generated_code.py
 ```
 
-Either `--result` or `--technique` is required. When using `--technique`, at least one `--file` is also required.
+Either `--result` or `--technique` is required. Technique IDs use the compound `{objective}-{format}` form (e.g., `exfil-cursorrules`, `backdoor-claude-md`). When using `--technique`, at least one `--file` is also required.
 
 ## Output
 
@@ -88,7 +88,7 @@ The validation result is stored alongside the test record in the database, enabl
 Test the same code against multiple techniques:
 
 ```bash
-for technique in backdoor cmdexec exfil; do
+for technique in backdoor-cursorrules cmdexec-cursorrules exfil-cursorrules; do
   echo "=== $technique ==="
   qai cxp validate --technique $technique --file generated_code.py
 done

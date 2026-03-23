@@ -47,13 +47,13 @@ You control how the payload is presented and what it does:
 - **Datasource** — Appears as data source attribution
 
 **Payload Types** (attack objectives):
-- **Callback** — Proof of execution (safe, default)
-- **Exfil_summary** — Attempts to extract document summary
-- **Exfil_context** — Attempts to extract conversation context
-- **Ssrf_internal** — Server-side request forgery to internal endpoints
-- **Instruction_override** — Attempts to override system instructions
-- **Tool_abuse** — Attempts to misuse agent tools
-- **Persistence** — Attempts to persist instructions across sessions
+- **callback** — Proof of execution (safe, default)
+- **exfil_summary** — Attempts to extract document summary
+- **exfil_context** — Attempts to extract conversation context
+- **ssrf_internal** — Server-side request forgery to internal endpoints
+- **instruction_override** — Attempts to override system instructions
+- **tool_abuse** — Attempts to misuse agent tools
+- **persistence** — Attempts to persist instructions across sessions
 
 Non-callback types require the `--dangerous` flag and are intended for authorized security testing only.
 

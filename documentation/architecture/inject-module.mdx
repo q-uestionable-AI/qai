@@ -35,7 +35,7 @@ inject/
 The inject module uses `q_ai.core.llm` for LLM access:
 
 - **`ProviderClient`** — Protocol defining `call_with_tools()` for tool-use interactions
-- **`LiteLLMClient`** — Implementation wrapping litellm (the only place litellm is imported)
+- **`LiteLLMClient`** — Implementation that centralizes LLM access behind the `ProviderClient` protocol (wraps litellm)
 - **`NormalizedResponse`** — Provider-agnostic response with `content`, `tool_calls`, `raw_response`, `model`, `provider`
 - **`parse_model_string()`** — Splits `provider/model` format, applies Anthropic default for bare names
 

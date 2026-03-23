@@ -15,7 +15,7 @@ qai supports three MCP transport types for connecting to target servers. The tra
 
 ## stdio
 
-The default transport. qai spawns the server as a child process and communicates over standard input/output.
+The most common transport. qai spawns the server as a child process and communicates over standard input/output. It is the default for web UI workflow launches, but CLI commands require an explicit `--transport stdio` flag.
 
 **CLI usage:**
 

@@ -56,15 +56,22 @@ For database import:
 COPY findings FROM '/path/results.csv' WITH (FORMAT csv, HEADER);
 ```
 
-For command-line analysis:
+For command-line analysis, use a CSV-aware tool to handle quoted fields and newlines correctly (plain `cut`/`grep` can break on RFC 4180 CSV):
 
 ```bash
-# Count findings by severity
-cut -d, -f4 results.csv | sort | uniq -c | sort -rn
+# Using csvkit (pip install csvkit)
+csvcut -c severity results.csv | sort | uniq -c | sort -rn   # Count by severity
+csvgrep -c severity -m high results.csv > high.csv           # Filter high-severity
 
-# Filter high-severity only
-head -1 results.csv > high.csv
-grep ',high,' results.csv >> high.csv
+# Using Python's csv module
+python -c "
+import csv, sys
+with open('results.csv') as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        if row['severity'] == 'high':
+            print(row['title'])
+"
 ```
 
 <Note>

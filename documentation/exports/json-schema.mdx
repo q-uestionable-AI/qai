@@ -9,7 +9,13 @@ The JSON export produces a run bundle containing the parent run, child runs, fin
 
 **Web UI:** Click **Export JSON** on a completed run's overview header.
 
-**CLI:** Use the web UI route directly — the JSON bundle is generated server-side at `/api/runs/{run_id}/export`.
+**CLI:** The JSON bundle is generated server-side. Fetch it via the HTTP endpoint:
+
+```bash
+curl -o bundle.json http://localhost:8000/api/runs/{run_id}/export
+```
+
+This is the same export used by the Web UI's Export JSON button.
 
 ## Schema: `run-bundle-v1`
 
@@ -34,7 +40,7 @@ The JSON export produces a run bundle containing the parent run, child runs, fin
 
 ### `run`
 
-The parent workflow run with fields: `id` (UUID hex), `module`, `status` (int), `parent_run_id`, `name` (workflow ID), `target_id`, `config` (JSON string), `started_at`, `finished_at`, `guidance` (JSON string or null).
+The parent workflow run with fields: `id` (UUID hex), `module`, `status` (int — 0=pending, 1=running, 2=completed, 3=failed, 4=cancelled, 5=waiting_for_user, 6=partial; see `RunStatus` in [Core Infrastructure](/architecture/core)), `parent_run_id`, `name` (workflow ID), `target_id`, `config` (JSON string), `started_at`, `finished_at`, `guidance` (JSON string or null).
 
 ### `child_runs`
 

@@ -101,10 +101,10 @@ qai cxp validate [OPTIONS]
 | Option | Required | Description |
 |--------|----------|-------------|
 | `--result` | No* | Stored result ID to validate |
-| `--technique` | No* | Technique ID in `{objective}-{format}` form (required for file validation) |
-| `--file` | No | Path to file(s) to validate (repeatable) |
+| `--technique` | No* | Technique ID in `{objective}-{format}` form (must be combined with `--file`) |
+| `--file` | No | Path to file(s) to validate (repeatable, required when using `--technique`) |
 
-\* Either `--result` or `--technique` is required.
+\* Either `--result` alone, or `--technique` plus at least one `--file`, is required.
 
 ### Examples
 

@@ -57,7 +57,7 @@ ipi/
 1. For each technique in the request, call the format-specific generator
 2. Each generator embeds the payload instruction using the hiding technique
 3. A unique UUID and authentication token are generated per document
-4. The callback URL is embedded in the payload (`{callback_url}/c/{uuid}`)
+4. The callback URL is embedded in the payload (`{callback_url}/c/{uuid}/{token}`)
 5. Campaign records are created in the IPI database
 6. `GenerateResult` returned with list of campaigns and any errors
 

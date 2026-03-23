@@ -124,7 +124,7 @@ This hidden feature is for executives only.
 
 ```bash
 qai rxp validate \
-  --profile hr_policy \
+  --profile hr-policy \
   --corpus-dir ./knowledge_base \
   --poison-file ./poisoned_doc.txt \
   --model minilm-l6 \
@@ -144,10 +144,10 @@ With 80% retrieval rate, this is a **critical** severity finding — the poisone
 
 ### 5. Mitigate
 
-- **Lower-rank results** — Poison document was too obvious; make it more subtle
-- **Higher-rank results** — Poison document successfully evaded detection
-- **Different queries** — Test with more varied questions
-- **Different models** — Try other embedding models to see consistency
+- **Lower-rank results** — Poisoning is less effective; current defenses are working
+- **Higher-rank results** — Poisoning succeeds; investigate why the document ranks highly and consider content filtering or switching embedding models
+- **Different queries** — Test with varied questions to confirm robustness across query patterns
+- **Different models** — Try alternative embedding models to evaluate whether the vulnerability is model-specific or systemic
 
 ## When To Use RXP
 
