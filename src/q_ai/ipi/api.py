@@ -86,9 +86,9 @@ async def get_stats(request: Request) -> HTMLResponse:
     low = sum(1 for h in hits if h.confidence == HitConfidence.LOW)
 
     return templates.TemplateResponse(
+        request,
         "partials/stats.html",
         {
-            "request": request,
             "total_campaigns": len(campaigns),
             "total_hits": len(hits),
             "high": high,
@@ -114,10 +114,7 @@ async def get_hits_partial(
         Rendered HTML partial with hit cards.
     """
     hits = db.get_hits(uuid=uuid)[:limit]
-    return templates.TemplateResponse(
-        "partials/hit_list.html",
-        {"request": request, "hits": hits},
-    )
+    return templates.TemplateResponse(request, "partials/hit_list.html", {"hits": hits})
 
 
 @api_router.get("/techniques", response_class=HTMLResponse)
@@ -142,8 +139,7 @@ async def get_technique_options(request: Request, format: str = "pdf") -> HTMLRe
         technique_names = []
 
     return templates.TemplateResponse(
-        "partials/technique_options.html",
-        {"request": request, "techniques": technique_names},
+        request, "partials/technique_options.html", {"techniques": technique_names}
     )
 
 
@@ -182,8 +178,7 @@ async def generate_payloads(
     base_name = Path(base_name).name
     if not base_name or base_name in (".", ".."):
         return templates.TemplateResponse(
-            "partials/gen_result.html",
-            {"request": request, "error": "Invalid base filename."},
+            request, "partials/gen_result.html", {"error": "Invalid base filename."}
         )
 
     # Fixed output directory — validated against traversal
@@ -202,11 +197,9 @@ async def generate_payloads(
             tech_enum = Technique(technique)
             if tech_enum not in available:
                 return templates.TemplateResponse(
+                    request,
                     "partials/gen_result.html",
-                    {
-                        "request": request,
-                        "error": f"Technique '{technique}' not available for {format}",
-                    },
+                    {"error": f"Technique '{technique}' not available for {format}"},
                 )
             techs = [tech_enum]
 
@@ -221,23 +214,18 @@ async def generate_payloads(
             seed=seed_val,
         )
 
-        return templates.TemplateResponse(
-            "partials/gen_result.html",
-            {"request": request, "result": result},
-        )
+        return templates.TemplateResponse(request, "partials/gen_result.html", {"result": result})
     except ValueError as e:
         # ValueError from Format/PayloadStyle/PayloadType/Technique parsing —
         # safe to surface since these are user-input validation errors.
-        return templates.TemplateResponse(
-            "partials/gen_result.html",
-            {"request": request, "error": str(e)},
-        )
+        return templates.TemplateResponse(request, "partials/gen_result.html", {"error": str(e)})
     except Exception:
         # Unexpected errors — log internally but don't leak details to client.
         logging.exception("Unexpected error during payload generation")
         return templates.TemplateResponse(
+            request,
             "partials/gen_result.html",
-            {"request": request, "error": "An internal error occurred during generation."},
+            {"error": "An internal error occurred during generation."},
         )
 
 
@@ -257,9 +245,9 @@ async def reset_data(request: Request) -> HTMLResponse:
     """
     campaigns_deleted, hits_deleted, files_deleted = db.reset_db()
     return templates.TemplateResponse(
+        request,
         "partials/stats.html",
         {
-            "request": request,
             "total_campaigns": 0,
             "total_hits": 0,
             "high": 0,
