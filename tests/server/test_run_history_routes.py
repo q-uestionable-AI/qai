@@ -63,7 +63,7 @@ class TestRunHistoryAPI:
             update_run_status(conn, r2, RunStatus.FAILED)
         resp = client.get("/api/runs/history?status=COMPLETED")
         assert resp.status_code == 200
-        assert "COMPLETED" in resp.text
+        assert "Completed" in resp.text
 
 
 class TestExportRunAPI:

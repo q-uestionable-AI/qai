@@ -38,7 +38,7 @@ class TestOperationsWithRunId:
 
         resp = client.get(f"/operations?run_id={run_id}")
         assert resp.status_code == 200
-        assert "RUNNING" in resp.text
+        assert "Running" in resp.text
 
 
 class TestOperationsWithChildRuns:
