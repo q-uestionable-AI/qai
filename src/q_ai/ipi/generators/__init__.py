@@ -614,7 +614,9 @@ def create_campaign_ids(seed: int | None = None, sequence: int = 0) -> tuple[str
 
     Returns:
         Tuple of (uuid_string, token_string). UUID is a valid v4 UUID.
-        Token is a 22-character URL-safe base64 string.
+        Token is a 22-character string from the unambiguous alphabet
+        (ASCII letters + digits + ``-_``, excluding visually ambiguous
+        characters like ``0O1lI``).
 
     Example:
         >>> # Random (default)

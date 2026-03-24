@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from q_ai.ipi.generators import create_campaign_ids
-
-_AMBIGUOUS_CHARS = frozenset("0O1lI")
+from q_ai.ipi.generators import _AMBIGUOUS_CHARS, create_campaign_ids
 
 
 class TestCreateCampaignIds:
