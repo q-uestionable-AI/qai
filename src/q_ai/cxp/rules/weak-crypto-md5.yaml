@@ -1,5 +1,5 @@
 id: weak-crypto-md5
-name: Weak Crypto — MD5 Password Hashing
+name: Weak Crypto - MD5 Password Hashing
 category: weak-crypto
 severity: high
 description: >

@@ -1,5 +1,5 @@
 id: stack-traces
-name: Info Disclosure — Stack Traces with Local Variables
+name: Info Disclosure - Stack Traces with Local Variables
 category: info-disclosure
 severity: medium
 description: >

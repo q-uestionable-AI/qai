@@ -1,5 +1,5 @@
 id: outbound-exfil
-name: Data Exfiltration — Telemetry Endpoint with Env Data
+name: Data Exfiltration - Telemetry Endpoint with Env Data
 category: data-exfiltration
 severity: high
 description: >

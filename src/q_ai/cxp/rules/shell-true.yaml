@@ -1,5 +1,5 @@
 id: shell-true
-name: Command Injection — subprocess shell=True
+name: Command Injection - subprocess shell=True
 category: command-injection
 severity: high
 description: >
