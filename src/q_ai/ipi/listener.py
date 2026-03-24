@@ -19,7 +19,7 @@ from q_ai.ipi.models import Hit, HitConfidence
 # User-Agent patterns that suggest programmatic HTTP clients (not browsers/scanners)
 _PROGRAMMATIC_UA_PATTERNS = re.compile(
     r"python-requests|httpx|aiohttp|urllib|curl|wget|node-fetch|"
-    r"axios|got/|undici|fetch|llm|openai|langchain",
+    r"axios|got/|undici|fetch|llm|openai|langchain|modelcontextprotocol",
     re.IGNORECASE,
 )
 
