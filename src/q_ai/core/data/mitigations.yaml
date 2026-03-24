@@ -93,7 +93,7 @@ categories:
       - "Cross-tool references in prompts can enable privilege escalation across tools"
       - "Risk depends on the agent's authority level and available actions"
       - "Consider whether injected instructions could reach other connected systems"
-    general_note: "Prompt injection mitigations are an active area of research. No single control is fully effective — defense in depth is essential."
+    general_note: "Prompt injection mitigations are an active area of research. No single control is fully effective - defense in depth is essential."
 
   audit_telemetry:
     tier1_actions:
@@ -134,15 +134,15 @@ categories:
 rules:
   "detection_mode:canary":
     actions:
-      - "Canary-based detection confirmed command execution — prioritize input validation for this tool"
+      - "Canary-based detection confirmed command execution - prioritize input validation for this tool"
 
   "detection_mode:pattern":
     actions:
-      - "Pattern-based detection suggests output contains command artifacts — review output sanitization"
+      - "Pattern-based detection suggests output contains command artifacts - review output sanitization"
 
   "detection_mode:error_based":
     actions:
-      - "Error-based detection indicates the server leaks execution errors — suppress or sanitize error output"
+      - "Error-based detection indicates the server leaks execution errors - suppress or sanitize error output"
 
   "cwe:command_injection":
     actions:
@@ -170,15 +170,15 @@ rules:
 
   "transport:stdio":
     actions:
-      - "Stdio transport relies on OS process isolation — ensure the calling process has appropriate privileges"
+      - "Stdio transport relies on OS process isolation - ensure the calling process has appropriate privileges"
 
   "transport:sse":
     actions:
-      - "SSE transport is network-exposed — enforce TLS and authentication on all connections"
+      - "SSE transport is network-exposed - enforce TLS and authentication on all connections"
 
   "transport:http":
     actions:
-      - "HTTP transport is network-exposed — enforce TLS, authentication, and rate limiting"
+      - "HTTP transport is network-exposed - enforce TLS, authentication, and rate limiting"
 
   "param:unbounded_input":
     actions:
@@ -186,36 +186,36 @@ rules:
 
   "permissions:high_write_ratio":
     actions:
-      - "High write-to-read ratio detected — review whether all write tools are necessary for the server's purpose"
+      - "High write-to-read ratio detected - review whether all write tools are necessary for the server's purpose"
 
   "permissions:many_tools":
     actions:
-      - "Large tool count increases attack surface — consider splitting into focused servers with fewer tools"
+      - "Large tool count increases attack surface - consider splitting into focused servers with fewer tools"
 
   "token:secrets_in_response":
     actions:
-      - "Secrets detected in tool responses — implement server-side response filtering to redact credentials"
+      - "Secrets detected in tool responses - implement server-side response filtering to redact credentials"
 
   "token:env_var_leak":
     actions:
-      - "Environment variables exposed — restrict the server process environment to required variables only"
+      - "Environment variables exposed - restrict the server process environment to required variables only"
 
   "poisoning:hidden_chars":
     actions:
-      - "Hidden Unicode characters detected in tool descriptions — inspect with a hex viewer and report to maintainer"
+      - "Hidden Unicode characters detected in tool descriptions - inspect with a hex viewer and report to maintainer"
 
   "poisoning:homoglyphs":
     actions:
-      - "Homoglyph characters detected — tool names or descriptions may be visually spoofing legitimate tools"
+      - "Homoglyph characters detected - tool names or descriptions may be visually spoofing legitimate tools"
 
   "supply_chain:known_cve":
     actions:
-      - "Known CVE identified — check vendor advisories and apply the fix or isolate the server immediately"
+      - "Known CVE identified - check vendor advisories and apply the fix or isolate the server immediately"
 
   "shadow:debug_tools":
     actions:
-      - "Debug/development tools detected — these should not be present in production deployments"
+      - "Debug/development tools detected - these should not be present in production deployments"
 
   "prompt_injection:cross_tool_ref":
     actions:
-      - "Cross-tool references found in prompt content — this may enable tool-to-tool privilege escalation"
+      - "Cross-tool references found in prompt content - this may enable tool-to-tool privilege escalation"
