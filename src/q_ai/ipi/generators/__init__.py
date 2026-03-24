@@ -21,12 +21,21 @@ Technique Registry:
     Use get_techniques_for_format() to filter techniques by format.
 """
 
-import base64
 import random
 import secrets
+import string
 import uuid as uuid_mod
 
 from q_ai.ipi.models import Format, PayloadStyle, PayloadType, Technique
+
+# Characters that LLMs frequently confuse when reproducing tokens from visual context.
+# Removing these from generated tokens prevents misread-callback failures.
+_AMBIGUOUS_CHARS = frozenset("0O1lI")
+
+# URL-safe alphabet minus ambiguous characters.
+_UNAMBIGUOUS_ALPHABET = "".join(
+    c for c in string.ascii_letters + string.digits + "-_" if c not in _AMBIGUOUS_CHARS
+)
 
 # =============================================================================
 # Technique-to-Format Registry
@@ -605,7 +614,9 @@ def create_campaign_ids(seed: int | None = None, sequence: int = 0) -> tuple[str
 
     Returns:
         Tuple of (uuid_string, token_string). UUID is a valid v4 UUID.
-        Token is a 22-character URL-safe base64 string.
+        Token is a 22-character string from the unambiguous alphabet
+        (ASCII letters + digits + ``-_``, excluding visually ambiguous
+        characters like ``0O1lI``).
 
     Example:
         >>> # Random (default)
@@ -623,14 +634,14 @@ def create_campaign_ids(seed: int | None = None, sequence: int = 0) -> tuple[str
         True
     """
     if seed is None:
-        return str(uuid_mod.uuid4()), secrets.token_urlsafe(16)
+        token = "".join(secrets.choice(_UNAMBIGUOUS_ALPHABET) for _ in range(22))
+        return str(uuid_mod.uuid4()), token
 
     rng = random.Random(f"{seed}-{sequence}")  # noqa: S311  # nosec B311
     uuid_bytes = bytes(rng.getrandbits(8) for _ in range(16))
     det_uuid = str(uuid_mod.UUID(bytes=uuid_bytes, version=4))
-    token_bytes = bytes(rng.getrandbits(8) for _ in range(16))
-    det_token = base64.urlsafe_b64encode(token_bytes).rstrip(b"=").decode()
-    return det_uuid, det_token
+    token = "".join(rng.choice(_UNAMBIGUOUS_ALPHABET) for _ in range(22))
+    return det_uuid, token
 
 
 # =============================================================================

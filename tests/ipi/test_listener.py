@@ -82,6 +82,10 @@ class TestScoreConfidence:
     def test_no_token_curl_ua_returns_medium(self) -> None:
         assert score_confidence(False, "curl/8.0") == HitConfidence.MEDIUM
 
+    def test_no_token_mcp_ua_returns_medium(self) -> None:
+        ua = "ModelContextProtocol/1.0 (Autonomous; +https://github.com/modelcontextprotocol/servers)"
+        assert score_confidence(False, ua) == HitConfidence.MEDIUM
+
 
 # ---------------------------------------------------------------------------
 # record_hit
