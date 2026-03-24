@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "q-uestionable-ai"
-version = "0.5.2"
+version = "0.5.3"
 description = "Offensive security platform for agentic AI infrastructure"
 readme = "README.md"
 license = "Apache-2.0"
@@ -31,7 +31,7 @@ dependencies = [
     "websockets>=15.0",
     "mcp>=1.26,<2",
     "anthropic>=0.84",
-    "litellm>=1.80",
+    "litellm>=1.80,!=1.82.8",
     "keyring>=25.0",
     "textual>=0.80",
     # IPI document generators
