@@ -70,6 +70,11 @@ def _print_dry_run(result: ImportResult) -> None:
 def _persist(result: ImportResult, db_path: Path | None, source_file: Path) -> str:
     """Write parsed findings to the database.
 
+    Args:
+        result: Parsed import result from a parser module.
+        db_path: Override database path, or ``None`` for the default.
+        source_file: Path to the original import file (for checksum).
+
     Returns:
         The import run ID.
     """

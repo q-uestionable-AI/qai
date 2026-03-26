@@ -63,17 +63,20 @@ def _build_rule_index(run: dict) -> dict[str, dict]:
     """Build a lookup from ruleId to rule metadata."""
     driver = run.get("tool", {}).get("driver", {})
     rules = driver.get("rules", [])
+    if not isinstance(rules, list):
+        return {}
     index: dict[str, dict] = {}
     for rule in rules:
+        if not isinstance(rule, dict):
+            continue
         rule_id = rule.get("id")
-        if rule_id:
+        if isinstance(rule_id, str) and rule_id:
             index[rule_id] = rule
     return index
 
 
 def _parse_run(
     run: dict,
-    source_file: str,
 ) -> tuple[list[ImportedFinding], list[str], str, str | None]:
     """Parse a single SARIF run into findings.
 
@@ -88,8 +91,17 @@ def _parse_run(
     findings: list[ImportedFinding] = []
     errors: list[str] = []
 
-    for result in run.get("results", []):
+    results_list = run.get("results", [])
+    if not isinstance(results_list, list):
+        return findings, ["'results' is not an array"], tool_name, tool_version
+
+    for result in results_list:
+        if not isinstance(result, dict):
+            errors.append("Skipping non-dict result entry")
+            continue
         rule_id = result.get("ruleId")
+        if rule_id is not None and not isinstance(rule_id, str):
+            rule_id = str(rule_id)
         rule_meta = rule_index.get(rule_id, {}) if rule_id else {}
         level = result.get("level", "warning")
         properties = result.get("properties", {})
@@ -160,7 +172,7 @@ def parse_sarif(path: Path) -> ImportResult:
         if not isinstance(run, dict):
             all_errors.append("Skipping non-dict run entry")
             continue
-        findings, errors, run_tool, run_version = _parse_run(run, path.name)
+        findings, errors, run_tool, run_version = _parse_run(run)
         all_findings.extend(findings)
         all_errors.extend(errors)
         # Use the first run's tool info as the primary.

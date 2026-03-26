@@ -77,6 +77,8 @@ def _build_finding(conversation: dict) -> tuple[ImportedFinding | None, list[str
 
     # Use the first scoring result.
     score = scoring[0]
+    if not isinstance(score, dict):
+        return None, ["First scoring entry is not a dict"]
     score_value = score.get("score_value")
     score_type = score.get("score_type", "")
     if score_value is None:
@@ -87,6 +89,8 @@ def _build_finding(conversation: dict) -> tuple[ImportedFinding | None, list[str
         warnings.append(sev_warning)
 
     messages = conversation.get("messages", [])
+    if not isinstance(messages, list):
+        messages = []
     labels = conversation.get("labels", {})
     if not isinstance(labels, dict):
         labels = {}
@@ -118,7 +122,8 @@ def parse_pyrit(path: Path) -> ImportResult:
         An :class:`ImportResult` with parsed findings.
 
     Raises:
-        ValueError: If the file is not valid JSON or not a list.
+        ValueError: If the file is not valid JSON.
+        TypeError: If the top-level JSON value is not a list.
     """
     text = path.read_text(encoding="utf-8")
     try:
@@ -137,7 +142,11 @@ def parse_pyrit(path: Path) -> ImportResult:
             errors.append(f"Entry {idx}: expected dict, got {type(conversation).__name__}")
             continue
 
-        finding, warnings = _build_finding(conversation)
+        try:
+            finding, warnings = _build_finding(conversation)
+        except Exception as exc:  # Defensive: convert any parse error to warning
+            errors.append(f"Entry {idx}: unexpected error — {exc}")
+            continue
         errors.extend(warnings)
         if finding is not None:
             findings.append(finding)

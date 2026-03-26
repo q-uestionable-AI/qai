@@ -62,6 +62,14 @@ def test_import_pyrit(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert "Imported 3 findings" in result.output
 
+    with get_connection(db) as conn:
+        runs = list_runs(conn, module="import")
+        assert len(runs) == 1
+        assert runs[0].source == "pyrit"
+
+        findings = list_findings(conn, run_id=runs[0].id)
+        assert len(findings) == 3
+
 
 def test_import_sarif(tmp_path: Path) -> None:
     db = tmp_path / "test.db"
@@ -78,6 +86,14 @@ def test_import_sarif(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     assert "Imported 3 findings" in result.output
+
+    with get_connection(db) as conn:
+        runs = list_runs(conn, module="import")
+        assert len(runs) == 1
+        assert runs[0].source == "SecurityScanner"
+
+        findings = list_findings(conn, run_id=runs[0].id)
+        assert len(findings) == 3
 
 
 def test_import_dry_run(tmp_path: Path) -> None:
