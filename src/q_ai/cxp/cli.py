@@ -104,7 +104,7 @@ def record(
                 _error(f"Campaign not found: {campaign_id}")
         else:
             name = f"{datetime.datetime.now(datetime.UTC).date().isoformat()}-{assistant}"
-            campaign = create_campaign(conn, name)
+            campaign = create_campaign(conn, name, source="cli")
 
         result = record_result(
             conn,

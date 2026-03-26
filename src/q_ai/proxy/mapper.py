@@ -25,6 +25,7 @@ def persist_session(
     duration_seconds: float | None = None,
     artifacts_dir: Path | None = None,
     run_id: str | None = None,
+    source: str | None = None,
 ) -> str:
     """Persist a proxy session to the database and artifacts.
 
@@ -40,6 +41,7 @@ def persist_session(
             ~/.qai/artifacts.
         run_id: Optional pre-created run ID from the orchestrator.
             When provided, skips creating a new run row.
+        source: Optional provenance tag (e.g. "web", "cli").
 
     Returns:
         The run ID for the persisted session.
@@ -71,8 +73,8 @@ def persist_session(
                 """
                 INSERT INTO runs
                     (id, module, name, target_id, parent_run_id,
-                     config, status, started_at, finished_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     config, status, started_at, finished_at, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -84,6 +86,7 @@ def persist_session(
                     int(RunStatus.COMPLETED),
                     store.started_at.isoformat(),
                     now_iso,
+                    source,
                 ),
             )
 

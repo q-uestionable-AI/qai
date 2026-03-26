@@ -82,6 +82,7 @@ def create_run(
     parent_run_id: str | None = None,
     config: dict | None = None,
     run_id: str | None = None,
+    source: str | None = None,
 ) -> str:
     """Insert a new run and return its ID.
 
@@ -93,6 +94,7 @@ def create_run(
         parent_run_id: Optional parent run for chained runs.
         config: Optional configuration dict.
         run_id: Optional pre-generated run ID. If None, a new UUID is generated.
+        source: Optional provenance tag (e.g. "web", "cli").
 
     Returns:
         The hex UUID of the newly created run.
@@ -102,8 +104,8 @@ def create_run(
         """
         INSERT INTO runs
             (id, module, name, target_id, parent_run_id,
-             config, status, started_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             config, status, started_at, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
@@ -114,6 +116,7 @@ def create_run(
             _dump_json(config),
             int(RunStatus.PENDING),
             _now_iso(),
+            source,
         ),
     )
     return run_id

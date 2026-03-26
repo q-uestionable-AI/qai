@@ -516,7 +516,7 @@ def generate(
     from q_ai.ipi.mapper import persist_generate
 
     if result.campaigns:
-        persist_generate(result.campaigns)
+        persist_generate(result.campaigns, source="cli")
 
     _display_generate_results(result, format_name, style, payload_type_enum, callback_url)
 

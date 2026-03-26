@@ -291,6 +291,6 @@ class TestSchemaV10Migration:
             columns = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
             assert "guidance" in columns
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert version == 10
+            assert version == 11
         finally:
             conn.close()

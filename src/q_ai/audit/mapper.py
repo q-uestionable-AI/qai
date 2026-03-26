@@ -110,6 +110,7 @@ def persist_scan(
     transport: str = "stdio",
     run_id: str | None = None,
     target_id: str | None = None,
+    source: str | None = None,
 ) -> str:
     """Persist a ScanResult to the database.
 
@@ -124,6 +125,7 @@ def persist_scan(
             When provided, skips creating a new run row.
         target_id: Optional pre-created target ID from the orchestrator.
             When provided, skips creating a new target row.
+        source: Optional provenance tag (e.g. "web", "cli").
 
     Returns:
         The run ID for the persisted scan.
@@ -159,8 +161,8 @@ def persist_scan(
                 """
                 INSERT INTO runs
                     (id, module, name, target_id, parent_run_id,
-                     config, status, started_at, finished_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     config, status, started_at, finished_at, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -172,6 +174,7 @@ def persist_scan(
                     2,  # RunStatus.COMPLETED
                     scan_result.started_at.isoformat() if scan_result.started_at else now_iso,
                     scan_result.finished_at.isoformat() if scan_result.finished_at else now_iso,
+                    source,
                 ),
             )
 

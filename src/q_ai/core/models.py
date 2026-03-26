@@ -103,6 +103,7 @@ class Run:
         started_at: Optional timestamp when the run started.
         finished_at: Optional timestamp when the run finished.
         guidance: Optional JSON-serialized RunGuidance for this run.
+        source: Optional provenance tag (e.g. "web", "cli", "api", "mcp").
     """
 
     id: str
@@ -115,6 +116,7 @@ class Run:
     started_at: datetime.datetime | None = None
     finished_at: datetime.datetime | None = None
     guidance: str | None = None
+    source: str | None = None
 
     def to_dict(self) -> dict:
         """Serialize the run to a dict suitable for database storage.
@@ -134,6 +136,7 @@ class Run:
             "started_at": _dump_dt(self.started_at),
             "finished_at": _dump_dt(self.finished_at),
             "guidance": self.guidance,
+            "source": self.source,
         }
 
     @classmethod
@@ -157,6 +160,7 @@ class Run:
             started_at=_parse_dt(row.get("started_at")),
             finished_at=_parse_dt(row.get("finished_at")),
             guidance=row.get("guidance"),
+            source=row.get("source"),
         )
 
 
