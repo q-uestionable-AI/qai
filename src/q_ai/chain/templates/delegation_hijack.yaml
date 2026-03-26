@@ -13,6 +13,8 @@ steps:
     trust_boundary: tool-to-agent
     on_success: cross-tool-pivot
     on_failure: abort
+    relevant_categories:
+      - prompt_injection
 
   - id: cross-tool-pivot
     name: Pivot through cross-tool delegation
@@ -21,6 +23,9 @@ steps:
     trust_boundary: agent-to-agent
     on_success: poison-downstream
     on_failure: abort
+    relevant_categories:
+      - tool_poisoning
+      - permissions
 
   - id: poison-downstream
     name: Poison downstream agent tool descriptions
@@ -28,3 +33,5 @@ steps:
     technique: description_poisoning
     trust_boundary: agent-to-tool
     terminal: true
+    relevant_categories:
+      - tool_poisoning

@@ -164,16 +164,12 @@ class TestAssessWorkflow:
 
         runner.complete.assert_awaited_once_with(RunStatus.PARTIAL)
 
-    async def test_audit_findings_passed_to_inject(self) -> None:
-        """When audit succeeds, audit findings are passed to InjectAdapter config."""
+    async def test_no_audit_findings_in_inject_config(self) -> None:
+        """Inject adapter config does not contain audit_findings passthrough."""
         runner = _make_runner()
         config = _base_config()
 
-        findings = [{"id": "f1"}]
-        mock_scan_result = MagicMock()
-        mock_scan_result.findings = findings
         mock_audit_result = MagicMock()
-        mock_audit_result.scan_result = mock_scan_result
         mock_audit_result.finding_count = 1
 
         mock_inject_result = MagicMock()
@@ -191,10 +187,9 @@ class TestAssessWorkflow:
 
             await assess_mcp_server(runner, config)
 
-        # Capture the config dict passed to InjectAdapter constructor
+        # Inject adapter now queries findings via service layer, not config passthrough
         inject_call_config = MockInject.call_args[0][1]
-        assert "audit_findings" in inject_call_config
-        assert inject_call_config["audit_findings"] == findings
+        assert "audit_findings" not in inject_call_config
 
     async def test_config_routed_to_adapters(self) -> None:
         """Each adapter gets the correct config subset."""

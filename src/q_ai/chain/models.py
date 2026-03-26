@@ -47,6 +47,7 @@ class ChainStep:
         on_failure: Step ID to execute on failure, or "abort".
         terminal: Whether this is the final step in a path.
         inputs: Input parameters for live execution (ignored in dry-run).
+        relevant_categories: Audit finding categories this step targets (empty = universal).
     """
 
     id: str
@@ -60,6 +61,7 @@ class ChainStep:
     on_failure: str = "abort"
     terminal: bool = False
     inputs: dict[str, Any] = field(default_factory=dict)
+    relevant_categories: list[str] = field(default_factory=list)
 
 
 @dataclass

@@ -13,7 +13,7 @@ from q_ai.core.db import get_connection, get_run
 from q_ai.core.models import RunStatus
 from q_ai.core.schema import migrate
 from q_ai.inject.adapter import InjectAdapter, InjectResult
-from q_ai.inject.models import Campaign, InjectionOutcome, InjectionResult
+from q_ai.inject.models import Campaign, InjectionOutcome, InjectionResult, PayloadTemplate
 from q_ai.orchestrator.runner import WorkflowRunner
 
 
@@ -213,3 +213,100 @@ class TestInjectAdapter:
         assert result.run_id
         assert result.campaign is campaign
         assert result.finding_count == 2  # FULL_COMPLIANCE + REFUSAL_WITH_LEAK
+
+    async def test_run_standalone_no_coverage(self, runner: WorkflowRunner, db_path: Path) -> None:
+        """Standalone inject (no audit findings) returns coverage=None."""
+        await runner.start()
+
+        campaign = _make_campaign([_make_injection_result()])
+        adapter = InjectAdapter(runner, {"model": "test-model"})
+
+        with (
+            patch("q_ai.inject.adapter.load_all_templates", return_value=[]),
+            patch("q_ai.inject.adapter.run_campaign", return_value=campaign),
+        ):
+            result = await adapter.run()
+
+        assert result.coverage is None
+
+    async def test_run_with_findings_builds_coverage(
+        self, runner: WorkflowRunner, db_path: Path
+    ) -> None:
+        """When audit findings exist, coverage report is built."""
+        from q_ai.core.models import Finding, Severity
+
+        await runner.start()
+
+        campaign = _make_campaign([_make_injection_result()])
+        adapter = InjectAdapter(runner, {"model": "test-model"})
+
+        mock_finding = Finding(
+            id="f1",
+            run_id="r1",
+            module="audit",
+            category="tool_poisoning",
+            severity=Severity.HIGH,
+            title="test finding",
+        )
+
+        with (
+            patch("q_ai.inject.adapter.load_all_templates", return_value=[]),
+            patch("q_ai.inject.adapter.run_campaign", return_value=campaign),
+            patch(
+                "q_ai.inject.adapter.finding_service.get_findings_for_run",
+                return_value=[mock_finding],
+            ),
+        ):
+            result = await adapter.run()
+
+        assert result.coverage is not None
+        assert "tool_poisoning" in result.coverage.audit_categories
+
+
+class TestPrioritizeByFindings:
+    """Tests for InjectAdapter._prioritize_by_findings."""
+
+    def test_matching_templates_come_first(self) -> None:
+        """Templates matching audit categories appear before non-matching."""
+        from q_ai.inject.models import InjectionTechnique
+
+        t_match = PayloadTemplate(
+            name="match",
+            technique=InjectionTechnique.DESCRIPTION_POISONING,
+            description="test",
+            relevant_categories=["tool_poisoning"],
+            tool_name="t",
+            tool_description="d",
+        )
+        t_other = PayloadTemplate(
+            name="other",
+            technique=InjectionTechnique.OUTPUT_INJECTION,
+            description="test",
+            relevant_categories=["prompt_injection"],
+            tool_name="t",
+            tool_description="d",
+        )
+
+        result = InjectAdapter._prioritize_by_findings([t_other, t_match], {"tool_poisoning"})
+        assert result[0].name == "match"
+        assert result[1].name == "other"
+
+    def test_all_templates_preserved(self) -> None:
+        """Priority ordering preserves all templates, not just matching ones."""
+        from q_ai.inject.models import InjectionTechnique
+
+        templates = [
+            PayloadTemplate(
+                name=f"t{i}",
+                technique=InjectionTechnique.DESCRIPTION_POISONING,
+                description="test",
+                relevant_categories=["tool_poisoning"] if i == 0 else [],
+                tool_name="t",
+                tool_description="d",
+            )
+            for i in range(5)
+        ]
+
+        result = InjectAdapter._prioritize_by_findings(templates, {"tool_poisoning"})
+        assert len(result) == 5
+        assert result[0].name == "t0"

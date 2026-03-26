@@ -98,6 +98,7 @@ def load_template(path: Path) -> list[PayloadTemplate]:
                 description=entry["description"],
                 owasp_ids=entry.get("owasp_ids", []),
                 target_agents=entry.get("target_agents", []),
+                relevant_categories=entry.get("relevant_categories", []),
                 tool_name=entry["tool_name"],
                 tool_description=entry["tool_description"],
                 tool_params=entry.get("tool_params", {}),
@@ -132,20 +133,27 @@ def filter_templates(
     templates: list[PayloadTemplate],
     technique: InjectionTechnique | None = None,
     target_agent: str | None = None,
+    categories: set[str] | None = None,
 ) -> list[PayloadTemplate]:
-    """Filter templates by technique and/or target agent.
+    """Filter templates by technique, target agent, and/or finding categories.
 
-    Both filters are combined with AND logic when both are provided.
+    All filters are combined with AND logic when multiple are provided.
 
     A template matches the ``target_agent`` filter if the agent appears in the
     template's ``target_agents`` list **or** the template has an empty
     ``target_agents`` list (meaning it is universal and applies to all agents).
+
+    A template matches the ``categories`` filter if its ``relevant_categories``
+    overlap with the given set **or** the template has empty
+    ``relevant_categories`` (meaning it is universal and applies to all categories).
 
     Args:
         templates: Templates to filter.
         technique: If provided, only include templates with this technique.
         target_agent: If provided, only include templates that target this
             agent or are universal (empty ``target_agents``).
+        categories: If provided, only include templates whose
+            ``relevant_categories`` overlap with this set (or are universal).
 
     Returns:
         Filtered list of templates.
@@ -157,5 +165,12 @@ def filter_templates(
 
     if target_agent is not None:
         result = [t for t in result if not t.target_agents or target_agent in t.target_agents]
+
+    if categories is not None:
+        result = [
+            t
+            for t in result
+            if not t.relevant_categories or set(t.relevant_categories) & categories
+        ]
 
     return result

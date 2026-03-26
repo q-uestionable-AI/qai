@@ -41,6 +41,7 @@ class PayloadTemplate:
         description: Human-readable description of what this payload tests.
         owasp_ids: Relevant OWASP MCP Top 10 / Agentic AI Top 10 IDs.
         target_agents: Agent types this payload is designed for (empty = universal).
+        relevant_categories: Audit finding categories this payload tests (empty = universal).
         tool_name: MCP tool name to register.
         tool_description: The poisoned tool description text.
         tool_params: Tool input schema mapping param name to {type, description}.
@@ -53,6 +54,7 @@ class PayloadTemplate:
     description: str
     owasp_ids: list[str] = field(default_factory=list)
     target_agents: list[str] = field(default_factory=list)
+    relevant_categories: list[str] = field(default_factory=list)
     tool_name: str = ""
     tool_description: str = ""
     tool_params: dict[str, dict[str, str]] = field(default_factory=dict)
@@ -213,3 +215,32 @@ class Campaign:
     def to_json(self) -> str:
         """Serialize to JSON string."""
         return json.dumps(self.to_dict(), indent=2)
+
+
+@dataclass
+class CoverageReport:
+    """Coverage analysis of audit findings exercised by inject templates.
+
+    Attributes:
+        audit_categories: Categories found by audit.
+        tested_categories: Categories exercised by inject templates that ran.
+        untested_categories: Categories found by audit but not exercised.
+        coverage_ratio: Fraction of audit categories exercised (0.0 when none).
+        template_matches: List of dicts with template name and matched categories.
+    """
+
+    audit_categories: set[str]
+    tested_categories: set[str]
+    untested_categories: set[str]
+    coverage_ratio: float
+    template_matches: list[dict[str, Any]]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to JSON-compatible dict."""
+        return {
+            "audit_categories": sorted(self.audit_categories),
+            "tested_categories": sorted(self.tested_categories),
+            "untested_categories": sorted(self.untested_categories),
+            "coverage_ratio": self.coverage_ratio,
+            "template_matches": self.template_matches,
+        }

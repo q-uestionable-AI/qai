@@ -104,3 +104,71 @@ class TestDiscoverChains:
         assert len(chains) == 3
         ids = {c.id for c in chains}
         assert ids == {"rag-trust-escalation", "mcp-server-compromise", "delegation-hijack"}
+
+
+class TestChainStepRelevantCategories:
+    """Tests for relevant_categories loading on chain steps."""
+
+    def test_builtin_chains_have_relevant_categories(self) -> None:
+        """All steps in built-in chains have non-empty relevant_categories."""
+        chains = load_all_chains()
+        for chain in chains:
+            for step in chain.steps:
+                assert isinstance(step.relevant_categories, list), (
+                    f"{chain.id}/{step.id} missing relevant_categories"
+                )
+                assert all(isinstance(cat, str) for cat in step.relevant_categories), (
+                    f"{chain.id}/{step.id} has non-string category values"
+                )
+                assert len(step.relevant_categories) > 0, (
+                    f"{chain.id}/{step.id} has empty relevant_categories"
+                )
+
+    def test_relevant_categories_from_yaml(self, tmp_path: Path) -> None:
+        """relevant_categories are read from step entries."""
+        content = """\
+id: test-chain
+name: Test Chain
+category: rag_pipeline
+description: Test.
+steps:
+  - id: step-one
+    name: First step
+    module: inject
+    technique: description_poisoning
+    relevant_categories:
+      - tool_poisoning
+      - prompt_injection
+    terminal: true
+"""
+        p = tmp_path / "test_chain.yaml"
+        p.write_text(content, encoding="utf-8")
+        chain = load_chain(p)
+        assert chain.steps[0].relevant_categories == ["tool_poisoning", "prompt_injection"]
+
+    def test_relevant_categories_defaults_empty(self, valid_chain_yaml: Path) -> None:
+        """Steps without relevant_categories default to empty list."""
+        chain = load_chain(valid_chain_yaml)
+        # The conftest fixture doesn't include relevant_categories
+        for step in chain.steps:
+            assert step.relevant_categories == []
+
+    def test_relevant_categories_invalid_type_raises(self, tmp_path: Path) -> None:
+        """Non-list relevant_categories raises ChainValidationError."""
+        content = """\
+id: test-chain
+name: Test Chain
+category: rag_pipeline
+description: Test.
+steps:
+  - id: step-one
+    name: First step
+    module: inject
+    technique: description_poisoning
+    relevant_categories: "not_a_list"
+    terminal: true
+"""
+        p = tmp_path / "bad_cats.yaml"
+        p.write_text(content, encoding="utf-8")
+        with pytest.raises(ChainValidationError, match="relevant_categories"):
+            load_chain(p)

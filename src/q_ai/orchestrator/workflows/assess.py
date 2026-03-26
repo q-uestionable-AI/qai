@@ -23,25 +23,20 @@ logger = logging.getLogger(__name__)
 def _build_inject_config(
     connection_base: dict[str, Any],
     config: dict[str, Any],
-    audit_result: AuditResult | None,
 ) -> dict[str, Any]:
-    """Build inject adapter configuration from base config and audit results.
+    """Build inject adapter configuration from base config.
 
     Args:
         connection_base: Shared transport/connection keys.
         config: Full workflow configuration dict.
-        audit_result: Audit result to extract findings from, or None.
 
     Returns:
         Configuration dict for the InjectAdapter.
     """
-    inject_config: dict[str, Any] = {
+    return {
         **connection_base,
         **config.get("inject", {}),
     }
-    if audit_result is not None:
-        inject_config["audit_findings"] = audit_result.scan_result.findings
-    return inject_config
 
 
 async def assess_mcp_server(runner: WorkflowRunner, config: dict[str, Any]) -> None:
@@ -111,7 +106,7 @@ async def assess_mcp_server(runner: WorkflowRunner, config: dict[str, Any]) -> N
 
     # --- Stage 2b: Inject (with proxy cleanup guarantee) ---
     try:
-        inject_config = _build_inject_config(connection_base, config, audit_result)
+        inject_config = _build_inject_config(connection_base, config)
 
         await runner.emit_progress(runner.run_id, "Starting inject campaign...")
         inject_result = await InjectAdapter(runner, inject_config).run()
