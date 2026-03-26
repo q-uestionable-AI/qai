@@ -110,7 +110,7 @@ class TestChainStepRelevantCategories:
     """Tests for relevant_categories loading on chain steps."""
 
     def test_builtin_chains_have_relevant_categories(self) -> None:
-        """All steps in built-in chains expose relevant_categories as list[str]."""
+        """All steps in built-in chains have non-empty relevant_categories."""
         chains = load_all_chains()
         for chain in chains:
             for step in chain.steps:
@@ -119,6 +119,9 @@ class TestChainStepRelevantCategories:
                 )
                 assert all(isinstance(cat, str) for cat in step.relevant_categories), (
                     f"{chain.id}/{step.id} has non-string category values"
+                )
+                assert len(step.relevant_categories) > 0, (
+                    f"{chain.id}/{step.id} has empty relevant_categories"
                 )
 
     def test_relevant_categories_from_yaml(self, tmp_path: Path) -> None:
