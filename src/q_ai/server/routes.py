@@ -646,6 +646,17 @@ def _parse_severity(value: str | None) -> Severity | None:
             return None
 
 
+def _sync_list_runs(
+    db_path: Path | None,
+    module: str | None,
+    status: RunStatus | None,
+    target_id: str | None,
+) -> list:
+    """Load runs list (blocking, run off event loop)."""
+    with get_connection(db_path) as conn:
+        return run_service.list_runs(conn, module=module, status=status, target_id=target_id)
+
+
 @router.get("/api/runs")
 async def api_runs(
     request: Request,
@@ -657,10 +668,9 @@ async def api_runs(
     templates = _get_templates(request)
     db_path = _get_db_path(request)
     parsed_status = _parse_status(status)
-    with get_connection(db_path) as conn:
-        runs_list = run_service.list_runs(
-            conn, module=module or None, status=parsed_status, target_id=target_id or None
-        )
+    runs_list = await asyncio.to_thread(
+        _sync_list_runs, db_path, module or None, parsed_status, target_id or None
+    )
     return templates.TemplateResponse(request, "partials/runs_table.html", {"runs": runs_list})
 
 

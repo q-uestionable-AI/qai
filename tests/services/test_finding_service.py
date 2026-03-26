@@ -96,8 +96,21 @@ class TestGetFindingsForRun:
         sample_findings: list[str],
     ) -> None:
         """Returns findings from parent and all child runs."""
+        from q_ai.core.db import create_finding
+
+        # Add a finding directly on the parent run to verify both halves
+        parent_finding = create_finding(
+            db,
+            run_id=sample_run,
+            module="workflow",
+            category="overview",
+            severity=Severity.INFO,
+            title="Parent-level finding",
+        )
         results = finding_service.get_findings_for_run(db, sample_run)
-        assert len(results) == 3
+        assert len(results) == 4
+        result_ids = {f.id for f in results}
+        assert parent_finding in result_ids
 
     def test_no_findings(self, db: sqlite3.Connection, sample_run: str) -> None:
         """Returns empty list for run with no findings."""

@@ -51,6 +51,8 @@ class TestConnection:
             # V10: verify guidance column exists on runs table
             run_columns = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
             assert "guidance" in run_columns
+            # V11: verify source column exists on runs table
+            assert "source" in run_columns
 
     def test_schema_tables_created(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"

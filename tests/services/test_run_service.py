@@ -158,7 +158,7 @@ class TestSourceField:
     def test_source_inherited_by_child(self, db: sqlite3.Connection) -> None:
         """Demonstrates source can be set on child runs independently."""
         parent_id = create_run(db, module="workflow", source="web")
-        child_id = create_run(db, module="audit", parent_run_id=parent_id, source="web")
+        child_id = create_run(db, module="audit", parent_run_id=parent_id, source="cli")
         child = run_service.get_run(db, child_id)
         assert child is not None
-        assert child.source == "web"
+        assert child.source == "cli"
