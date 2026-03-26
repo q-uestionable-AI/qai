@@ -14,6 +14,8 @@ steps:
     trust_boundary: agent-to-tool
     on_success: escalate-cross-tool
     on_failure: abort
+    relevant_categories:
+      - tool_poisoning
 
   - id: escalate-cross-tool
     name: Escalate through cross-tool delegation
@@ -22,6 +24,9 @@ steps:
     trust_boundary: agent-to-agent
     on_success: exfil-output
     on_failure: abort
+    relevant_categories:
+      - tool_poisoning
+      - permissions
 
   - id: exfil-output
     name: Exfiltrate data via output injection
@@ -29,3 +34,5 @@ steps:
     technique: output_injection
     trust_boundary: agent-to-data
     terminal: true
+    relevant_categories:
+      - prompt_injection

@@ -162,6 +162,137 @@ class TestFilterTemplates:
         assert filtered == []
 
 
+class TestFilterTemplatesByCategories:
+    """Template filtering by finding categories."""
+
+    def test_filter_by_categories_matching(self) -> None:
+        """Templates with overlapping relevant_categories are included."""
+        t1 = PayloadTemplate(
+            name="t1",
+            technique=InjectionTechnique.DESCRIPTION_POISONING,
+            description="test",
+            relevant_categories=["tool_poisoning"],
+            tool_name="t",
+            tool_description="d",
+        )
+        t2 = PayloadTemplate(
+            name="t2",
+            technique=InjectionTechnique.OUTPUT_INJECTION,
+            description="test",
+            relevant_categories=["prompt_injection"],
+            tool_name="t",
+            tool_description="d",
+        )
+        result = filter_templates([t1, t2], categories={"tool_poisoning"})
+        assert len(result) == 1
+        assert result[0].name == "t1"
+
+    def test_filter_by_categories_universal_included(self) -> None:
+        """Templates with empty relevant_categories (universal) are always included."""
+        specific = PayloadTemplate(
+            name="specific",
+            technique=InjectionTechnique.DESCRIPTION_POISONING,
+            description="test",
+            relevant_categories=["tool_poisoning"],
+            tool_name="t",
+            tool_description="d",
+        )
+        universal = PayloadTemplate(
+            name="universal",
+            technique=InjectionTechnique.OUTPUT_INJECTION,
+            description="test",
+            relevant_categories=[],
+            tool_name="t",
+            tool_description="d",
+        )
+        result = filter_templates([specific, universal], categories={"prompt_injection"})
+        assert len(result) == 1
+        assert result[0].name == "universal"
+
+    def test_filter_by_categories_none_returns_all(self) -> None:
+        """When categories is None, all templates returned."""
+        t1 = PayloadTemplate(
+            name="t1",
+            technique=InjectionTechnique.DESCRIPTION_POISONING,
+            description="test",
+            relevant_categories=["tool_poisoning"],
+            tool_name="t",
+            tool_description="d",
+        )
+        result = filter_templates([t1], categories=None)
+        assert len(result) == 1
+
+    def test_filter_by_categories_multiple_overlap(self) -> None:
+        """Template with multiple categories matches if any overlap."""
+        t1 = PayloadTemplate(
+            name="t1",
+            technique=InjectionTechnique.DESCRIPTION_POISONING,
+            description="test",
+            relevant_categories=["tool_poisoning", "prompt_injection"],
+            tool_name="t",
+            tool_description="d",
+        )
+        result = filter_templates([t1], categories={"prompt_injection"})
+        assert len(result) == 1
+
+    def test_filter_by_categories_no_match(self) -> None:
+        """Templates with non-overlapping categories are excluded."""
+        t1 = PayloadTemplate(
+            name="t1",
+            technique=InjectionTechnique.DESCRIPTION_POISONING,
+            description="test",
+            relevant_categories=["tool_poisoning"],
+            tool_name="t",
+            tool_description="d",
+        )
+        result = filter_templates([t1], categories={"auth"})
+        assert result == []
+
+
+class TestRelevantCategoriesLoading:
+    """Test that relevant_categories are loaded from YAML templates."""
+
+    def test_builtin_templates_have_relevant_categories(self) -> None:
+        """All built-in templates have non-empty relevant_categories."""
+        templates = load_all_templates()
+        for t in templates:
+            assert isinstance(t.relevant_categories, list), f"{t.name} missing relevant_categories"
+            assert len(t.relevant_categories) > 0, f"{t.name} has empty relevant_categories"
+
+    def test_relevant_categories_from_yaml(self, tmp_path: Path) -> None:
+        """relevant_categories are read from YAML entries."""
+        yaml_file = tmp_path / "test.yaml"
+        yaml_file.write_text(
+            "- name: test_payload\n"
+            "  technique: description_poisoning\n"
+            "  description: test\n"
+            "  tool_name: t\n"
+            "  tool_description: d\n"
+            "  relevant_categories:\n"
+            "    - tool_poisoning\n"
+            "    - prompt_injection\n",
+            encoding="utf-8",
+        )
+        templates = load_template(yaml_file)
+        assert len(templates) == 1
+        assert templates[0].relevant_categories == ["tool_poisoning", "prompt_injection"]
+
+    def test_relevant_categories_defaults_empty(self, tmp_path: Path) -> None:
+        """Missing relevant_categories defaults to empty list."""
+        yaml_file = tmp_path / "test.yaml"
+        yaml_file.write_text(
+            "- name: test_payload\n"
+            "  technique: description_poisoning\n"
+            "  description: test\n"
+            "  tool_name: t\n"
+            "  tool_description: d\n",
+            encoding="utf-8",
+        )
+        templates = load_template(yaml_file)
+        assert len(templates) == 1
+        assert templates[0].relevant_categories == []
+
+
 class TestMalformedYaml:
     """Graceful handling of malformed YAML files."""
 

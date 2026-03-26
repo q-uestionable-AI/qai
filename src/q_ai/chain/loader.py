@@ -114,6 +114,7 @@ def load_chain(path: Path) -> ChainDefinition:
                 on_failure=entry.get("on_failure", "abort"),
                 terminal=entry.get("terminal", False),
                 inputs=entry.get("inputs", {}),
+                relevant_categories=entry.get("relevant_categories", []),
             )
         )
 

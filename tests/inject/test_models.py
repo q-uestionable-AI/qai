@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from q_ai.inject.models import (
     Campaign,
+    CoverageReport,
     InjectionOutcome,
     InjectionResult,
     InjectionTechnique,
@@ -28,6 +29,7 @@ class TestPayloadTemplate:
         assert t.description == "A test payload"
         assert t.owasp_ids == []
         assert t.target_agents == []
+        assert t.relevant_categories == []
         assert t.tool_name == ""
         assert t.tool_description == ""
         assert t.tool_params == {}
@@ -297,3 +299,87 @@ class TestCampaignInterpretPrompt:
         parsed = json.loads(c.to_json())
         assert "prompt" in parsed
         assert isinstance(parsed["prompt"], str)
+
+
+class TestPayloadTemplateRelevantCategories:
+    """Tests for PayloadTemplate.relevant_categories field."""
+
+    def test_relevant_categories_default_empty(self) -> None:
+        """relevant_categories defaults to empty list."""
+        t = PayloadTemplate(
+            name="test",
+            technique=InjectionTechnique.DESCRIPTION_POISONING,
+            description="test",
+        )
+        assert t.relevant_categories == []
+
+    def test_relevant_categories_set(self) -> None:
+        """relevant_categories can be set explicitly."""
+        t = PayloadTemplate(
+            name="test",
+            technique=InjectionTechnique.DESCRIPTION_POISONING,
+            description="test",
+            relevant_categories=["tool_poisoning", "prompt_injection"],
+        )
+        assert t.relevant_categories == ["tool_poisoning", "prompt_injection"]
+
+
+class TestCoverageReport:
+    """Tests for CoverageReport dataclass."""
+
+    def test_construction(self) -> None:
+        """CoverageReport with all fields."""
+        report = CoverageReport(
+            audit_categories={"tool_poisoning", "prompt_injection"},
+            tested_categories={"tool_poisoning"},
+            untested_categories={"prompt_injection"},
+            coverage_ratio=0.5,
+            template_matches=[{"template": "t1", "categories": ["tool_poisoning"]}],
+        )
+        assert report.audit_categories == {"tool_poisoning", "prompt_injection"}
+        assert report.tested_categories == {"tool_poisoning"}
+        assert report.untested_categories == {"prompt_injection"}
+        assert report.coverage_ratio == 0.5
+        assert len(report.template_matches) == 1
+
+    def test_to_dict(self) -> None:
+        """to_dict produces JSON-compatible output with sorted sets."""
+        report = CoverageReport(
+            audit_categories={"b_cat", "a_cat"},
+            tested_categories={"a_cat"},
+            untested_categories={"b_cat"},
+            coverage_ratio=0.5,
+            template_matches=[{"template": "t1", "categories": ["a_cat"]}],
+        )
+        d = report.to_dict()
+        assert d["audit_categories"] == ["a_cat", "b_cat"]
+        assert d["tested_categories"] == ["a_cat"]
+        assert d["untested_categories"] == ["b_cat"]
+        assert d["coverage_ratio"] == 0.5
+        assert d["template_matches"] == [{"template": "t1", "categories": ["a_cat"]}]
+
+    def test_to_dict_serializes_to_json(self) -> None:
+        """to_dict output is JSON-serializable."""
+        import json
+
+        report = CoverageReport(
+            audit_categories={"tool_poisoning"},
+            tested_categories={"tool_poisoning"},
+            untested_categories=set(),
+            coverage_ratio=1.0,
+            template_matches=[],
+        )
+        serialized = json.dumps(report.to_dict())
+        assert isinstance(serialized, str)
+
+    def test_empty_coverage(self) -> None:
+        """CoverageReport with no categories."""
+        report = CoverageReport(
+            audit_categories=set(),
+            tested_categories=set(),
+            untested_categories=set(),
+            coverage_ratio=0.0,
+            template_matches=[],
+        )
+        assert report.coverage_ratio == 0.0
+        assert report.to_dict()["audit_categories"] == []
