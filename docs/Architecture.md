@@ -33,6 +33,10 @@ src/q_ai/
 │   ├── models.py                   # Run, Target, Finding, Evidence, Severity, RunStatus
 │   ├── schema.py                   # DDL for shared tables, PRAGMA user_version migration runner
 │   └── update_frameworks.py        # Framework update checker — ATLAS YAML diff, OWASP version detection, cache
+├── services/                       # Service layer — typed query functions for UI, CLI, and API
+│   ├── finding_service.py          # list_findings(), get_finding() (with evidence), get_findings_for_run()
+│   ├── run_service.py              # get_run(), list_runs(), get_child_runs(), get_run_with_children()
+│   └── evidence_service.py         # list_evidence(), get_evidence()
 ├── mcp/                            # MCP connection utilities (shared by audit, proxy, chain)
 │   ├── connection.py               # MCPConnection — establish MCP client connections
 │   ├── discovery.py                # enumerate_server() — capability discovery
@@ -121,6 +125,18 @@ The core module is the integration surface. All modules read and write through i
 ### Provider Registry (`core/providers.py`)
 
 Single source of truth for provider definitions. `PROVIDERS` dict maps provider keys to `ProviderConfig` dataclasses with type (CLOUD/LOCAL/CUSTOM), curated model lists, endpoint URLs, and capability flags. `fetch_models()` enumerates available models from local providers (Ollama, LM Studio) via their APIs with a 3s timeout, or returns curated lists for cloud providers. `get_configured_providers()` checks credential and base_url presence across all registered providers.
+
+---
+
+## Service Layer (`services/`)
+
+Transport-agnostic query functions consumed by route handlers, CLI commands, and (future) API endpoints. Each function takes a `conn: sqlite3.Connection` as its first parameter — the caller manages the connection lifecycle.
+
+- **`finding_service.py`** — `list_findings()` with optional filters (run_id, module, category, min_severity, target_id). `get_finding()` returns the finding with its associated evidence as a tuple. `get_findings_for_run()` includes child-run findings.
+- **`run_service.py`** — `get_run()`, `list_runs()`, `get_child_runs()`, `get_run_with_children()`. Also `get_finding_count_for_runs()` and `get_child_run_ids()` for aggregation without full object hydration.
+- **`evidence_service.py`** — `list_evidence()` with finding_id/run_id filters. `get_evidence()` by ID.
+
+Service functions delegate to `core/db.py` CRUD helpers and return `core/models.py` dataclasses. No HTTP objects, no template concerns, no HTML.
 
 ---
 
