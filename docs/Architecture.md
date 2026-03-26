@@ -66,12 +66,13 @@ src/q_ai/
 │   ├── intercept.py                # InterceptEngine (hold/release/drop)
 │   └── session_store.py            # Ordered ProxyMessage capture
 ├── inject/                         # Tool poisoning and prompt injection testing
-│   ├── adapter.py                  # InjectAdapter — orchestrator integration
+│   ├── adapter.py                  # InjectAdapter — orchestrator integration, findings-informed selection
 │   ├── campaign.py                 # Campaign executor — provider-agnostic via ProviderClient
 │   ├── cli.py                      # inject subcommands (serve, campaign, list-payloads, report)
+│   ├── coverage.py                 # Coverage analysis — audit findings vs. inject template coverage
 │   ├── mapper.py                   # Campaign → core DB persistence
 │   ├── scoring.py                  # Response outcome scorer (NormalizedResponse → InjectionOutcome)
-│   └── payloads/                   # YAML payload templates + loader
+│   └── payloads/                   # YAML payload templates + loader (templates have relevant_categories)
 ├── chain/                          # Multi-step attack chain executor
 │   ├── adapter.py                  # ChainAdapter — orchestrator integration
 │   ├── cli.py                      # chain subcommands (run, validate, list-templates, blast-radius, detect)
@@ -137,6 +138,10 @@ Transport-agnostic query functions consumed by route handlers, CLI commands, and
 - **`evidence_service.py`** — `list_evidence()` with finding_id/run_id filters. `get_evidence()` by ID.
 
 Service functions delegate to `core/db.py` CRUD helpers and return `core/models.py` dataclasses. No HTTP objects, no template concerns, no HTML.
+
+### Cross-Module Data Flow: Findings → Payloads
+
+In the assess workflow, the inject adapter queries audit findings via `finding_service.get_findings_for_run()` to prioritize templates matching audit finding categories. Templates declare `relevant_categories` in their YAML metadata. Matching templates run first (priority ordering), then remaining templates. All templates still run — findings inform priority, not exclusion. After the campaign, `build_coverage_report()` produces a `CoverageReport` showing which audit categories were exercised vs. untested. Chain step templates also declare `relevant_categories` for the same taxonomy (metadata only — chain execution changes are Phase 2).
 
 ---
 
