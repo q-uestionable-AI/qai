@@ -130,7 +130,11 @@ class InjectAdapter:
         filtered: list[PayloadTemplate] = []
         seen_names: set[str] = set()
         for tech_str in technique_strs:
-            tech = InjectionTechnique(tech_str)
+            try:
+                tech = InjectionTechnique(tech_str)
+            except ValueError:
+                logger.warning("Skipping unknown technique: %s", tech_str)
+                continue
             for t in filter_templates(templates, technique=tech):
                 if t.name not in seen_names:
                     filtered.append(t)

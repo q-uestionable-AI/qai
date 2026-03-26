@@ -37,6 +37,69 @@ def discover_chains(template_dir: Path | None = None) -> list[Path]:
     return sorted(paths)
 
 
+def _parse_steps(path: Path, raw_steps: Any) -> list[ChainStep]:
+    """Validate and parse raw YAML step entries into ChainStep objects.
+
+    Args:
+        path: Source file path (for error messages).
+        raw_steps: The ``steps`` value from the parsed YAML.
+
+    Returns:
+        List of validated ChainStep objects.
+
+    Raises:
+        ChainValidationError: On invalid structure, missing fields, or
+            duplicate step IDs.
+    """
+    if not isinstance(raw_steps, list):
+        raise ChainValidationError(
+            f"{path}: 'steps' must be a list, got {type(raw_steps).__name__}"
+        )
+
+    steps: list[ChainStep] = []
+    seen_step_ids: set[str] = set()
+
+    for i, entry in enumerate(raw_steps):
+        if not isinstance(entry, dict):
+            raise ChainValidationError(
+                f"{path}: step {i} is not a mapping (got {type(entry).__name__})"
+            )
+
+        missing_step = [f for f in _REQUIRED_STEP if f not in entry]
+        if missing_step:
+            raise ChainValidationError(f"{path}: step {i} missing required fields: {missing_step}")
+
+        step_id: str = entry["id"]
+        if step_id in seen_step_ids:
+            raise ChainValidationError(f"{path}: Duplicate step id '{step_id}' found in chain")
+        seen_step_ids.add(step_id)
+
+        raw_categories = entry.get("relevant_categories", [])
+        if not isinstance(raw_categories, list) or not all(
+            isinstance(c, str) for c in raw_categories
+        ):
+            raise ChainValidationError(
+                f"{path}: step {i} field 'relevant_categories' must be a list[str]"
+            )
+
+        steps.append(
+            ChainStep(
+                id=step_id,
+                name=entry["name"],
+                module=entry["module"],
+                technique=entry["technique"],
+                trust_boundary=entry.get("trust_boundary"),
+                on_success=entry.get("on_success"),
+                on_failure=entry.get("on_failure", "abort"),
+                terminal=entry.get("terminal", False),
+                inputs=entry.get("inputs", {}),
+                relevant_categories=raw_categories,
+            )
+        )
+
+    return steps
+
+
 def load_chain(path: Path) -> ChainDefinition:
     """Parse a single YAML file into a ChainDefinition.
 
@@ -78,45 +141,7 @@ def load_chain(path: Path) -> ChainDefinition:
             f"{path}: invalid category '{category_str}'. Must be one of: {valid}"
         ) from None
 
-    # Validate steps list
-    raw_steps: Any = raw["steps"]
-    if not isinstance(raw_steps, list):
-        raise ChainValidationError(
-            f"{path}: 'steps' must be a list, got {type(raw_steps).__name__}"
-        )
-
-    steps: list[ChainStep] = []
-    seen_step_ids: set[str] = set()
-
-    for i, entry in enumerate(raw_steps):
-        if not isinstance(entry, dict):
-            raise ChainValidationError(
-                f"{path}: step {i} is not a mapping (got {type(entry).__name__})"
-            )
-
-        missing_step = [f for f in _REQUIRED_STEP if f not in entry]
-        if missing_step:
-            raise ChainValidationError(f"{path}: step {i} missing required fields: {missing_step}")
-
-        step_id: str = entry["id"]
-        if step_id in seen_step_ids:
-            raise ChainValidationError(f"{path}: Duplicate step id '{step_id}' found in chain")
-        seen_step_ids.add(step_id)
-
-        steps.append(
-            ChainStep(
-                id=step_id,
-                name=entry["name"],
-                module=entry["module"],
-                technique=entry["technique"],
-                trust_boundary=entry.get("trust_boundary"),
-                on_success=entry.get("on_success"),
-                on_failure=entry.get("on_failure", "abort"),
-                terminal=entry.get("terminal", False),
-                inputs=entry.get("inputs", {}),
-                relevant_categories=entry.get("relevant_categories", []),
-            )
-        )
+    steps = _parse_steps(path, raw["steps"])
 
     return ChainDefinition(
         id=raw["id"],

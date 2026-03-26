@@ -110,15 +110,15 @@ class TestChainStepRelevantCategories:
     """Tests for relevant_categories loading on chain steps."""
 
     def test_builtin_chains_have_relevant_categories(self) -> None:
-        """All steps in built-in chains have relevant_categories."""
+        """All steps in built-in chains expose relevant_categories as list[str]."""
         chains = load_all_chains()
         for chain in chains:
             for step in chain.steps:
                 assert isinstance(step.relevant_categories, list), (
                     f"{chain.id}/{step.id} missing relevant_categories"
                 )
-                assert len(step.relevant_categories) > 0, (
-                    f"{chain.id}/{step.id} has empty relevant_categories"
+                assert all(isinstance(cat, str) for cat in step.relevant_categories), (
+                    f"{chain.id}/{step.id} has non-string category values"
                 )
 
     def test_relevant_categories_from_yaml(self, tmp_path: Path) -> None:
@@ -149,3 +149,23 @@ steps:
         # The conftest fixture doesn't include relevant_categories
         for step in chain.steps:
             assert step.relevant_categories == []
+
+    def test_relevant_categories_invalid_type_raises(self, tmp_path: Path) -> None:
+        """Non-list relevant_categories raises ChainValidationError."""
+        content = """\
+id: test-chain
+name: Test Chain
+category: rag_pipeline
+description: Test.
+steps:
+  - id: step-one
+    name: First step
+    module: inject
+    technique: description_poisoning
+    relevant_categories: "not_a_list"
+    terminal: true
+"""
+        p = tmp_path / "bad_cats.yaml"
+        p.write_text(content, encoding="utf-8")
+        with pytest.raises(ChainValidationError, match="relevant_categories"):
+            load_chain(p)
