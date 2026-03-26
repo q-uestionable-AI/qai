@@ -61,8 +61,14 @@ def _build_finding(entry: dict, garak_version: str | None) -> ImportedFinding:
     """Convert a single Garak eval entry to an ImportedFinding."""
     probe = entry.get("probe", "unknown_probe")
     detector = entry.get("detector", "unknown_detector")
-    passed = entry.get("passed", 0)
-    total = entry.get("total", 0)
+    try:
+        passed = int(entry.get("passed", 0))
+    except (TypeError, ValueError):
+        passed = 0
+    try:
+        total = int(entry.get("total", 0))
+    except (TypeError, ValueError):
+        total = 0
     pass_rate = passed / total if total > 0 else 1.0
 
     taxonomy = _extract_taxonomy(entry)
@@ -82,6 +88,24 @@ def _build_finding(entry: dict, garak_version: str | None) -> ImportedFinding:
         original_taxonomy=taxonomy,
         raw_evidence=json.dumps(entry, default=str),
     )
+
+
+def _parse_jsonl_line(raw_line: str, line_no: int) -> tuple[dict | None, str | None]:
+    """Decode a single JSONL line into a dict.
+
+    Returns:
+        ``(entry, error)`` — one of the two will be ``None``.
+    """
+    stripped = raw_line.strip()
+    if not stripped:
+        return None, None
+    try:
+        entry = json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        return None, f"Line {line_no}: invalid JSON — {exc}"
+    if not isinstance(entry, dict):
+        return None, (f"Line {line_no}: JSON is not an object (type={type(entry).__name__})")
+    return entry, None
 
 
 def parse_garak(path: Path) -> ImportResult:
@@ -105,13 +129,11 @@ def parse_garak(path: Path) -> ImportResult:
 
     with path.open(encoding="utf-8") as fh:
         for line_no, raw_line in enumerate(fh, start=1):
-            stripped = raw_line.strip()
-            if not stripped:
+            entry, error = _parse_jsonl_line(raw_line, line_no)
+            if error:
+                errors.append(error)
                 continue
-            try:
-                entry = json.loads(stripped)
-            except json.JSONDecodeError as exc:
-                errors.append(f"Line {line_no}: invalid JSON — {exc}")
+            if entry is None:
                 continue
 
             entry_type = entry.get("entry_type", "")

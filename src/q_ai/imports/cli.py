@@ -105,11 +105,14 @@ def _persist(result: ImportResult, db_path: Path | None, source_file: Path) -> s
             )
 
         # Raw evidence — summary of all imported data.
-        raw_summary = json.dumps(
-            [json.loads(f.raw_evidence) for f in result.findings],
-            indent=2,
-            default=str,
-        )
+        raw_items: list[object] = []
+        for f in result.findings:
+            if f.raw_evidence:
+                try:
+                    raw_items.append(json.loads(f.raw_evidence))
+                except json.JSONDecodeError:
+                    raw_items.append({"_unparseable": f.raw_evidence})
+        raw_summary = json.dumps(raw_items, indent=2, default=str)
         create_evidence(
             conn,
             type=_EVIDENCE_TYPE_RAW,
@@ -164,7 +167,23 @@ def import_cmd(
     ),
     db_path: Path | None = typer.Option(None, hidden=True),
 ) -> None:
-    """Import findings from an external tool report."""
+    """Import findings from an external tool report.
+
+    Parses a report file produced by Garak, PyRIT, or a SARIF-producing
+    tool, normalizes findings with taxonomy bridging, and persists them
+    to the qai database under a parent run with ``module=import``.
+
+    Args:
+        file: Path to the external tool report file.
+        fmt: Source format identifier — ``"garak"``, ``"pyrit"``, or
+            ``"sarif"``.
+        dry_run: When ``True``, parse and display what would be imported
+            without writing to the database.
+        db_path: Override database path (hidden; used for testing).
+
+    Raises:
+        typer.Exit: With code 1 on unsupported format or parse failure.
+    """
     parser = _PARSERS.get(fmt)
     if parser is None:
         console.print(
