@@ -42,6 +42,7 @@ class WorkflowRunner:
         ws_manager: ConnectionManager | None = None,
         active_workflows: dict[str, WorkflowRunner] | None = None,
         db_path: Path | None = None,
+        source: str | None = None,
     ) -> None:
         """Initialize the workflow runner.
 
@@ -54,12 +55,14 @@ class WorkflowRunner:
                 When provided, start() registers self and complete()/fail()
                 deregister. When None, registration is skipped.
             db_path: Optional database path override.
+            source: Optional provenance tag (e.g. "web", "cli").
         """
         self._workflow_id = workflow_id
         self._config = config
         self._ws_manager = ws_manager
         self._active_workflows = active_workflows
         self._db_path = db_path
+        self._source = source
         self._run_id = uuid.uuid4().hex
         self._wait_event = asyncio.Event()
         self._resume_data: dict[str, Any] | None = None
@@ -84,6 +87,7 @@ class WorkflowRunner:
                 name=self._workflow_id,
                 config=self._config,
                 run_id=self._run_id,
+                source=self._source,
             )
             update_run_status(conn, self._run_id, RunStatus.RUNNING)
 
@@ -173,6 +177,7 @@ class WorkflowRunner:
                 name=name,
                 parent_run_id=self._run_id,
                 config=config,
+                source=self._source,
             )
 
     async def update_child_status(self, run_id: str, status: RunStatus) -> None:

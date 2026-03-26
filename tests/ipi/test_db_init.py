@@ -26,7 +26,7 @@ class TestIPISchemaV7:
         db_path = tmp_path / "test.db"
         with get_connection(db_path) as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert version == 10
+            assert version == 11
 
     def test_ipi_payloads_columns(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"

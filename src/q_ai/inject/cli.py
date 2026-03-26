@@ -185,7 +185,7 @@ def campaign(
 
         from q_ai.inject.mapper import persist_campaign
 
-        persist_campaign(result)
+        persist_campaign(result, source="cli")
 
         summary = result.summary()
 

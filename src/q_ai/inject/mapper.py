@@ -25,6 +25,7 @@ def persist_campaign(
     campaign: Campaign,
     db_path: Path | None = None,
     run_id: str | None = None,
+    source: str | None = None,
 ) -> str:
     """Persist a Campaign to the database.
 
@@ -36,6 +37,7 @@ def persist_campaign(
         db_path: Path to database file. Defaults to ~/.qai/qai.db.
         run_id: Optional pre-created run ID from the orchestrator.
             When provided, skips creating a new run row.
+        source: Optional provenance tag (e.g. "web", "cli").
 
     Returns:
         The run ID for the persisted campaign.
@@ -50,8 +52,8 @@ def persist_campaign(
                 """
                 INSERT INTO runs
                     (id, module, name, target_id, parent_run_id,
-                     config, status, started_at, finished_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     config, status, started_at, finished_at, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -63,6 +65,7 @@ def persist_campaign(
                     int(RunStatus.COMPLETED),
                     campaign.started_at.isoformat() if campaign.started_at else now_iso,
                     campaign.finished_at.isoformat() if campaign.finished_at else now_iso,
+                    source,
                 ),
             )
 

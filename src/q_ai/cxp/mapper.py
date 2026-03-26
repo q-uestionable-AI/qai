@@ -21,6 +21,7 @@ def persist_build(
     repo_dir: str,
     db_path: Path | None = None,
     run_id: str | None = None,
+    source: str | None = None,
 ) -> str:
     """Persist a CXP build operation to the database.
 
@@ -33,6 +34,7 @@ def persist_build(
         db_path: Path to database file. Defaults to ~/.qai/qai.db.
         run_id: Optional pre-created run ID from the orchestrator.
             When provided, skips creating a new run record.
+        source: Optional provenance tag (e.g. "web", "cli").
 
     Returns:
         The run ID for the build operation.
@@ -62,8 +64,8 @@ def persist_build(
                 """
                 INSERT INTO runs
                     (id, module, name, target_id, parent_run_id,
-                     config, status, started_at, finished_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     config, status, started_at, finished_at, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -75,6 +77,7 @@ def persist_build(
                     int(RunStatus.COMPLETED),
                     now_iso,
                     now_iso,
+                    source,
                 ),
             )
 

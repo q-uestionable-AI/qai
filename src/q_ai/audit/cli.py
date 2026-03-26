@@ -202,7 +202,7 @@ def scan(
             # Persist to database
             from q_ai.audit.mapper import persist_scan
 
-            run_id = persist_scan(result, transport=transport)
+            run_id = persist_scan(result, transport=transport, source="cli")
             console.print(f"[dim]Run saved to database: {run_id}[/dim]")
 
     try:

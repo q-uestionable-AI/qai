@@ -67,6 +67,7 @@ def create_campaign(
     conn: sqlite3.Connection,
     name: str,
     description: str = "",
+    source: str | None = None,
 ) -> Campaign:
     """Create a new CXP campaign as a runs record.
 
@@ -74,6 +75,7 @@ def create_campaign(
         conn: An open SQLite connection.
         name: Campaign name.
         description: Optional description.
+        source: Optional provenance tag (e.g. "web", "cli").
 
     Returns:
         The created Campaign.
@@ -81,9 +83,9 @@ def create_campaign(
     campaign_id = uuid.uuid4().hex
     now = datetime.now(UTC).isoformat()
     conn.execute(
-        """INSERT INTO runs (id, module, name, config, status, started_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (campaign_id, "cxp", name, description, 0, now),
+        """INSERT INTO runs (id, module, name, config, status, started_at, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (campaign_id, "cxp", name, description, 0, now, source),
     )
     return Campaign(
         id=campaign_id,

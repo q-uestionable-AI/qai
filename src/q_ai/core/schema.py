@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_VERSION = 10
+CURRENT_VERSION = 11
 
 V1_TABLES = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -283,6 +283,24 @@ def _migrate_v10(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA user_version = 10")
 
 
+def _migrate_v11(conn: sqlite3.Connection) -> None:
+    """V11: Add source column to runs table for run provenance.
+
+    Guards against: (1) runs table not existing in partial-migration
+    test scenarios, and (2) column already existing for idempotency.
+    Uses conn.execute() instead of executescript() to avoid implicit COMMIT.
+    """
+    has_runs = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='runs'"
+    ).fetchone()
+    if not has_runs:
+        return
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
+    if "source" not in columns:
+        conn.execute("ALTER TABLE runs ADD COLUMN source TEXT")
+    conn.execute("PRAGMA user_version = 11")
+
+
 def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901
     """Run schema migrations up to CURRENT_VERSION.
 
@@ -297,6 +315,7 @@ def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901
     Version 8 adds rxp_validations table.
     Version 9 adds mitigation column to findings table.
     Version 10 adds guidance column to runs table.
+    Version 11 adds source column to runs table for provenance.
     """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version < 1:
@@ -336,3 +355,5 @@ def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901
         _migrate_v9(conn)
     if version < 10:
         _migrate_v10(conn)
+    if version < 11:
+        _migrate_v11(conn)

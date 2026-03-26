@@ -28,11 +28,8 @@ from q_ai.core.db import (
     get_connection,
     get_previously_seen_finding_keys,
     get_prior_run_counts_by_target,
-    get_run,
     get_setting,
     get_target,
-    list_findings,
-    list_runs,
     list_targets,
     set_setting,
 )
@@ -52,6 +49,7 @@ from q_ai.inject.models import InjectionTechnique
 from q_ai.orchestrator.registry import get_workflow, list_workflows
 from q_ai.orchestrator.runner import WorkflowRunner
 from q_ai.rxp._deps import is_available as rxp_is_available
+from q_ai.services import finding_service, run_service
 
 logger = logging.getLogger(__name__)
 
@@ -353,12 +351,10 @@ def _load_module_data(
 def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
     """Load all data for the runs results view (blocking, run off event loop)."""
     with get_connection(db_path) as conn:
-        workflow_run = get_run(conn, run_id)
+        workflow_run, child_runs = run_service.get_run_with_children(conn, run_id)
         if not workflow_run:
             return {"previously_seen": set()}
-        child_runs = list_runs(conn, parent_run_id=run_id)
-        all_ids = [run_id] + [c.id for c in child_runs]
-        findings = list_findings(conn, run_ids=all_ids)
+        findings = finding_service.get_findings_for_run(conn, run_id)
         child_by_module = {c.module: c for c in child_runs}
 
         workflow = get_workflow(workflow_run.name) if workflow_run.name else None
@@ -491,7 +487,7 @@ def _build_history_context(
     """Load context for the run history view (blocking, run off event loop)."""
     parsed_status = _parse_status(status_filter)
     with get_connection(db_path) as conn:
-        parent_runs = list_runs(
+        parent_runs = run_service.list_runs(
             conn,
             module="workflow",
             name=workflow_filter or None,
@@ -503,19 +499,9 @@ def _build_history_context(
 
         history_runs: list[_HistoryRow] = []
         for run in parent_runs:
-            child_rows = conn.execute(
-                "SELECT id FROM runs WHERE parent_run_id = ?", (run.id,)
-            ).fetchall()
-            child_ids = [r["id"] for r in child_rows]
+            child_ids = run_service.get_child_run_ids(conn, run.id)
             all_ids = [run.id, *child_ids]
-            finding_count = 0
-            if all_ids:
-                ph = ", ".join("?" for _ in all_ids)
-                row = conn.execute(
-                    f"SELECT COUNT(*) FROM findings WHERE run_id IN ({ph})",  # noqa: S608
-                    all_ids,
-                ).fetchone()
-                finding_count = row[0]
+            finding_count = run_service.get_finding_count_for_runs(conn, all_ids)
 
             wf = get_workflow(run.name) if run.name else None
             display_name = (
@@ -672,10 +658,10 @@ async def api_runs(
     db_path = _get_db_path(request)
     parsed_status = _parse_status(status)
     with get_connection(db_path) as conn:
-        runs = list_runs(
+        runs_list = run_service.list_runs(
             conn, module=module or None, status=parsed_status, target_id=target_id or None
         )
-    return templates.TemplateResponse(request, "partials/runs_table.html", {"runs": runs})
+    return templates.TemplateResponse(request, "partials/runs_table.html", {"runs": runs_list})
 
 
 @router.get("/api/runs/history")
@@ -699,7 +685,7 @@ async def api_runs_history(
 def _sync_export_run(db_path: Path | None, run_id: str) -> dict | None:
     """Load and export a run bundle (blocking, run off event loop)."""
     with get_connection(db_path) as conn:
-        run = get_run(conn, run_id)
+        run = run_service.get_run(conn, run_id)
         if run is None:
             return None
         return export_run_bundle(conn, run_id)
@@ -733,14 +719,10 @@ async def api_export_run(
         import tempfile as _tempfile
 
         with get_connection(db_path) as conn:
-            run = get_run(conn, run_id)
+            run = run_service.get_run(conn, run_id)
             if run is None:
                 return None
-            child_rows = conn.execute(
-                "SELECT id FROM runs WHERE parent_run_id = ?", (run_id,)
-            ).fetchall()
-            all_ids = [run_id] + [r["id"] for r in child_rows]
-            findings = list_findings(conn, run_ids=all_ids)
+            findings = finding_service.get_findings_for_run(conn, run_id)
 
             eff_target_id = run.target_id or (run.config or {}).get("target_id")
             target = get_target(conn, eff_target_id) if eff_target_id else None
@@ -917,7 +899,7 @@ def _sync_bulk_export(
     bundles: list[tuple[str, bytes]] = []
     with get_connection(db_path) as conn:
         for rid in run_ids:
-            run = get_run(conn, rid)
+            run = run_service.get_run(conn, rid)
             if run is None:
                 continue
             bundle = export_run_bundle(conn, rid)
@@ -992,18 +974,16 @@ def _build_compare_context(
         Dict with left/right run data and finding diff.
     """
     with get_connection(db_path) as conn:
-        left_run = get_run(conn, left_id)
-        right_run = get_run(conn, right_id)
+        left_run = run_service.get_run(conn, left_id)
+        right_run = run_service.get_run(conn, right_id)
         if left_run is None or right_run is None:
             return {}
 
-        left_children = list_runs(conn, parent_run_id=left_id)
-        right_children = list_runs(conn, parent_run_id=right_id)
-        left_all_ids = [left_id] + [c.id for c in left_children]
-        right_all_ids = [right_id] + [c.id for c in right_children]
+        left_children = run_service.get_child_runs(conn, left_id)
+        right_children = run_service.get_child_runs(conn, right_id)
 
-        left_findings = list_findings(conn, run_ids=left_all_ids) if left_all_ids else []
-        right_findings = list_findings(conn, run_ids=right_all_ids) if right_all_ids else []
+        left_findings = finding_service.get_findings_for_run(conn, left_id)
+        right_findings = finding_service.get_findings_for_run(conn, right_id)
 
         left_eff_target_id = left_run.target_id or (left_run.config or {}).get("target_id")
         right_eff_target_id = right_run.target_id or (right_run.config or {}).get("target_id")
@@ -1075,7 +1055,7 @@ async def api_findings(
     db_path = _get_db_path(request)
     parsed_severity = _parse_severity(severity)
     with get_connection(db_path) as conn:
-        findings = list_findings(
+        findings = finding_service.list_findings(
             conn,
             module=module or None,
             category=category or None,
@@ -1105,7 +1085,7 @@ async def operations_status_bar(
     db_path = _get_db_path(request)
     templates = _get_templates(request)
     with get_connection(db_path) as conn:
-        child_runs = list_runs(conn, parent_run_id=run_id)
+        child_runs = run_service.get_child_runs(conn, run_id)
     return templates.TemplateResponse(
         request,
         "partials/child_run_badges.html",
@@ -1122,7 +1102,7 @@ async def operations_workflow_status_bar(
     db_path = _get_db_path(request)
     templates = _get_templates(request)
     with get_connection(db_path) as conn:
-        workflow_run = get_run(conn, run_id)
+        workflow_run = run_service.get_run(conn, run_id)
     wf = get_workflow(workflow_run.name) if workflow_run and workflow_run.name else None
     display_name = wf.name if wf else (workflow_run.name if workflow_run else "Workflow")
     return templates.TemplateResponse(
@@ -1141,8 +1121,7 @@ async def operations_findings_sidebar(
     db_path = _get_db_path(request)
     templates = _get_templates(request)
     with get_connection(db_path) as conn:
-        all_ids = [run_id] + [c.id for c in list_runs(conn, parent_run_id=run_id)]
-        findings = list_findings(conn, run_ids=all_ids)
+        findings = finding_service.get_findings_for_run(conn, run_id)
     return templates.TemplateResponse(
         request,
         "partials/findings_sidebar.html",
@@ -1245,7 +1224,7 @@ def export_report(request: Request, run_id: str) -> Response:
     """
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
-        run = get_run(conn, run_id)
+        run = run_service.get_run(conn, run_id)
     if run is None:
         return JSONResponse(status_code=404, content={"detail": "Run not found"})
 
@@ -1275,7 +1254,7 @@ def export_evidence(request: Request, run_id: str) -> Response:
     """
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
-        run = get_run(conn, run_id)
+        run = run_service.get_run(conn, run_id)
     if run is None:
         return JSONResponse(status_code=404, content={"detail": "Run not found"})
 
@@ -1329,14 +1308,14 @@ def _sync_generate_sarif(db_path: Path | None, run_id: str) -> bytes | None:
     }
 
     with get_connection(db_path) as conn:
-        run = get_run(conn, run_id)
+        run = run_service.get_run(conn, run_id)
         if run is None:
             return None
-        child_runs = list_runs(conn, parent_run_id=run_id)
+        child_runs = run_service.get_child_runs(conn, run_id)
         audit_child = next((c for c in child_runs if c.module == "audit"), None)
         if audit_child is None:
             return None
-        findings = list_findings(conn, run_id=audit_child.id)
+        findings = finding_service.list_findings(conn, run_id=audit_child.id)
         if not findings:
             return None
 
@@ -2477,7 +2456,7 @@ async def _run_workflow(
     except Exception as exc:
         # Only fail if not already in terminal status
         with get_connection(runner._db_path) as conn:
-            run = get_run(conn, runner.run_id)
+            run = run_service.get_run(conn, runner.run_id)
         if run and run.status in (RunStatus.RUNNING, RunStatus.PENDING):
             await runner.fail(error=str(exc))
 
@@ -2710,6 +2689,7 @@ async def launch_workflow(request: Request) -> JSONResponse:
         ws_manager=request.app.state.ws_manager,
         active_workflows=request.app.state.active_workflows,
         db_path=db_path,
+        source="web",
     )
 
     # --- Set output_dir from run_id BEFORE start() persists config ---
@@ -2972,6 +2952,7 @@ async def launch_quick_action(request: Request) -> JSONResponse:
         ws_manager=request.app.state.ws_manager,
         active_workflows=request.app.state.active_workflows,
         db_path=db_path,
+        source="web",
     )
     await runner.start()
 
@@ -3025,7 +3006,7 @@ async def resume_workflow(request: Request, run_id: str) -> JSONResponse:
 
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
-        run = get_run(conn, run_id)
+        run = run_service.get_run(conn, run_id)
     if run is None or run.status != RunStatus.WAITING_FOR_USER:
         return JSONResponse(
             status_code=409,
@@ -3070,7 +3051,7 @@ def _sync_conclude(
     now = _dt.datetime.now(_dt.UTC).isoformat()
 
     with get_connection(db_path) as conn:
-        run = get_run(conn, run_id)
+        run = run_service.get_run(conn, run_id)
         if run is None:
             return "not_found"
         if run.status in _TERMINAL_STATUSES:
@@ -3210,7 +3191,7 @@ async def api_audit_scan_status(request: Request, run_id: str) -> HTMLResponse:
     templates = _get_templates(request)
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
-        run = get_run(conn, run_id)
+        run = run_service.get_run(conn, run_id)
     status = run.status.name if run is not None else "UNKNOWN"
     return templates.TemplateResponse(request, "partials/audit_tab.html", {"scan_status": status})
 
@@ -3272,7 +3253,7 @@ async def api_audit_findings(request: Request, run_id: str) -> HTMLResponse:
     templates = _get_templates(request)
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
-        findings = list_findings(conn, run_id=run_id)
+        findings = finding_service.list_findings(conn, run_id=run_id)
     return templates.TemplateResponse(
         request, "partials/audit_findings.html", {"findings": findings}
     )

@@ -262,6 +262,7 @@ def validate(
                 result=result,
                 profile_id=profile,
                 top_k=top_k,
+                source="cli",
             )
             typer.echo(f"Saved to database (run {run_id})")
 
