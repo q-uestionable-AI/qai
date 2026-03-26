@@ -10,7 +10,7 @@
 
 [![Docs](https://img.shields.io/badge/docs-q--uestionable.ai-8b5cf6)](https://docs.q-uestionable.ai)
 
-**Offensive security platform for agentic AI infrastructure.**
+**Security testing for agentic AI.**
 
 - Audit MCP servers
 - Intercept agent traffic

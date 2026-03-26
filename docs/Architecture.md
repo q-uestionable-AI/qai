@@ -2,11 +2,11 @@
 
 ## Overview
 
-{q-AI} is a unified offensive security platform for agentic AI infrastructure. Seven research modules
+{q-AI} is a unified security testing tool for agentic AI. Seven modules
 are combined into a single Python package (`q-uestionable-ai`) with a shared CLI, shared SQLite
 database, and a local web UI for orchestrating multi-module workflows.
 
-The platform is built around the **runs-as-backbone** principle: every operation — a scan, a campaign,
+qai is built around the **runs-as-backbone** principle: every operation — a scan, a campaign,
 a chain execution, a proxy session — creates a run record with parent/child lineage. The web UI,
 CLI, and research management views are all consumers of the same `~/.qai/qai.db` database.
 

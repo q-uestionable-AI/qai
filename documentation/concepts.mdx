@@ -90,7 +90,7 @@ RXP measures retrieval behavior without connecting to live systems:
 2. **Query** — Run target queries and retrieve top-k results from an ephemeral collection
 3. **Score** — Measure poison document retrieval rate and rank across models
 
-RXP validates the retrieval prerequisite for content injection — if a poisoned document can't win the vector similarity battle, it never reaches the LLM context window.
+RXP validates the retrieval prerequisite for content injection — if a poisoned document doesn't appear in the top-k results, it never reaches the LLM context window.
 
 ## Callback-based verification
 
@@ -151,7 +151,7 @@ qai ipi generate --callback http://localhost:8080 \
 | **chain** | Multi-module attack paths | Whether vulnerabilities can be composed into attack chains | Step-by-step execution trace with success/failure |
 | **ipi** | Document ingestion | Whether AI agents execute hidden instructions in uploaded documents | Out-of-band HTTP callback from the agent |
 | **cxp** | Project instruction files | Whether poisoned instruction files influence coding assistant code generation | Detection rule validation against captured assistant output |
-| **rxp** | RAG retrieval layer | Whether adversarial documents win vector similarity battles and enter the LLM context window | Retrieval rate and poison rank scoring across embedding models |
+| **rxp** | RAG retrieval layer | Whether adversarial documents appear in top-k retrieval results | Retrieval rate and poison rank scoring across embedding models |
 
 ## Interpret prompts
 

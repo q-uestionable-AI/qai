@@ -13,7 +13,7 @@ Use the proxy to:
 - **Modify messages** — Intercept requests or responses and alter them mid-session for manual testing
 - **Replay sessions** — Capture and replay sessions against different server implementations to test compatibility or reproduce findings
 - **Debug multi-agent systems** — Examine raw MCP traffic to understand agent behavior and dependencies
-- **Prevent dangerous calls** — Intercept and drop risky tool invocations before they reach the target
+- **Drop messages** — Intercept and discard specific tool invocations during manual testing
 </Note>
 
 ## Core Concepts
@@ -54,6 +54,10 @@ The proxy bridges three MCP transports:
 4. Toggle intercept mode to halt and inspect specific interactions
 5. Forward, modify, or drop messages as needed
 6. Export the completed session for evidence, testing, or audit purposes
+
+## What to Expect
+
+Proxy is interactive. It captures and replays traffic but does not produce findings or vulnerability assessments. The researcher observes, inspects, and optionally modifies messages in real time. Session recordings provide evidence for later analysis, but the analysis itself is manual.
 
 ## Next Steps
 

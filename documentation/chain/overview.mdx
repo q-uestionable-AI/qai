@@ -89,6 +89,10 @@ Use templates as starting points for custom chains.
 5. **Analyze** blast radius with `qai chain blast-radius`
 6. **Detect** with `qai chain detect` to generate detection rules
 
+## What to Expect
+
+Defining chains is manual YAML authoring — you describe an attack hypothesis as a sequence of steps. Validation and dry-run tracing are instant and automated. Live execution is automated but requires a configured target and LLM provider. Blast radius analysis and detection rule generation are automated post-processing on completed executions. Currently only audit and inject are supported as step modules.
+
 ## Next Steps
 
 - **[CLI Commands](./cli.mdx)** — Execute, validate, and analyze chains

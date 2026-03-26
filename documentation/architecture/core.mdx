@@ -7,7 +7,7 @@ The core layer (`q_ai.core`) provides shared services: persistent data storage, 
 
 ## SQLite Database
 
-The platform uses SQLite with WAL mode for concurrent access and foreign key enforcement. The database lives at `~/.qai/qai.db` and auto-initializes with schema migrations on first access. Current schema version: **V10**.
+qai uses SQLite with WAL mode for concurrent access and foreign key enforcement. The database lives at `~/.qai/qai.db` and auto-initializes with schema migrations on first access. Current schema version: **V10**.
 
 <Note>
 WAL mode requires the `.db`, `-wal`, and `-shm` files to remain in the same directory.

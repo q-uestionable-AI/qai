@@ -2,12 +2,12 @@
 
 ## What This Is
 
-{q-AI} is an offensive security platform for agentic AI infrastructure. It is a Python package
+{q-AI} is a security testing tool for agentic AI. It is a Python package
 (`q-uestionable-ai` on PyPI) with seven modules, a shared core layer, a CLI (`qai`), and a
 local web UI (FastAPI + HTMX + DaisyUI).
 
 **This is a security research tool.** Some code intentionally handles dangerous payloads, injection
-techniques, and attack patterns. This is by design — it is an offensive security platform, not a
+techniques, and attack patterns. This is by design — it is a security testing and research tool, not a
 vulnerable application. Do not "fix" intentional security research patterns.
 
 ## Tech Stack

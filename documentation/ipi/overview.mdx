@@ -11,13 +11,15 @@ IPI is the only qai module where documents are uploaded to third-party AI servic
 
 ## How It Works
 
-The workflow is straightforward:
-
 1. **Start the callback listener** — Run `qai ipi listen` on a server you control. This opens an HTTP endpoint that receives proof-of-execution callbacks.
 2. **Generate poisoned documents** — Use `qai ipi generate` to create documents with hidden payloads using your choice of format (PDF, Word, Markdown, etc.) and hiding technique (white ink text, metadata, comments, etc.).
 3. **Deploy to target** — Upload the poisoned document to the target system's document ingestion pipeline (knowledge base, RAG system, email service, calendar app, etc.).
 4. **Trigger payload execution** — Send a prompt that causes the target to ingest and process your document.
 5. **Verify execution** — Monitor your callback listener for HTTP requests. A callback confirms the target executed your hidden payload.
+
+## What to Expect
+
+IPI is a research harness, not an automated exploit tool. The tool generates poisoned documents and proves execution when it happens, but the researcher does the hard part: figuring out which combination of format, technique, style, and trigger prompt will cause a specific target to execute. This is inherent to indirect prompt injection — every target model, system prompt, and ingestion pipeline changes the attack surface. Expect to iterate across multiple attempts.
 
 ## What You Can Test
 

@@ -1,19 +1,19 @@
 # {q-AI} Documentation
-> Security testing for MCP servers and agentic AI systems
+> Security testing for agentic AI
 
 ## Pages
 
 ### Getting Started
 
-- [Introduction](https://docs.q-uestionable.ai/introduction): Security testing for MCP servers and agentic AI systems
+- [Introduction](https://docs.q-uestionable.ai/introduction): Security testing for agentic AI
 - [Quickstart](https://docs.q-uestionable.ai/quickstart): Install q-ai and run your first MCP server security assessment
 - [Core Concepts](https://docs.q-uestionable.ai/concepts): MCP protocol, OWASP mapping, module methodologies, and threat model
 - [Responsible Use](https://docs.q-uestionable.ai/responsible-use): Authorized use requirements and responsible disclosure
-- [Changelog](https://docs.q-uestionable.ai/changelog): Release history for the q-ai platform
+- [Changelog](https://docs.q-uestionable.ai/changelog): Release history for q-ai
 
 ### Web UI
 
-- [Web UI Overview](https://docs.q-uestionable.ai/web-ui/overview): Browser-based interface for managing workflows, viewing results, and configuring the platform
+- [Web UI Overview](https://docs.q-uestionable.ai/web-ui/overview): Browser-based interface for managing workflows, viewing results, and configuring qai
 - [Launcher](https://docs.q-uestionable.ai/web-ui/launcher): Interactive workflow forms for running assessments and tests
 - [Runs](https://docs.q-uestionable.ai/web-ui/runs): View workflow results, findings, and historical runs
 - [Settings](https://docs.q-uestionable.ai/web-ui/settings): Configure providers, defaults, and MCP infrastructure
@@ -93,7 +93,7 @@
 
 ### Architecture
 
-- [Platform Overview](https://docs.q-uestionable.ai/architecture/overview): Architectural design and module organization of the qai platform
+- [Architecture Overview](https://docs.q-uestionable.ai/architecture/overview): Architectural design and module organization of qai
 - [Core Infrastructure](https://docs.q-uestionable.ai/architecture/core): Database schema, configuration system, and shared data models
 - [Audit Module Architecture](https://docs.q-uestionable.ai/architecture/audit-module): Scanner pipeline, MCP connection, and multi-format reporting
 - [Proxy Module Architecture](https://docs.q-uestionable.ai/architecture/proxy-module): MCP traffic interception, session recording, and replay

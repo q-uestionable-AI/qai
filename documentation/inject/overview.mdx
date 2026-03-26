@@ -3,7 +3,7 @@ title: Overview
 description: Tool poisoning and prompt injection testing against LLM-powered agents
 ---
 
-The inject module is a framework for tool poisoning and prompt injection testing. It loads adversarial payload templates, serves them as MCP tools via a poisoned server, and runs automated campaigns against LLM models to measure susceptibility and document attack vectors.
+The inject module tests tool poisoning and prompt injection against LLM models. It loads adversarial payload templates, serves them as MCP tools via a poisoned server, and runs campaigns to measure model susceptibility.
 
 ## What It Tests
 
@@ -36,9 +36,9 @@ Model selection uses provider/model format: `anthropic/claude-sonnet-4-20250514`
 - **Outcome scoring** — Classifies results as full compliance, partial compliance, refusal with leak, or clean refusal
 - **Evidence collection** — Preserves full provider responses for manual analysis
 
-<Tip>
-Use inject campaigns to validate your agent's resilience to tool-based attacks and identify which model/agent combinations are most vulnerable to specific techniques.
-</Tip>
+## What to Expect
+
+Inject campaigns are automated once configured — select a model, select techniques, set rounds, launch. The scoring is string-matching heuristics (not semantic analysis), so the full evidence is preserved for manual review. The iteration comes before the run: crafting or selecting YAML templates that test the right attack vectors for your target.
 
 ## Next Steps
 

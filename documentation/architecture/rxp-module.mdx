@@ -3,7 +3,7 @@ title: RXP Module Architecture
 description: RAG retrieval poisoning measurement and validation
 ---
 
-The RXP (RAG Retrieval Poisoning) module measures whether adversarial documents win vector similarity battles in RAG retrieval layers. It validates that a poisoned document ranks in the top-k results for target queries, indicating it would reach the LLM context window in a real RAG system.
+The RXP (RAG Retrieval Poisoning) module measures whether adversarial documents appear in top-k retrieval results. It validates that a poisoned document ranks highly for target queries, indicating it would reach the LLM context window in a real RAG system.
 
 RXP requires optional dependencies: `pip install "q-uestionable-ai[rxp]"` (sentence-transformers, chromadb).
 

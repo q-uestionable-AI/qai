@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "q-uestionable-ai"
 version = "0.5.3"
-description = "Offensive security platform for agentic AI infrastructure"
+description = "Security testing for agentic AI"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11,<3.14"
 authors = [
     { name = "Richard Spicer", email = "richard@richardspicer.io" },
 ]
-keywords = ["security", "ai", "mcp", "red-team", "offensive-security"]
+keywords = ["security", "ai", "mcp", "security-testing", "agentic-ai"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: Apache Software License",

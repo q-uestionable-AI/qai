@@ -22,7 +22,7 @@ lateral movement — that output-level analysis doesn't catch.
 | Invariant MCP-Scan | CLI scanner for tool description attacks | Full OWASP MCP Top 10 + multi-module kill chain |
 | ScanMCP.com | Cloud-based scanner | Open source, local execution, SARIF for CI/CD |
 | Equixly CLI | Commercial MCP testing | Free, community-extensible |
-| MCP Guardian (EQTY Lab) | Runtime security proxy | Complementary — guardian is runtime defence, {q-AI} is pre-deployment offence |
+| MCP Guardian (EQTY Lab) | Runtime security proxy | Complementary — guardian is runtime defence, {q-AI} is pre-deployment testing |
 
 ---
 
