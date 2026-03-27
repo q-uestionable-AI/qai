@@ -27,7 +27,7 @@
         </div>
     </div>
     <div class="bg-base-300/20 p-4 space-y-3 text-sm">
-        {% if coverage_report.native_categories and coverage_report.imported_categories %}
+        {% if coverage_report.imported_categories %}
         <div class="text-xs text-base-content/50">
             {{ coverage_report.native_categories | length }} native + {{ coverage_report.imported_categories | length }} imported categories
         </div>

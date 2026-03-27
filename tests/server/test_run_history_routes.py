@@ -95,7 +95,7 @@ class TestImportRunVisibility:
             update_run_status(conn, import_run_id, RunStatus.COMPLETED)
         resp = client.get("/api/runs/history")
         assert resp.status_code == 200
-        assert "badge-ghost" in resp.text
+        assert "badge badge-xs badge-ghost" in resp.text
         assert "sarif" in resp.text
 
     def test_import_runs_excluded_by_workflow_filter(

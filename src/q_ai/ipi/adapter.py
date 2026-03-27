@@ -251,10 +251,10 @@ class IPIAdapter:
             )
             await self._runner.update_child_status(child_id, RunStatus.RUNNING)
 
-            await self._runner.update_child_status(child_id, RunStatus.COMPLETED)
-
             if gate is not None:
                 self._persist_retrieval_gate(child_id, gate, gated=True)
+
+            await self._runner.update_child_status(child_id, RunStatus.COMPLETED)
 
             non_viable = gate.non_viable_queries if gate is not None else []
             return IPIAdapterResult(
