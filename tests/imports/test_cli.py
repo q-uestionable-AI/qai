@@ -183,3 +183,57 @@ def test_import_sarif_json_array_not_object(tmp_path: Path) -> None:
     result = runner.invoke(app, ["import", str(bad), "--format", "sarif"])
     assert result.exit_code == 1
     assert "Import failed" in result.output
+
+
+def test_import_with_target(tmp_path: Path) -> None:
+    """--target sets target_id on the import run."""
+    db = tmp_path / "test.db"
+
+    # Create a target first so FK constraint is satisfied
+    with get_connection(db) as conn:
+        conn.execute(
+            "INSERT INTO targets (id, type, name, created_at) VALUES (?, ?, ?, ?)",
+            ("tgt-1", "server", "test-target", "2026-01-01T00:00:00"),
+        )
+
+    result = runner.invoke(
+        app,
+        [
+            "import",
+            str(FIXTURES / "garak_report.jsonl"),
+            "--format",
+            "garak",
+            "--target",
+            "tgt-1",
+            "--db-path",
+            str(db),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    with get_connection(db) as conn:
+        runs = list_runs(conn, module="import")
+        assert len(runs) == 1
+        assert runs[0].target_id == "tgt-1"
+
+
+def test_import_without_target_has_null_target_id(tmp_path: Path) -> None:
+    """Import without --target leaves target_id NULL (backward compat)."""
+    db = tmp_path / "test.db"
+    result = runner.invoke(
+        app,
+        [
+            "import",
+            str(FIXTURES / "garak_report.jsonl"),
+            "--format",
+            "garak",
+            "--db-path",
+            str(db),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    with get_connection(db) as conn:
+        runs = list_runs(conn, module="import")
+        assert len(runs) == 1
+        assert runs[0].target_id is None

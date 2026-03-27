@@ -67,13 +67,19 @@ def _print_dry_run(result: ImportResult) -> None:
             console.print(f"  - {err}")
 
 
-def _persist(result: ImportResult, db_path: Path | None, source_file: Path) -> str:
+def _persist(
+    result: ImportResult,
+    db_path: Path | None,
+    source_file: Path,
+    target_id: str | None = None,
+) -> str:
     """Write parsed findings to the database.
 
     Args:
         result: Parsed import result from a parser module.
         db_path: Override database path, or ``None`` for the default.
         source_file: Path to the original import file (for checksum).
+        target_id: Optional target ID to associate the import run with.
 
     Returns:
         The import run ID.
@@ -87,6 +93,7 @@ def _persist(result: ImportResult, db_path: Path | None, source_file: Path) -> s
             conn,
             module="import",
             name=run_name,
+            target_id=target_id,
             source=result.tool_name,
             config={
                 "importer_version": result.parser_version,
@@ -165,6 +172,12 @@ def import_cmd(
         "-f",
         help="Source format: garak, pyrit, or sarif.",
     ),
+    target: str | None = typer.Option(
+        None,
+        "--target",
+        "-t",
+        help="Target ID to associate imported findings with.",
+    ),
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
@@ -182,6 +195,8 @@ def import_cmd(
         file: Path to the external tool report file.
         fmt: Source format identifier — ``"garak"``, ``"pyrit"``, or
             ``"sarif"``.
+        target: Optional target ID to associate the import with, enabling
+            imported findings to inform workflow template selection.
         dry_run: When ``True``, parse and display what would be imported
             without writing to the database.
         db_path: Override database path (hidden; used for testing).
@@ -206,7 +221,7 @@ def import_cmd(
         _print_dry_run(result)
         raise typer.Exit()
 
-    run_id = _persist(result, db_path, file)
+    run_id = _persist(result, db_path, file, target_id=target)
 
     console.print(f"[green]Imported {len(result.findings)} findings.[/green]")
     console.print(f"  Run ID: {run_id}")

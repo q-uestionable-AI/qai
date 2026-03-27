@@ -11,7 +11,7 @@ import pytest
 from q_ai.core.db import get_connection, get_run
 from q_ai.core.models import RunStatus
 from q_ai.core.schema import migrate
-from q_ai.ipi.adapter import IPIAdapter, IPIAdapterResult
+from q_ai.ipi.adapter import IPIAdapter, IPIAdapterResult, RetrievalGate
 from q_ai.ipi.generate_service import GenerateResult
 from q_ai.ipi.models import Campaign
 from q_ai.orchestrator.runner import WorkflowRunner
@@ -144,3 +144,72 @@ class TestIPIAdapter:
             child = get_run(conn, children[0]["id"])
         assert child is not None
         assert child.status == RunStatus.FAILED
+
+    async def test_gate_non_viable_skips_generation(
+        self, runner: WorkflowRunner, db_path: Path
+    ) -> None:
+        """Non-viable gate (retrieval_rate=0) skips generation entirely."""
+        await runner.start()
+        gate = RetrievalGate(
+            retrieval_rate=0.0,
+            query_viability={"q1": False, "q2": False},
+        )
+        config = {**_BASE_CONFIG, "retrieval_gate": gate}
+        adapter = IPIAdapter(runner, config)
+
+        with patch("q_ai.ipi.adapter.generate_documents") as mock_gen:
+            result = await adapter.run()
+
+        mock_gen.assert_not_called()
+        assert result.payload_count == 0
+        assert result.generate_result is None
+        assert result.gated is True
+        assert set(result.non_viable_queries) == {"q1", "q2"}
+
+        with get_connection(db_path) as conn:
+            child = get_run(conn, result.run_id)
+        assert child is not None
+        assert child.status == RunStatus.COMPLETED
+
+    async def test_gate_viable_generates_normally(
+        self, runner: WorkflowRunner, db_path: Path
+    ) -> None:
+        """Viable gate (retrieval_rate > 0) generates payloads normally."""
+        await runner.start()
+        gate = RetrievalGate(
+            retrieval_rate=0.5,
+            query_viability={"q1": True, "q2": False},
+        )
+        config = {**_BASE_CONFIG, "retrieval_gate": gate}
+        gen_result = _make_generate_result()
+
+        adapter = IPIAdapter(runner, config)
+
+        with (
+            patch("q_ai.ipi.adapter.generate_documents", return_value=gen_result),
+            patch("q_ai.ipi.adapter.persist_generate"),
+            patch.object(runner, "wait_for_user", new_callable=AsyncMock, return_value={}),
+        ):
+            result = await adapter.run()
+
+        assert result.payload_count == 2
+        assert result.gated is True
+        assert result.non_viable_queries == ["q2"]
+        assert result.generate_result is gen_result
+
+    async def test_no_gate_runs_ungated(self, runner: WorkflowRunner, db_path: Path) -> None:
+        """Without retrieval_gate in config, runs ungated."""
+        await runner.start()
+        gen_result = _make_generate_result()
+
+        adapter = IPIAdapter(runner, _BASE_CONFIG)
+
+        with (
+            patch("q_ai.ipi.adapter.generate_documents", return_value=gen_result),
+            patch("q_ai.ipi.adapter.persist_generate"),
+            patch.object(runner, "wait_for_user", new_callable=AsyncMock, return_value={}),
+        ):
+            result = await adapter.run()
+
+        assert result.gated is False
+        assert result.non_viable_queries == []

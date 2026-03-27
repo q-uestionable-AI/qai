@@ -27,13 +27,32 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from q_ai.core.models import RunStatus
-from q_ai.ipi.adapter import IPIAdapter
-from q_ai.rxp.adapter import RXPAdapter
+from q_ai.ipi.adapter import IPIAdapter, RetrievalGate
+from q_ai.rxp.adapter import RXPAdapter, RXPAdapterResult
 
 if TYPE_CHECKING:
     from q_ai.orchestrator.runner import WorkflowRunner
 
 logger = logging.getLogger(__name__)
+
+
+def _build_retrieval_gate(rxp_result: RXPAdapterResult, config: dict[str, Any]) -> RetrievalGate:
+    """Build a RetrievalGate from RXP per-query results.
+
+    Args:
+        rxp_result: Completed RXP adapter result with per-query detail.
+        config: Workflow config (may contain ``rxp_retrieval_threshold``).
+
+    Returns:
+        RetrievalGate with per-query viability and configured threshold.
+    """
+    query_viability = {qr.query: qr.poison_retrieved for qr in rxp_result.result.query_results}
+    threshold = config.get("rxp_retrieval_threshold", 0.0)
+    return RetrievalGate(
+        retrieval_rate=rxp_result.retrieval_rate,
+        query_viability=query_viability,
+        threshold=threshold,
+    )
 
 
 async def test_document_ingestion(runner: WorkflowRunner, config: dict[str, Any]) -> None:
@@ -47,13 +66,14 @@ async def test_document_ingestion(runner: WorkflowRunner, config: dict[str, Any]
         config: Configuration dict — see module docstring for shape.
     """
     any_failed = False
+    rxp_result: RXPAdapterResult | None = None
 
     # --- Optional stage: RXP pre-validation ---
     if config.get("rxp_enabled"):
         rxp_config = {**config["rxp"], "target_id": config["target_id"]}
         try:
             await runner.emit_progress(runner.run_id, "Starting RXP pre-validation...")
-            await RXPAdapter(runner, rxp_config).run()
+            rxp_result = await RXPAdapter(runner, rxp_config).run()
             await runner.emit_progress(runner.run_id, "RXP pre-validation complete")
         except Exception:
             logger.exception("RXP stage failed for target %s", config["target_id"])
@@ -61,7 +81,7 @@ async def test_document_ingestion(runner: WorkflowRunner, config: dict[str, Any]
             await runner.emit_progress(runner.run_id, "RXP stage failed, continuing...")
 
     # --- Main stage: IPI payload generation ---
-    ipi_config = {
+    ipi_config: dict[str, Any] = {
         "target_id": config["target_id"],
         "callback_url": config["callback_url"],
         "output_dir": config["output_dir"],
@@ -70,6 +90,10 @@ async def test_document_ingestion(runner: WorkflowRunner, config: dict[str, Any]
         "payload_type": config.get("payload_type", "callback"),
         "base_name": config.get("base_name", "report"),
     }
+
+    if rxp_result is not None:
+        gate = _build_retrieval_gate(rxp_result, config)
+        ipi_config["retrieval_gate"] = gate
     try:
         await runner.emit_progress(runner.run_id, "Starting IPI payload generation...")
         await IPIAdapter(runner, ipi_config).run()

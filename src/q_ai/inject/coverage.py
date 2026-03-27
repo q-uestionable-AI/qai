@@ -14,17 +14,27 @@ def build_coverage_report(
     audit_categories: set[str],
     campaign: Campaign,
     templates: list[PayloadTemplate],
+    *,
+    native_categories: set[str] | None = None,
+    imported_categories: set[str] | None = None,
 ) -> CoverageReport:
     """Build a coverage report comparing audit findings to inject results.
 
     Args:
-        audit_categories: Set of finding categories from the audit run.
+        audit_categories: Combined set of finding categories (native + imported).
         campaign: Completed inject campaign with results.
         templates: Templates that were used in the campaign.
+        native_categories: Categories from native audit findings within this
+            workflow run. Defaults to ``audit_categories`` when not provided.
+        imported_categories: Categories from imported external findings.
+            Defaults to empty set when not provided.
 
     Returns:
         CoverageReport with coverage metrics and template match details.
     """
+    resolved_native = native_categories if native_categories is not None else audit_categories
+    resolved_imported = imported_categories if imported_categories is not None else set()
+
     if not audit_categories:
         return CoverageReport(
             audit_categories=set(),
@@ -32,6 +42,8 @@ def build_coverage_report(
             untested_categories=set(),
             coverage_ratio=0.0,
             template_matches=[],
+            native_categories=resolved_native,
+            imported_categories=resolved_imported,
         )
 
     # Build a lookup from template name to its relevant_categories
@@ -65,4 +77,6 @@ def build_coverage_report(
         untested_categories=untested_categories,
         coverage_ratio=coverage_ratio,
         template_matches=template_matches,
+        native_categories=resolved_native,
+        imported_categories=resolved_imported,
     )

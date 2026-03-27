@@ -262,6 +262,129 @@ class TestInjectAdapter:
         assert result.coverage is not None
         assert "tool_poisoning" in result.coverage.audit_categories
 
+    async def test_imported_findings_included_in_categories(self, db_path: Path) -> None:
+        """Imported findings for the same target appear in audit_categories."""
+        from q_ai.core.db import create_finding, create_run, update_run_status
+        from q_ai.core.models import Severity
+
+        runner = WorkflowRunner(workflow_id="assess", config={}, db_path=db_path)
+        await runner.start()
+
+        # Create a target and an import run with target_id and a finding
+        with get_connection(db_path) as conn:
+            conn.execute(
+                "INSERT INTO targets (id, type, name, created_at) VALUES (?, ?, ?, ?)",
+                ("target-1", "server", "test-target", "2026-01-01T00:00:00"),
+            )
+            import_run_id = create_run(
+                conn,
+                module="import",
+                name="garak-import",
+                target_id="target-1",
+                source="garak",
+            )
+            create_finding(
+                conn,
+                run_id=import_run_id,
+                module="garak",
+                category="prompt_injection",
+                severity=Severity.HIGH,
+                title="imported finding",
+            )
+            update_run_status(conn, import_run_id, RunStatus.COMPLETED)
+
+        campaign = _make_campaign([_make_injection_result()])
+        adapter = InjectAdapter(runner, {"model": "test-model", "target_id": "target-1"})
+
+        with (
+            patch("q_ai.inject.adapter.load_all_templates", return_value=[]),
+            patch("q_ai.inject.adapter.run_campaign", return_value=campaign),
+        ):
+            result = await adapter.run()
+
+        assert result.coverage is not None
+        assert "prompt_injection" in result.coverage.audit_categories
+        assert "prompt_injection" in result.coverage.imported_categories
+
+    async def test_no_imported_findings_behavior_unchanged(
+        self, runner: WorkflowRunner, db_path: Path
+    ) -> None:
+        """When no imported findings exist, standalone inject returns coverage=None."""
+        await runner.start()
+
+        campaign = _make_campaign([_make_injection_result()])
+        adapter = InjectAdapter(runner, {"model": "test-model"})
+
+        with (
+            patch("q_ai.inject.adapter.load_all_templates", return_value=[]),
+            patch("q_ai.inject.adapter.run_campaign", return_value=campaign),
+        ):
+            result = await adapter.run()
+
+        assert result.coverage is None
+
+    async def test_coverage_distinguishes_native_vs_imported(self, db_path: Path) -> None:
+        """Coverage report tracks native and imported categories separately."""
+        from q_ai.core.db import create_finding, create_run, update_run_status
+        from q_ai.core.models import Finding, Severity
+
+        runner = WorkflowRunner(workflow_id="assess", config={}, db_path=db_path)
+        await runner.start()
+
+        # Create target for FK constraint
+        with get_connection(db_path) as conn:
+            conn.execute(
+                "INSERT INTO targets (id, type, name, created_at) VALUES (?, ?, ?, ?)",
+                ("target-1", "server", "test-target", "2026-01-01T00:00:00"),
+            )
+
+        # Native audit finding via the workflow run tree
+        native_finding = Finding(
+            id="f-native",
+            run_id="r1",
+            module="audit",
+            category="tool_poisoning",
+            severity=Severity.HIGH,
+            title="native finding",
+        )
+
+        # Imported finding on the same target
+        with get_connection(db_path) as conn:
+            import_run_id = create_run(
+                conn,
+                module="import",
+                name="pyrit-import",
+                target_id="target-1",
+                source="pyrit",
+            )
+            create_finding(
+                conn,
+                run_id=import_run_id,
+                module="pyrit",
+                category="data_exfiltration",
+                severity=Severity.MEDIUM,
+                title="imported finding",
+            )
+            update_run_status(conn, import_run_id, RunStatus.COMPLETED)
+
+        campaign = _make_campaign([_make_injection_result()])
+        adapter = InjectAdapter(runner, {"model": "test-model", "target_id": "target-1"})
+
+        with (
+            patch("q_ai.inject.adapter.load_all_templates", return_value=[]),
+            patch("q_ai.inject.adapter.run_campaign", return_value=campaign),
+            patch(
+                "q_ai.inject.adapter.finding_service.get_findings_for_run",
+                return_value=[native_finding],
+            ),
+        ):
+            result = await adapter.run()
+
+        assert result.coverage is not None
+        assert "tool_poisoning" in result.coverage.native_categories
+        assert "data_exfiltration" in result.coverage.imported_categories
+        assert result.coverage.audit_categories == {"tool_poisoning", "data_exfiltration"}
+
 
 class TestPrioritizeByFindings:
     """Tests for InjectAdapter._prioritize_by_findings."""
