@@ -96,13 +96,20 @@ src/q_ai/
 │   ├── cli.py                      # cxp subcommands (build, validate, list-rules, list-formats)
 │   ├── guidance_builder.py         # CXP RunGuidance builder (inventory, trigger prompts, deployment, interpretation)
 │   └── mapper.py                   # Build operations → core DB persistence
-└── rxp/                            # RAG retrieval poisoning measurement
-    ├── adapter.py                  # RXPAdapter — orchestrator integration
-    ├── cli.py                      # rxp subcommands (validate, list-models, list-profiles)
-    ├── mapper.py                   # Validation results → core DB persistence
-    ├── profiles/                   # Built-in domain profiles (corpus + poison + queries)
-    ├── registry.py                 # Embedding model registry
-    └── validator.py                # validate_retrieval() — ChromaDB-based retrieval measurement
+├── rxp/                            # RAG retrieval poisoning measurement
+│   ├── adapter.py                  # RXPAdapter — orchestrator integration
+│   ├── cli.py                      # rxp subcommands (validate, list-models, list-profiles)
+│   ├── mapper.py                   # Validation results → core DB persistence
+│   ├── profiles/                   # Built-in domain profiles (corpus + poison + queries)
+│   ├── registry.py                 # Embedding model registry
+│   └── validator.py                # validate_retrieval() — ChromaDB-based retrieval measurement
+└── imports/                        # External tool result import
+    ├── cli.py                      # import_cmd() registered as `qai import`
+    ├── models.py                   # ImportedFinding, TaxonomyBridge, ImportResult
+    ├── taxonomy.py                 # OWASP LLM Top 10 → qai category bridge with confidence
+    ├── garak.py                    # Garak JSONL parser (eval entries, severity from pass rates)
+    ├── pyrit.py                    # PyRIT JSON parser (scored conversations, Likert/boolean)
+    └── sarif.py                    # SARIF 2.1.0 parser (security-severity, multi-run)
 ```
 
 ---
@@ -249,6 +256,7 @@ qai
 ├── ipi          generate, listen, hits, campaigns
 ├── cxp          build, validate, list-rules, list-formats
 ├── rxp          validate, list-models, list-profiles
+├── import       <file> --format garak|pyrit|sarif [--dry-run]
 ├── runs         list
 ├── findings     list
 ├── targets      list, add
@@ -256,6 +264,24 @@ qai
 └── config       get, set, set-credential, delete-credential, list-providers,
                  import-legacy-credentials
 ```
+
+---
+
+## External Tool Import (`imports/`)
+
+Imports findings from external security testing tools into qai's findings table. CLI-only (`qai import`), no web UI integration yet.
+
+**Supported formats:**
+- **Garak** (JSONL) — Parses eval-level summaries. Severity mapped from detector pass rates (< 25% → CRITICAL, 25-50% → HIGH, 50-75% → MEDIUM, 75-100% → LOW, 100% → INFO). Attempt entries skipped (stored as evidence summary). Version detected from `start_run setup` entry.
+- **PyRIT** (JSON) — Parses scored conversation exports. Severity from true/false scoring (true → HIGH) or Likert scale (5 → CRITICAL through 1 → INFO). Unscored conversations skipped.
+- **SARIF 2.1.0** (JSON) — Generic import from any SARIF-producing tool. Uses `security-severity` property for precise mapping when available, falls back to SARIF `level` field.
+
+**Architecture:**
+- Parsers are isolated functions: read file → return `ImportResult`. No DB or UI knowledge.
+- Persistence happens in `cli.py`: creates parent run (`module=import`, `source=<format>`), findings, and evidence records.
+- Taxonomy bridging maps OWASP LLM Top 10 to qai audit categories with confidence levels (`direct`, `adjacent`, `none`). Original taxonomy preserved intact on findings.
+- Provenance stored in run config: importer version, tool version, source file, SHA-256 checksum.
+- Two evidence records per import: `import_raw` (all parsed data) and `import_metadata` (provenance).
 
 ---
 
