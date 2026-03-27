@@ -229,7 +229,7 @@ class TestChainAdapter:
 
         captured_config = {}
 
-        async def capture_execute(chain, target_config):
+        async def capture_execute(chain, target_config, **kwargs):
             captured_config["transport"] = target_config.audit_transport
             captured_config["command"] = target_config.audit_command
             captured_config["url"] = target_config.audit_url

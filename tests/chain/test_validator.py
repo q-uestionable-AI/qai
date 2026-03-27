@@ -113,6 +113,93 @@ class TestModuleValidation:
         errors = validate_chain(_make_chain(steps))
         assert errors == []
 
+    def test_valid_ipi_module(self) -> None:
+        """module=ipi with valid format technique produces no errors."""
+        steps = [
+            ChainStep(
+                id="s1",
+                name="S1",
+                module="ipi",
+                technique="pdf",
+                terminal=True,
+            ),
+        ]
+        errors = validate_chain(_make_chain(steps))
+        assert errors == []
+
+    def test_invalid_ipi_technique(self) -> None:
+        """module=ipi with invalid format produces a technique error."""
+        steps = [
+            ChainStep(
+                id="s1",
+                name="S1",
+                module="ipi",
+                technique="not_a_format",
+                terminal=True,
+            ),
+        ]
+        errors = validate_chain(_make_chain(steps))
+        assert any(e.field == "technique" for e in errors)
+
+    def test_valid_cxp_module(self) -> None:
+        """module=cxp accepts any technique (runtime-validated)."""
+        steps = [
+            ChainStep(
+                id="s1",
+                name="S1",
+                module="cxp",
+                technique="cursorrules",
+                terminal=True,
+            ),
+        ]
+        errors = validate_chain(_make_chain(steps))
+        assert not any(e.field == "technique" for e in errors)
+
+    def test_valid_rxp_module(self) -> None:
+        """module=rxp accepts any technique (runtime-validated)."""
+        steps = [
+            ChainStep(
+                id="s1",
+                name="S1",
+                module="rxp",
+                technique="minilm-l6",
+                terminal=True,
+            ),
+        ]
+        errors = validate_chain(_make_chain(steps))
+        assert not any(e.field == "technique" for e in errors)
+
+    def test_valid_proxy_module(self) -> None:
+        """module=proxy is accepted with any technique."""
+        steps = [
+            ChainStep(
+                id="s1",
+                name="S1",
+                module="proxy",
+                technique="background",
+                terminal=True,
+            ),
+        ]
+        errors = validate_chain(_make_chain(steps))
+        assert not any(e.field == "module" for e in errors)
+
+    def test_unknown_module_rejected(self) -> None:
+        """module='bogus' is rejected with clear error."""
+        steps = [
+            ChainStep(
+                id="s1",
+                name="S1",
+                module="bogus",
+                technique="x",
+                terminal=True,
+            ),
+        ]
+        errors = validate_chain(_make_chain(steps))
+        module_errors = [e for e in errors if e.field == "module"]
+        assert len(module_errors) == 1
+        assert "bogus" in module_errors[0].message
+        assert "Valid modules" in module_errors[0].message
+
 
 class TestGraphValidation:
     """Step graph reference, cycle, and reachability validation."""

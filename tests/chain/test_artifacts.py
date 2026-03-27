@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from q_ai.chain.artifacts import extract_audit_artifacts, extract_inject_artifacts
+from q_ai.chain.artifacts import (
+    extract_audit_artifacts,
+    extract_cxp_artifacts,
+    extract_inject_artifacts,
+    extract_ipi_artifacts,
+    extract_rxp_artifacts,
+)
 
 # --- Mock objects that duck-type the real interfaces ---
 
@@ -219,3 +225,139 @@ class TestExtractInjectArtifacts:
         assert artifacts["best_outcome"] == "partial_compliance"
         assert artifacts["working_payload"] == "p1"
         assert artifacts["compliance_rate"] == "100"
+
+
+# --- Mock objects for IPI/CXP/RXP ---
+
+
+@dataclass
+class MockIPICampaign:
+    """Duck-typed IPI Campaign for testing."""
+
+    technique: str = "white_ink"
+    output_path: str = "/tmp/payloads/report.pdf"
+    format: str = "pdf"
+
+
+@dataclass
+class MockGenerateResult:
+    """Duck-typed GenerateResult for testing."""
+
+    campaigns: list[Any] = field(default_factory=list)
+    skipped: int = 0
+    errors: list[Any] = field(default_factory=list)
+
+
+@dataclass
+class MockBuildResult:
+    """Duck-typed BuildResult for testing."""
+
+    repo_dir: str = ""
+    rules_inserted: list[str] = field(default_factory=list)
+    format_id: str = ""
+
+
+@dataclass
+class MockValidationResult:
+    """Duck-typed ValidationResult for testing."""
+
+    model_id: str = ""
+    total_queries: int = 0
+    retrieval_rate: float = 0.0
+    mean_poison_rank: float | None = None
+
+
+class TestExtractIPIArtifacts:
+    """Tests for extract_ipi_artifacts."""
+
+    def test_campaigns_present(self) -> None:
+        """Extracts artifacts from IPI GenerateResult with campaigns."""
+        result = MockGenerateResult(
+            campaigns=[
+                MockIPICampaign(technique="white_ink", output_path="/tmp/out.pdf", format="pdf"),
+                MockIPICampaign(technique="font_size", output_path="/tmp/out2.pdf", format="pdf"),
+            ]
+        )
+        artifacts = extract_ipi_artifacts(result)
+        assert artifacts["payload_count"] == "2"
+        assert artifacts["output_dir"] == "/tmp/out.pdf"
+        assert artifacts["format"] == "pdf"
+        assert "white_ink" in artifacts["techniques"]
+        assert "font_size" in artifacts["techniques"]
+
+    def test_empty_campaigns(self) -> None:
+        """Returns defaults for empty campaigns."""
+        result = MockGenerateResult(campaigns=[])
+        artifacts = extract_ipi_artifacts(result)
+        assert artifacts["payload_count"] == "0"
+        assert artifacts["output_dir"] == ""
+        assert artifacts["format"] == ""
+        assert artifacts["techniques"] == ""
+
+    def test_consistent_keys(self) -> None:
+        """Always produces the same four keys."""
+        result = MockGenerateResult()
+        artifacts = extract_ipi_artifacts(result)
+        assert set(artifacts.keys()) == {"payload_count", "output_dir", "format", "techniques"}
+
+
+class TestExtractCXPArtifacts:
+    """Tests for extract_cxp_artifacts."""
+
+    def test_build_result_present(self) -> None:
+        """Extracts artifacts from CXP BuildResult."""
+        result = MockBuildResult(
+            repo_dir="/tmp/repo",
+            rules_inserted=["rule-1", "rule-2"],
+            format_id="cursorrules",
+        )
+        artifacts = extract_cxp_artifacts(result)
+        assert artifacts["repo_dir"] == "/tmp/repo"
+        assert artifacts["rules_inserted"] == "rule-1, rule-2"
+        assert artifacts["rule_count"] == "2"
+        assert artifacts["format_id"] == "cursorrules"
+
+    def test_empty_build_result(self) -> None:
+        """Returns defaults for empty BuildResult."""
+        result = MockBuildResult()
+        artifacts = extract_cxp_artifacts(result)
+        assert artifacts["repo_dir"] == ""
+        assert artifacts["rule_count"] == "0"
+        assert artifacts["rules_inserted"] == ""
+
+    def test_consistent_keys(self) -> None:
+        """Always produces the same four keys."""
+        result = MockBuildResult()
+        artifacts = extract_cxp_artifacts(result)
+        assert set(artifacts.keys()) == {"repo_dir", "rules_inserted", "rule_count", "format_id"}
+
+
+class TestExtractRXPArtifacts:
+    """Tests for extract_rxp_artifacts."""
+
+    def test_successful_validation(self) -> None:
+        """Extracts artifacts from successful RXP ValidationResult."""
+        result = MockValidationResult(
+            model_id="minilm-l6",
+            total_queries=10,
+            retrieval_rate=0.8,
+            mean_poison_rank=2.5,
+        )
+        artifacts = extract_rxp_artifacts(result)
+        assert artifacts["retrieval_rate"] == "80%"
+        assert artifacts["mean_rank"] == "2.5"
+        assert artifacts["model_id"] == "minilm-l6"
+        assert artifacts["query_count"] == "10"
+
+    def test_zero_retrieval_rate(self) -> None:
+        """Handles zero retrieval rate."""
+        result = MockValidationResult(retrieval_rate=0.0, mean_poison_rank=None)
+        artifacts = extract_rxp_artifacts(result)
+        assert artifacts["retrieval_rate"] == "0%"
+        assert artifacts["mean_rank"] == ""
+
+    def test_consistent_keys(self) -> None:
+        """Always produces the same four keys."""
+        result = MockValidationResult()
+        artifacts = extract_rxp_artifacts(result)
+        assert set(artifacts.keys()) == {"retrieval_rate", "mean_rank", "model_id", "query_count"}

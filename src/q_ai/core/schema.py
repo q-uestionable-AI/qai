@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_VERSION = 11
+CURRENT_VERSION = 12
 
 V1_TABLES = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -301,6 +301,24 @@ def _migrate_v11(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA user_version = 11")
 
 
+def _migrate_v12(conn: sqlite3.Connection) -> None:
+    """V12: Add chain correlation columns to proxy_sessions table.
+
+    Adds chain_run_id and chain_step_id so proxy traffic can be queried
+    by chain execution context after the fact.
+    """
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='proxy_sessions'"
+    ).fetchone()
+    if has_table:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(proxy_sessions)").fetchall()}
+        if "chain_run_id" not in columns:
+            conn.execute("ALTER TABLE proxy_sessions ADD COLUMN chain_run_id TEXT")
+        if "chain_step_id" not in columns:
+            conn.execute("ALTER TABLE proxy_sessions ADD COLUMN chain_step_id TEXT")
+    conn.execute("PRAGMA user_version = 12")
+
+
 def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901
     """Run schema migrations up to CURRENT_VERSION.
 
@@ -316,6 +334,7 @@ def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901
     Version 9 adds mitigation column to findings table.
     Version 10 adds guidance column to runs table.
     Version 11 adds source column to runs table for provenance.
+    Version 12 adds chain correlation columns to proxy_sessions table.
     """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version < 1:
@@ -357,3 +376,5 @@ def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901
         _migrate_v10(conn)
     if version < 11:
         _migrate_v11(conn)
+    if version < 12:
+        _migrate_v12(conn)

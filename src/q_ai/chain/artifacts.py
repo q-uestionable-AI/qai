@@ -1,7 +1,7 @@
 """Artifact extraction for chain step outputs.
 
-Extracts standard named artifacts from audit ScanResult and inject Campaign
-objects using duck typing (getattr with defaults) to avoid circular imports.
+Extracts standard named artifacts from module result objects using duck
+typing (getattr with defaults) to avoid circular imports.
 """
 
 from __future__ import annotations
@@ -130,4 +130,105 @@ def extract_inject_artifacts(campaign: Any) -> dict[str, str]:
         "working_payload": working_payload,
         "working_technique": working_technique,
         "compliance_rate": compliance_rate,
+    }
+
+
+def extract_ipi_artifacts(generate_result: Any) -> dict[str, str]:
+    """Extract standard artifacts from an IPI GenerateResult.
+
+    Always produces the same keys:
+    - payload_count: number of campaigns generated
+    - output_dir: directory where payloads were written
+    - format: document format used
+    - techniques: comma-separated technique list
+
+    Args:
+        generate_result: A GenerateResult-like object with a ``campaigns`` attribute.
+
+    Returns:
+        Dict of standard artifact key-value pairs.
+    """
+    campaigns = getattr(generate_result, "campaigns", []) or []
+
+    techniques: list[str] = []
+    output_dir = ""
+    fmt = ""
+    for c in campaigns:
+        tech = str(getattr(c, "technique", "") or "")
+        if tech and tech not in techniques:
+            techniques.append(tech)
+        if not output_dir:
+            path = getattr(c, "output_path", None)
+            if path is not None:
+                output_dir = str(path)
+        if not fmt:
+            fmt = str(getattr(c, "format", "") or "")
+
+    return {
+        "payload_count": str(len(campaigns)),
+        "output_dir": output_dir,
+        "format": fmt,
+        "techniques": ", ".join(techniques),
+    }
+
+
+def extract_cxp_artifacts(build_result: Any) -> dict[str, str]:
+    """Extract standard artifacts from a CXP BuildResult.
+
+    Always produces the same keys:
+    - repo_dir: path to the poisoned repo
+    - rules_inserted: comma-separated rule IDs
+    - rule_count: number of rules inserted
+    - format_id: context file format used
+
+    Args:
+        build_result: A BuildResult-like object with repo and rule metadata.
+
+    Returns:
+        Dict of standard artifact key-value pairs.
+    """
+    rules_inserted = getattr(build_result, "rules_inserted", []) or []
+    repo_dir = str(getattr(build_result, "repo_dir", "") or "")
+    format_id = str(getattr(build_result, "format_id", "") or "")
+
+    return {
+        "repo_dir": repo_dir,
+        "rules_inserted": ", ".join(str(r) for r in rules_inserted),
+        "rule_count": str(len(rules_inserted)),
+        "format_id": format_id,
+    }
+
+
+def extract_rxp_artifacts(validation_result: Any) -> dict[str, str]:
+    """Extract standard artifacts from an RXP ValidationResult.
+
+    Always produces the same keys:
+    - retrieval_rate: retrieval rate as string percentage
+    - mean_rank: mean poison rank as string
+    - model_id: embedding model used
+    - query_count: number of queries run
+
+    Args:
+        validation_result: A ValidationResult-like object with retrieval metrics.
+
+    Returns:
+        Dict of standard artifact key-value pairs.
+    """
+    rate = getattr(validation_result, "retrieval_rate", 0.0)
+    try:
+        rate_pct = f"{float(rate) * 100:.0f}%"
+    except (TypeError, ValueError):
+        rate_pct = "0%"
+
+    mean_rank = getattr(validation_result, "mean_poison_rank", None)
+    mean_rank_str = str(mean_rank) if mean_rank is not None else ""
+
+    model_id = str(getattr(validation_result, "model_id", "") or "")
+    total_queries = getattr(validation_result, "total_queries", 0)
+
+    return {
+        "retrieval_rate": rate_pct,
+        "mean_rank": mean_rank_str,
+        "model_id": model_id,
+        "query_count": str(total_queries),
     }

@@ -239,6 +239,102 @@ class TestTargetConfig:
         new_config = config.with_overrides(audit_transport=None)
         assert new_config.audit_transport == "stdio"
 
+    def test_from_yaml_ipi_section(self, tmp_path: Path) -> None:
+        """from_yaml reads ipi section."""
+        yaml_content = {
+            "ipi": {
+                "callback_url": "http://localhost:8080",
+                "output_dir": "/tmp/ipi",
+                "format": "pdf",
+            },
+        }
+        config_file = tmp_path / "chain-targets.yaml"
+        config_file.write_text(yaml.dump(yaml_content))
+
+        config = TargetConfig.from_yaml(config_file)
+        assert config.ipi_callback_url == "http://localhost:8080"
+        assert config.ipi_output_dir == "/tmp/ipi"
+        assert config.ipi_format == "pdf"
+
+    def test_from_yaml_cxp_section(self, tmp_path: Path) -> None:
+        """from_yaml reads cxp section with rule_ids list."""
+        yaml_content = {
+            "cxp": {
+                "format_id": "cursorrules",
+                "output_dir": "/tmp/cxp",
+                "rule_ids": ["rule-1", "rule-2"],
+            },
+        }
+        config_file = tmp_path / "chain-targets.yaml"
+        config_file.write_text(yaml.dump(yaml_content))
+
+        config = TargetConfig.from_yaml(config_file)
+        assert config.cxp_format_id == "cursorrules"
+        assert config.cxp_output_dir == "/tmp/cxp"
+        assert config.cxp_rule_ids == ["rule-1", "rule-2"]
+
+    def test_from_yaml_rxp_section(self, tmp_path: Path) -> None:
+        """from_yaml reads rxp section with top_k integer coercion."""
+        yaml_content = {
+            "rxp": {
+                "model_id": "minilm-l6",
+                "profile_id": "default",
+                "top_k": 10,
+            },
+        }
+        config_file = tmp_path / "chain-targets.yaml"
+        config_file.write_text(yaml.dump(yaml_content))
+
+        config = TargetConfig.from_yaml(config_file)
+        assert config.rxp_model_id == "minilm-l6"
+        assert config.rxp_profile_id == "default"
+        assert config.rxp_top_k == 10
+
+    def test_from_yaml_all_sections(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """from_yaml reads all seven sections."""
+        monkeypatch.delenv("QAI_MODEL", raising=False)
+        yaml_content = {
+            "audit": {"transport": "sse", "url": "http://localhost:8080/sse"},
+            "inject": {"model": "test-model"},
+            "ipi": {"callback_url": "http://cb", "format": "html"},
+            "cxp": {"format_id": "claude-md"},
+            "rxp": {"model_id": "bge-small", "top_k": 3},
+        }
+        config_file = tmp_path / "chain-targets.yaml"
+        config_file.write_text(yaml.dump(yaml_content))
+
+        config = TargetConfig.from_yaml(config_file)
+        assert config.audit_transport == "sse"
+        assert config.inject_model == "test-model"
+        assert config.ipi_callback_url == "http://cb"
+        assert config.cxp_format_id == "claude-md"
+        assert config.rxp_model_id == "bge-small"
+        assert config.rxp_top_k == 3
+
+    def test_with_overrides_new_fields(self) -> None:
+        """with_overrides works for IPI/CXP/RXP fields."""
+        config = TargetConfig(ipi_format="pdf")
+        new_config = config.with_overrides(
+            ipi_format="html",
+            cxp_format_id="cursorrules",
+            rxp_model_id="minilm-l6",
+        )
+        assert new_config.ipi_format == "html"
+        assert new_config.cxp_format_id == "cursorrules"
+        assert new_config.rxp_model_id == "minilm-l6"
+        # Original unchanged
+        assert config.ipi_format == "pdf"
+        assert config.cxp_format_id is None
+
+    def test_from_yaml_invalid_section_type(self, tmp_path: Path) -> None:
+        """from_yaml raises ValueError for non-mapping sections."""
+        yaml_content = "ipi: not_a_dict\n"
+        config_file = tmp_path / "chain-targets.yaml"
+        config_file.write_text(yaml_content)
+
+        with pytest.raises(ValueError, match=r"ipi.*mapping"):
+            TargetConfig.from_yaml(config_file)
+
 
 class TestChainResult:
     """Tests for enhanced ChainResult."""

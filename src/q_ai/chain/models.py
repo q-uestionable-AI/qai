@@ -29,6 +29,7 @@ class StepStatus(StrEnum):
     PARTIAL = "partial"
     FAILED = "failed"
     SKIPPED = "skipped"
+    WAITING = "waiting"
 
 
 @dataclass

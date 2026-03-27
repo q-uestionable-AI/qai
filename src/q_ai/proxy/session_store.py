@@ -32,7 +32,7 @@ class SessionStore:
         >>> store.save(Path("session.json"))
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         session_id: str,
         transport: Transport,
@@ -40,6 +40,8 @@ class SessionStore:
         server_url: str | None = None,
         metadata: dict[str, Any] | None = None,
         started_at: datetime | None = None,
+        chain_run_id: str | None = None,
+        chain_step_id: str | None = None,
     ) -> None:
         self.session_id = session_id
         self.transport = transport
@@ -47,6 +49,8 @@ class SessionStore:
         self.server_url = server_url
         self.metadata = metadata or {}
         self.started_at = started_at or datetime.now(tz=UTC)
+        self.chain_run_id = chain_run_id
+        self.chain_step_id = chain_step_id
         self._messages: list[ProxyMessage] = []
         self._index: dict[str, ProxyMessage] = {}
 
