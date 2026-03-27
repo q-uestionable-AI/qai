@@ -364,7 +364,7 @@ class TestManualGate:
     """Tests for manual gate callback in execute_chain."""
 
     @pytest.mark.asyncio
-    async def test_gate_callback_invoked(self):
+    async def test_gate_callback_invoked(self, tmp_path: Path):
         """Gate callback is invoked after IPI step with manual_gate=true."""
         chain = _make_chain(
             [
@@ -378,13 +378,13 @@ class TestManualGate:
                 ),
             ]
         )
-        config = TargetConfig(ipi_output_dir="/tmp/test")
+        config = TargetConfig(ipi_output_dir=str(tmp_path))
 
         ipi_output = _success_output(
             "ipi-step",
             "ipi",
             "pdf",
-            artifacts={"payload_count": "1", "output_dir": "/tmp/test"},
+            artifacts={"payload_count": "1", "output_dir": str(tmp_path)},
         )
 
         gate_calls: list[tuple[str, str]] = []
@@ -401,7 +401,7 @@ class TestManualGate:
         assert "Deploy IPI" in gate_calls[0][1]
 
     @pytest.mark.asyncio
-    async def test_gate_callback_none_fails_cleanly(self):
+    async def test_gate_callback_none_fails_cleanly(self, tmp_path: Path):
         """Manual gate step fails when gate_callback is None (CLI mode)."""
         chain = _make_chain(
             [
@@ -415,13 +415,13 @@ class TestManualGate:
                 ),
             ]
         )
-        config = TargetConfig(ipi_output_dir="/tmp/test")
+        config = TargetConfig(ipi_output_dir=str(tmp_path))
 
         ipi_output = _success_output(
             "ipi-step",
             "ipi",
             "pdf",
-            artifacts={"payload_count": "1", "output_dir": "/tmp/test"},
+            artifacts={"payload_count": "1", "output_dir": str(tmp_path)},
         )
 
         with patch(_PATCH_IPI, new_callable=AsyncMock, return_value=ipi_output):
@@ -432,7 +432,7 @@ class TestManualGate:
         assert "web UI" in result.step_outputs[0].error
 
     @pytest.mark.asyncio
-    async def test_no_gate_when_manual_gate_not_set(self):
+    async def test_no_gate_when_manual_gate_not_set(self, tmp_path: Path):
         """Gate callback is NOT invoked when manual_gate is absent."""
         chain = _make_chain(
             [
@@ -446,7 +446,7 @@ class TestManualGate:
                 ),
             ]
         )
-        config = TargetConfig(ipi_output_dir="/tmp/test")
+        config = TargetConfig(ipi_output_dir=str(tmp_path))
 
         ipi_output = _success_output("ipi-step", "ipi", "pdf")
 

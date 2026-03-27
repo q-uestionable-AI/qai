@@ -169,8 +169,8 @@ class TestModuleValidation:
         errors = validate_chain(_make_chain(steps))
         assert not any(e.field == "technique" for e in errors)
 
-    def test_valid_proxy_module(self) -> None:
-        """module=proxy is accepted with any technique."""
+    def test_proxy_module_rejected(self) -> None:
+        """module=proxy is rejected — proxy is background, not a chain step."""
         steps = [
             ChainStep(
                 id="s1",
@@ -181,7 +181,7 @@ class TestModuleValidation:
             ),
         ]
         errors = validate_chain(_make_chain(steps))
-        assert not any(e.field == "module" for e in errors)
+        assert any(e.field == "module" for e in errors)
 
     def test_unknown_module_rejected(self) -> None:
         """module='bogus' is rejected with clear error."""

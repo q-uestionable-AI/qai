@@ -54,15 +54,6 @@ def _build_initial_result(
     )
 
 
-_MODULE_DISPATCHERS: dict[str, str] = {
-    "audit": "execute_audit_step",
-    "inject": "execute_inject_step",
-    "ipi": "execute_ipi_step",
-    "cxp": "execute_cxp_step",
-    "rxp": "execute_rxp_step",
-}
-
-
 async def _dispatch_step(
     step: ChainStep,
     target_config: TargetConfig,
@@ -100,9 +91,6 @@ async def _dispatch_step(
         error=f"Unknown module: {step.module}",
         finished_at=datetime.now(UTC),
     )
-
-
-_STOP_SENTINEL = "__STOP__"
 
 
 async def _execute_step_loop(  # noqa: PLR0913
@@ -757,6 +745,8 @@ async def execute_cxp_step(
             rule = get_rule(rid)
             if rule is not None:
                 rules.append(rule)
+            else:
+                logger.warning("CXP rule ID '%s' not found in catalog, skipping", rid)
 
         build_result = await asyncio.to_thread(
             build,

@@ -343,3 +343,53 @@ class TestExecuteRXPStepErrors:
 
         assert output.success is False
         assert "profile_id" in output.error
+
+    @pytest.mark.asyncio
+    async def test_validation_success(self):
+        """Returns SUCCESS when validation finds poison retrieval."""
+        import sys
+        import types
+        from dataclasses import dataclass, field
+
+        step = ChainStep(id="s1", name="RXP", module="rxp", technique="minilm-l6")
+        config = TargetConfig(rxp_model_id="minilm-l6", rxp_profile_id="test-profile")
+
+        @dataclass
+        class MockProfile:
+            queries: list = field(default_factory=lambda: ["test query"])
+
+        @dataclass
+        class MockValidationResult:
+            model_id: str = "minilm-l6"
+            total_queries: int = 1
+            poison_retrievals: int = 1
+            retrieval_rate: float = 1.0
+            mean_poison_rank: float = 1.0
+            query_results: list = field(default_factory=list)
+
+        # Stub modules that require chromadb so deferred imports succeed
+        mock_profiles = types.ModuleType("q_ai.rxp.profiles")
+        mock_profiles.get_profile = lambda pid: MockProfile()
+        mock_profiles.load_corpus = lambda p: []
+        mock_profiles.load_poison = lambda p: []
+
+        mock_validator = types.ModuleType("q_ai.rxp.validator")
+        mock_validator.validate_retrieval = lambda *a, **kw: MockValidationResult()
+
+        with (
+            patch("q_ai.rxp._deps.require_rxp_deps"),
+            patch.dict(
+                sys.modules,
+                {
+                    "q_ai.rxp.profiles": mock_profiles,
+                    "q_ai.rxp.validator": mock_validator,
+                },
+            ),
+        ):
+            output = await execute_rxp_step(step, config, {})
+
+        assert output.success is True
+        assert output.status == StepStatus.SUCCESS
+        assert output.validation_result is not None
+        assert output.artifacts["retrieval_rate"] == "100%"
+        assert output.artifacts["model_id"] == "minilm-l6"

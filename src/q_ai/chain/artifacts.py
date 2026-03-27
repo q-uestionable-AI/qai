@@ -6,6 +6,7 @@ typing (getattr with defaults) to avoid circular imports.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 # Severity ordering for audit findings (highest to lowest)
@@ -158,9 +159,9 @@ def extract_ipi_artifacts(generate_result: Any) -> dict[str, str]:
         if tech and tech not in techniques:
             techniques.append(tech)
         if not output_dir:
-            path = getattr(c, "output_path", None)
-            if path is not None:
-                output_dir = str(path)
+            raw_path = getattr(c, "output_path", None)
+            if raw_path is not None:
+                output_dir = str(Path(raw_path).parent)
         if not fmt:
             fmt = str(getattr(c, "format", "") or "")
 

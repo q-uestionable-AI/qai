@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from q_ai.chain.artifacts import (
@@ -280,7 +281,7 @@ class TestExtractIPIArtifacts:
         )
         artifacts = extract_ipi_artifacts(result)
         assert artifacts["payload_count"] == "2"
-        assert artifacts["output_dir"] == "/tmp/out.pdf"
+        assert artifacts["output_dir"] == str(Path("/tmp/out.pdf").parent)
         assert artifacts["format"] == "pdf"
         assert "white_ink" in artifacts["techniques"]
         assert "font_size" in artifacts["techniques"]

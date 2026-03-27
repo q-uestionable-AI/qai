@@ -12,18 +12,6 @@ steps:
     module: cxp
     technique: cursorrules
     trust_boundary: attacker-to-context
-    on_success: trigger-gate
-    on_failure: abort
-    inputs:
-      manual_gate: true
-    relevant_categories:
-      - context_file_poisoning
-
-  - id: trigger-gate
-    name: Open repo in coding assistant and run trigger prompt
-    module: cxp
-    technique: cursorrules
-    trust_boundary: context-to-agent
     on_success: scan-generated
     on_failure: abort
     inputs:

@@ -26,7 +26,7 @@ class ValidationError:
     message: str
 
 
-_VALID_MODULES = {"audit", "inject", "ipi", "cxp", "rxp", "proxy"}
+_VALID_MODULES = {"audit", "inject", "ipi", "cxp", "rxp"}
 
 
 def _validate_module_and_technique(
@@ -166,7 +166,6 @@ def validate_chain(chain: ChainDefinition) -> list[ValidationError]:
         "ipi": {f.value for f in IPIFormat},
         "cxp": None,  # format IDs validated at build time
         "rxp": None,  # model availability is runtime-dependent
-        "proxy": None,  # proxy steps are background config, no technique
     }
 
     # --- Check 1 & 2: module and technique references ---

@@ -274,12 +274,12 @@ class TestTargetConfig:
         assert config.cxp_rule_ids == ["rule-1", "rule-2"]
 
     def test_from_yaml_rxp_section(self, tmp_path: Path) -> None:
-        """from_yaml reads rxp section with top_k integer coercion."""
+        """from_yaml reads rxp section with top_k string-to-int coercion."""
         yaml_content = {
             "rxp": {
                 "model_id": "minilm-l6",
                 "profile_id": "default",
-                "top_k": 10,
+                "top_k": "10",
             },
         }
         config_file = tmp_path / "chain-targets.yaml"

@@ -12,18 +12,6 @@ steps:
     module: ipi
     technique: pdf
     trust_boundary: attacker-to-document
-    on_success: deploy-gate
-    on_failure: abort
-    inputs:
-      manual_gate: true
-    relevant_categories:
-      - indirect_prompt_injection
-
-  - id: deploy-gate
-    name: Deploy poisoned documents to target pipeline
-    module: ipi
-    technique: pdf
-    trust_boundary: document-to-agent
     on_success: scan-target
     on_failure: abort
     inputs:

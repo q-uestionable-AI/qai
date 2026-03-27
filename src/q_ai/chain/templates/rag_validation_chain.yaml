@@ -21,18 +21,6 @@ steps:
     module: ipi
     technique: pdf
     trust_boundary: retriever-to-agent
-    on_success: deploy-gate
-    on_failure: abort
-    inputs:
-      manual_gate: true
-    relevant_categories:
-      - indirect_prompt_injection
-
-  - id: deploy-gate
-    name: Deploy payloads into RAG pipeline
-    module: ipi
-    technique: pdf
-    trust_boundary: agent-to-tool
     terminal: true
     inputs:
       manual_gate: true
