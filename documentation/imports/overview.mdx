@@ -94,7 +94,7 @@ A JSONL file where each line is a JSON object. The parser looks for:
 - `eval` entries with probe name, detector name, pass/fail counts, and optional `owasp_llm` taxonomy tags
 - `attempt` entries are counted but not imported (stored in raw evidence)
 
-Severity is derived from the detector pass rate: ≤25% pass → Critical, ≤50% → High, ≤75% → Medium, <100% → Low, 100% → Info.
+Severity is derived from the detector pass rate: ≤25% pass → Critical, ≤50% → High, ≤75% → Medium, under 100% → Low, 100% → Info.
 
 ### PyRIT
 
