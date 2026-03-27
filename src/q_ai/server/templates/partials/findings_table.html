@@ -3,9 +3,15 @@
     <tr class="hover">
         <td class="id-truncated">{{ finding.id[:8] }}</td>
         <td>
+            {% if finding.module not in ("audit", "inject") %}
+            <span class="badge badge-sm badge-ghost uppercase text-[0.65rem]">
+                {{ finding.module }}
+            </span>
+            {% else %}
             <span class="badge badge-sm badge-outline badge-primary uppercase text-[0.65rem]">
                 {{ finding.module }}
             </span>
+            {% endif %}
         </td>
         <td>{{ finding.category }}</td>
         <td>

@@ -66,6 +66,51 @@ class TestRunHistoryAPI:
         assert "Completed" in resp.text
 
 
+class TestImportRunVisibility:
+    """Tests for import run visibility in run history."""
+
+    def test_import_runs_appear_in_history(self, client: TestClient, tmp_db: Path) -> None:
+        """Import runs should appear in run history alongside workflow runs."""
+        with get_connection(tmp_db) as conn:
+            create_run(conn, module="workflow", name="assess")
+            import_run_id = create_run(conn, module="import", name="garak-import", source="garak")
+            update_run_status(conn, import_run_id, RunStatus.COMPLETED)
+        resp = client.get("/api/runs/history")
+        assert resp.status_code == 200
+        assert "Import (Garak)" in resp.text
+
+    def test_import_run_display_name_from_source(self, client: TestClient, tmp_db: Path) -> None:
+        """Import run display name is built from source field."""
+        with get_connection(tmp_db) as conn:
+            import_run_id = create_run(conn, module="import", name="pyrit-import", source="pyrit")
+            update_run_status(conn, import_run_id, RunStatus.COMPLETED)
+        resp = client.get("/api/runs/history")
+        assert resp.status_code == 200
+        assert "Import (Pyrit)" in resp.text
+
+    def test_import_run_shows_source_badge(self, client: TestClient, tmp_db: Path) -> None:
+        """Import runs show a source badge with the tool name."""
+        with get_connection(tmp_db) as conn:
+            import_run_id = create_run(conn, module="import", name="sarif-import", source="sarif")
+            update_run_status(conn, import_run_id, RunStatus.COMPLETED)
+        resp = client.get("/api/runs/history")
+        assert resp.status_code == 200
+        assert "badge badge-xs badge-ghost" in resp.text
+        assert "sarif" in resp.text
+
+    def test_import_runs_excluded_by_workflow_filter(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        """When a workflow filter is applied, import runs should not appear."""
+        with get_connection(tmp_db) as conn:
+            create_run(conn, module="workflow", name="assess")
+            import_run_id = create_run(conn, module="import", name="garak-import", source="garak")
+            update_run_status(conn, import_run_id, RunStatus.COMPLETED)
+        resp = client.get("/api/runs/history?workflow=assess")
+        assert resp.status_code == 200
+        assert "Import (Garak)" not in resp.text
+
+
 class TestExportRunAPI:
     def test_export_returns_json_bundle(self, client: TestClient, tmp_db: Path) -> None:
         with get_connection(tmp_db) as conn:

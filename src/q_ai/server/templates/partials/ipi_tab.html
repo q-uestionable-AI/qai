@@ -8,6 +8,21 @@
     </h3>
 </div>
 
+{% if retrieval_gate is defined and retrieval_gate and retrieval_gate.gated %}
+<div class="bg-warning/10 border border-warning/30 rounded-lg p-4 mb-4 text-sm">
+    <div class="font-semibold text-warning mb-1">RXP Pre-Validation Active</div>
+    <p>Retrieval rate: {{ "%.0f" | format(retrieval_gate.retrieval_rate * 100) }}% (threshold: {{ "%.0f" | format(retrieval_gate.threshold * 100) }}%)</p>
+    {% if retrieval_gate.non_viable_queries %}
+    <p class="mt-2 text-warning">Non-viable queries (zero retrieval):</p>
+    <ul class="list-disc list-inside space-y-1 text-sm text-warning">
+        {% for q in retrieval_gate.non_viable_queries %}
+        <li>{{ q }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endif %}
+
 {% for block in ipi_guidance.blocks %}
     {{ render_guidance_block(block) }}
 {% endfor %}
@@ -121,13 +136,28 @@
 {% endif %}
 
 {% elif no_guidance_available is defined and no_guidance_available %}
-{# ===== Legacy run with no guidance ===== #}
+{# ===== Legacy run with no guidance / gated skip ===== #}
 <div class="flex items-center justify-between mb-4">
     <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">
         IPI — Indirect Prompt Injection
     </h3>
 </div>
+{% if retrieval_gate is defined and retrieval_gate and retrieval_gate.gated %}
+<div class="bg-warning/10 border border-warning/30 rounded-lg p-4 mb-4 text-sm">
+    <div class="font-semibold text-warning mb-1">Generation Skipped</div>
+    <p>RXP pre-validation found zero retrieval across all queries (retrieval rate: {{ "%.0f" | format(retrieval_gate.retrieval_rate * 100) }}%, threshold: {{ "%.0f" | format(retrieval_gate.threshold * 100) }}%).</p>
+    {% if retrieval_gate.non_viable_queries %}
+    <p class="mt-2 text-warning">Non-viable queries:</p>
+    <ul class="list-disc list-inside space-y-1 text-sm text-warning">
+        {% for q in retrieval_gate.non_viable_queries %}
+        <li>{{ q }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% else %}
 <p class="text-sm opacity-40 italic">No deployment guidance available (generated before this version).</p>
+{% endif %}
 
 {% else %}
 {# ===== Loading state ===== #}
