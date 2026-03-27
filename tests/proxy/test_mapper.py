@@ -143,3 +143,40 @@ class TestPersistSession:
             ).fetchone()
             assert session is not None
             assert session["message_count"] == 2
+
+    def test_chain_correlation_fields(self, tmp_path: Path) -> None:
+        """Verify chain_run_id and chain_step_id are persisted."""
+        db_path = tmp_path / "test.db"
+        store = SessionStore(
+            session_id=str(uuid.uuid4()),
+            transport=Transport.STDIO,
+            server_command="python server.py",
+            started_at=datetime.now(tz=UTC),
+            chain_run_id="chain-run-123",
+            chain_step_id="step-audit",
+        )
+
+        run_id = persist_session(store, db_path=db_path, artifacts_dir=tmp_path / "artifacts")
+
+        with get_connection(db_path) as conn:
+            session = conn.execute(
+                "SELECT chain_run_id, chain_step_id FROM proxy_sessions WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            assert session["chain_run_id"] == "chain-run-123"
+            assert session["chain_step_id"] == "step-audit"
+
+    def test_chain_correlation_fields_null(self, tmp_path: Path) -> None:
+        """chain_run_id and chain_step_id default to NULL."""
+        db_path = tmp_path / "test.db"
+        store = _make_store(num_messages=1)
+
+        run_id = persist_session(store, db_path=db_path, artifacts_dir=tmp_path / "artifacts")
+
+        with get_connection(db_path) as conn:
+            session = conn.execute(
+                "SELECT chain_run_id, chain_step_id FROM proxy_sessions WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            assert session["chain_run_id"] is None
+            assert session["chain_step_id"] is None

@@ -83,6 +83,15 @@ class ChainAdapter:
                 audit_command=audit_command,
                 audit_url=self._config.get("url"),
                 inject_model=self._config["inject_model"],
+                ipi_callback_url=self._config.get("ipi_callback_url"),
+                ipi_output_dir=self._config.get("ipi_output_dir"),
+                ipi_format=self._config.get("ipi_format"),
+                cxp_format_id=self._config.get("cxp_format_id"),
+                cxp_output_dir=self._config.get("cxp_output_dir"),
+                cxp_rule_ids=self._config.get("cxp_rule_ids"),
+                rxp_model_id=self._config.get("rxp_model_id"),
+                rxp_profile_id=self._config.get("rxp_profile_id"),
+                rxp_top_k=self._config.get("rxp_top_k"),
             )
 
             await self._runner.emit_progress(
@@ -90,7 +99,10 @@ class ChainAdapter:
                 f"Executing chain: {chain.name} ({len(chain.steps)} steps)",
             )
 
-            chain_result = await execute_chain(chain, target_config)
+            async def _gate_callback(step_id: str, message: str) -> None:
+                await self._runner.wait_for_user(message)
+
+            chain_result = await execute_chain(chain, target_config, gate_callback=_gate_callback)
 
             persist_chain(
                 chain_result,

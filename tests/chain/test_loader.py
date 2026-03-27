@@ -90,20 +90,28 @@ class TestDiscoverChains:
     """Tests for discover_chains() and load_all_chains()."""
 
     def test_discover_chains_finds_builtins(self) -> None:
-        """Built-in templates directory has 3 files."""
+        """Built-in templates directory has 6 files."""
         paths = discover_chains()
-        assert len(paths) == 3
+        assert len(paths) == 6
         names = {p.stem for p in paths}
         assert "rag_trust_escalation" in names
         assert "mcp_server_compromise" in names
         assert "delegation_hijack" in names
+        assert "document_poisoning_chain" in names
+        assert "context_poisoning_chain" in names
+        assert "rag_validation_chain" in names
 
     def test_load_all_chains(self) -> None:
-        """All 3 built-in templates load successfully."""
+        """All 6 built-in templates load successfully."""
         chains = load_all_chains()
-        assert len(chains) == 3
+        assert len(chains) == 6
         ids = {c.id for c in chains}
-        assert ids == {"rag-trust-escalation", "mcp-server-compromise", "delegation-hijack"}
+        assert "rag-trust-escalation" in ids
+        assert "mcp-server-compromise" in ids
+        assert "delegation-hijack" in ids
+        assert "document-poisoning" in ids
+        assert "context-poisoning" in ids
+        assert "rag-validation" in ids
 
 
 class TestChainStepRelevantCategories:

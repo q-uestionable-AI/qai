@@ -99,8 +99,9 @@ def persist_session(
             """
             INSERT INTO proxy_sessions
                 (id, run_id, transport, server_name, message_count,
-                 duration_seconds, session_file, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 duration_seconds, session_file, created_at,
+                 chain_run_id, chain_step_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 uuid.uuid4().hex,
@@ -111,6 +112,8 @@ def persist_session(
                 duration_seconds,
                 session_rel_path,
                 now_iso,
+                store.chain_run_id,
+                store.chain_step_id,
             ),
         )
 

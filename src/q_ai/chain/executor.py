@@ -8,12 +8,19 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from q_ai.chain.artifacts import extract_audit_artifacts, extract_inject_artifacts
+from q_ai.chain.artifacts import (
+    extract_audit_artifacts,
+    extract_cxp_artifacts,
+    extract_inject_artifacts,
+    extract_ipi_artifacts,
+    extract_rxp_artifacts,
+)
 from q_ai.chain.executor_models import StepOutput, TargetConfig
 from q_ai.chain.models import ChainDefinition, ChainResult, ChainStep, StepStatus
 from q_ai.chain.variables import resolve_variables
@@ -54,8 +61,8 @@ async def _dispatch_step(
 ) -> StepOutput:
     """Dispatch a single chain step to the appropriate module executor.
 
-    Routes to audit or inject executors based on step.module, or returns
-    a failed StepOutput for unknown modules.
+    Routes to audit, inject, ipi, cxp, or rxp executors based on
+    step.module, or returns a failed StepOutput for unknown modules.
 
     Args:
         step: The chain step to execute.
@@ -69,6 +76,12 @@ async def _dispatch_step(
         return await execute_audit_step(step, target_config, resolved_inputs)
     if step.module == "inject":
         return await execute_inject_step(step, target_config, resolved_inputs)
+    if step.module == "ipi":
+        return await execute_ipi_step(step, target_config, resolved_inputs)
+    if step.module == "cxp":
+        return await execute_cxp_step(step, target_config, resolved_inputs)
+    if step.module == "rxp":
+        return await execute_rxp_step(step, target_config, resolved_inputs)
     return StepOutput(
         step_id=step.id,
         module=step.module,
@@ -80,9 +93,124 @@ async def _dispatch_step(
     )
 
 
+async def _execute_step_loop(  # noqa: PLR0913
+    current_id: str,
+    step_map: dict[str, ChainStep],
+    visited: set[str],
+    seen_boundaries: set[str],
+    result: ChainResult,
+    artifact_namespace: dict[str, dict[str, str]],
+    step_outputs: list[StepOutput],
+    step_ids_in_order: list[str],
+    target_config: TargetConfig,
+    gate_callback: Callable[[str, str], Any] | None,
+) -> str | None:
+    """Execute one step of the chain loop and return the next step ID.
+
+    Returns None to signal the loop should stop.
+    """
+    # Cycle protection
+    if current_id in visited:
+        logger.warning("Cycle detected at step '%s', stopping", current_id)
+        step = step_map.get(current_id)
+        step_outputs.append(
+            StepOutput(
+                step_id=current_id,
+                module=step.module if step else "unknown",
+                technique=step.technique if step else "unknown",
+                success=False,
+                status=StepStatus.FAILED,
+                error=f"Cycle detected at step '{current_id}'",
+                finished_at=datetime.now(UTC),
+            )
+        )
+        return None
+
+    step = step_map.get(current_id)
+    if step is None:
+        logger.warning("Step '%s' not found in chain, stopping", current_id)
+        step_outputs.append(
+            StepOutput(
+                step_id=current_id,
+                module="unknown",
+                technique="unknown",
+                success=False,
+                status=StepStatus.FAILED,
+                error=f"Step '{current_id}' not found in chain",
+                finished_at=datetime.now(UTC),
+            )
+        )
+        return None
+
+    visited.add(current_id)
+
+    # Track trust boundaries
+    if step.trust_boundary and step.trust_boundary not in seen_boundaries:
+        seen_boundaries.add(step.trust_boundary)
+        result.trust_boundaries_crossed.append(step.trust_boundary)
+
+    # Resolve input variables
+    try:
+        resolved_inputs = resolve_variables(step.inputs, artifact_namespace)
+    except ValueError as exc:
+        logger.warning("Variable resolution failed for step '%s': %s", step.id, exc)
+        step_output = StepOutput(
+            step_id=step.id,
+            module=step.module,
+            technique=step.technique,
+            success=False,
+            status=StepStatus.FAILED,
+            error=str(exc),
+            finished_at=datetime.now(UTC),
+        )
+        step_outputs.append(step_output)
+        artifact_namespace[step.id] = step_output.artifacts
+        return _route_failure(step, step_ids_in_order)
+
+    # Dispatch based on module
+    try:
+        step_output = await _dispatch_step(step, target_config, resolved_inputs)
+    except Exception as exc:
+        logger.exception("Unexpected error in step '%s'", step.id)
+        step_output = StepOutput(
+            step_id=step.id,
+            module=step.module,
+            technique=step.technique,
+            success=False,
+            status=StepStatus.FAILED,
+            error=str(exc),
+            finished_at=datetime.now(UTC),
+        )
+
+    # Handle manual gate for IPI/CXP steps
+    if step_output.success and _step_has_manual_gate(step, resolved_inputs):
+        step_output = await _handle_manual_gate(step, step_output, gate_callback)
+
+    # Accumulate artifacts and outputs
+    artifact_namespace[step.id] = step_output.artifacts
+    step_outputs.append(step_output)
+
+    # Route based on result
+    if step_output.success:
+        return _route_success(step, step_ids_in_order)
+    return _route_failure(step, step_ids_in_order)
+
+
+_GATE_MESSAGES: dict[str, str] = {
+    "ipi": "Deploy IPI payloads and click Resume",
+    "cxp": "Open the repo in your coding assistant and run the trigger prompt, then click Resume",
+}
+
+_NO_GATE_ERROR = (
+    "This chain requires a manual gate but no gate callback is configured. "
+    "Use the web UI for chains with manual gates."
+)
+
+
 async def execute_chain(
     chain: ChainDefinition,
     target_config: TargetConfig,
+    gate_callback: Callable[[str, str], Any] | None = None,
 ) -> ChainResult:
     """Execute an attack chain against real targets.
 
@@ -93,7 +221,10 @@ async def execute_chain(
 
     Args:
         chain: Validated chain definition.
-        target_config: Target configuration for audit and inject steps.
+        target_config: Target configuration for all module steps.
+        gate_callback: Optional async callable(step_id, message) that blocks
+            until the operator resumes. Required for chains with manual gates.
+            When None, manual gate steps fail with a clear message.
 
     Returns:
         ChainResult with all step outputs and evidence.
@@ -114,89 +245,18 @@ async def execute_chain(
     current_id: str | None = step_ids_in_order[0]
 
     while current_id is not None:
-        # Cycle protection
-        if current_id in visited:
-            logger.warning("Cycle detected at step '%s', stopping", current_id)
-            step = step_map.get(current_id)
-            step_outputs.append(
-                StepOutput(
-                    step_id=current_id,
-                    module=step.module if step else "unknown",
-                    technique=step.technique if step else "unknown",
-                    success=False,
-                    status=StepStatus.FAILED,
-                    error=f"Cycle detected at step '{current_id}'",
-                    finished_at=datetime.now(UTC),
-                )
-            )
-            break
-
-        step = step_map.get(current_id)
-        if step is None:
-            logger.warning("Step '%s' not found in chain, stopping", current_id)
-            step_outputs.append(
-                StepOutput(
-                    step_id=current_id,
-                    module="unknown",
-                    technique="unknown",
-                    success=False,
-                    status=StepStatus.FAILED,
-                    error=f"Step '{current_id}' not found in chain",
-                    finished_at=datetime.now(UTC),
-                )
-            )
-            break
-
-        visited.add(current_id)
-
-        # Track trust boundaries
-        if step.trust_boundary and step.trust_boundary not in seen_boundaries:
-            seen_boundaries.add(step.trust_boundary)
-            result.trust_boundaries_crossed.append(step.trust_boundary)
-
-        # Resolve input variables
-        try:
-            resolved_inputs = resolve_variables(step.inputs, artifact_namespace)
-        except ValueError as exc:
-            logger.warning("Variable resolution failed for step '%s': %s", step.id, exc)
-            step_output = StepOutput(
-                step_id=step.id,
-                module=step.module,
-                technique=step.technique,
-                success=False,
-                status=StepStatus.FAILED,
-                error=str(exc),
-                finished_at=datetime.now(UTC),
-            )
-            step_outputs.append(step_output)
-            artifact_namespace[step.id] = step_output.artifacts
-            current_id = _route_failure(step, step_ids_in_order)
-            continue
-
-        # Dispatch based on module
-        try:
-            step_output = await _dispatch_step(step, target_config, resolved_inputs)
-        except Exception as exc:
-            logger.exception("Unexpected error in step '%s'", step.id)
-            step_output = StepOutput(
-                step_id=step.id,
-                module=step.module,
-                technique=step.technique,
-                success=False,
-                status=StepStatus.FAILED,
-                error=str(exc),
-                finished_at=datetime.now(UTC),
-            )
-
-        # Accumulate artifacts and outputs
-        artifact_namespace[step.id] = step_output.artifacts
-        step_outputs.append(step_output)
-
-        # Route based on result
-        if step_output.success:
-            current_id = _route_success(step, step_ids_in_order)
-        else:
-            current_id = _route_failure(step, step_ids_in_order)
+        current_id = await _execute_step_loop(
+            current_id,
+            step_map,
+            visited,
+            seen_boundaries,
+            result,
+            artifact_namespace,
+            step_outputs,
+            step_ids_in_order,
+            target_config,
+            gate_callback,
+        )
 
     result.step_outputs = step_outputs
     result.finished_at = datetime.now(UTC)
@@ -475,6 +535,371 @@ async def execute_inject_step(
     )
 
 
+async def _handle_manual_gate(
+    step: ChainStep,
+    step_output: StepOutput,
+    gate_callback: Callable[[str, str], Any] | None,
+) -> StepOutput:
+    """Handle manual gate pause after a successful step.
+
+    If gate_callback is provided, sets status to WAITING and awaits the
+    callback. If gate_callback is None, returns a failed StepOutput.
+
+    Args:
+        step: The chain step requiring a gate.
+        step_output: The successful step output to gate.
+        gate_callback: Async callable or None.
+
+    Returns:
+        Original step_output (resumed) or a failed replacement.
+    """
+    gate_msg = _GATE_MESSAGES.get(step.module, "Manual gate: resume to continue")
+    if gate_callback is None:
+        return StepOutput(
+            step_id=step.id,
+            module=step.module,
+            technique=step.technique,
+            success=False,
+            status=StepStatus.FAILED,
+            error=_NO_GATE_ERROR,
+            started_at=step_output.started_at,
+            finished_at=datetime.now(UTC),
+        )
+    step_output.status = StepStatus.WAITING
+    await gate_callback(step.id, gate_msg)
+    step_output.status = StepStatus.SUCCESS
+    return step_output
+
+
+def _step_has_manual_gate(step: ChainStep, resolved_inputs: dict[str, Any]) -> bool:
+    """Check if a step requires a manual gate pause.
+
+    A step has a manual gate if ``manual_gate`` is truthy in either
+    the step's inputs or the resolved inputs.
+
+    Args:
+        step: The chain step to check.
+        resolved_inputs: Resolved variable values from upstream steps.
+
+    Returns:
+        True if the step should pause for manual gate.
+    """
+    if step.inputs.get("manual_gate"):
+        return True
+    return bool(resolved_inputs.get("manual_gate"))
+
+
+async def execute_ipi_step(
+    step: ChainStep,
+    target_config: TargetConfig,
+    resolved_inputs: dict[str, Any],
+) -> StepOutput:
+    """Execute an IPI payload generation step.
+
+    Generates IPI payloads using generate_documents(). Runs in a
+    thread pool since the generator is synchronous.
+
+    Args:
+        step: The chain step to execute.
+        target_config: Target configuration with IPI settings.
+        resolved_inputs: Resolved variable values from upstream steps.
+
+    Returns:
+        StepOutput with generate_result and artifacts.
+    """
+    import asyncio
+
+    started_at = datetime.now(UTC)
+
+    callback_url = (
+        resolved_inputs.get("callback_url")
+        or target_config.ipi_callback_url
+        or "http://localhost:8080"
+    )
+    output_dir = resolved_inputs.get("output_dir") or target_config.ipi_output_dir
+    if not output_dir:
+        return StepOutput(
+            step_id=step.id,
+            module="ipi",
+            technique=step.technique,
+            success=False,
+            status=StepStatus.FAILED,
+            error="No ipi_output_dir configured in target config or step inputs",
+            started_at=started_at,
+            finished_at=datetime.now(UTC),
+        )
+
+    # step.technique is the IPI Format (pdf, html, etc.), not an IPI Technique
+    format_name = resolved_inputs.get("format") or target_config.ipi_format or step.technique
+    techniques_raw = resolved_inputs.get("techniques")
+
+    try:
+        from q_ai.ipi.generate_service import generate_documents
+        from q_ai.ipi.generators import get_techniques_for_format
+        from q_ai.ipi.models import Format, Technique
+
+        fmt = Format(format_name)
+        if techniques_raw:
+            if isinstance(techniques_raw, str):
+                technique_list = [Technique(t.strip()) for t in techniques_raw.split(",")]
+            else:
+                technique_list = [Technique(t) for t in techniques_raw]
+        else:
+            # Use all available techniques for this format
+            technique_list = get_techniques_for_format(fmt)
+
+        generate_result = await asyncio.to_thread(
+            generate_documents,
+            callback_url=callback_url,
+            output=Path(output_dir),
+            format_name=fmt,
+            techniques=technique_list,
+        )
+    except Exception as exc:
+        return StepOutput(
+            step_id=step.id,
+            module="ipi",
+            technique=step.technique,
+            success=False,
+            status=StepStatus.FAILED,
+            error=f"IPI generation failed: {exc}",
+            started_at=started_at,
+            finished_at=datetime.now(UTC),
+        )
+
+    artifacts = extract_ipi_artifacts(generate_result)
+    campaigns = getattr(generate_result, "campaigns", []) or []
+    success = len(campaigns) > 0
+
+    return StepOutput(
+        step_id=step.id,
+        module="ipi",
+        technique=step.technique,
+        success=success,
+        status=StepStatus.SUCCESS if success else StepStatus.FAILED,
+        generate_result=generate_result,
+        artifacts=artifacts,
+        started_at=started_at,
+        finished_at=datetime.now(UTC),
+    )
+
+
+async def execute_cxp_step(
+    step: ChainStep,
+    target_config: TargetConfig,
+    resolved_inputs: dict[str, Any],
+) -> StepOutput:
+    """Execute a CXP poisoned repo build step.
+
+    Builds a poisoned context repo using the CXP builder. Runs in a
+    thread pool since the builder is synchronous.
+
+    Args:
+        step: The chain step to execute.
+        target_config: Target configuration with CXP settings.
+        resolved_inputs: Resolved variable values from upstream steps.
+
+    Returns:
+        StepOutput with build_result and artifacts.
+    """
+    import asyncio
+
+    started_at = datetime.now(UTC)
+
+    format_id = resolved_inputs.get("format_id") or target_config.cxp_format_id
+    if not format_id:
+        return StepOutput(
+            step_id=step.id,
+            module="cxp",
+            technique=step.technique,
+            success=False,
+            status=StepStatus.FAILED,
+            error="No cxp_format_id configured in target config or step inputs",
+            started_at=started_at,
+            finished_at=datetime.now(UTC),
+        )
+
+    output_dir = resolved_inputs.get("output_dir") or target_config.cxp_output_dir
+    if not output_dir:
+        return StepOutput(
+            step_id=step.id,
+            module="cxp",
+            technique=step.technique,
+            success=False,
+            status=StepStatus.FAILED,
+            error="No cxp_output_dir configured in target config or step inputs",
+            started_at=started_at,
+            finished_at=datetime.now(UTC),
+        )
+
+    rule_ids_raw = resolved_inputs.get("rule_ids") or target_config.cxp_rule_ids or []
+    if isinstance(rule_ids_raw, str):
+        rule_ids_raw = [r.strip() for r in rule_ids_raw.split(",") if r.strip()]
+
+    try:
+        from q_ai.cxp.builder import build
+        from q_ai.cxp.catalog import get_rule
+
+        rules = []
+        for rid in rule_ids_raw:
+            rule = get_rule(rid)
+            if rule is not None:
+                rules.append(rule)
+            else:
+                logger.warning("CXP rule ID '%s' not found in catalog, skipping", rid)
+
+        build_result = await asyncio.to_thread(
+            build,
+            format_id=format_id,
+            rules=rules,
+            output_dir=Path(output_dir),
+            repo_name=f"chain-cxp-{step.id}",
+        )
+    except Exception as exc:
+        return StepOutput(
+            step_id=step.id,
+            module="cxp",
+            technique=step.technique,
+            success=False,
+            status=StepStatus.FAILED,
+            error=f"CXP build failed: {exc}",
+            started_at=started_at,
+            finished_at=datetime.now(UTC),
+        )
+
+    artifacts = extract_cxp_artifacts(build_result)
+    success = bool(getattr(build_result, "repo_dir", None))
+
+    return StepOutput(
+        step_id=step.id,
+        module="cxp",
+        technique=step.technique,
+        success=success,
+        status=StepStatus.SUCCESS if success else StepStatus.FAILED,
+        build_result=build_result,
+        artifacts=artifacts,
+        started_at=started_at,
+        finished_at=datetime.now(UTC),
+    )
+
+
+async def execute_rxp_step(
+    step: ChainStep,
+    target_config: TargetConfig,
+    resolved_inputs: dict[str, Any],
+) -> StepOutput:
+    """Execute an RXP retrieval validation step.
+
+    Runs retrieval validation with lazy dependency import. Handles
+    missing optional deps gracefully.
+
+    Args:
+        step: The chain step to execute.
+        target_config: Target configuration with RXP settings.
+        resolved_inputs: Resolved variable values from upstream steps.
+
+    Returns:
+        StepOutput with validation_result and artifacts.
+    """
+    import asyncio
+
+    started_at = datetime.now(UTC)
+
+    model_id = resolved_inputs.get("model_id") or target_config.rxp_model_id
+    if not model_id:
+        return StepOutput(
+            step_id=step.id,
+            module="rxp",
+            technique=step.technique,
+            success=False,
+            status=StepStatus.FAILED,
+            error="No rxp_model_id configured in target config or step inputs",
+            started_at=started_at,
+            finished_at=datetime.now(UTC),
+        )
+
+    profile_id = resolved_inputs.get("profile_id") or target_config.rxp_profile_id
+    top_k = resolved_inputs.get("top_k") or target_config.rxp_top_k or 5
+
+    if not profile_id:
+        return StepOutput(
+            step_id=step.id,
+            module="rxp",
+            technique=step.technique,
+            success=False,
+            status=StepStatus.FAILED,
+            error="RXP step requires a profile_id or rxp_profile_id in target config",
+            started_at=started_at,
+            finished_at=datetime.now(UTC),
+        )
+
+    try:
+        from q_ai.rxp._deps import require_rxp_deps
+
+        require_rxp_deps()
+    except ImportError as exc:
+        return StepOutput(
+            step_id=step.id,
+            module="rxp",
+            technique=step.technique,
+            success=False,
+            status=StepStatus.FAILED,
+            error=str(exc),
+            started_at=started_at,
+            finished_at=datetime.now(UTC),
+        )
+
+    try:
+        from q_ai.rxp.profiles import get_profile, load_corpus, load_poison
+        from q_ai.rxp.validator import validate_retrieval
+
+        prof = get_profile(profile_id)
+        if prof is None:
+            return StepOutput(
+                step_id=step.id,
+                module="rxp",
+                technique=step.technique,
+                success=False,
+                status=StepStatus.FAILED,
+                error=f"RXP profile not found: {profile_id!r}",
+                started_at=started_at,
+                finished_at=datetime.now(UTC),
+            )
+        corpus_docs = load_corpus(prof)
+        poison_docs = load_poison(prof)
+        queries = prof.queries
+
+        validation_result = await asyncio.to_thread(
+            validate_retrieval, corpus_docs, poison_docs, queries, model_id, int(top_k)
+        )
+    except Exception as exc:
+        return StepOutput(
+            step_id=step.id,
+            module="rxp",
+            technique=step.technique,
+            success=False,
+            status=StepStatus.FAILED,
+            error=f"RXP validation failed: {exc}",
+            started_at=started_at,
+            finished_at=datetime.now(UTC),
+        )
+
+    artifacts = extract_rxp_artifacts(validation_result)
+    success = validation_result.retrieval_rate > 0
+
+    return StepOutput(
+        step_id=step.id,
+        module="rxp",
+        technique=step.technique,
+        success=success,
+        status=StepStatus.SUCCESS if success else StepStatus.FAILED,
+        validation_result=validation_result,
+        artifacts=artifacts,
+        started_at=started_at,
+        finished_at=datetime.now(UTC),
+    )
+
+
 def write_chain_report(result: ChainResult, output_path: Path) -> Path:
     """Write a chain execution report to JSON.
 
@@ -509,6 +934,21 @@ def write_chain_report(result: ChainResult, output_path: Path) -> Path:
                 first_result = campaign.results[0]
                 step_dict["outcome"] = str(getattr(first_result, "outcome", ""))
                 step_dict["payload_name"] = str(getattr(first_result, "payload_name", ""))
+
+        # Add IPI-specific summary
+        if step_output.module == "ipi" and step_output.generate_result is not None:
+            campaigns = getattr(step_output.generate_result, "campaigns", []) or []
+            step_dict["payload_count"] = len(campaigns)
+
+        # Add CXP-specific summary
+        if step_output.module == "cxp" and step_output.build_result is not None:
+            step_dict["repo_dir"] = str(getattr(step_output.build_result, "repo_dir", ""))
+
+        # Add RXP-specific summary
+        if step_output.module == "rxp" and step_output.validation_result is not None:
+            step_dict["retrieval_rate"] = getattr(
+                step_output.validation_result, "retrieval_rate", 0.0
+            )
 
         enriched_outputs.append(step_dict)
 

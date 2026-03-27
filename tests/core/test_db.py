@@ -44,7 +44,7 @@ class TestConnection:
         db_path = tmp_path / "qai.db"
         with get_connection(db_path) as conn:
             ver = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert ver == 11
+            assert ver == 12
             # V9: verify mitigation column exists on findings table
             columns = {row[1] for row in conn.execute("PRAGMA table_info(findings)").fetchall()}
             assert "mitigation" in columns

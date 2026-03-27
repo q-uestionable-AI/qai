@@ -73,15 +73,15 @@ src/q_ai/
 │   ├── mapper.py                   # Campaign → core DB persistence
 │   ├── scoring.py                  # Response outcome scorer (NormalizedResponse → InjectionOutcome)
 │   └── payloads/                   # YAML payload templates + loader (templates have relevant_categories)
-├── chain/                          # Multi-step attack chain executor
-│   ├── adapter.py                  # ChainAdapter — orchestrator integration
+├── chain/                          # Multi-step attack chain executor (all 7 modules)
+│   ├── adapter.py                  # ChainAdapter — orchestrator integration (gate_callback)
 │   ├── cli.py                      # chain subcommands (run, validate, list-templates, blast-radius, detect)
-│   ├── executor.py                 # Live execution engine
+│   ├── executor.py                 # Live execution engine — dispatches audit, inject, ipi, cxp, rxp
 │   ├── loader.py                   # YAML chain definition discovery and parsing
 │   ├── mapper.py                   # ChainResult → core DB persistence
 │   ├── tracer.py                   # Dry-run path tracer
-│   ├── validator.py                # Semantic validation (cycle detection, reachability)
-│   └── templates/                  # Built-in chain YAML files
+│   ├── validator.py                # Semantic validation (7 modules, cycle detection, reachability)
+│   └── templates/                  # Built-in chain YAML files (6 templates, cross-cluster)
 ├── ipi/                            # Indirect prompt injection — payload generation and tracking
 │   ├── adapter.py                  # IPIAdapter — orchestrator integration (with wait_for_user)
 │   ├── cli.py                      # ipi subcommands (generate, listen, hits, campaigns)

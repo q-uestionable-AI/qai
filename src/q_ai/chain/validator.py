@@ -26,13 +26,12 @@ class ValidationError:
     message: str
 
 
-_VALID_MODULES = {"audit", "inject"}
+_VALID_MODULES = {"audit", "inject", "ipi", "cxp", "rxp"}
 
 
 def _validate_module_and_technique(
     chain: ChainDefinition,
-    valid_audit_techniques: set[str],
-    valid_inject_techniques: set[str],
+    technique_sets: dict[str, set[str] | None],
 ) -> list[ValidationError]:
     """Validate module and technique references for each step.
 
@@ -41,8 +40,8 @@ def _validate_module_and_technique(
 
     Args:
         chain: The chain definition to validate.
-        valid_audit_techniques: Set of valid audit technique names.
-        valid_inject_techniques: Set of valid inject technique names.
+        technique_sets: Mapping of module name to valid technique set.
+            None means any technique is accepted (runtime-validated).
 
     Returns:
         A list of ValidationError instances for invalid references.
@@ -63,27 +62,20 @@ def _validate_module_and_technique(
             )
             continue
 
-        if step.module == "audit" and step.technique not in valid_audit_techniques:
+        valid_techniques = technique_sets.get(step.module)
+        # None means accept any technique (runtime-validated or no techniques needed)
+        if valid_techniques is None:
+            continue
+
+        if step.technique not in valid_techniques:
             errors.append(
                 ValidationError(
                     step_id=step.id,
                     field="technique",
                     message=(
-                        f"Step '{step.id}' references unknown audit technique "
+                        f"Step '{step.id}' references unknown {step.module} technique "
                         f"'{step.technique}'. "
-                        f"Valid techniques: {sorted(valid_audit_techniques)}"
-                    ),
-                )
-            )
-        elif step.module == "inject" and step.technique not in valid_inject_techniques:
-            errors.append(
-                ValidationError(
-                    step_id=step.id,
-                    field="technique",
-                    message=(
-                        f"Step '{step.id}' references unknown inject technique "
-                        f"'{step.technique}'. "
-                        f"Valid techniques: {sorted(valid_inject_techniques)}"
+                        f"Valid techniques: {sorted(valid_techniques)}"
                     ),
                 )
             )
@@ -151,6 +143,7 @@ def validate_chain(chain: ChainDefinition) -> list[ValidationError]:
     """
     from q_ai.audit.scanner.registry import list_scanner_names
     from q_ai.inject.models import InjectionTechnique
+    from q_ai.ipi.models import Format as IPIFormat
 
     errors: list[ValidationError] = []
 
@@ -164,13 +157,19 @@ def validate_chain(chain: ChainDefinition) -> list[ValidationError]:
         ]
 
     valid_step_ids = {step.id for step in chain.steps}
-    valid_audit_techniques = set(list_scanner_names())
-    valid_inject_techniques = {t.value for t in InjectionTechnique}
+
+    # Build technique sets per module.
+    # None = accept any technique (validated at runtime).
+    technique_sets: dict[str, set[str] | None] = {
+        "audit": set(list_scanner_names()),
+        "inject": {t.value for t in InjectionTechnique},
+        "ipi": {f.value for f in IPIFormat},
+        "cxp": None,  # format IDs validated at build time
+        "rxp": None,  # model availability is runtime-dependent
+    }
 
     # --- Check 1 & 2: module and technique references ---
-    errors.extend(
-        _validate_module_and_technique(chain, valid_audit_techniques, valid_inject_techniques)
-    )
+    errors.extend(_validate_module_and_technique(chain, technique_sets))
 
     # --- Check 3: graph reference validity ---
     errors.extend(_validate_graph_references(chain, valid_step_ids))

@@ -106,6 +106,27 @@ def run(
             "openai/gpt-4o). Bare model names are treated as Anthropic."
         ),
     ),
+    ipi_callback_url: str | None = typer.Option(
+        None, "--ipi-callback-url", help="IPI callback URL for payload generation"
+    ),
+    ipi_output_dir: str | None = typer.Option(
+        None, "--ipi-output-dir", help="Output directory for IPI payloads"
+    ),
+    ipi_format: str | None = typer.Option(
+        None, "--ipi-format", help="Document format for IPI payloads (pdf, md, html, etc.)"
+    ),
+    cxp_format_id: str | None = typer.Option(
+        None, "--cxp-format-id", help="CXP context file format ID (e.g., cursorrules, claude-md)"
+    ),
+    cxp_output_dir: str | None = typer.Option(
+        None, "--cxp-output-dir", help="Output directory for CXP poisoned repos"
+    ),
+    rxp_model_id: str | None = typer.Option(
+        None, "--rxp-model-id", help="Embedding model ID for RXP validation"
+    ),
+    rxp_profile_id: str | None = typer.Option(
+        None, "--rxp-profile-id", help="RXP validation profile ID"
+    ),
 ) -> None:
     """Execute an attack chain against a target architecture.
 
@@ -135,7 +156,16 @@ def run(
     if dry_run:
         _run_dry(chain, output)
     else:
-        _run_live(chain, output, targets, inject_model)
+        extra_overrides = {
+            "ipi_callback_url": ipi_callback_url,
+            "ipi_output_dir": ipi_output_dir,
+            "ipi_format": ipi_format,
+            "cxp_format_id": cxp_format_id,
+            "cxp_output_dir": cxp_output_dir,
+            "rxp_model_id": rxp_model_id,
+            "rxp_profile_id": rxp_profile_id,
+        }
+        _run_live(chain, output, targets, inject_model, extra_overrides)
 
 
 def _run_dry(chain: ChainDefinition, output: str | None) -> None:
@@ -175,28 +205,23 @@ def _run_dry(chain: ChainDefinition, output: str | None) -> None:
         console.print(f"\nTrace written to {out_path}")
 
 
-def _run_live(
-    chain: ChainDefinition,
-    output: str | None,
+def _load_target_config(
     targets_path: str | None,
     inject_model_override: str | None,
-) -> None:
-    """Execute live chain against real targets."""
-    import asyncio
-
-    from q_ai.chain.executor import execute_chain, write_chain_report
+    extra_overrides: dict[str, Any] | None,
+) -> Any:
+    """Load TargetConfig from YAML and apply CLI overrides."""
     from q_ai.chain.executor_models import TargetConfig
 
     config_path = Path(targets_path) if targets_path else _DEFAULT_TARGETS_PATH
 
     if not config_path.exists():
-        if targets_path:
-            console.print(f"[red]Error:[/red] Targets file not found: {config_path}")
-        else:
-            console.print(
-                f"[red]Error:[/red] No targets file found. Provide --targets or create "
-                f"{_DEFAULT_TARGETS_PATH}"
-            )
+        msg = (
+            f"Targets file not found: {config_path}"
+            if targets_path
+            else f"No targets file found. Provide --targets or create {_DEFAULT_TARGETS_PATH}"
+        )
+        console.print(f"[red]Error:[/red] {msg}")
         raise typer.Exit(code=1)
 
     try:
@@ -205,8 +230,29 @@ def _run_live(
         console.print(f"[red]Error:[/red] Failed to load targets config: {exc}")
         raise typer.Exit(code=1) from exc
 
+    overrides: dict[str, Any] = {}
     if inject_model_override:
-        target_config = target_config.with_overrides(inject_model=inject_model_override)
+        overrides["inject_model"] = inject_model_override
+    if extra_overrides:
+        overrides.update({k: v for k, v in extra_overrides.items() if v is not None})
+    if overrides:
+        target_config = target_config.with_overrides(**overrides)
+    return target_config
+
+
+def _run_live(
+    chain: ChainDefinition,
+    output: str | None,
+    targets_path: str | None,
+    inject_model_override: str | None,
+    extra_overrides: dict[str, Any] | None = None,
+) -> None:
+    """Execute live chain against real targets."""
+    import asyncio
+
+    from q_ai.chain.executor import execute_chain, write_chain_report
+
+    target_config = _load_target_config(targets_path, inject_model_override, extra_overrides)
 
     console.print("[bold blue]qai chain run[/bold blue]")
     console.print(f"Chain: {chain.name}")
@@ -286,6 +332,16 @@ def _render_step_output(
     console.print()
 
 
+_STATUS_DETAIL_KEYS: dict[str, tuple[str, str, str]] = {
+    "audit": ("finding_count", "0", "{v} findings"),
+    "inject": ("best_outcome", "", "{v}"),
+    "ipi": ("payload_count", "0", "{v} payloads"),
+    "cxp": ("rule_count", "0", "{v} rules"),
+    "rxp": ("retrieval_rate", "0%", "{v} retrieval"),
+}
+"""Maps module to (artifact_key, default, format_template)."""
+
+
 def _build_status_detail(step_output: Any) -> str:
     """Build a parenthetical status detail string for a step output.
 
@@ -300,13 +356,14 @@ def _build_status_detail(step_output: Any) -> str:
     """
     if not step_output.success:
         return ""
-    if step_output.module == "audit":
-        count = step_output.artifacts.get("finding_count", "0")
-        return f" ({count} findings)"
-    if step_output.module == "inject":
-        outcome = step_output.artifacts.get("best_outcome", "")
-        return f" ({outcome})" if outcome else ""
-    return ""
+    detail_spec = _STATUS_DETAIL_KEYS.get(step_output.module)
+    if detail_spec is None:
+        return ""
+    key, default, fmt = detail_spec
+    value = step_output.artifacts.get(key, default)
+    if not value:
+        return ""
+    return f" ({fmt.format(v=value)})"
 
 
 def _print_live_summary(chain: ChainDefinition, result: ChainResult) -> None:

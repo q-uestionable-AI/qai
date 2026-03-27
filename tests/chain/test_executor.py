@@ -20,6 +20,7 @@ from q_ai.chain.models import (
 
 _PATCH_AUDIT = "q_ai.chain.executor.execute_audit_step"
 _PATCH_INJECT = "q_ai.chain.executor.execute_inject_step"
+_PATCH_IPI = "q_ai.chain.executor.execute_ipi_step"
 
 
 def _make_chain(steps: list[ChainStep]) -> ChainDefinition:
@@ -357,6 +358,108 @@ class TestExecuteChain:
         assert result.success is False
         assert len(result.step_outputs) == 1
         assert "connection reset" in result.step_outputs[0].error
+
+
+class TestManualGate:
+    """Tests for manual gate callback in execute_chain."""
+
+    @pytest.mark.asyncio
+    async def test_gate_callback_invoked(self, tmp_path: Path):
+        """Gate callback is invoked after IPI step with manual_gate=true."""
+        chain = _make_chain(
+            [
+                ChainStep(
+                    id="ipi-step",
+                    name="IPI generation",
+                    module="ipi",
+                    technique="pdf",
+                    terminal=True,
+                    inputs={"manual_gate": True},
+                ),
+            ]
+        )
+        config = TargetConfig(ipi_output_dir=str(tmp_path))
+
+        ipi_output = _success_output(
+            "ipi-step",
+            "ipi",
+            "pdf",
+            artifacts={"payload_count": "1", "output_dir": str(tmp_path)},
+        )
+
+        gate_calls: list[tuple[str, str]] = []
+
+        async def mock_gate(step_id: str, message: str) -> None:
+            gate_calls.append((step_id, message))
+
+        with patch(_PATCH_IPI, new_callable=AsyncMock, return_value=ipi_output):
+            result = await execute_chain(chain, config, gate_callback=mock_gate)
+
+        assert result.success is True
+        assert len(gate_calls) == 1
+        assert gate_calls[0][0] == "ipi-step"
+        assert "Deploy IPI" in gate_calls[0][1]
+
+    @pytest.mark.asyncio
+    async def test_gate_callback_none_fails_cleanly(self, tmp_path: Path):
+        """Manual gate step fails when gate_callback is None (CLI mode)."""
+        chain = _make_chain(
+            [
+                ChainStep(
+                    id="ipi-step",
+                    name="IPI generation",
+                    module="ipi",
+                    technique="pdf",
+                    terminal=True,
+                    inputs={"manual_gate": True},
+                ),
+            ]
+        )
+        config = TargetConfig(ipi_output_dir=str(tmp_path))
+
+        ipi_output = _success_output(
+            "ipi-step",
+            "ipi",
+            "pdf",
+            artifacts={"payload_count": "1", "output_dir": str(tmp_path)},
+        )
+
+        with patch(_PATCH_IPI, new_callable=AsyncMock, return_value=ipi_output):
+            result = await execute_chain(chain, config, gate_callback=None)
+
+        assert result.success is False
+        assert "manual gate" in result.step_outputs[0].error.lower()
+        assert "web UI" in result.step_outputs[0].error
+
+    @pytest.mark.asyncio
+    async def test_no_gate_when_manual_gate_not_set(self, tmp_path: Path):
+        """Gate callback is NOT invoked when manual_gate is absent."""
+        chain = _make_chain(
+            [
+                ChainStep(
+                    id="ipi-step",
+                    name="IPI generation",
+                    module="ipi",
+                    technique="pdf",
+                    terminal=True,
+                    inputs={},
+                ),
+            ]
+        )
+        config = TargetConfig(ipi_output_dir=str(tmp_path))
+
+        ipi_output = _success_output("ipi-step", "ipi", "pdf")
+
+        gate_calls: list[tuple[str, str]] = []
+
+        async def mock_gate(step_id: str, message: str) -> None:
+            gate_calls.append((step_id, message))
+
+        with patch(_PATCH_IPI, new_callable=AsyncMock, return_value=ipi_output):
+            result = await execute_chain(chain, config, gate_callback=mock_gate)
+
+        assert result.success is True
+        assert len(gate_calls) == 0
 
 
 class TestWriteChainReport:

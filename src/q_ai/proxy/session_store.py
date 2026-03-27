@@ -25,6 +25,9 @@ class SessionStore:
         server_command: For stdio sessions, the server launch command.
         server_url: For SSE/HTTP sessions, the server endpoint URL.
         metadata: Arbitrary session metadata.
+        started_at: Optional session start time (defaults to now).
+        chain_run_id: Optional chain execution run ID for correlation.
+        chain_step_id: Optional chain step ID for correlation.
 
     Example:
         >>> store = SessionStore(session_id="abc", transport=Transport.STDIO)
@@ -32,7 +35,7 @@ class SessionStore:
         >>> store.save(Path("session.json"))
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         session_id: str,
         transport: Transport,
@@ -40,6 +43,8 @@ class SessionStore:
         server_url: str | None = None,
         metadata: dict[str, Any] | None = None,
         started_at: datetime | None = None,
+        chain_run_id: str | None = None,
+        chain_step_id: str | None = None,
     ) -> None:
         self.session_id = session_id
         self.transport = transport
@@ -47,6 +52,8 @@ class SessionStore:
         self.server_url = server_url
         self.metadata = metadata or {}
         self.started_at = started_at or datetime.now(tz=UTC)
+        self.chain_run_id = chain_run_id
+        self.chain_step_id = chain_step_id
         self._messages: list[ProxyMessage] = []
         self._index: dict[str, ProxyMessage] = {}
 
@@ -85,6 +92,12 @@ class SessionStore:
                 )
             serialized_messages.append(entry)
 
+        metadata = dict(self.metadata)
+        if self.chain_run_id is not None:
+            metadata["chain_run_id"] = self.chain_run_id
+        if self.chain_step_id is not None:
+            metadata["chain_step_id"] = self.chain_step_id
+
         return ProxySession(
             id=self.session_id,
             started_at=self.started_at,
@@ -93,7 +106,7 @@ class SessionStore:
             server_command=self.server_command,
             server_url=self.server_url,
             messages=serialized_messages,
-            metadata=self.metadata,
+            metadata=metadata,
         )
 
     def save(self, path: Path) -> None:
@@ -107,13 +120,18 @@ class SessionStore:
         """Load a session from a JSON file."""
         json_text = path.read_text(encoding="utf-8")
         session = ProxySession.model_validate_json(json_text)
+        metadata = dict(session.metadata) if session.metadata else {}
+        chain_run_id = metadata.pop("chain_run_id", None)
+        chain_step_id = metadata.pop("chain_step_id", None)
         store = cls(
             session_id=session.id,
             transport=session.transport,
             server_command=session.server_command,
             server_url=session.server_url,
-            metadata=session.metadata,
+            metadata=metadata,
             started_at=session.started_at,
+            chain_run_id=chain_run_id,
+            chain_step_id=chain_step_id,
         )
         for entry in session.messages:
             raw = JSONRPCMessage.model_validate(entry["payload"])
