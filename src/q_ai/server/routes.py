@@ -262,6 +262,28 @@ def _load_audit_data(
     return audit_scan, audit_findings, audit_evidence_map
 
 
+def _load_evidence_json(conn: Any, run_id: str, evidence_type: str) -> dict[str, Any] | None:
+    """Load and parse a single JSON evidence record by type.
+
+    Args:
+        conn: Active database connection.
+        run_id: Run ID to query evidence for.
+        evidence_type: Evidence type string to filter by.
+
+    Returns:
+        Parsed dict or None if not found or malformed.
+    """
+    row = conn.execute(
+        "SELECT content FROM evidence WHERE run_id = ? AND type = ? LIMIT 1",
+        (run_id, evidence_type),
+    ).fetchone()
+    if not row or not row["content"]:
+        return None
+    with contextlib.suppress(ValueError, TypeError):
+        return _json.loads(row["content"])  # type: ignore[no-any-return]
+    return None
+
+
 def _load_module_data(
     conn: Any,
     child_by_module: dict[str, Any],
@@ -277,6 +299,7 @@ def _load_module_data(
         conn, child_by_module.get("audit"), findings
     )
     inject_results_data: list[dict[str, Any]] = []
+    coverage_report: dict[str, Any] | None = None
     proxy_session: dict[str, Any] | None = None
 
     inject_child = child_by_module.get("inject")
@@ -289,6 +312,8 @@ def _load_module_data(
             (inject_child.id,),
         ).fetchall()
         inject_results_data = [dict(r) for r in rows]
+
+        coverage_report = _load_evidence_json(conn, inject_child.id, "coverage_report")
 
     # Build payload template lookup for inject results drill-down
     payload_template_map: dict[str, dict[str, Any]] = {}
@@ -309,9 +334,10 @@ def _load_module_data(
         ).fetchone()
         proxy_session = dict(row) if row else None
 
-    # IPI data: campaigns and hits for the IPI child run
+    # IPI data: campaigns, hits, and retrieval gate for the IPI child run
     ipi_campaigns: list[dict[str, Any]] = []
     ipi_hits: list[dict[str, Any]] = []
+    retrieval_gate: dict[str, Any] | None = None
     ipi_child = child_by_module.get("ipi")
     if ipi_child:
         camp_rows = conn.execute(
@@ -335,16 +361,20 @@ def _load_module_data(
             ).fetchall()
             ipi_hits = [dict(r) for r in hit_rows]
 
+        retrieval_gate = _load_evidence_json(conn, ipi_child.id, "retrieval_gate")
+
     return {
         "audit_scan": audit_scan,
         "audit_findings": audit_findings,
         "audit_evidence_map": audit_evidence_map,
         "inject_results_data": inject_results_data,
+        "coverage_report": coverage_report,
         "payload_template_map": payload_template_map,
         "proxy_session": proxy_session,
         "mitigation_section_label": _mitigation_section_label,
         "ipi_campaigns": ipi_campaigns,
         "ipi_hits": ipi_hits,
+        "retrieval_gate": retrieval_gate,
     }
 
 
@@ -447,6 +477,7 @@ class _HistoryRow:
         "finding_count",
         "id",
         "report_run_id",
+        "source",
         "started_at",
         "status",
         "target_id",
@@ -465,6 +496,7 @@ class _HistoryRow:
         duration: str,
         started_at: _dt.datetime | None,
         report_run_id: str | None = None,
+        source: str | None = None,
     ) -> None:
         self.id = run_id
         self.display_name = display_name
@@ -475,6 +507,7 @@ class _HistoryRow:
         self.duration = duration
         self.started_at = started_at
         self.report_run_id = report_run_id
+        self.source = source
 
 
 def _build_history_context(
@@ -494,6 +527,15 @@ def _build_history_context(
             status=parsed_status,
             target_id=target_filter or None,
         )
+
+        # Include import runs alongside workflow runs
+        import_runs = run_service.list_runs(
+            conn,
+            module="import",
+            status=parsed_status,
+            target_id=target_filter or None,
+        )
+
         targets = list_targets(conn)
         target_map = {t.id: t for t in targets}
 
@@ -542,6 +584,37 @@ def _build_history_context(
                     report_run_id=report_run_id,
                 )
             )
+
+        for run in import_runs:
+            if workflow_filter:
+                continue  # Import runs don't match workflow filters
+            source_name = run.source or "Unknown"
+            display_name = f"Import ({source_name.title()})"
+            finding_count = run_service.get_finding_count_for_runs(conn, [run.id])
+
+            eff_target_id = run.target_id
+            target = target_map.get(eff_target_id) if eff_target_id else None
+            target_name = target.name if target else None
+
+            history_runs.append(
+                _HistoryRow(
+                    run_id=run.id,
+                    display_name=display_name,
+                    target_name=target_name,
+                    target_id=eff_target_id,
+                    status=run.status,
+                    finding_count=finding_count,
+                    duration=_compute_duration(run),
+                    started_at=run.started_at,
+                    source=source_name,
+                )
+            )
+
+        # Re-sort by started_at descending after merging
+        history_runs.sort(
+            key=lambda r: r.started_at or _dt.datetime.min.replace(tzinfo=_dt.UTC),
+            reverse=True,
+        )
 
         target_ids_on_page = [r.target_id for r in history_runs if r.target_id]
         prior_run_counts = (
@@ -1468,7 +1541,7 @@ async def api_chain_execution_detail(request: Request, run_id: str) -> HTMLRespo
         if exec_row:
             step_rows = conn.execute(
                 """
-                SELECT step_id, module, technique, success, status, error
+                SELECT step_id, module, technique, success, status, error, artifacts
                 FROM chain_step_outputs
                 WHERE execution_id = ?
                 ORDER BY created_at
@@ -1476,7 +1549,20 @@ async def api_chain_execution_detail(request: Request, run_id: str) -> HTMLRespo
                 (exec_row["id"],),
             ).fetchall()
     execution_detail: dict[str, Any] = dict(exec_row) if exec_row else {}
-    step_outputs = [dict(row) for row in step_rows]
+    step_outputs: list[dict[str, Any]] = []
+    for row in step_rows:
+        step = dict(row)
+        # Deserialize guidance from artifacts if present
+        raw_artifacts = step.get("artifacts")
+        step["guidance"] = None
+        if raw_artifacts:
+            try:
+                parsed = _json.loads(raw_artifacts) if isinstance(raw_artifacts, str) else {}
+                if isinstance(parsed, dict) and "guidance" in parsed:
+                    step["guidance"] = RunGuidance.from_dict(_json.loads(parsed["guidance"]))
+            except (ValueError, TypeError):
+                pass
+        step_outputs.append(step)
     return templates.TemplateResponse(
         request,
         "partials/chain_tab.html",

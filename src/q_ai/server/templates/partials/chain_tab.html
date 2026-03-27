@@ -1,3 +1,5 @@
+{% from "partials/guidance_block.html" import render_guidance_block %}
+
 <div id="chain-panel" class="space-y-4">
     <div class="flex justify-between items-center mb-2">
         <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">
@@ -64,12 +66,13 @@
         <div><strong>Trust Boundaries:</strong> {{ execution_detail.trust_boundaries or '—' }}</div>
     </div>
     {% if step_outputs %}
-    <div class="overflow-y-auto max-h-[300px]">
+    <div class="overflow-y-auto max-h-[500px]">
         <table class="table table-xs w-full">
-            <thead><tr><th>Step</th><th>Module</th><th>Technique</th><th>Status</th></tr></thead>
+            <thead><tr><th>Step</th><th>Module</th><th>Technique</th><th>Status</th><th></th></tr></thead>
             <tbody>
                 {% for s in step_outputs %}
-                <tr>
+                <tr class="hover:bg-base-300/30 cursor-pointer"
+                    onclick="toggleChainStepDetail('{{ loop.index }}')">
                     <td>{{ s.step_id }}</td>
                     <td>{{ s.module }}</td>
                     <td>{{ s.technique }}</td>
@@ -80,11 +83,45 @@
                         <span class="badge badge-error badge-xs">FAIL</span>
                         {% endif %}
                     </td>
+                    <td>
+                        <span class="text-xs cursor-pointer select-none"
+                              style="color: #a78bfa;"
+                              onclick="event.stopPropagation(); toggleChainStepDetail('{{ loop.index }}')">
+                            Details <span id="chain-step-arrow-{{ loop.index }}" style="color: #fff;">&#x25BC;</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr id="chain-step-detail-{{ loop.index }}" class="hidden">
+                    <td colspan="5" class="p-0">
+                        <div class="p-4 bg-base-300/20 space-y-3 text-sm">
+                            {% if s.error %}
+                            <div>
+                                <span class="font-semibold text-base-content/60 text-xs">Error</span>
+                                <p class="mt-1 text-xs text-error">{{ s.error }}</p>
+                            </div>
+                            {% endif %}
+                            {% if s.guidance %}
+                            {% for block in s.guidance.blocks %}
+                                {{ render_guidance_block(block) }}
+                            {% endfor %}
+                            {% elif not s.error %}
+                            <p class="text-xs text-base-content/40 italic">No guidance data for this step.</p>
+                            {% endif %}
+                        </div>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+    <script>
+    function toggleChainStepDetail(idx) {
+        var detail = document.getElementById('chain-step-detail-' + idx);
+        var arrow = document.getElementById('chain-step-arrow-' + idx);
+        detail.classList.toggle('hidden');
+        arrow.textContent = detail.classList.contains('hidden') ? '\u25BC' : '\u25B2';
+    }
+    </script>
     {% endif %}
     {% endif %}
 </div>

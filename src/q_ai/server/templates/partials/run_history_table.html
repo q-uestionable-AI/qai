@@ -32,7 +32,10 @@
             <input type="checkbox" class="checkbox checkbox-xs run-select-cb" data-run-id="{{ run.id }}"
                    onchange="onRunSelectChange()">
         </td>
-        <td class="font-medium pl-8">{{ run.display_name }}</td>
+        <td class="font-medium pl-8">
+            {{ run.display_name }}
+            {% if run.source %}<span class="badge badge-xs badge-ghost ml-1">{{ run.source }}</span>{% endif %}
+        </td>
         <td>
             {{ run.target_name or "—" }}
             {% if prior_run_counts.get(run.target_id, 0) > 0 %}
@@ -120,7 +123,10 @@
             <input type="checkbox" class="checkbox checkbox-xs run-select-cb" data-run-id="{{ run.id }}"
                    onchange="onRunSelectChange()">
         </td>
-        <td class="font-medium">{{ run.display_name }}</td>
+        <td class="font-medium">
+            {{ run.display_name }}
+            {% if run.source %}<span class="badge badge-xs badge-ghost ml-1">{{ run.source }}</span>{% endif %}
+        </td>
         <td>
             {{ run.target_name or "—" }}
             {% if prior_run_counts.get(run.target_id, 0) > 0 %}

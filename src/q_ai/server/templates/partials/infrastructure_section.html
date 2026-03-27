@@ -1,5 +1,13 @@
 <div class="panel p-6">
-        <h2 class="text-lg font-semibold mb-4" style="color: #f1f5f9;">Infrastructure</h2>
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold" style="color: #f1f5f9;">Infrastructure</h2>
+            <button type="button" class="btn btn-sm btn-outline btn-secondary"
+                    hx-get="/api/settings/infrastructure"
+                    hx-target="#infra-status"
+                    hx-swap="outerHTML">
+                &#x21bb; Refresh
+            </button>
+        </div>
 
         {% if infrastructure is defined and infrastructure %}
         {% include "partials/infrastructure_content.html" %}

@@ -671,6 +671,23 @@ async def execute_ipi_step(
     campaigns = getattr(generate_result, "campaigns", []) or []
     success = len(campaigns) > 0
 
+    if success:
+        try:
+            from q_ai.ipi.guidance_builder import build_ipi_guidance
+
+            payload_style = resolved_inputs.get("payload_style", "obvious")
+            payload_type = resolved_inputs.get("payload_type", "callback")
+            guidance = build_ipi_guidance(
+                result=generate_result,
+                format_name=fmt,
+                callback_url=callback_url,
+                payload_style=payload_style,
+                payload_type=payload_type,
+            )
+            artifacts["guidance"] = json.dumps(guidance.to_dict())
+        except Exception:
+            logger.debug("Failed to build IPI guidance for chain step", exc_info=True)
+
     return StepOutput(
         step_id=step.id,
         module="ipi",
@@ -769,6 +786,19 @@ async def execute_cxp_step(
 
     artifacts = extract_cxp_artifacts(build_result)
     success = bool(getattr(build_result, "repo_dir", None))
+
+    if success:
+        try:
+            from q_ai.cxp.guidance_builder import build_cxp_guidance
+
+            guidance = build_cxp_guidance(
+                result=build_result,
+                rules=rules,
+                format_id=format_id,
+            )
+            artifacts["guidance"] = json.dumps(guidance.to_dict())
+        except Exception:
+            logger.debug("Failed to build CXP guidance for chain step", exc_info=True)
 
     return StepOutput(
         step_id=step.id,

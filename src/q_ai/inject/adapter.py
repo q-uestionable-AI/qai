@@ -6,11 +6,12 @@ and event emission.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from q_ai.core.db import get_connection
+from q_ai.core.db import create_evidence, get_connection
 from q_ai.core.models import RunStatus
 from q_ai.inject.campaign import run_campaign
 from q_ai.inject.coverage import build_coverage_report
@@ -102,6 +103,17 @@ class InjectAdapter:
             )
 
             persist_campaign(campaign, db_path=self._runner._db_path, run_id=child_id)
+
+            if coverage is not None:
+                with get_connection(self._runner._db_path) as conn:
+                    create_evidence(
+                        conn,
+                        type="coverage_report",
+                        run_id=child_id,
+                        storage="inline",
+                        content=json.dumps(coverage.to_dict()),
+                    )
+
             await self._emit_findings(child_id, campaign)
 
             await self._runner.update_child_status(child_id, RunStatus.COMPLETED)

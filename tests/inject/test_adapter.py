@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -322,6 +323,66 @@ class TestInjectAdapter:
             result = await adapter.run()
 
         assert result.coverage is None
+
+    async def test_coverage_persisted_as_evidence(self, db_path: Path) -> None:
+        """When coverage is built, it is stored as evidence on the inject child run."""
+        from q_ai.core.models import Finding, Severity
+
+        runner = WorkflowRunner(workflow_id="assess", config={}, db_path=db_path)
+        await runner.start()
+
+        campaign = _make_campaign([_make_injection_result()])
+        adapter = InjectAdapter(runner, {"model": "test-model"})
+
+        mock_finding = Finding(
+            id="f1",
+            run_id="r1",
+            module="audit",
+            category="tool_poisoning",
+            severity=Severity.HIGH,
+            title="test finding",
+        )
+
+        with (
+            patch("q_ai.inject.adapter.load_all_templates", return_value=[]),
+            patch("q_ai.inject.adapter.run_campaign", return_value=campaign),
+            patch(
+                "q_ai.inject.adapter.finding_service.get_findings_for_run",
+                return_value=[mock_finding],
+            ),
+        ):
+            result = await adapter.run()
+
+        with get_connection(db_path) as conn:
+            ev_row = conn.execute(
+                "SELECT content FROM evidence WHERE run_id = ? AND type = 'coverage_report'",
+                (result.run_id,),
+            ).fetchone()
+        assert ev_row is not None
+        data = json.loads(ev_row["content"])
+        assert "tested_categories" in data
+        assert "untested_categories" in data
+        assert "coverage_ratio" in data
+
+    async def test_no_coverage_no_evidence(self, runner: WorkflowRunner, db_path: Path) -> None:
+        """When no audit findings, no coverage evidence is stored."""
+        await runner.start()
+
+        campaign = _make_campaign([_make_injection_result()])
+        adapter = InjectAdapter(runner, {"model": "test-model"})
+
+        with (
+            patch("q_ai.inject.adapter.load_all_templates", return_value=[]),
+            patch("q_ai.inject.adapter.run_campaign", return_value=campaign),
+        ):
+            result = await adapter.run()
+
+        with get_connection(db_path) as conn:
+            ev_row = conn.execute(
+                "SELECT content FROM evidence WHERE run_id = ? AND type = 'coverage_report'",
+                (result.run_id,),
+            ).fetchone()
+        assert ev_row is None
 
     async def test_coverage_distinguishes_native_vs_imported(self, db_path: Path) -> None:
         """Coverage report tracks native and imported categories separately."""

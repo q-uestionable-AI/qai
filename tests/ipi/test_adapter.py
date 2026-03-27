@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -213,3 +214,85 @@ class TestIPIAdapter:
 
         assert result.gated is False
         assert result.non_viable_queries == []
+
+    async def test_gate_non_viable_persists_retrieval_gate_evidence(
+        self, runner: WorkflowRunner, db_path: Path
+    ) -> None:
+        """Non-viable gate stores retrieval_gate evidence on the IPI child run."""
+        await runner.start()
+        gate = RetrievalGate(
+            retrieval_rate=0.0,
+            query_viability={"q1": False, "q2": False},
+        )
+        config = {**_BASE_CONFIG, "retrieval_gate": gate}
+        adapter = IPIAdapter(runner, config)
+
+        with patch("q_ai.ipi.adapter.generate_documents"):
+            result = await adapter.run()
+
+        with get_connection(db_path) as conn:
+            ev_row = conn.execute(
+                "SELECT content FROM evidence WHERE run_id = ? AND type = 'retrieval_gate'",
+                (result.run_id,),
+            ).fetchone()
+        assert ev_row is not None
+        data = json.loads(ev_row["content"])
+        assert data["gated"] is True
+        assert set(data["non_viable_queries"]) == {"q1", "q2"}
+        assert data["retrieval_rate"] == 0.0
+        assert data["threshold"] == 0.0
+
+    async def test_gate_viable_persists_retrieval_gate_evidence(
+        self, runner: WorkflowRunner, db_path: Path
+    ) -> None:
+        """Viable gate also stores retrieval_gate evidence with partial viability."""
+        await runner.start()
+        gate = RetrievalGate(
+            retrieval_rate=0.5,
+            query_viability={"q1": True, "q2": False},
+        )
+        config = {**_BASE_CONFIG, "retrieval_gate": gate}
+        gen_result = _make_generate_result()
+
+        adapter = IPIAdapter(runner, config)
+
+        with (
+            patch("q_ai.ipi.adapter.generate_documents", return_value=gen_result),
+            patch("q_ai.ipi.adapter.persist_generate"),
+            patch.object(runner, "wait_for_user", new_callable=AsyncMock, return_value={}),
+        ):
+            result = await adapter.run()
+
+        with get_connection(db_path) as conn:
+            ev_row = conn.execute(
+                "SELECT content FROM evidence WHERE run_id = ? AND type = 'retrieval_gate'",
+                (result.run_id,),
+            ).fetchone()
+        assert ev_row is not None
+        data = json.loads(ev_row["content"])
+        assert data["gated"] is True
+        assert data["retrieval_rate"] == 0.5
+        assert data["non_viable_queries"] == ["q2"]
+
+    async def test_no_gate_no_retrieval_gate_evidence(
+        self, runner: WorkflowRunner, db_path: Path
+    ) -> None:
+        """Without retrieval_gate, no retrieval_gate evidence is stored."""
+        await runner.start()
+        gen_result = _make_generate_result()
+
+        adapter = IPIAdapter(runner, _BASE_CONFIG)
+
+        with (
+            patch("q_ai.ipi.adapter.generate_documents", return_value=gen_result),
+            patch("q_ai.ipi.adapter.persist_generate"),
+            patch.object(runner, "wait_for_user", new_callable=AsyncMock, return_value={}),
+        ):
+            result = await adapter.run()
+
+        with get_connection(db_path) as conn:
+            ev_row = conn.execute(
+                "SELECT content FROM evidence WHERE run_id = ? AND type = 'retrieval_gate'",
+                (result.run_id,),
+            ).fetchone()
+        assert ev_row is None

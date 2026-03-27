@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from q_ai.core.db import get_connection, save_run_guidance
+from q_ai.core.db import create_evidence, get_connection, save_run_guidance
 from q_ai.core.models import RunStatus
 from q_ai.ipi.generate_service import GenerateResult, generate_documents
 from q_ai.ipi.generators import get_techniques_for_format
@@ -181,6 +181,7 @@ class IPIAdapter:
 
             if gate is not None and not gate.viable:
                 non_viable = gate.non_viable_queries
+                self._persist_retrieval_gate(child_id, gate, gated=True)
                 await self._runner.emit_progress(
                     child_id,
                     f"RXP gate: all {len(non_viable)} queries non-viable "
@@ -252,6 +253,9 @@ class IPIAdapter:
 
             await self._runner.update_child_status(child_id, RunStatus.COMPLETED)
 
+            if gate is not None:
+                self._persist_retrieval_gate(child_id, gate, gated=True)
+
             non_viable = gate.non_viable_queries if gate is not None else []
             return IPIAdapterResult(
                 run_id=child_id,
@@ -264,3 +268,28 @@ class IPIAdapter:
         except Exception:
             await self._runner.update_child_status(child_id, RunStatus.FAILED)
             raise
+
+    def _persist_retrieval_gate(self, child_id: str, gate: RetrievalGate, *, gated: bool) -> None:
+        """Store retrieval gate metadata as evidence on the IPI child run.
+
+        Args:
+            child_id: The child run identifier.
+            gate: The RetrievalGate with viability data.
+            gated: Whether generation was gated by this result.
+        """
+        content = json.dumps(
+            {
+                "gated": gated,
+                "non_viable_queries": gate.non_viable_queries,
+                "retrieval_rate": gate.retrieval_rate,
+                "threshold": gate.threshold,
+            }
+        )
+        with get_connection(self._runner._db_path) as conn:
+            create_evidence(
+                conn,
+                type="retrieval_gate",
+                run_id=child_id,
+                storage="inline",
+                content=content,
+            )
