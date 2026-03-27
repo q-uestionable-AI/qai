@@ -222,11 +222,13 @@ class CoverageReport:
     """Coverage analysis of audit findings exercised by inject templates.
 
     Attributes:
-        audit_categories: Categories found by audit.
+        audit_categories: All categories (native + imported) used for coverage.
         tested_categories: Categories exercised by inject templates that ran.
-        untested_categories: Categories found by audit but not exercised.
+        untested_categories: Categories found but not exercised.
         coverage_ratio: Fraction of audit categories exercised (0.0 when none).
         template_matches: List of dicts with template name and matched categories.
+        native_categories: Categories from native audit findings.
+        imported_categories: Categories from imported external findings.
     """
 
     audit_categories: set[str]
@@ -234,6 +236,8 @@ class CoverageReport:
     untested_categories: set[str]
     coverage_ratio: float
     template_matches: list[dict[str, Any]]
+    native_categories: set[str] = field(default_factory=set)
+    imported_categories: set[str] = field(default_factory=set)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict."""
@@ -243,4 +247,6 @@ class CoverageReport:
             "untested_categories": sorted(self.untested_categories),
             "coverage_ratio": self.coverage_ratio,
             "template_matches": self.template_matches,
+            "native_categories": sorted(self.native_categories),
+            "imported_categories": sorted(self.imported_categories),
         }

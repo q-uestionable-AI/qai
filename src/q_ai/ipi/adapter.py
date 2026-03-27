@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -25,12 +25,46 @@ if TYPE_CHECKING:
 
 
 @dataclass
+class RetrievalGate:
+    """RXP retrieval viability gate for IPI payload generation.
+
+    Built from RXP ValidationResult per-query data. When passed to
+    IPIAdapter, queries with zero retrieval are marked non-viable.
+
+    Note: RXP pre-validation uses an ephemeral ChromaDB collection,
+    not the production RAG system. Results are an approximation.
+
+    Attributes:
+        retrieval_rate: Aggregate fraction of queries where poison was retrieved.
+        query_viability: Mapping of query text to whether poison was retrieved.
+        threshold: Minimum retrieval rate to consider viable (default 0.0
+            means any top-k appearance is sufficient).
+    """
+
+    retrieval_rate: float
+    query_viability: dict[str, bool]
+    threshold: float = 0.0
+
+    @property
+    def viable(self) -> bool:
+        """Whether overall retrieval rate exceeds the threshold."""
+        return self.retrieval_rate > self.threshold
+
+    @property
+    def non_viable_queries(self) -> list[str]:
+        """Queries where poison was not retrieved."""
+        return [q for q, v in self.query_viability.items() if not v]
+
+
+@dataclass
 class IPIAdapterResult:
     """Result from an IPI adapter run."""
 
     run_id: str
-    generate_result: GenerateResult
+    generate_result: GenerateResult | None
     payload_count: int
+    gated: bool = False
+    non_viable_queries: list[str] = field(default_factory=list)
 
 
 class IPIAdapter:
@@ -132,6 +166,10 @@ class IPIAdapter:
         Creates a child run, resolves enums, generates documents, persists
         results, waits for user to deploy payloads, then completes.
 
+        When a RetrievalGate is present in config and the overall retrieval
+        rate is zero (all queries non-viable), generation is skipped and
+        the run is marked complete with non-viable annotations.
+
         Returns:
             IPIAdapterResult with run_id, generate_result, payload_count.
         """
@@ -139,6 +177,25 @@ class IPIAdapter:
         await self._runner.update_child_status(child_id, RunStatus.RUNNING)
 
         try:
+            gate: RetrievalGate | None = self._config.get("retrieval_gate")
+
+            if gate is not None and not gate.viable:
+                non_viable = gate.non_viable_queries
+                await self._runner.emit_progress(
+                    child_id,
+                    f"RXP gate: all {len(non_viable)} queries non-viable "
+                    f"(retrieval rate {gate.retrieval_rate:.0%} <= "
+                    f"threshold {gate.threshold:.0%}), skipping generation",
+                )
+                await self._runner.update_child_status(child_id, RunStatus.COMPLETED)
+                return IPIAdapterResult(
+                    run_id=child_id,
+                    generate_result=None,
+                    payload_count=0,
+                    gated=True,
+                    non_viable_queries=non_viable,
+                )
+
             await self._runner.emit_progress(child_id, "Generating IPI payloads...")
 
             (
@@ -194,10 +251,14 @@ class IPIAdapter:
             await self._runner.update_child_status(child_id, RunStatus.RUNNING)
 
             await self._runner.update_child_status(child_id, RunStatus.COMPLETED)
+
+            non_viable = gate.non_viable_queries if gate is not None else []
             return IPIAdapterResult(
                 run_id=child_id,
                 generate_result=generate_result,
                 payload_count=payload_count,
+                gated=gate is not None,
+                non_viable_queries=non_viable,
             )
 
         except Exception:

@@ -71,9 +71,9 @@ class InjectAdapter:
         try:
             templates = self._select_templates()
 
-            audit_categories = self._query_audit_categories()
-            if audit_categories:
-                templates = self._prioritize_by_findings(templates, audit_categories)
+            combined_cats, native_cats, imported_cats = self._query_audit_categories()
+            if combined_cats:
+                templates = self._prioritize_by_findings(templates, combined_cats)
 
             await self._runner.emit_progress(child_id, f"Testing {len(templates)} payloads...")
 
@@ -85,8 +85,14 @@ class InjectAdapter:
 
             finding_count = sum(1 for r in campaign.results if r.outcome in _OUTCOME_SEVERITY)
             coverage = (
-                build_coverage_report(audit_categories, campaign, templates)
-                if audit_categories
+                build_coverage_report(
+                    combined_cats,
+                    campaign,
+                    templates,
+                    native_categories=native_cats,
+                    imported_categories=imported_cats,
+                )
+                if combined_cats
                 else None
             )
 
@@ -159,19 +165,38 @@ class InjectAdapter:
                     title=f"{result.technique}: {result.payload_name}",
                 )
 
-    def _query_audit_categories(self) -> set[str]:
-        """Query audit finding categories from the DB for the parent run.
+    def _query_audit_categories(
+        self,
+    ) -> tuple[set[str], set[str], set[str]]:
+        """Query finding categories from native audit and imported sources.
+
+        Queries the current workflow run's findings (native) and any
+        imported findings for the same target (external). Returns three
+        sets: combined, native-only, and imported-only.
 
         Returns:
-            Set of unique finding categories, or empty set if unavailable.
+            Tuple of (combined_categories, native_categories,
+            imported_categories). All empty sets if unavailable.
         """
         try:
             with get_connection(self._runner._db_path) as conn:
-                findings = finding_service.get_findings_for_run(conn, self._runner.run_id)
-            return {f.category for f in findings if f.category}
+                native_findings = finding_service.get_findings_for_run(conn, self._runner.run_id)
+                native_cats = {f.category for f in native_findings if f.category}
+
+                target_id = self._config.get("target_id")
+                imported_cats: set[str] = set()
+                if target_id:
+                    child_run_ids = [f.run_id for f in native_findings]
+                    exclude_ids = [self._runner.run_id, *child_run_ids]
+                    imported_findings = finding_service.get_imported_findings_for_target(
+                        conn, target_id, exclude_run_ids=exclude_ids
+                    )
+                    imported_cats = {f.category for f in imported_findings if f.category}
+
+            return native_cats | imported_cats, native_cats, imported_cats
         except Exception:
             logger.debug("No audit findings available for priority ordering", exc_info=True)
-            return set()
+            return set(), set(), set()
 
     @staticmethod
     def _prioritize_by_findings(

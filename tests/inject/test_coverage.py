@@ -157,3 +157,52 @@ class TestBuildCoverageReport:
 
         assert parsed["coverage_ratio"] == 1.0
         assert "tool_poisoning" in parsed["tested_categories"]
+
+    def test_native_and_imported_categories(self) -> None:
+        """Coverage report tracks native and imported categories separately."""
+        templates = [_make_template("t1", ["tool_poisoning", "prompt_injection"])]
+        results = [_make_result("t1", InjectionOutcome.FULL_COMPLIANCE)]
+        campaign = _make_campaign(results)
+
+        report = build_coverage_report(
+            {"tool_poisoning", "prompt_injection"},
+            campaign,
+            templates,
+            native_categories={"tool_poisoning"},
+            imported_categories={"prompt_injection"},
+        )
+
+        assert report.native_categories == {"tool_poisoning"}
+        assert report.imported_categories == {"prompt_injection"}
+        assert report.audit_categories == {"tool_poisoning", "prompt_injection"}
+
+    def test_native_defaults_to_audit_categories(self) -> None:
+        """When native/imported not specified, native defaults to audit_categories."""
+        templates = [_make_template("t1", ["tool_poisoning"])]
+        results = [_make_result("t1", InjectionOutcome.FULL_COMPLIANCE)]
+        campaign = _make_campaign(results)
+
+        report = build_coverage_report({"tool_poisoning"}, campaign, templates)
+
+        assert report.native_categories == {"tool_poisoning"}
+        assert report.imported_categories == set()
+
+    def test_serialization_includes_source_distinction(self) -> None:
+        """to_dict includes native_categories and imported_categories."""
+        import json
+
+        templates = [_make_template("t1", ["tool_poisoning"])]
+        results = [_make_result("t1", InjectionOutcome.FULL_COMPLIANCE)]
+        campaign = _make_campaign(results)
+
+        report = build_coverage_report(
+            {"tool_poisoning", "prompt_injection"},
+            campaign,
+            templates,
+            native_categories={"tool_poisoning"},
+            imported_categories={"prompt_injection"},
+        )
+        parsed = json.loads(json.dumps(report.to_dict()))
+
+        assert parsed["native_categories"] == ["tool_poisoning"]
+        assert parsed["imported_categories"] == ["prompt_injection"]

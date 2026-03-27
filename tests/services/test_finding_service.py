@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from q_ai.core.models import Severity
+from q_ai.core.models import RunStatus, Severity
 from q_ai.services import finding_service
 
 
@@ -120,4 +120,105 @@ class TestGetFindingsForRun:
 
         bare_id = create_run(db, module="workflow", name="empty")
         results = finding_service.get_findings_for_run(db, bare_id)
+        assert results == []
+
+
+class TestGetImportedFindingsForTarget:
+    """Tests for finding_service.get_imported_findings_for_target()."""
+
+    def test_returns_imported_findings_for_target(self, db: sqlite3.Connection) -> None:
+        """Returns findings from import runs matching target_id."""
+        from q_ai.core.db import create_finding, create_run, update_run_status
+
+        # Create a target
+        db.execute(
+            "INSERT INTO targets (id, type, name, created_at) VALUES (?, ?, ?, ?)",
+            ("tgt-1", "server", "test-target", "2026-01-01T00:00:00"),
+        )
+
+        # Create an import run with target_id
+        import_id = create_run(
+            db,
+            module="import",
+            name="garak-import",
+            target_id="tgt-1",
+            source="garak",
+        )
+        update_run_status(db, import_id, RunStatus.COMPLETED)
+        create_finding(
+            db,
+            run_id=import_id,
+            module="garak",
+            category="prompt_injection",
+            severity=Severity.HIGH,
+            title="imported finding",
+        )
+
+        results = finding_service.get_imported_findings_for_target(db, "tgt-1")
+        assert len(results) == 1
+        assert results[0].category == "prompt_injection"
+
+    def test_excludes_specified_run_ids(self, db: sqlite3.Connection) -> None:
+        """Findings from excluded run IDs are not returned."""
+        from q_ai.core.db import create_finding, create_run, update_run_status
+
+        db.execute(
+            "INSERT INTO targets (id, type, name, created_at) VALUES (?, ?, ?, ?)",
+            ("tgt-2", "server", "test-target-2", "2026-01-01T00:00:00"),
+        )
+
+        import_id = create_run(
+            db,
+            module="import",
+            name="import-1",
+            target_id="tgt-2",
+            source="garak",
+        )
+        update_run_status(db, import_id, RunStatus.COMPLETED)
+        create_finding(
+            db,
+            run_id=import_id,
+            module="garak",
+            category="data_leak",
+            severity=Severity.MEDIUM,
+            title="should be excluded",
+        )
+
+        results = finding_service.get_imported_findings_for_target(
+            db, "tgt-2", exclude_run_ids=[import_id]
+        )
+        assert results == []
+
+    def test_ignores_non_import_runs(self, db: sqlite3.Connection) -> None:
+        """Findings from non-import runs (e.g. audit) are not returned."""
+        from q_ai.core.db import create_finding, create_run, update_run_status
+
+        db.execute(
+            "INSERT INTO targets (id, type, name, created_at) VALUES (?, ?, ?, ?)",
+            ("tgt-3", "server", "test-target-3", "2026-01-01T00:00:00"),
+        )
+
+        audit_id = create_run(
+            db,
+            module="audit",
+            name="audit-run",
+            target_id="tgt-3",
+            source="web",
+        )
+        update_run_status(db, audit_id, RunStatus.COMPLETED)
+        create_finding(
+            db,
+            run_id=audit_id,
+            module="audit",
+            category="command_injection",
+            severity=Severity.HIGH,
+            title="native finding",
+        )
+
+        results = finding_service.get_imported_findings_for_target(db, "tgt-3")
+        assert results == []
+
+    def test_empty_when_no_imports(self, db: sqlite3.Connection) -> None:
+        """Returns empty list when no import runs exist for target."""
+        results = finding_service.get_imported_findings_for_target(db, "no-such-target")
         assert results == []
