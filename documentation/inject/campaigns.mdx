@@ -110,6 +110,24 @@ Output raw JSON for programmatic analysis:
 qai inject report -i results/campaign-20260322-120000-000000.json -f json
 ```
 
+## Coverage Reporting
+
+When audit findings are present (i.e., running inside the assess workflow), the inject module generates a coverage report after the campaign completes. The report shows which audit finding categories were exercised by inject payloads and which were not.
+
+The coverage report contains:
+
+- **Coverage ratio** — fraction of audit finding categories that were tested by at least one payload (e.g., "4 of 7 categories exercised — 57%")
+- **Tested categories** — finding categories where at least one matching payload produced a security-relevant outcome (full compliance, partial compliance, or refusal with leak)
+- **Untested categories** — finding categories with no matching payload results. These are gaps worth investigating — the audit found something, but no inject payload tested it
+- **Template matches** — which specific templates matched which categories
+- **Native vs imported breakdown** — when both native audit findings and imported external findings are present, the report shows how many categories came from each source
+
+Coverage reports appear in the web UI on the inject results tab and are stored as evidence on the inject child run.
+
+<Tip>
+A low coverage ratio doesn't mean you're unprotected — it means the current payload library doesn't cover all the vulnerability categories audit found. Consider writing custom payloads for untested categories.
+</Tip>
+
 ## Filtering Campaigns
 
 Narrow the payload set before running a campaign:

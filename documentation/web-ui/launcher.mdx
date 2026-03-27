@@ -26,6 +26,9 @@ Scan, intercept, and test tool trust boundaries in Model Context Protocol server
 - **Inject Techniques**: Checkboxes for prompt injection methods (`description_poisoning`, `output_injection`, `cross_tool_escalation`). All techniques are selected by default.
 - **Advanced: Payload Library**: Toggle to manually select individual payloads, overriding technique filtering.
 - **Audit Scanners**: Checkboxes for scanner checks (e.g., `injection`, `auth`, `token_exposure`, `permissions`). All scanners are selected by default. Use "Select All" / "Clear All" for quick filtering.
+- **Audit Categories**: Checkboxes for audit scanner categories. When the assess workflow runs, audit findings in selected categories inform which inject payloads are prioritized — templates whose `relevant_categories` match discovered findings run first. All techniques are selected by default.
+
+Findings-informed payload selection happens automatically — inject queries audit findings after the audit step completes and prioritizes matching templates. No additional configuration needed.
 
 **Provider requirement**: Yes. If no provider is configured, a warning appears with a link to Settings.
 

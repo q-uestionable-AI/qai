@@ -15,6 +15,7 @@ inject/
 ├── server.py            # build_server() — malicious MCP server for manual testing
 ├── cli.py               # serve, campaign, list-payloads, report commands
 ├── adapter.py           # InjectAdapter for orchestrator integration
+├── coverage.py          # build_coverage_report() — audit finding coverage analysis
 ├── mapper.py            # persist_campaign() — bridges results to core DB
 └── payloads/            # YAML payload templates
     └── *.yaml           # One per injection payload
@@ -72,6 +73,19 @@ Use `qai inject list-payloads` to see the full catalog, filterable by `--techniq
 
 `qai inject serve` builds a standalone MCP server from payload templates. It presents poisoned tools via stdio or Streamable HTTP transport. Connect any MCP client to test how it handles adversarial tool content. This is for manual testing — campaigns automate the process.
 
+## Findings → Payloads Data Flow
+
+When running inside the assess workflow, the inject adapter queries audit findings to inform template selection:
+
+1. **Query native findings** — `finding_service.get_findings_for_run()` retrieves findings from the current workflow run's audit child run
+2. **Query imported findings** — `finding_service.get_imported_findings_for_target()` retrieves findings from `qai import` runs associated with the same target
+3. **Extract categories** — finding categories are collected into native and imported sets
+4. **Prioritize templates** — templates whose `relevant_categories` overlap with the combined finding categories are moved to the front of the execution queue
+5. **Run campaign** — all templates still run (prioritization, not exclusion)
+6. **Build coverage report** — `build_coverage_report()` compares which finding categories were exercised by security-relevant outcomes
+
+The coverage report is persisted as evidence (`type="coverage_report"`) on the inject child run, making it available to the web UI.
+
 ## Adapter
 
-`InjectAdapter` wraps `run_campaign()` for orchestrator integration, handling child run lifecycle, progress events, and finding emission.
+`InjectAdapter` wraps `run_campaign()` for orchestrator integration, handling child run lifecycle, progress events, finding emission, and findings-informed template prioritization. It queries audit findings via `finding_service`, builds a coverage report, and persists it as evidence.

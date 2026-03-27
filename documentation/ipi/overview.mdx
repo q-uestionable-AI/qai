@@ -69,6 +69,24 @@ The callback listener records incoming HTTP requests and assigns a **confidence 
 
 All hits are stored in the database and accessible via `qai ipi status` or the web dashboard.
 
+## Retrieval Pre-Validation
+
+When running through the Test Document Ingestion workflow with RXP enabled, IPI receives retrieval pre-validation results before generating payloads. This prevents generating documents that would never be retrieved by the target RAG system.
+
+Three states are possible:
+
+| State | What Happens |
+|-------|--------------|
+| RXP disabled (default) | IPI generates all payloads — no gating applied |
+| RXP enabled, zero retrieval | IPI skips generation entirely. The run completes with zero payloads and marks all queries as non-viable |
+| RXP enabled, partial or full retrieval | IPI generates all payloads normally. Queries where the poison document was not retrieved are annotated as non-viable in the results |
+
+Generation is not suppressed per-query because IPI generates payloads per format and technique (e.g., one PDF with white_ink technique), not per query. The non-viable query annotations tell you which retrieval paths are weak spots.
+
+When RXP fails or its dependencies are missing, IPI runs ungated — identical to RXP being disabled.
+
+See [RXP → IPI Pipeline](/rxp/overview#rxp--ipi-pipeline) for the full gating model.
+
 ## Safety and Authorization
 
 <Warning>

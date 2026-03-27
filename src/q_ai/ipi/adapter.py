@@ -166,9 +166,15 @@ class IPIAdapter:
         Creates a child run, resolves enums, generates documents, persists
         results, waits for user to deploy payloads, then completes.
 
-        When a RetrievalGate is present in config and the overall retrieval
-        rate is zero (all queries non-viable), generation is skipped and
-        the run is marked complete with non-viable annotations.
+        When a RetrievalGate is present in config:
+        - Zero retrieval rate (all queries non-viable): generation is skipped,
+          run marked complete with non-viable annotations.
+        - Partial retrieval (some queries viable, some not): all payloads are
+          generated and non-viable queries are annotated in the result.
+          Generation is not suppressed per-query because IPI generates per
+          format/technique, not per query.
+        - Gate absent (RXP disabled or failed): all payloads generated, no
+          gating applied.
 
         Returns:
             IPIAdapterResult with run_id, generate_result, payload_count.

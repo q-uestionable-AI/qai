@@ -59,6 +59,12 @@ The proxy bridges three MCP transports:
 
 Proxy is interactive. It captures and replays traffic but does not produce findings or vulnerability assessments. The researcher observes, inspects, and optionally modifies messages in real time. Session recordings provide evidence for later analysis, but the analysis itself is manual.
 
+## Chain Correlation
+
+When the proxy runs as part of a chain execution, captured traffic is tagged with `chain_run_id` and `chain_step_id` fields on the proxy session. This enables post-execution analysis: for any chain step that involved MCP traffic through the proxy, you can find the corresponding captured messages and correlate network behavior with specific attack chain steps.
+
+Chain correlation is automatic — no additional configuration needed when running chains that include audit steps through the proxy.
+
 ## Next Steps
 
 - **[CLI Commands](./cli.mdx)** — Start, replay, export, and inspect sessions

@@ -110,6 +110,12 @@
         ]
       },
       {
+        "group": "External Tool Import",
+        "pages": [
+          "imports/overview"
+        ]
+      },
+      {
         "group": "Exports & Integrations",
         "pages": [
           "exports/json-schema",
