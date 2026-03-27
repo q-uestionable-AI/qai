@@ -11,6 +11,8 @@ qai is a modular, layered system with seven security testing modules unified thr
 
 **Orchestrator Layer** — Workflow registry, WorkflowRunner for background task execution, module adapters for lifecycle management. Manages parent/child run relationships and cross-module coordination.
 
+**Service Layer** — Typed query functions in `q_ai.services` (finding_service, run_service, evidence_service). Sits between the orchestrator/web layers and the core DB. Used by adapters for cross-module data queries (e.g., inject adapter querying audit findings) and by route handlers for template context loading.
+
 **Module Layer** — Seven security modules (audit, proxy, inject, chain, ipi, cxp, rxp), each with a CLI subcommand (Typer), adapter class for orchestrator integration, and mapper for DB persistence.
 
 **Shared Core Layer** — SQLite database (WAL mode, schema V10), configuration management (YAML + keyring + DB settings), FrameworkResolver for OWASP MCP Top 10 / MITRE ATLAS / CWE / OWASP Agentic Top 10 mapping, MitigationResolver for structured finding guidance, RunGuidance for deployment playbooks, LLM provider abstraction via litellm.
@@ -43,6 +45,7 @@ qai ipi listen                   # Start callback listener
 qai chain run                    # Execute attack chain
 qai cxp generate                 # Build poisoned instruction files
 qai rxp validate                 # Measure retrieval rank
+qai import                       # Import external tool findings
 qai runs list                    # View run history
 qai findings list                # View all findings
 qai config set-credential        # Store provider API key
@@ -53,9 +56,10 @@ qai update-frameworks            # Check for upstream framework changes
 
 1. **Run creation** — User launches a workflow via web UI or CLI. The orchestrator creates a parent run and child runs per module.
 2. **Module execution** — Each module adapter runs its domain logic (scan, campaign, generate, validate). Results persist to SQLite via mapper functions.
-3. **Finding emission** — Modules emit findings with severity, category, and framework IDs. The MitigationResolver generates structured remediation guidance per finding.
-4. **Real-time updates** — WebSocket broadcasts run status changes, progress messages, and IPI hit notifications to the web UI.
-5. **Export** — Results export as JSON bundles, SARIF, NDJSON, CSV, or HTML reports.
+3. **Cross-module queries** — The service layer enables modules to query each other's results. The inject adapter queries audit findings via `finding_service` to prioritize templates. The IPI adapter receives retrieval gates from RXP via the workflow orchestrator.
+4. **Finding emission** — Modules emit findings with severity, category, and framework IDs. The MitigationResolver generates structured remediation guidance per finding.
+5. **Real-time updates** — WebSocket broadcasts run status changes, progress messages, and IPI hit notifications to the web UI.
+6. **Export** — Results export as JSON bundles, SARIF, NDJSON, CSV, or HTML reports.
 
 ## Configuration Precedence
 

@@ -40,6 +40,18 @@ Model selection uses provider/model format: `anthropic/claude-sonnet-4-20250514`
 
 Inject campaigns are automated once configured — select a model, select techniques, set rounds, launch. The scoring is string-matching heuristics (not semantic analysis), so the full evidence is preserved for manual review. The iteration comes before the run: crafting or selecting YAML templates that test the right attack vectors for your target.
 
+## Findings-Informed Payload Selection
+
+When running inside the assess workflow, the inject adapter automatically queries audit findings to prioritize which templates are most relevant. Templates declare `relevant_categories` in their YAML metadata (e.g., `tool_poisoning`, `prompt_injection`, `permissions`). If audit found command injection vulnerabilities, templates targeting those categories run first.
+
+This is priority ordering, not exclusion — all selected templates still run. Templates matching audit findings are moved to the front of the queue.
+
+### Imported Findings
+
+Imported external findings (from `qai import --target`) participate in the same mechanism. The inject adapter queries both native audit findings from the current workflow run and imported findings (Garak, PyRIT, SARIF) associated with the same target. If you imported Garak results showing prompt injection vulnerabilities, inject templates with `relevant_categories: [prompt_injection]` will be prioritized alongside any native audit findings.
+
+Without imported findings for the target, behavior is unchanged — template selection uses native audit findings only, or runs all templates if no findings are present.
+
 ## Next Steps
 
 - [Inject CLI](/inject/cli) — Commands for serving payloads and running campaigns

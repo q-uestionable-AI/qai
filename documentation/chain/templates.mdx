@@ -61,14 +61,15 @@ steps:
 |-------|------|----------|-------------|
 | `id` | string | Yes | Unique step identifier within the chain |
 | `name` | string | Yes | Human-readable step description |
-| `module` | string | Yes | Which qai module provides this step: `audit` or `inject` |
+| `module` | string | Yes | Which qai module provides this step: `audit`, `inject`, `ipi`, `cxp`, or `rxp` |
 | `technique` | string | Yes | Specific technique within the module |
 | `depends_on` | array | No | List of step IDs that must succeed before this step |
 | `trust_boundary` | string | No | System boundary crossed by this step |
 | `on_success` | string | No | Step ID to execute on success, or `abort` to end chain |
 | `on_failure` | string | No | Step ID to execute on failure (default: `abort`) |
 | `terminal` | boolean | No | Whether this is the final step (default: false) |
-| `inputs` | object | No | Input parameters for live execution (ignored in dry-run) |
+| `inputs` | object | No | Input parameters for live execution (ignored in dry-run). Set `manual_gate: true` for IPI/CXP steps that require human action before continuing |
+| `relevant_categories` | array | No | Audit finding categories this step is relevant to (e.g., `tool_poisoning`, `command_injection`). Used for coverage tracking and entry point matching |
 
 ## Trust Boundaries
 
@@ -83,6 +84,11 @@ Trust boundaries identify system crossings during an attack:
 | `llm-to-agent` | LLM output shaping agent behavior |
 | `user-to-system` | User input entering application logic |
 | `agent-to-data` | Agent accessing data stores or retrieval layers |
+| `attacker-to-document` | Attacker-crafted content entering document ingestion |
+| `attacker-to-context` | Poisoned context files entering IDE/assistant |
+| `corpus-to-retriever` | Document corpus influencing retrieval ranking |
+| `retriever-to-agent` | Retrieved content shaping agent behavior |
+| `agent-to-server` | Agent-generated code deployed as server |
 
 ## Built-in Templates
 
@@ -207,6 +213,121 @@ steps:
     terminal: true
 ```
 
+### document-poisoning
+
+**Category:** hybrid
+
+Generate IPI payloads, pause for human deployment into a target agent's ingestion pipeline, then audit scan the target to check for exploitation evidence.
+
+```yaml
+id: document-poisoning
+name: Document Poisoning Chain
+category: hybrid
+description: >
+  Generate IPI payloads (poisoned documents), pause for human deployment
+  into a target agent's ingestion pipeline, then audit scan the target
+  MCP server to check if the agent called vulnerable tools after
+  ingesting the poisoned document. Demonstrates IPI -> audit cross-cluster path.
+steps:
+  - id: generate-payloads
+    name: Generate IPI document payloads
+    module: ipi
+    technique: pdf
+    trust_boundary: attacker-to-document
+    on_success: scan-target
+    on_failure: abort
+    inputs:
+      manual_gate: true
+    relevant_categories:
+      - indirect_prompt_injection
+
+  - id: scan-target
+    name: Audit scan target server for exploitation evidence
+    module: audit
+    technique: injection
+    trust_boundary: agent-to-tool
+    terminal: true
+    relevant_categories:
+      - command_injection
+      - tool_poisoning
+```
+
+### context-poisoning
+
+**Category:** hybrid
+
+Build a poisoned context file repo, pause for human to test in a coding assistant, then audit scan the generated server for vulnerabilities.
+
+```yaml
+id: context-poisoning
+name: Context Poisoning Chain
+category: hybrid
+description: >
+  Build a poisoned context file repo (CXP), pause for human to open
+  in a coding assistant and run the trigger prompt, then audit scan
+  the generated server to check if it contains vulnerabilities.
+  Demonstrates CXP -> audit cross-cluster path.
+steps:
+  - id: build-repo
+    name: Build poisoned context file repository
+    module: cxp
+    technique: cursorrules
+    trust_boundary: attacker-to-context
+    on_success: scan-generated
+    on_failure: abort
+    inputs:
+      manual_gate: true
+    relevant_categories:
+      - context_file_poisoning
+
+  - id: scan-generated
+    name: Audit scan generated server for vulnerabilities
+    module: audit
+    technique: injection
+    trust_boundary: agent-to-server
+    terminal: true
+    relevant_categories:
+      - command_injection
+      - permissions
+```
+
+### rag-validation
+
+**Category:** rag_pipeline
+
+Validate that poison documents achieve high retrieval rank, then generate IPI payloads targeting the retrieval path.
+
+```yaml
+id: rag-validation
+name: RAG Validation Chain
+category: rag_pipeline
+description: >
+  Validate that poison documents are retrieved by the RAG pipeline
+  (RXP), then generate IPI payloads targeting the retrieval path,
+  pause for human deployment. Demonstrates RXP -> IPI pipeline as a chain.
+steps:
+  - id: validate-retrieval
+    name: Validate poison document retrieval
+    module: rxp
+    technique: minilm-l6
+    trust_boundary: corpus-to-retriever
+    on_success: generate-ipi
+    on_failure: abort
+    relevant_categories:
+      - rag_poisoning
+
+  - id: generate-ipi
+    name: Generate IPI payloads for retrieval path
+    module: ipi
+    technique: pdf
+    trust_boundary: retriever-to-agent
+    terminal: true
+    inputs:
+      manual_gate: true
+    relevant_categories:
+      - indirect_prompt_injection
+```
+
 ## Writing Custom Chains
 
 1. **Define the attack hypothesis** — What architecture are you targeting? What vulnerabilities will you exploit?
@@ -280,8 +401,32 @@ Three injection technique categories:
 - `output_injection` — Inject instructions into tool response content
 - `cross_tool_escalation` — Chain trust across multiple tools to escalate
 
+### ipi module
+
+IPI steps generate poisoned documents. The `technique` field is the document format:
+
+`pdf`, `md`, `html`, `docx`, `ics`, `eml`, `image`
+
+IPI steps typically use `manual_gate: true` in their inputs, since the researcher must deploy the generated documents to the target system before the chain continues.
+
+### cxp module
+
+CXP steps build poisoned context file repositories. The `technique` field is the format ID:
+
+`cursorrules`, `claude-md`, `copilot-instructions`, `windsurf`, `cline`, `aider`, `codex`, `devin`
+
+CXP steps typically use `manual_gate: true`, since the researcher must open the repo in a coding assistant and run the trigger prompt.
+
+### rxp module
+
+RXP steps validate retrieval poisoning. The `technique` field is the embedding model ID:
+
+`minilm-l6`, `minilm-l12`, `bge-small`, or any HuggingFace sentence-transformers model name.
+
+RXP requires the optional `[rxp]` dependencies.
+
 <Note>
-Only `audit` and `inject` are valid chain modules. CXP, IPI, RXP, and proxy cannot be used as chain steps — they operate outside the MCP tool interaction model that chains test.
+Five modules are valid chain steps: `audit`, `inject`, `ipi`, `cxp`, and `rxp`. The `proxy` module is not a chain step — it operates as background traffic capture correlated to chain execution via `chain_run_id` and `chain_step_id` fields on proxy sessions.
 </Note>
 
 ## Best Practices

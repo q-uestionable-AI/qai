@@ -149,6 +149,29 @@ With 80% retrieval rate, this is a **critical** severity finding — the poisone
 - **Different queries** — Test with varied questions to confirm robustness across query patterns
 - **Different models** — Try alternative embedding models to evaluate whether the vulnerability is model-specific or systemic
 
+## RXP → IPI Pipeline
+
+In the Test Document Ingestion workflow, RXP retrieval results can gate IPI payload generation. When RXP is enabled (via the "Pre-validate retrieval rank with RXP" toggle in the launcher, or `rxp_enabled: true` in the workflow config), the workflow runs RXP first, then passes retrieval results to IPI as a gate.
+
+### How Gating Works
+
+Gating is document-level, not per-query. The decision logic:
+
+- **RXP disabled** — IPI generates all payloads (default behavior, no gating)
+- **RXP enabled, zero retrieval** — no queries retrieved the poison document. IPI skips generation entirely and marks all queries as non-viable
+- **RXP enabled, any retrieval** — at least one query retrieved the poison document. IPI generates all payloads and annotates which queries were non-viable in the result
+
+Per-query suppression isn't possible because IPI generates payloads per format and technique, not per query. A PDF payload with the white_ink technique is the same file regardless of which query triggers retrieval. The non-viable query annotations give researchers the information without overcomplicating generation.
+
+### Graceful Degradation
+
+- If RXP fails (dependency missing, embedding model error, etc.), IPI runs ungated — same as if RXP were disabled
+- If RXP optional dependencies are not installed, the launcher shows a warning with the install command
+
+<Note>
+RXP pre-validation uses an ephemeral ChromaDB collection, not the production RAG system. Retrieval results are an approximation — a document that ranks well in the ephemeral collection may behave differently in the target system's actual retrieval pipeline.
+</Note>
+
 ## When To Use RXP
 
 - Measuring whether a specific RAG system is vulnerable to document poisoning

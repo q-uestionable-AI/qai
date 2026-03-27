@@ -104,6 +104,13 @@ qai chain run --chain-file FILE [OPTIONS]
 | `--verbose`, `-v` | No | flag | Enable verbose output during execution |
 | `--targets` | No | string | Path to chain-targets.yaml config file |
 | `--inject-model` | No | string | Override inject model from config (format: `provider/model`) |
+| `--ipi-callback-url` | No | string | IPI callback URL for payload generation |
+| `--ipi-output-dir` | No | string | Output directory for IPI payloads |
+| `--ipi-format` | No | string | Document format for IPI payloads (pdf, md, html, etc.) |
+| `--cxp-format-id` | No | string | CXP context file format ID (e.g., cursorrules, claude-md) |
+| `--cxp-output-dir` | No | string | Output directory for CXP poisoned repos |
+| `--rxp-model-id` | No | string | Embedding model ID for RXP validation |
+| `--rxp-profile-id` | No | string | RXP validation profile ID |
 
 **Examples:**
 
@@ -130,6 +137,16 @@ qai chain run \
   --targets ~/.qai/chain-targets.yaml \
   --inject-model "anthropic/claude-sonnet-4-20250514" \
   --output results.json
+```
+
+```bash cross-cluster with IPI
+qai chain run \
+  --chain-file document_poisoning.yaml \
+  --no-dry-run \
+  --targets ~/.qai/chain-targets.yaml \
+  --ipi-callback-url "http://10.0.0.1:8080/callback" \
+  --ipi-output-dir ./payloads \
+  --ipi-format pdf
 ```
 </CodeGroup>
 

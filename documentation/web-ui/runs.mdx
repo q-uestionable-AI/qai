@@ -62,6 +62,15 @@ Network traffic capture and analysis results. Shows intercepted requests/respons
 
 Prompt injection test results: payloads attempted, success rates, evasion effectiveness, and extraction outputs.
 
+### Inject Coverage Report
+
+When audit findings were present in the assess workflow, the inject tab includes a coverage report section between the stats bar and the payload results table. The coverage report shows:
+
+- **Coverage ratio** — how many audit finding categories were exercised by inject payloads (e.g., "4 of 7 categories exercised — 57%")
+- **Tested categories** — categories where at least one payload produced a security-relevant outcome, shown as green badges
+- **Untested categories** — categories found by audit but not exercised by any payload, shown as warning badges. These are gaps worth investigating
+- **Native vs imported breakdown** — when both native audit findings and imported external findings (from `qai import --target`) contributed categories, the report shows the count from each source
+
 ### IPI Tab
 
 Indirect prompt injection results with guidance blocks for deployment mitigations.
@@ -75,6 +84,16 @@ Context file poisoning results with deployment playbooks.
 **Guidance blocks** show how to detect and respond to context poisoning in AI-assisted development workflows.
 
 **Conclude Campaign button**: Marks an IPI/CXP workflow as concluded, recording the outcome for future runs.
+
+### IPI Gating Banner
+
+When the Test Document Ingestion workflow ran with RXP pre-validation enabled, the IPI tab shows an info banner above the deployment playbook indicating that retrieval gating was active. The banner shows the retrieval rate and lists any queries where the poison document was not retrieved (non-viable queries). If all queries were non-viable and generation was skipped, the banner shows a clear message instead of the playbook.
+
+## Import Runs
+
+Runs created by `qai import` appear in the run history with display names like "Import (Garak)", "Import (PyRIT)", or "Import (SARIF)". Import runs show a source badge with the external tool name. Import runs store findings but don't have child module runs — their finding count reflects findings directly on the import run.
+
+Imported findings in the findings table show source attribution badges distinguishing them from native audit findings.
 
 ## Findings Display
 

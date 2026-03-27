@@ -55,6 +55,15 @@ Each step declares which qai module provides its technique:
 |--------|---------|-----------------|
 | `audit` | Vulnerability scanning | Any of the 10 scanner names (injection, auth, token_exposure, permissions, tool_poisoning, prompt_injection, audit_telemetry, supply_chain, shadow_servers, context_sharing) |
 | `inject` | Payload injection and escalation | output_injection, cross_tool_escalation, description_poisoning |
+| `ipi` | Indirect prompt injection payloads | Any IPI format name (pdf, md, html, docx, ics, eml, image) |
+| `cxp` | Context file poisoning | Any CXP format ID (cursorrules, claude-md, copilot-instructions, windsurf, cline, aider, codex, devin) |
+| `rxp` | RAG retrieval validation | Any embedding model ID (minilm-l6, minilm-l12, bge-small, or HuggingFace model name) |
+
+### Manual Gates
+
+IPI and CXP steps support manual gates — the chain pauses after the step completes and waits for the researcher to perform a manual action (deploy payloads, open a repo in a coding assistant) before resuming. Set `manual_gate: true` in the step's `inputs` to enable this.
+
+When a chain step has a manual gate, the web UI renders a deployment playbook with the same guidance blocks shown in standalone IPI and CXP runs (file inventory, trigger prompts, deployment steps, interpretation guide).
 
 ## Trust Boundaries
 
@@ -72,11 +81,14 @@ These boundaries identify the critical points where an attacker gained influence
 
 ## Built-in Templates
 
-QAI includes reference chains for common architectures:
+qai includes six reference chains for common architectures:
 
-- **delegation-hijack** — Exploit weak tool trust in agent delegation
-- **mcp-server-compromise** — Attack MCP server implementations
-- **rag-trust-escalation** — Escalate from RAG retrieval to agent control
+- **delegation-hijack** — Exploit weak tool trust in agent delegation (audit → inject)
+- **mcp-server-compromise** — Attack MCP server implementations (audit → inject)
+- **rag-trust-escalation** — Escalate from RAG retrieval to agent control (inject chain)
+- **document-poisoning** — Generate IPI payloads, deploy to target, audit for exploitation evidence (ipi → audit, manual gate)
+- **context-poisoning** — Build poisoned context repo, test in coding assistant, audit generated code (cxp → audit, manual gate)
+- **rag-validation** — Validate retrieval poisoning, then generate IPI payloads for the retrieval path (rxp → ipi, manual gate)
 
 Use templates as starting points for custom chains.
 
@@ -91,7 +103,7 @@ Use templates as starting points for custom chains.
 
 ## What to Expect
 
-Defining chains is manual YAML authoring — you describe an attack hypothesis as a sequence of steps. Validation and dry-run tracing are instant and automated. Live execution is automated but requires a configured target and LLM provider. Blast radius analysis and detection rule generation are automated post-processing on completed executions. Currently only audit and inject are supported as step modules.
+Defining chains is manual YAML authoring — you describe an attack hypothesis as a sequence of steps. Validation and dry-run tracing are instant and automated. Live execution is automated but requires a configured target and LLM provider. Blast radius analysis and detection rule generation are automated post-processing on completed executions. All five testing modules (audit, inject, ipi, cxp, rxp) are valid chain steps. IPI and CXP steps support manual gates for human-in-the-loop testing.
 
 ## Next Steps
 
