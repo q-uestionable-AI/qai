@@ -84,6 +84,11 @@ Trust boundaries identify system crossings during an attack:
 | `llm-to-agent` | LLM output shaping agent behavior |
 | `user-to-system` | User input entering application logic |
 | `agent-to-data` | Agent accessing data stores or retrieval layers |
+| `attacker-to-document` | Attacker-crafted content entering document ingestion |
+| `attacker-to-context` | Poisoned context files entering IDE/assistant |
+| `corpus-to-retriever` | Document corpus influencing retrieval ranking |
+| `retriever-to-agent` | Retrieved content shaping agent behavior |
+| `agent-to-server` | Agent-generated code deployed as server |
 
 ## Built-in Templates
 

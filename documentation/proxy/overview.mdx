@@ -61,9 +61,11 @@ Proxy is interactive. It captures and replays traffic but does not produce findi
 
 ## Chain Correlation
 
-When the proxy runs as part of a chain execution, captured traffic is tagged with `chain_run_id` and `chain_step_id` fields on the proxy session. This enables post-execution analysis: for any chain step that involved MCP traffic through the proxy, you can find the corresponding captured messages and correlate network behavior with specific attack chain steps.
+The proxy data model supports chain correlation via `chain_run_id` and `chain_step_id` fields on the proxy session. When populated, these enable post-execution analysis: for any chain step that involved MCP traffic through the proxy, you can find the corresponding captured messages and correlate network behavior with specific attack chain steps.
 
-Chain correlation is automatic — no additional configuration needed when running chains that include audit steps through the proxy.
+<Note>
+Chain correlation fields are stored and persisted by the proxy's `SessionStore` and mapper, but must be explicitly passed when creating a session. Automatic propagation from the chain executor to the proxy adapter is not yet wired — if you need chain-tagged sessions, pass the chain context when constructing `SessionStore`.
+</Note>
 
 ## Next Steps
 

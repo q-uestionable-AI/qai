@@ -167,12 +167,15 @@ class IPIAdapter:
         results, waits for user to deploy payloads, then completes.
 
         When a RetrievalGate is present in config:
-        - Zero retrieval rate (all queries non-viable): generation is skipped,
-          run marked complete with non-viable annotations.
-        - Partial retrieval (some queries viable, some not): all payloads are
-          generated and non-viable queries are annotated in the result.
-          Generation is not suppressed per-query because IPI generates per
-          format/technique, not per query.
+        - Retrieval rate at or below threshold (retrieval_rate <= threshold,
+          default threshold 0.0): generation is skipped, run marked complete
+          with non-viable annotations. With the default threshold this means
+          zero retrieval; a non-zero threshold can suppress generation for
+          low but non-zero retrieval rates.
+        - Retrieval rate above threshold (some or all queries viable): all
+          payloads are generated and non-viable queries are annotated in the
+          result. Generation is not suppressed per-query because IPI generates
+          per format/technique, not per query.
         - Gate absent (RXP disabled or failed): all payloads generated, no
           gating applied.
 
