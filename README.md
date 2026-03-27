@@ -3,7 +3,6 @@
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![CI](https://github.com/q-uestionable-AI/qai/actions/workflows/ci.yml/badge.svg)](https://github.com/q-uestionable-AI/qai/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/richardspicer/mutual-dissent/actions/workflows/codeql.yml/badge.svg)](https://github.com/richardspicer/mutual-dissent/actions/workflows/codeql.yml)
-![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/q-uestionable-AI/qai?utm_source=oss&utm_medium=github&utm_campaign=q-uestionable-AI%2Fqai&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
