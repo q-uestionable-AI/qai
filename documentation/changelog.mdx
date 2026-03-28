@@ -3,6 +3,53 @@ title: Changelog
 description: Release history for q-ai
 ---
 
+## v0.6.1
+
+CI and repo hygiene.
+
+- CodeQL workflow added (`.github/workflows/codeql.yml`) — was missing since repo creation despite scaffolding checklist requiring it
+- CodeQL badge URL fixed — was pointing to archived `mutual-dissent` repo
+- CodeRabbit badge removed (uninstalled in v0.5.0 cycle)
+
+## v0.6.0
+
+Module Composition — cross-module data flow, external tool import, and web UI catch-up.
+
+- Service layer: `finding_service`, `run_service`, `evidence_service` in `src/q_ai/services/`
+- Run source provenance: `source` field on Run model (schema V11) tracking CLI, web UI, import, or workflow origin
+- Findings-informed inject: templates declare `relevant_categories`, adapter queries audit findings and prioritizes matching payloads
+- Coverage reporting: `CoverageReport` tracks which audit categories were exercised by inject campaigns
+- Chain entry hints: chain steps declare `relevant_categories` for audit-informed sequencing
+- Cross-cluster chain MVP: 7-module dispatch, manual gates with deployment guidance, proxy correlation
+- External tool import: `qai import <file> --format garak|pyrit|sarif` with taxonomy bridging and provenance tracking
+- RXP→IPI retrieval gate: RXP validates retrieval before IPI payload generation, non-viable queries annotated
+- Web UI: coverage report panel, import run visibility with source badges, chain manual gate guidance, IPI gating banner, infrastructure refresh button
+- Mintlify docs: imports overview page, 15 page updates covering all composition features
+
+## v0.5.3
+
+Supply chain response and IPI token hardening.
+
+- Excluded compromised litellm 1.82.8 from dependency range (malicious `.pth` credential exfiltration)
+- IPI tokens now use unambiguous alphabet — LLMs confuse `0/O`, `1/l/I` when reproducing callback URLs
+- MCP `ModelContextProtocol/1.0` User-Agent now recognized in IPI hit scoring
+- `requires-python` capped below 3.14 (litellm resolution failure)
+
+## v0.5.2
+
+Mintlify documentation rewrite, workflow UX fixes, and data corrections.
+
+- Mintlify docs rewrite: 30+ fabricated details corrected against source code across all module pages
+- SARIF download route added (endpoint existed in template but route handler was missing)
+- WebSocket polling fallback (5s interval) for terminal status detection
+- IPI callback URL auto-detect via UDP socket probe
+- Human-friendly status pills (`WAITING_FOR_USER` → "Waiting For User")
+- CXP launcher dropdown fix (sent wrong format IDs)
+- Launcher panel width transition smoothed on accordion expand
+- IPI callback URL hint clarified, CXP submit button label changed to "Generate"
+- Em dash data fixes in mitigations.yaml (16) and CXP rules (7) — mojibake through encoding layers
+- CXP rule descriptions: Python octal notation (`0o777`) replaced with Unix notation (`0777`)
+
 ## v0.5.1
 
 PyPI and Python version classifier updates.
