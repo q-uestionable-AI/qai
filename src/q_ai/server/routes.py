@@ -539,11 +539,42 @@ def _build_history_context(
         targets = list_targets(conn)
         target_map = {t.id: t for t in targets}
 
+        # Batch finding counts and report runs to fix N+1 queries (O(1) instead of O(N))
+        run_ids = [r.id for r in parent_runs] + [r.id for r in import_runs]
+        finding_counts = {}
+        if run_ids:
+            ph = ", ".join("?" for _ in run_ids)
+            rows = conn.execute(
+                f"SELECT COALESCE(r.parent_run_id, r.id) as pid, COUNT(f.id) as cnt "  # noqa: S608
+                f"FROM findings f JOIN runs r ON f.run_id = r.id "
+                f"WHERE COALESCE(r.parent_run_id, r.id) IN ({ph}) GROUP BY pid",
+                run_ids,
+            ).fetchall()
+            finding_counts = {r["pid"]: r["cnt"] for r in rows}
+
+        target_ids = list(
+            {
+                r.target_id or (r.config or {}).get("target_id")
+                for r in parent_runs
+                if r.target_id or (r.config or {}).get("target_id")
+            }
+        )
+        report_runs = {}
+        if target_ids:
+            ph = ", ".join("?" for _ in target_ids)
+            rows = conn.execute(
+                f"SELECT target_id, id FROM runs "  # noqa: S608
+                f"WHERE name = 'generate_report' AND target_id IN ({ph}) "
+                f"AND status IN (?, ?) ORDER BY finished_at DESC",
+                (*target_ids, int(RunStatus.COMPLETED), int(RunStatus.PARTIAL)),
+            ).fetchall()
+            for r in rows:
+                if r["target_id"] not in report_runs:
+                    report_runs[r["target_id"]] = r["id"]
+
         history_runs: list[_HistoryRow] = []
         for run in parent_runs:
-            child_ids = run_service.get_child_run_ids(conn, run.id)
-            all_ids = [run.id, *child_ids]
-            finding_count = run_service.get_finding_count_for_runs(conn, all_ids)
+            finding_count = finding_counts.get(run.id, 0)
 
             wf = get_workflow(run.name) if run.name else None
             display_name = (
@@ -558,18 +589,8 @@ def _build_history_context(
 
             duration = _compute_duration(run)
 
-            # Check for existing report run for this target
-            report_run_id = None
-            if eff_target_id:
-                report_row = conn.execute(
-                    """SELECT id FROM runs
-                       WHERE name = 'generate_report' AND target_id = ?
-                       AND status IN (?, ?)
-                       ORDER BY finished_at DESC LIMIT 1""",
-                    (eff_target_id, int(RunStatus.COMPLETED), int(RunStatus.PARTIAL)),
-                ).fetchone()
-                if report_row:
-                    report_run_id = report_row["id"]
+            # Get pre-computed latest report run
+            report_run_id = report_runs.get(eff_target_id)
 
             history_runs.append(
                 _HistoryRow(
@@ -590,7 +611,7 @@ def _build_history_context(
                 continue  # Import runs don't match workflow filters
             source_name = run.source or "Unknown"
             display_name = f"Import ({source_name.title()})"
-            finding_count = run_service.get_finding_count_for_runs(conn, [run.id])
+            finding_count = finding_counts.get(run.id, 0)
 
             eff_target_id = run.target_id
             target = target_map.get(eff_target_id) if eff_target_id else None
