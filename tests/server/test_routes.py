@@ -6,14 +6,14 @@ from fastapi.testclient import TestClient
 
 
 class TestLauncherRoute:
-    """GET / returns the launcher page."""
+    """GET /launcher returns the launcher page."""
 
     def test_returns_200(self, client: TestClient) -> None:
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert resp.status_code == 200
 
     def test_contains_workflow_rows(self, client: TestClient) -> None:
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert "Assess an MCP Server" in resp.text
         assert "Test Document Ingestion" in resp.text
         assert "Test Context Poisoning" in resp.text
@@ -23,12 +23,13 @@ class TestLauncherRoute:
         assert "Generate Report" not in resp.text
 
     def test_contains_nav_links(self, client: TestClient) -> None:
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert 'href="/"' in resp.text
         assert 'href="/runs"' in resp.text
+        assert 'href="/launcher"' in resp.text
 
     def test_contains_docs_pill(self, client: TestClient) -> None:
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert "docs.q-uestionable.ai" in resp.text
         assert "docs-pill" in resp.text
 
@@ -98,7 +99,7 @@ class TestLauncherRxpAlwaysAvailable:
 
     def test_rxp_toggle_present_and_enabled(self, client: TestClient) -> None:
         """RXP toggle is always present and not disabled."""
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert resp.status_code == 200
         assert 'name="rxp_enabled"' in resp.text
         assert "RXP pre-validation requires additional dependencies" not in resp.text

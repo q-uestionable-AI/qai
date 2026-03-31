@@ -16,7 +16,7 @@ class TestWorkflowAccordion:
     """Launcher renders accordion rows for all visible workflows."""
 
     def test_all_visible_rows_present(self, client: TestClient) -> None:
-        resp = client.get("/")
+        resp = client.get("/launcher")
         for name in [
             "Assess an MCP Server",
             "Test Document Ingestion",
@@ -29,17 +29,17 @@ class TestWorkflowAccordion:
         assert "Generate Report" not in resp.text
 
     def test_module_pills_present(self, client: TestClient) -> None:
-        resp = client.get("/")
+        resp = client.get("/launcher")
         for mod in ["audit", "proxy", "inject", "ipi", "cxp", "rxp", "chain"]:
             assert mod in resp.text
 
     def test_accordion_panel_present(self, client: TestClient) -> None:
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert "wf-panel" in resp.text
         assert "wf-row" in resp.text
 
     def test_all_rows_collapsed_by_default(self, client: TestClient) -> None:
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert 'id="wf-row-assess"' in resp.text
         # No row should have the expanded class in the server-rendered HTML
         assert 'class="wf-row expanded' not in resp.text
@@ -50,7 +50,7 @@ class TestWorkflowAccordion:
             patch("q_ai.server.routes.get_credential", return_value="test-key"),
             patch("q_ai.core.providers.get_credential", return_value="test-key"),
         ):
-            resp = client.get("/")
+            resp = client.get("/launcher")
         assert "form-assess" in resp.text
         # generate_report is hidden from launcher, no form expected
         assert "form-generate_report" not in resp.text

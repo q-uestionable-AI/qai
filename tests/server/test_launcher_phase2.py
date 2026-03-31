@@ -15,31 +15,31 @@ class TestAccordionLayout:
 
     def test_accordion_panel_present(self, client: TestClient) -> None:
         """Launcher page contains the accordion panel."""
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert resp.status_code == 200
         assert "wf-panel" in resp.text
 
     def test_assess_is_first_row(self, client: TestClient) -> None:
         """Assess workflow row is present as the first row."""
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert "Assess an MCP Server" in resp.text
         assert 'id="wf-row-assess"' in resp.text
 
     def test_all_rows_collapsed_by_default(self, client: TestClient) -> None:
         """No row is expanded in the server-rendered HTML."""
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert 'class="wf-row expanded' not in resp.text
 
     def test_all_workflow_rows_present(self, client: TestClient) -> None:
         """All visible workflows render as accordion rows."""
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert "Test Document Ingestion" in resp.text
         assert "Trace an Attack Path" in resp.text
         assert "wf-row-header" in resp.text
 
     def test_connectors_between_rows(self, client: TestClient) -> None:
         """Connector elements exist between accordion rows."""
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert "wf-connector" in resp.text
 
 
@@ -60,7 +60,7 @@ class TestLauncherDefaults:
             conn.close()
 
         with patch("q_ai.core.providers.get_credential", return_value="test-key"):
-            resp = client.get("/")
+            resp = client.get("/launcher")
         assert resp.status_code == 200
         # Provider option exists in dropdown but is NOT pre-selected
         import re
@@ -78,14 +78,14 @@ class TestModelOptions:
             patch("q_ai.server.routes.get_credential", return_value="test-key"),
             patch("q_ai.core.providers.get_credential", return_value="test-key"),
         ):
-            resp = client.get("/")
+            resp = client.get("/launcher")
         assert resp.status_code == 200
         # Provider should appear in the selector dropdown by label
         assert "Anthropic" in resp.text
 
     def test_unconfigured_providers_excluded(self, client: TestClient) -> None:
         """Unconfigured providers do NOT appear in the dropdown."""
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert resp.status_code == 200
         # Without configuration, provider names should not appear in selector options
         assert 'value="ollama"' not in resp.text
@@ -97,12 +97,12 @@ class TestUrlPlaceholder:
 
     def test_sse_placeholder_in_template(self, client: TestClient) -> None:
         """SSE placeholder appears in the template source."""
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert "http://localhost:3000/sse" in resp.text
 
     def test_streamable_http_placeholder_in_js(self, client: TestClient) -> None:
         """Streamable-http placeholder appears in the JS constants."""
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert "http://localhost:3000/mcp" in resp.text
 
 
@@ -142,18 +142,18 @@ class TestQuickActionCapsules:
 
     def test_capsule_buttons_present(self, client: TestClient) -> None:
         """Launcher page contains Quick Action capsule buttons."""
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert resp.status_code == 200
         assert "wf-row-qa_scan" in resp.text
 
     def test_launch_has_inflight_guard(self, client: TestClient) -> None:
         """Launch JS includes in-flight duplicate-submit guard."""
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert "_launchInFlight" in resp.text
 
     def test_quick_action_modals(self, client: TestClient) -> None:
         """Quick Action modals for Scan, Intercept, Campaign are present."""
-        resp = client.get("/")
+        resp = client.get("/launcher")
         assert "qa_scan" in resp.text
         assert "qa_intercept" in resp.text
         assert "qa_campaign" in resp.text

@@ -128,6 +128,11 @@
             </script>
         </div>
 
+        {# ── Assistant panel on completed run results ── #}
+        {% if results_mode and is_terminal %}
+            {% include "partials/assist_panel.html" %}
+        {% endif %}
+
     {% endif %}
 </div>
 <script src="/static/ws.js"></script>
