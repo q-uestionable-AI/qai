@@ -434,7 +434,8 @@ select.select:focus {
     background: rgba(255, 255, 255, 0.08) !important;
     color: #e2e8f0 !important;
     white-space: pre-wrap;
-    word-break: break-word;
+    overflow-wrap: anywhere;
+    word-break: normal;
 }
 
 /* ── Suggested prompt chips ──────────────────────────────────── */

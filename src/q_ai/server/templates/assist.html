@@ -111,6 +111,13 @@
                 handleWsMessage(data);
             };
             socket.onclose = function() {
+                if (isStreaming) {
+                    removeTypingIndicator();
+                    currentAssistantBubble = null;
+                    currentAssistantText = "";
+                    isStreaming = false;
+                    setInputEnabled(true);
+                }
                 setTimeout(connectWs, 2000);
             };
             socket.onerror = function() {};
@@ -201,8 +208,8 @@
         }
 
         function sendMessage(text) {
-            if (!text || isStreaming) return;
-            if (!socket || socket.readyState !== WebSocket.OPEN) return;
+            if (!text || isStreaming) return false;
+            if (!socket || socket.readyState !== WebSocket.OPEN) return false;
 
             isStreaming = true;
             setInputEnabled(false);
@@ -218,14 +225,16 @@
                 message: text,
                 context: {}
             }));
+            return true;
         }
 
         window.handleAssistSubmit = function(e) {
             e.preventDefault();
             var text = inputEl.value.trim();
             if (!text) return false;
-            inputEl.value = "";
-            sendMessage(text);
+            if (sendMessage(text)) {
+                inputEl.value = "";
+            }
             return false;
         };
 

@@ -64,9 +64,9 @@
         findingsContext = "[" + items.join(",") + "]";
     }
 
-    // Fallback: if no data attributes, use run_id for context marker
+    // Fallback: if no data attributes, use run_id as structured context
     if (!findingsContext) {
-        findingsContext = "Run ID: {{ run_id }}";
+        findingsContext = JSON.stringify({run_id: {{ run_id | tojson }}});
     }
 
     function connectWs() {
@@ -80,6 +80,13 @@
         };
         socket.onclose = function() {
             connected = false;
+            if (isStreaming) {
+                removePanelTyping();
+                currentBubble = null;
+                currentText = "";
+                isStreaming = false;
+                setPanelInputEnabled(true);
+            }
             setTimeout(connectWs, 2000);
         };
         socket.onerror = function() {};
@@ -159,8 +166,8 @@
     }
 
     function sendPanelMessage(text) {
-        if (!text || isStreaming) return;
-        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        if (!text || isStreaming) return false;
+        if (!socket || socket.readyState !== WebSocket.OPEN) return false;
 
         isStreaming = true;
         setPanelInputEnabled(false);
@@ -174,14 +181,16 @@
             message: text,
             context: {findings: findingsContext}
         }));
+        return true;
     }
 
     window.handlePanelSubmit = function(e) {
         e.preventDefault();
         var text = inputEl.value.trim();
         if (!text) return false;
-        inputEl.value = "";
-        sendPanelMessage(text);
+        if (sendPanelMessage(text)) {
+            inputEl.value = "";
+        }
         return false;
     };
 
