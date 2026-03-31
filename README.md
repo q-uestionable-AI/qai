@@ -32,7 +32,7 @@ An AI assistant helps you discover capabilities, interpret scan results, and pla
 
 ```bash
 qai config set assist.provider ollama
-qai config set assist.model ollama/llama3.1
+qai config set assist.model llama3.1
 qai assist "how do I scan an MCP server?"
 ```
 

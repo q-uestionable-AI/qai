@@ -85,7 +85,7 @@ qai assist --run <run-id> "summarize the findings"
 
 | Flag | Type | Required | Description |
 |------|------|----------|-------------|
-| `--run` | integer | No | Database run ID to load as context |
+| `--run` | string | No | Run ID to load as context |
 
 ### Examples
 
@@ -121,7 +121,7 @@ Before any query, the assistant validates that a provider and model are configur
 ```
 Assistant not configured. Set provider and model:
   qai config set assist.provider ollama
-  qai config set assist.model ollama/llama3.1
+  qai config set assist.model llama3.1
 ```
 
 See [Configuration](/assist/configuration) for full setup instructions.

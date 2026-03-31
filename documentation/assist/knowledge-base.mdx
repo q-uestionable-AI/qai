@@ -53,7 +53,7 @@ The assistant will retrieve relevant sections when your questions match the cont
 Documents are split into chunks of approximately 500 tokens:
 
 1. YAML frontmatter is extracted (title and description prepended to the first chunk)
-2. Text is split on markdown headings (h2, h3, h4)
+2. Text is split on Markdown headings (h2, h3, h4)
 3. Sections exceeding the target size are split on paragraph boundaries
 4. Adjacent chunks overlap by approximately 50 tokens for continuity
 

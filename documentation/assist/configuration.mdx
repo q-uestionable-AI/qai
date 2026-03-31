@@ -11,12 +11,12 @@ Set the provider and model via CLI:
 
 ```bash
 qai config set assist.provider ollama
-qai config set assist.model ollama/llama3.1
+qai config set assist.model llama3.1
 ```
 
 Or use the **Settings** page in the web UI — the Assistant section has provider and model selectors that save to the same configuration store.
 
-Model strings follow the `provider/model` format used throughout qai. See [LLM Provider Configuration](/config/providers) for the full list of supported providers.
+The `assist.model` value is the model name without a provider prefix. The runtime builds the full `provider/model` string from `assist.provider` and `assist.model` automatically. See [LLM Provider Configuration](/config/providers) for the full list of supported providers.
 
 ### Environment Variable Override
 
@@ -25,12 +25,12 @@ You can set provider and model via environment variables instead of the config s
 <CodeGroup>
 ```bash Linux / macOS
 export QAI_ASSIST_PROVIDER="ollama"
-export QAI_ASSIST_MODEL="ollama/llama3.1"
+export QAI_ASSIST_MODEL="llama3.1"
 ```
 
 ```powershell Windows PowerShell
 $env:QAI_ASSIST_PROVIDER = "ollama"
-$env:QAI_ASSIST_MODEL = "ollama/llama3.1"
+$env:QAI_ASSIST_MODEL = "llama3.1"
 ```
 </CodeGroup>
 
@@ -75,7 +75,7 @@ $env:QAI_ASSIST_EMBEDDING_MODEL = "all-mpnet-base-v2"
 </CodeGroup>
 
 <Note>
-The embedding model runs locally via sentence-transformers regardless of which LLM provider you use. Changing it triggers a full reindex of the knowledge base on next query.
+The embedding model runs locally via sentence-transformers regardless of which LLM provider you use. If you change the embedding model, run `qai assist reindex` to rebuild the knowledge base with the new embeddings.
 </Note>
 
 ## User Knowledge Directory
@@ -116,7 +116,7 @@ Three commands to get started with a local model:
 
 ```bash
 qai config set assist.provider ollama
-qai config set assist.model ollama/llama3.1
+qai config set assist.model llama3.1
 qai assist "what can qai test?"
 ```
 
@@ -124,7 +124,7 @@ For a cloud provider, add a credential first:
 
 ```bash
 qai config set assist.provider anthropic
-qai config set assist.model anthropic/claude-sonnet-4-20250514
+qai config set assist.model claude-sonnet-4-20250514
 qai config set-credential anthropic
 qai assist "how do I scan an MCP server?"
 ```
