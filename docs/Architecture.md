@@ -96,6 +96,12 @@ src/q_ai/
 │   ├── cli.py                      # cxp subcommands (build, validate, list-rules, list-formats)
 │   ├── guidance_builder.py         # CXP RunGuidance builder (inventory, trigger prompts, deployment, interpretation)
 │   └── mapper.py                   # Build operations → core DB persistence
+├── assist/                         # AI assistant — RAG-powered guidance and results interpretation
+│   ├── cli.py                      # assist subcommands (query, interactive, reindex)
+│   ├── knowledge.py                # Knowledge base: MDX ingestion, chunking, ChromaDB, change detection
+│   ├── prompt.py                   # Prompt assembler: trust boundaries, adaptive context budgeting
+│   ├── service.py                  # Service entry point: orchestrates retrieval → prompt → LLM
+│   └── system_prompt.txt           # Behavioral instructions (role, constraints, trust boundaries)
 ├── rxp/                            # RAG retrieval poisoning measurement
 │   ├── adapter.py                  # RXPAdapter — orchestrator integration
 │   ├── cli.py                      # rxp subcommands (validate, list-models, list-profiles)
@@ -149,6 +155,18 @@ Service functions delegate to `core/db.py` CRUD helpers and return `core/models.
 ### Cross-Module Data Flow: Findings → Payloads
 
 In the assess workflow, the inject adapter queries audit findings via `finding_service.get_findings_for_run()` to prioritize templates matching audit finding categories. Templates declare `relevant_categories` in their YAML metadata. Matching templates run first (priority ordering), then remaining templates. All templates still run — findings inform priority, not exclusion. After the campaign, `build_coverage_report()` produces a `CoverageReport` showing which audit categories were exercised vs. untested. Chain step templates also declare `relevant_categories` for the same taxonomy (metadata only — chain execution changes are Phase 2).
+
+---
+
+## AI Assistant (`assist/`)
+
+Built-in guidance layer that helps users discover capabilities, interpret scan results, and plan testing workflows. Uses RAG over qai's product documentation and user-supplied knowledge documents. Inference is provider-agnostic via litellm.
+
+- **`knowledge.py`** — Document ingestion pipeline: reads markdown/MDX/text/YAML, strips JSX from MDX, chunks by headings with paragraph-level sub-splitting, embeds via sentence-transformers, stores in ChromaDB persistent collections (`product_knowledge`, `user_knowledge`). Hash-based change detection (SHA-256 manifest at `~/.qai/assist/index_manifest.json`) skips reindexing when docs haven't changed.
+- **`prompt.py`** — Prompt assembler with three trust boundary classes: trusted product knowledge (undelimited), semi-trusted user knowledge (labeled with boundary markers), untrusted scan-derived content (wrapped with strong delimiters and meta-instructions). Adaptive context budgeting queries the model's context window via litellm and allocates token budget across system prompt, retrieval, scan context, and conversation history.
+- **`service.py`** — Service entry point: resolves config, orchestrates knowledge retrieval → prompt assembly → litellm `acompletion`. Supports both complete and streaming responses. Singleton `KnowledgeBase` instance with lazy initialization.
+- **`cli.py`** — `qai assist` subcommand: single-shot queries, interactive REPL with session history, piped stdin as untrusted scan context, `--run` flag to pull findings from DB, `reindex` subcommand for forced re-ingestion.
+- **`system_prompt.txt`** — Behavioral instructions only (role, constraints, trust boundaries). No factual content — all knowledge comes from retrieval.
 
 ---
 
@@ -249,6 +267,7 @@ Single SQLite database at `~/.qai/qai.db`. Schema V10.
 
 ```
 qai
+├── assist       <query>, reindex (interactive REPL when no args)
 ├── audit        scan, enumerate, list-checks, report
 ├── proxy        start, replay, export, inspect
 ├── inject       serve, campaign, list-payloads, report

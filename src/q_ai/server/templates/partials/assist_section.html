@@ -1,0 +1,62 @@
+<div class="panel p-6">
+    <h2 class="text-lg font-semibold mb-4" style="color: #f1f5f9;">Assistant</h2>
+    <p class="text-sm mb-4" style="opacity: 0.7;">
+        Configure the AI provider and model for the built-in assistant.
+        The assistant helps interpret scan results and plan testing workflows.
+    </p>
+
+    <form id="assist-form"
+          class="grid grid-cols-1 md:grid-cols-2 gap-4"
+          onsubmit="return saveAssistSettings(event)">
+
+        {% set selector_id = "assist" %}
+        {% set providers = providers_status %}
+        {% include "partials/model_selector.html" %}
+
+        <div class="md:col-span-2 flex items-end gap-2">
+            <button type="submit" class="btn btn-sm btn-outline btn-primary">Save</button>
+            <span id="assist-msg" class="text-xs"></span>
+        </div>
+    </form>
+</div>
+
+<script>
+function saveAssistSettings(e) {
+    e.preventDefault();
+    var form = document.getElementById("assist-form");
+    var fd = new FormData(form);
+    var provider = fd.get("provider") || "";
+    var model = fd.get("model") || "";
+
+    if (!provider || !model) {
+        var msg = document.getElementById("assist-msg");
+        msg.className = "text-xs text-error";
+        msg.textContent = "Select a provider and model.";
+        return false;
+    }
+
+    var data = {
+        "assist.provider": provider,
+        "assist.model": model
+    };
+
+    var msg = document.getElementById("assist-msg");
+    fetch("/api/settings/defaults", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.status === "saved") {
+            msg.className = "text-xs text-success";
+            msg.textContent = "Saved";
+        } else {
+            msg.className = "text-xs text-error";
+            msg.textContent = d.detail || "Error";
+        }
+    }).catch(function() {
+        msg.className = "text-xs text-error";
+        msg.textContent = "Request failed";
+    });
+    return false;
+}
+</script>
