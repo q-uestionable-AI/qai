@@ -43,15 +43,21 @@
             </a>
         </div>
         <div class="navbar-center">
-            <span class="font-mono text-3xl font-bold tracking-tight select-none"
-                  style="letter-spacing: -0.02em;">
+            <a href="/" class="font-mono text-3xl font-bold tracking-tight select-none"
+               style="letter-spacing: -0.02em; text-decoration: none;">
                 <span style="color: #ffffff;">{</span><span style="color: #8b5cf6;">q</span><span style="color: #ffffff;">-AI}</span>
-            </span>
+            </a>
         </div>
         <div class="navbar-end">
             <ul class="menu menu-horizontal px-1 gap-1">
                 <li>
                     <a href="/"
+                       class="{% if active == 'assist' %}active bg-primary/10 text-primary{% endif %}">
+                        Assistant
+                    </a>
+                </li>
+                <li>
+                    <a href="/launcher"
                        class="{% if active == 'launcher' %}active bg-primary/10 text-primary{% endif %}">
                         Launcher
                     </a>

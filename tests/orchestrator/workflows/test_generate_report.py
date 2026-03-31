@@ -1109,7 +1109,7 @@ class TestVisibleInLauncher:
 
         app = create_app(db_path=tmp_db)
         with TestClient(app) as client:
-            resp = client.get("/")
+            resp = client.get("/launcher")
         assert resp.status_code == 200
         html = resp.text
         # "Generate Report" display name should not appear as a workflow card

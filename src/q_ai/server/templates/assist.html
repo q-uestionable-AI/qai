@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}q-ai — Assistant{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-6 py-6 flex flex-col" style="height: calc(100vh - 68px);">
+
+{% if not assist_configured %}
+    {# ── Setup card: pick provider & model ── #}
+    <div class="flex-1 flex items-center justify-center">
+        <div class="panel p-8 w-full max-w-md">
+            <h2 class="text-xl font-semibold mb-2" style="color: #f1f5f9;">Configure Assistant</h2>
+            <p class="text-sm mb-6" style="opacity: 0.7;">
+                Select a provider and model to start using the assistant.
+            </p>
+            <form id="assist-setup-form"
+                  class="grid grid-cols-1 gap-4"
+                  onsubmit="return saveAssistSetup(event)">
+
+                {% set selector_id = "assist-setup" %}
+                {% set providers = providers_status %}
+                {% include "partials/model_selector.html" %}
+
+                <div class="flex items-center gap-2 mt-2">
+                    <button type="submit" class="btn btn-sm btn-outline btn-primary">
+                        Save &amp; Start
+                    </button>
+                    <span id="assist-setup-msg" class="text-xs"></span>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    function saveAssistSetup(e) {
+        e.preventDefault();
+        var form = document.getElementById("assist-setup-form");
+        var fd = new FormData(form);
+        var provider = fd.get("provider") || "";
+        var model = fd.get("model") || "";
+        var msg = document.getElementById("assist-setup-msg");
+
+        if (!provider || !model) {
+            msg.className = "text-xs text-error";
+            msg.textContent = "Select a provider and model.";
+            return false;
+        }
+
+        fetch("/api/settings/defaults", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({"assist.provider": provider, "assist.model": model})
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            if (d.status === "saved") {
+                window.location.reload();
+            } else {
+                msg.className = "text-xs text-error";
+                msg.textContent = d.detail || "Error saving settings.";
+            }
+        }).catch(function() {
+            msg.className = "text-xs text-error";
+            msg.textContent = "Request failed.";
+        });
+        return false;
+    }
+    </script>
+
+{% else %}
+    {# ── Chat interface ── #}
+    <div id="assist-chat-messages" class="flex-1 overflow-y-auto mb-4 space-y-2 pr-1">
+        {# Messages rendered here by JS #}
+    </div>
+
+    {# ── Suggested prompts ── #}
+    <div id="assist-prompts" class="flex flex-wrap gap-2 mb-3">
+        {% for prompt in suggested_prompts %}
+        <button type="button" class="assist-chip"
+                onclick="sendSuggestedPrompt(this.textContent.trim())">{{ prompt }}</button>
+        {% endfor %}
+    </div>
+
+    {# ── Input area ── #}
+    <form id="assist-input-form" class="flex gap-2" onsubmit="return handleAssistSubmit(event)">
+        <input type="text" id="assist-input"
+               class="input input-bordered input-sm flex-1"
+               placeholder="Ask the assistant..."
+               autocomplete="off" />
+        <button type="submit" id="assist-send-btn"
+                class="btn btn-sm btn-outline btn-primary">
+            Send
+        </button>
+    </form>
+
+    <script>
+    (function() {
+        var messagesEl = document.getElementById("assist-chat-messages");
+        var inputEl = document.getElementById("assist-input");
+        var sendBtn = document.getElementById("assist-send-btn");
+        var promptsEl = document.getElementById("assist-prompts");
+        var wsUrl = (location.protocol === "https:" ? "wss://" : "ws://")
+                    + location.host + "/ws/assist";
+        var socket = null;
+        var currentAssistantBubble = null;
+        var currentAssistantText = "";
+        var isStreaming = false;
+
+        function connectWs() {
+            socket = new WebSocket(wsUrl);
+            socket.onopen = function() {};
+            socket.onmessage = function(e) {
+                var data = JSON.parse(e.data);
+                handleWsMessage(data);
+            };
+            socket.onclose = function() {
+                setTimeout(connectWs, 2000);
+            };
+            socket.onerror = function() {};
+        }
+
+        function handleWsMessage(data) {
+            switch (data.type) {
+                case "assist_token":
+                    if (!currentAssistantBubble) {
+                        removeTypingIndicator();
+                        currentAssistantBubble = addMessage("assistant", "");
+                        currentAssistantText = "";
+                    }
+                    currentAssistantText += data.token;
+                    var contentEl = currentAssistantBubble.querySelector(".chat-bubble");
+                    contentEl.textContent = currentAssistantText;
+                    scrollToBottom();
+                    break;
+                case "assist_done":
+                    currentAssistantBubble = null;
+                    currentAssistantText = "";
+                    isStreaming = false;
+                    setInputEnabled(true);
+                    break;
+                case "assist_error":
+                    removeTypingIndicator();
+                    addMessage("error", data.message || "An error occurred.");
+                    currentAssistantBubble = null;
+                    currentAssistantText = "";
+                    isStreaming = false;
+                    setInputEnabled(true);
+                    break;
+            }
+        }
+
+        function addMessage(role, text) {
+            var wrapper = document.createElement("div");
+            if (role === "user") {
+                wrapper.className = "chat chat-end";
+                var bubble = document.createElement("div");
+                bubble.className = "chat-bubble chat-bubble-primary";
+                bubble.textContent = text;
+                wrapper.appendChild(bubble);
+            } else if (role === "assistant") {
+                wrapper.className = "chat chat-start";
+                var bubble = document.createElement("div");
+                bubble.className = "chat-bubble assist-bubble";
+                bubble.textContent = text;
+                wrapper.appendChild(bubble);
+            } else {
+                wrapper.className = "chat chat-start";
+                var bubble = document.createElement("div");
+                bubble.className = "chat-bubble chat-bubble-error";
+                bubble.textContent = text;
+                wrapper.appendChild(bubble);
+            }
+            messagesEl.appendChild(wrapper);
+            scrollToBottom();
+            return wrapper;
+        }
+
+        function addTypingIndicator() {
+            var wrapper = document.createElement("div");
+            wrapper.className = "chat chat-start";
+            wrapper.id = "assist-typing";
+            var bubble = document.createElement("div");
+            bubble.className = "chat-bubble assist-bubble";
+            bubble.innerHTML = '<span class="assist-typing-dots">'
+                + '<span></span><span></span><span></span></span>';
+            wrapper.appendChild(bubble);
+            messagesEl.appendChild(wrapper);
+            scrollToBottom();
+        }
+
+        function removeTypingIndicator() {
+            var el = document.getElementById("assist-typing");
+            if (el) el.remove();
+        }
+
+        function scrollToBottom() {
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function setInputEnabled(enabled) {
+            inputEl.disabled = !enabled;
+            sendBtn.disabled = !enabled;
+            if (enabled) inputEl.focus();
+        }
+
+        function sendMessage(text) {
+            if (!text || isStreaming) return;
+            if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+            isStreaming = true;
+            setInputEnabled(false);
+
+            // Hide prompts after first message
+            if (promptsEl) promptsEl.style.display = "none";
+
+            addMessage("user", text);
+            addTypingIndicator();
+
+            socket.send(JSON.stringify({
+                type: "assist_query",
+                message: text,
+                context: {}
+            }));
+        }
+
+        window.handleAssistSubmit = function(e) {
+            e.preventDefault();
+            var text = inputEl.value.trim();
+            if (!text) return false;
+            inputEl.value = "";
+            sendMessage(text);
+            return false;
+        };
+
+        window.sendSuggestedPrompt = function(text) {
+            sendMessage(text);
+        };
+
+        connectWs();
+        inputEl.focus();
+    })();
+    </script>
+{% endif %}
+</div>
+{% endblock %}
