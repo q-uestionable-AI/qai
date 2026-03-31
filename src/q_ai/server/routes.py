@@ -2032,6 +2032,8 @@ async def api_get_defaults(request: Request) -> JSONResponse:
         defaults = {
             "audit.default_transport": (get_setting(conn, "audit.default_transport") or "stdio"),
             "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
+            "assist.provider": (get_setting(conn, "assist.provider") or ""),
+            "assist.model": (get_setting(conn, "assist.model") or ""),
         }
     return JSONResponse(content=defaults)
 
@@ -2044,6 +2046,8 @@ async def api_save_defaults(request: Request) -> JSONResponse:
     allowed_keys = (
         "audit.default_transport",
         "ipi.default_callback_url",
+        "assist.provider",
+        "assist.model",
     )
     with get_connection(db_path) as conn:
         for key in allowed_keys:

@@ -7,6 +7,7 @@ import typer
 import uvicorn
 
 from q_ai import __version__
+from q_ai.assist.cli import app as assist_app
 from q_ai.audit.cli import app as audit_app
 from q_ai.chain.cli import app as chain_app
 from q_ai.core.cli.config import app as config_app
@@ -111,6 +112,7 @@ app.add_typer(runs_app)
 app.add_typer(findings_app)
 app.add_typer(targets_app)
 app.add_typer(config_app)
+app.add_typer(assist_app, name="assist", help="AI assistant — guidance and results.")
 app.add_typer(audit_app, name="audit", help="MCP server security scanning.")
 app.add_typer(inject_app, name="inject", help="Tool poisoning and prompt injection testing.")
 app.add_typer(proxy_app, name="proxy", help="MCP traffic interception and replay.")
