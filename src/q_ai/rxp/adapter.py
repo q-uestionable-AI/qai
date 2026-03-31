@@ -26,10 +26,7 @@ def _run_validation(
     model_id: str,
     top_k: int,
 ) -> ValidationResult:
-    """Run RXP validation with lazy import of optional deps."""
-    from q_ai.rxp._deps import require_rxp_deps
-
-    require_rxp_deps()
+    """Run RXP validation."""
     from q_ai.rxp.validator import validate_retrieval
 
     return validate_retrieval(corpus_docs, poison_docs, queries, model_id, top_k)

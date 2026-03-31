@@ -224,10 +224,6 @@ def validate(
         profile, corpus_dir, poison_file, queries_override=query
     )
 
-    from q_ai.rxp._deps import require_rxp_deps
-
-    require_rxp_deps()
-
     from q_ai.rxp.validator import validate_retrieval
 
     all_results: list[ValidationResult] = []

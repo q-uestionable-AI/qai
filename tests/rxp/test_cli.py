@@ -60,10 +60,7 @@ class TestCLI:
         fake_validator = types.ModuleType("q_ai.rxp.validator")
         fake_validator.validate_retrieval = lambda **kwargs: mock_result  # type: ignore[attr-defined]
 
-        with (
-            patch("q_ai.rxp._deps.require_rxp_deps"),
-            patch.dict("sys.modules", {"q_ai.rxp.validator": fake_validator}),
-        ):
+        with patch.dict("sys.modules", {"q_ai.rxp.validator": fake_validator}):
             result = runner.invoke(
                 app, ["validate", "--profile", "hr-policy", "--model", "BAAI/bge-m3"]
             )
@@ -95,10 +92,7 @@ class TestCLI:
             (corpus_dir / "doc1.txt").write_text("Test document content", encoding="utf-8")
             poison_file = Path(tmpdir) / "poison.txt"
             poison_file.write_text("Poison content", encoding="utf-8")
-            with (
-                patch("q_ai.rxp._deps.require_rxp_deps"),
-                patch.dict("sys.modules", {"q_ai.rxp.validator": fake_validator}),
-            ):
+            with patch.dict("sys.modules", {"q_ai.rxp.validator": fake_validator}):
                 result = runner.invoke(
                     app,
                     [
@@ -117,11 +111,6 @@ class TestCLI:
 @pytest.mark.integration
 class TestCLIValidate:
     """Tests for the validate command (requires RXP deps)."""
-
-    @pytest.fixture(autouse=True)
-    def _check_deps(self) -> None:
-        pytest.importorskip("sentence_transformers")
-        pytest.importorskip("chromadb")
 
     def test_validate_runs(self) -> None:
         result = runner.invoke(app, ["validate", "--profile", "hr-policy", "--model", "minilm-l6"])
@@ -175,7 +164,6 @@ class TestCLISaveFlag:
         fake_validator.validate_retrieval = lambda **kwargs: mock_result  # type: ignore[attr-defined]
 
         with (
-            patch("q_ai.rxp._deps.require_rxp_deps"),
             patch.dict("sys.modules", {"q_ai.rxp.validator": fake_validator}),
             patch("q_ai.rxp.mapper.persist_validation", return_value="abc123") as mock_persist,
         ):

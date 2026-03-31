@@ -44,18 +44,11 @@ dependencies = [
     "icalendar>=6.1.0",
     "markdown>=3.5",
     "nh3>=0.2",
-]
-
-[project.optional-dependencies]
-rxp = [
+    # RXP retrieval poisoning
     "sentence-transformers>=5.2,<6",
     "chromadb>=1.5,<2",
     "numpy>=1.26",
-]
-full = [
-    "sentence-transformers>=5.2,<6",
-    "chromadb>=1.5,<2",
-    "numpy>=1.26",
+    "torch>=2.0",
 ]
 
 [project.scripts]

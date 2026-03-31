@@ -44,47 +44,10 @@ class TestAccordionLayout:
 
 
 class TestLauncherDefaults:
-    """Launcher reads and applies settings defaults."""
+    """Launcher loads without pre-selected provider/model defaults."""
 
-    def test_defaults_in_context(self, client: TestClient, tmp_db: Path) -> None:
-        """Launcher includes default_provider and default_model_id."""
-        conn = sqlite3.connect(str(tmp_db))
-        try:
-            conn.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) "
-                "VALUES (?, ?, datetime('now'))",
-                ("default_provider", "lmstudio"),
-            )
-            conn.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) "
-                "VALUES (?, ?, datetime('now'))",
-                ("default_model_id", "lmstudio/qwen2.5-7b"),
-            )
-            conn.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) "
-                "VALUES (?, ?, datetime('now'))",
-                ("audit.default_transport", "sse"),
-            )
-            conn.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) "
-                "VALUES (?, ?, datetime('now'))",
-                ("lmstudio.base_url", "http://localhost:1234"),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-        resp = client.get("/")
-        assert resp.status_code == 200
-        # Provider should be pre-selected in the dropdown
-        assert 'value="lmstudio"' in resp.text
-
-
-class TestModelOptions:
-    """Model dropdown shows actual model names from settings."""
-
-    def test_default_provider_preselected(self, client: TestClient, tmp_db: Path) -> None:
-        """When default_provider is set, it is pre-selected in the dropdown."""
+    def test_no_provider_preselected(self, client: TestClient, tmp_db: Path) -> None:
+        """Even with a saved default_provider setting, no provider is pre-selected."""
         conn = sqlite3.connect(str(tmp_db))
         try:
             conn.execute(
@@ -99,7 +62,14 @@ class TestModelOptions:
         with patch("q_ai.core.providers.get_credential", return_value="test-key"):
             resp = client.get("/")
         assert resp.status_code == 200
+        # Provider option exists in dropdown but is NOT pre-selected
         assert 'value="openai"' in resp.text
+        assert 'value="openai" selected' not in resp.text
+        assert 'value="openai"\n                selected' not in resp.text
+
+
+class TestModelOptions:
+    """Model dropdown shows actual model names from settings."""
 
     def test_configured_provider_in_dropdown(self, client: TestClient) -> None:
         """Configured provider appears in provider dropdown."""
