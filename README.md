@@ -26,6 +26,18 @@ All findings stored in a SQLite database.
 
 ---
 
+## Built-in Assistant
+
+An AI assistant helps you discover capabilities, interpret scan results, and plan testing workflows. It uses RAG over qai's documentation and your own reference material, with a trust boundary model that separates trusted docs from untrusted scan output. Works with local models (Ollama) or cloud APIs.
+
+```bash
+qai config set assist.provider ollama
+qai config set assist.model ollama/llama3.1
+qai assist "how do I scan an MCP server?"
+```
+
+---
+
 ## Framework Coverage
 
 All audit findings map to four security taxonomies:

@@ -43,9 +43,21 @@ The Web UI is built with:
 - **Real-time Updates**: WebSocket connections for live workflow progress and result streaming
 - **Data Storage**: SQLite database for run history and configuration
 
+## Assistant Landing Page
+
+When the [assistant is configured](/assist/configuration), the default landing page (`/`) is the assistant chat interface. The workflow launcher moves to `/launcher`. If the assistant is not configured, the launcher remains the default landing page.
+
+See [Assistant Overview](/assist/overview) for details.
+
 ## Main Views
 
-The Web UI has three primary sections:
+The Web UI has four primary sections:
+
+### Assistant
+
+Chat with the built-in assistant to discover capabilities, interpret scan results, and plan testing workflows. The assistant also appears as a contextual panel on run results pages for asking questions about specific findings.
+
+[Learn more about the Assistant](/assist/overview)
 
 ### Launcher
 

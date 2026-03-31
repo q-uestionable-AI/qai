@@ -40,6 +40,16 @@
         ]
       },
       {
+        "group": "Assistant",
+        "pages": [
+          "assist/overview",
+          "assist/configuration",
+          "assist/cli",
+          "assist/knowledge-base",
+          "assist/trust-boundaries"
+        ]
+      },
+      {
         "group": "Audit",
         "pages": [
           "audit/overview",

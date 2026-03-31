@@ -39,6 +39,14 @@ Local web UI (FastAPI + HTMX). CLI with module subcommands. 1278 tests.
 browser. Provider-agnostic injection (litellm, any provider/model). Keyring-based credential
 storage. Live WebSocket updates. Module adapters for all seven modules.
 
+### Phase 5b: AI Assistant (v0.7.0) ✅
+
+Built-in AI assistant for navigating capabilities and interpreting scan results. RAG over product
+documentation and user-provided knowledge. Provider-agnostic (Ollama, Anthropic, OpenAI, etc.).
+Three-tier trust boundary model: trusted product docs, semi-trusted user knowledge, untrusted
+scan-derived content. CLI (interactive, single-shot, piped input) and web UI (full-page chat,
+contextual run results panel). Shipped in PRs #81–#83.
+
 ### Remaining Workflows
 
 Five workflows are visible in the launcher and will be implemented after Phase 6.
