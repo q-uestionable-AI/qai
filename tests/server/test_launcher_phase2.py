@@ -63,9 +63,10 @@ class TestLauncherDefaults:
             resp = client.get("/")
         assert resp.status_code == 200
         # Provider option exists in dropdown but is NOT pre-selected
+        import re
+
         assert 'value="openai"' in resp.text
-        assert 'value="openai" selected' not in resp.text
-        assert 'value="openai"\n                selected' not in resp.text
+        assert not re.search(r'<option[^>]*value="openai"[^>]*selected', resp.text)
 
 
 class TestModelOptions:

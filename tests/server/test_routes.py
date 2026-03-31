@@ -102,3 +102,9 @@ class TestLauncherRxpAlwaysAvailable:
         assert resp.status_code == 200
         assert 'name="rxp_enabled"' in resp.text
         assert "RXP pre-validation requires additional dependencies" not in resp.text
+        # Toggle must not be disabled — RXP deps are always installed
+        import re
+
+        match = re.search(r'<input[^>]*name="rxp_enabled"[^>]*>', resp.text)
+        assert match is not None
+        assert "disabled" not in match.group(0)

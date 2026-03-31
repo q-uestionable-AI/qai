@@ -77,10 +77,10 @@ _BASE_CONFIG: dict = {
 
 @pytest.fixture
 def _mock_rxp_deps():
-    """Mock the validator module so adapter tests don't run real inference.
+    """Clear and restore cached validator-related modules from sys.modules.
 
-    Clears cached validator-related modules so the adapter's lazy import
-    of validate_retrieval resolves against the test mock.
+    Ensures the adapter's lazy import of validate_retrieval resolves
+    against test-provided modules rather than previously cached ones.
     """
     # Clear any cached validator-related modules so they re-import
     validator_mods = [
