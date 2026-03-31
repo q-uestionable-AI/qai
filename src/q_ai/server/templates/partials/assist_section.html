@@ -13,6 +13,19 @@
         {% set providers = providers_status %}
         {% include "partials/model_selector.html" %}
 
+        <div class="md:col-span-2">
+            <label class="label" for="assist-base-url">
+                <span class="label-text" style="color: #94a3b8;">Base URL</span>
+            </label>
+            <input type="text" id="assist-base-url" name="base_url"
+                   class="input input-bordered input-sm w-full"
+                   placeholder="e.g. http://inference-server:11434 for remote Ollama"
+                   value="{{ assist_base_url or '' }}">
+            <p class="text-xs mt-1" style="opacity: 0.5;">
+                Endpoint for the assistant's LLM provider (e.g., http://inference-server:11434 for remote Ollama)
+            </p>
+        </div>
+
         <div class="md:col-span-2 flex items-end gap-2">
             <button type="submit" class="btn btn-sm btn-outline btn-primary">Save</button>
             <span id="assist-msg" class="text-xs"></span>
@@ -35,9 +48,12 @@ function saveAssistSettings(e) {
         return false;
     }
 
+    var baseUrl = fd.get("base_url") || "";
+
     var data = {
         "assist.provider": provider,
-        "assist.model": model
+        "assist.model": model,
+        "assist.base_url": baseUrl
     };
 
     var msg = document.getElementById("assist-msg");

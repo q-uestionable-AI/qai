@@ -2028,6 +2028,7 @@ async def settings_page(request: Request) -> HTMLResponse:
             "audit.default_transport": (get_setting(conn, "audit.default_transport") or "stdio"),
             "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
         }
+        assist_base_url = get_setting(conn, "assist.base_url") or ""
 
     return templates.TemplateResponse(
         request,
@@ -2036,6 +2037,7 @@ async def settings_page(request: Request) -> HTMLResponse:
             "active": "settings",
             "providers_status": providers_status,
             "defaults": defaults,
+            "assist_base_url": assist_base_url,
         },
     )
 
@@ -2198,6 +2200,7 @@ async def api_get_defaults(request: Request) -> JSONResponse:
             "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
             "assist.provider": (get_setting(conn, "assist.provider") or ""),
             "assist.model": (get_setting(conn, "assist.model") or ""),
+            "assist.base_url": (get_setting(conn, "assist.base_url") or ""),
         }
     return JSONResponse(content=defaults)
 
@@ -2212,6 +2215,7 @@ async def api_save_defaults(request: Request) -> JSONResponse:
         "ipi.default_callback_url",
         "assist.provider",
         "assist.model",
+        "assist.base_url",
     )
     with get_connection(db_path) as conn:
         for key in allowed_keys:

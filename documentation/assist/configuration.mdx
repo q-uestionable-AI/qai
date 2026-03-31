@@ -36,6 +36,34 @@ $env:QAI_ASSIST_MODEL = "llama3.1"
 
 Environment variables take precedence over stored settings.
 
+## Base URL
+
+If your assistant's LLM provider runs on a remote host or non-default port, set a custom base URL. This is useful when targeting a remote Ollama instance, LM Studio on another machine, or any custom OpenAI-compatible endpoint.
+
+```bash
+qai config set assist.base_url http://inference-server:11434
+```
+
+Or via environment variable:
+
+<CodeGroup>
+```bash Linux / macOS
+export QAI_ASSIST_BASE_URL="http://inference-server:11434"
+```
+
+```powershell Windows PowerShell
+$env:QAI_ASSIST_BASE_URL = "http://inference-server:11434"
+```
+</CodeGroup>
+
+You can also set it in the **Settings** page under the Assistant section.
+
+<Note>
+`assist.base_url` controls only the assistant's LLM endpoint. It is completely independent of the base URLs used for testing targets (e.g., `ollama.base_url`). You can point the assistant at one Ollama instance while running inject campaigns against a different one.
+</Note>
+
+If not set, litellm uses the provider's default endpoint (e.g., `http://localhost:11434` for Ollama).
+
 ## Credentials
 
 Cloud providers require an API key. Store credentials using the same keyring/environment variable pattern as other qai providers:
@@ -106,6 +134,7 @@ See [Knowledge Base](/assist/knowledge-base) for what to put in this directory.
 |---------|-----|---------|---------|
 | Provider | `qai config set assist.provider` | `QAI_ASSIST_PROVIDER` | None (required) |
 | Model | `qai config set assist.model` | `QAI_ASSIST_MODEL` | None (required) |
+| Base URL | `qai config set assist.base_url` | `QAI_ASSIST_BASE_URL` | None (provider default) |
 | Embedding model | `qai config set assist.embedding_model` | `QAI_ASSIST_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` |
 | Knowledge directory | `qai config set assist.knowledge_dir` | `QAI_ASSIST_KNOWLEDGE_DIR` | `~/.qai/knowledge/` |
 | Credentials | `qai config set-credential <provider>` | `{PROVIDER}_API_KEY` | None (required for cloud) |
