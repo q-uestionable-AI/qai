@@ -61,6 +61,16 @@ def _resolve_model_string() -> str:
     return f"{provider_val}/{model_val}"
 
 
+def _resolve_base_url() -> str | None:
+    """Resolve the assistant base URL from configuration.
+
+    Returns:
+        Base URL string if configured, None otherwise.
+    """
+    val, _ = resolve("assist.base_url", env_var="QAI_ASSIST_BASE_URL")
+    return val or None
+
+
 def _resolve_embedding_model() -> str:
     """Resolve the embedding model name from configuration.
 
@@ -229,11 +239,16 @@ async def chat(
 
     messages = _prepare_messages(query, model_string, kb, scan_context, history)
 
-    response = await acompletion(  # type: ignore[no-untyped-call]
-        model=model_string,
-        messages=messages,
-        timeout=120.0,
-    )
+    call_kwargs: dict[str, Any] = {
+        "model": model_string,
+        "messages": messages,
+        "timeout": 120.0,
+    }
+    base_url = _resolve_base_url()
+    if base_url:
+        call_kwargs["api_base"] = base_url
+
+    response = await acompletion(**call_kwargs)  # type: ignore[no-untyped-call]
 
     choice = response.choices[0]  # type: ignore[union-attr]
     return choice.message.content or ""  # type: ignore[union-attr]
@@ -265,12 +280,17 @@ async def chat_stream(
 
     messages = _prepare_messages(query, model_string, kb, scan_context, history)
 
-    response: Any = await acompletion(  # type: ignore[no-untyped-call]
-        model=model_string,
-        messages=messages,
-        stream=True,
-        timeout=120.0,
-    )
+    call_kwargs: dict[str, Any] = {
+        "model": model_string,
+        "messages": messages,
+        "stream": True,
+        "timeout": 120.0,
+    }
+    base_url = _resolve_base_url()
+    if base_url:
+        call_kwargs["api_base"] = base_url
+
+    response: Any = await acompletion(**call_kwargs)  # type: ignore[no-untyped-call]
 
     async for chunk in response:
         delta = chunk.choices[0].delta  # type: ignore[union-attr]
