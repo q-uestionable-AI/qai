@@ -864,22 +864,6 @@ async def execute_rxp_step(
         )
 
     try:
-        from q_ai.rxp._deps import require_rxp_deps
-
-        require_rxp_deps()
-    except ImportError as exc:
-        return StepOutput(
-            step_id=step.id,
-            module="rxp",
-            technique=step.technique,
-            success=False,
-            status=StepStatus.FAILED,
-            error=str(exc),
-            started_at=started_at,
-            finished_at=datetime.now(UTC),
-        )
-
-    try:
         from q_ai.rxp.profiles import get_profile, load_corpus, load_poison
         from q_ai.rxp.validator import validate_retrieval
 

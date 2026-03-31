@@ -318,22 +318,6 @@ class TestExecuteRXPStepErrors:
         assert "rxp_model_id" in output.error
 
     @pytest.mark.asyncio
-    async def test_missing_deps(self):
-        """Returns FAILED with clear message when RXP deps are missing."""
-        step = ChainStep(id="s1", name="RXP", module="rxp", technique="minilm-l6")
-        config = TargetConfig(rxp_model_id="minilm-l6", rxp_profile_id="test")
-
-        with patch(
-            "q_ai.rxp._deps.require_rxp_deps",
-            side_effect=ImportError("RXP requires additional dependencies"),
-        ):
-            output = await execute_rxp_step(step, config, {})
-
-        assert output.success is False
-        assert output.status == StepStatus.FAILED
-        assert "additional dependencies" in output.error
-
-    @pytest.mark.asyncio
     async def test_missing_profile(self):
         """Returns FAILED when no profile_id is provided."""
         step = ChainStep(id="s1", name="RXP", module="rxp", technique="minilm-l6")
@@ -376,15 +360,12 @@ class TestExecuteRXPStepErrors:
         mock_validator = types.ModuleType("q_ai.rxp.validator")
         mock_validator.validate_retrieval = lambda *a, **kw: MockValidationResult()
 
-        with (
-            patch("q_ai.rxp._deps.require_rxp_deps"),
-            patch.dict(
-                sys.modules,
-                {
-                    "q_ai.rxp.profiles": mock_profiles,
-                    "q_ai.rxp.validator": mock_validator,
-                },
-            ),
+        with patch.dict(
+            sys.modules,
+            {
+                "q_ai.rxp.profiles": mock_profiles,
+                "q_ai.rxp.validator": mock_validator,
+            },
         ):
             output = await execute_rxp_step(step, config, {})
 

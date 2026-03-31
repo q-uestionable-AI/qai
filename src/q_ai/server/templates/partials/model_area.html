@@ -15,7 +15,7 @@
 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.35rem;">
     {% if provider_type == "local" %}
     <button type="button" class="btn btn-xs btn-ghost"
-            onclick="(function(){ var dm={{ (default_model_id or '') | tojson }}; var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/{{ provider_name }}/models?default=' + encodeURIComponent(dm) + '&selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })()">
+            onclick="(function(){ var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/{{ provider_name }}/models?selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })()">
         &#8635; Retry
     </button>
     {% else %}
@@ -43,7 +43,7 @@
 {% if supports_custom %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.35rem;">
     <button type="button" class="btn btn-xs btn-ghost"
-            onclick="(function(){ var dm={{ (default_model_id or '') | tojson }}; var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/{{ provider_name }}/models?default=' + encodeURIComponent(dm) + '&selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })()">
+            onclick="(function(){ var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/{{ provider_name }}/models?selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })()">
         &#8635; Refresh models
     </button>
     <label style="font-size: 0.7rem; opacity: 0.5; font-style: italic; cursor: pointer;"
@@ -76,7 +76,7 @@
 {% if provider_type == "local" %}
 <div style="display: flex; justify-content: flex-end; margin-top: 0.25rem;">
     <button type="button" class="btn btn-xs btn-ghost"
-            onclick="(function(){ var dm={{ (default_model_id or '') | tojson }}; var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/{{ provider_name }}/models?default=' + encodeURIComponent(dm) + '&selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })()">
+            onclick="(function(){ var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/{{ provider_name }}/models?selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })()">
         &#8635; Refresh models
     </button>
 </div>

@@ -6,7 +6,7 @@ import sqlite3
 import sys
 from pathlib import Path
 from types import ModuleType
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -77,26 +77,12 @@ _BASE_CONFIG: dict = {
 
 @pytest.fixture
 def _mock_rxp_deps():
-    """Mock RXP optional deps and the validator module.
+    """Clear and restore cached validator-related modules from sys.modules.
 
-    The validator module transitively imports chromadb and
-    sentence_transformers at module level, which are not available in CI.
-    We mock the entire dependency chain so the adapter's lazy import
-    of validate_retrieval succeeds.
+    Ensures the adapter's lazy import of validate_retrieval resolves
+    against test-provided modules rather than previously cached ones.
     """
-    # Track modules we inject so we can clean up
-    injected: list[str] = []
-    dep_mods = [
-        "chromadb",
-        "sentence_transformers",
-        "numpy",
-    ]
-    for mod_name in dep_mods:
-        if mod_name not in sys.modules:
-            sys.modules[mod_name] = MagicMock()
-            injected.append(mod_name)
-
-    # Also clear any cached validator-related modules so they re-import
+    # Clear any cached validator-related modules so they re-import
     validator_mods = [
         k
         for k in sys.modules
@@ -111,8 +97,6 @@ def _mock_rxp_deps():
     yield
 
     # Restore
-    for mod_name in injected:
-        sys.modules.pop(mod_name, None)
     for k, v in saved.items():
         sys.modules[k] = v
 
@@ -281,10 +265,3 @@ class TestRXPAdapter:
             child = get_run(conn, children[0]["id"])
         assert child is not None
         assert child.status == RunStatus.FAILED
-
-    def test_adapter_no_early_require_deps_call(self) -> None:
-        """require_rxp_deps is not called at adapter module level."""
-        import inspect
-
-        source = inspect.getsource(RXPAdapter.run)
-        assert "require_rxp_deps" not in source

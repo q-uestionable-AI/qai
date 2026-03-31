@@ -42,13 +42,11 @@ from q_ai.core.providers import (
     fetch_models,
     get_configured_providers,
     get_provider,
-    migrate_default_model,
 )
 from q_ai.cxp.formats import list_formats as list_cxp_formats
 from q_ai.inject.models import InjectionTechnique
 from q_ai.orchestrator.registry import get_workflow, list_workflows
 from q_ai.orchestrator.runner import WorkflowRunner
-from q_ai.rxp._deps import is_available as rxp_is_available
 from q_ai.services import finding_service, run_service
 
 logger = logging.getLogger(__name__)
@@ -122,11 +120,7 @@ async def launcher(request: Request) -> HTMLResponse:
     all_providers = get_configured_providers(db_path)
     providers = [p for p in all_providers if p["configured"]]
 
-    migrate_default_model(db_path)
-
     with get_connection(db_path) as conn:
-        default_provider = get_setting(conn, "default_provider") or ""
-        default_model_id = get_setting(conn, "default_model_id") or ""
         default_transport = get_setting(conn, "audit.default_transport") or "stdio"
         saved_callback_url = get_setting(conn, "ipi.default_callback_url") or ""
         defaults = {
@@ -142,9 +136,6 @@ async def launcher(request: Request) -> HTMLResponse:
             "hero_workflow": hero_workflow,
             "workflows": workflows,
             "providers": providers,
-            "default_provider": default_provider,
-            "default_model_id": default_model_id,
-            "rxp_available": rxp_is_available(),
             "defaults": defaults,
             "injection_techniques": [
                 {"value": t.value, "label": t.value.replace("_", " ").title()}
@@ -1867,30 +1858,12 @@ async def settings_page(request: Request) -> HTMLResponse:
     templates = _get_templates(request)
     providers_status = _get_providers_status(request)
     db_path = _get_db_path(request)
-    migrate_default_model(db_path)
-
-    all_providers = get_configured_providers(db_path)
-    configured_providers = [p for p in all_providers if p["configured"]]
 
     with get_connection(db_path) as conn:
         defaults = {
-            "default_provider": get_setting(conn, "default_provider") or "",
-            "default_model_id": get_setting(conn, "default_model_id") or "",
             "audit.default_transport": (get_setting(conn, "audit.default_transport") or "stdio"),
             "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
         }
-
-    # Resolve display labels for saved defaults
-    default_provider_label = ""
-    default_model_label = ""
-    if defaults["default_provider"]:
-        provider_cfg = get_provider(defaults["default_provider"])
-        if provider_cfg:
-            default_provider_label = provider_cfg.label
-        if defaults["default_model_id"]:
-            # Model ID format is "provider/model-name"; use the part after "/"
-            parts = defaults["default_model_id"].split("/", 1)
-            default_model_label = parts[1] if len(parts) > 1 else parts[0]
 
     return templates.TemplateResponse(
         request,
@@ -1898,12 +1871,7 @@ async def settings_page(request: Request) -> HTMLResponse:
         {
             "active": "settings",
             "providers_status": providers_status,
-            "configured_providers": configured_providers,
             "defaults": defaults,
-            "default_provider": defaults["default_provider"],
-            "default_model_id": defaults["default_model_id"],
-            "default_provider_label": default_provider_label,
-            "default_model_label": default_model_label,
         },
     )
 
@@ -2062,8 +2030,6 @@ async def api_get_defaults(request: Request) -> JSONResponse:
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
         defaults = {
-            "default_provider": get_setting(conn, "default_provider") or "",
-            "default_model_id": get_setting(conn, "default_model_id") or "",
             "audit.default_transport": (get_setting(conn, "audit.default_transport") or "stdio"),
             "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
         }
@@ -2076,8 +2042,6 @@ async def api_save_defaults(request: Request) -> JSONResponse:
     body = await request.json()
     db_path = _get_db_path(request)
     allowed_keys = (
-        "default_provider",
-        "default_model_id",
         "audit.default_transport",
         "ipi.default_callback_url",
     )
@@ -2087,23 +2051,6 @@ async def api_save_defaults(request: Request) -> JSONResponse:
             if value is not None:
                 set_setting(conn, key, str(value))
     return JSONResponse(content={"status": "saved"})
-
-
-@router.delete("/api/settings/defaults")
-async def api_clear_defaults(request: Request) -> JSONResponse:
-    """Clear default provider and model settings.
-
-    Args:
-        request: The incoming HTTP request, used to resolve the database path.
-
-    Returns:
-        JSONResponse with ``{"status": "cleared"}`` on success.
-    """
-    db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        set_setting(conn, "default_provider", "")
-        set_setting(conn, "default_model_id", "")
-    return JSONResponse(content={"status": "cleared"})
 
 
 @router.get("/api/settings/infrastructure")

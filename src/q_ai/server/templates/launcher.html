@@ -269,19 +269,12 @@
                         </select>
                     </div>
 
-                    {% if not rxp_available %}
-                    <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #fbbf24;" class="text-sm mb-4">
-                        <span>RXP pre-validation requires additional dependencies.</span><br>
-                        <code style="color: #06b6d4; margin-top: 0.25rem; display: inline-block;">pip install "q-uestionable-ai[rxp]"</code>
-                    </div>
-                    {% endif %}
                     <div class="form-control">
                         <label class="label cursor-pointer">
                             <span class="label-text">Pre-validate retrieval rank with RXP</span>
                             <input type="checkbox" name="rxp_enabled" value="true"
                                    class="toggle toggle-sm"
-                                   onchange="toggleRxpSection('{{ wf.id }}')"
-                                   {% if not rxp_available %}disabled{% endif %} />
+                                   onchange="toggleRxpSection('{{ wf.id }}')" />
                         </label>
                     </div>
 
@@ -1239,9 +1232,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('[id$="-provider"]').forEach(function(sel) {
         if (sel.value && sel.value !== '') {
             var selectorId = sel.id.replace('-provider', '');
-            var defaultModel = {{ (default_model_id or "") | tojson }};
             htmx.ajax('GET',
-                '/api/providers/' + sel.value + '/models?default=' + encodeURIComponent(defaultModel) + '&selector_id=' + selectorId,
+                '/api/providers/' + sel.value + '/models?selector_id=' + selectorId,
                 {target: '#' + selectorId + '-model-area'});
         }
     });

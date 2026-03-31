@@ -73,8 +73,8 @@ class TestSaveDefaults:
         resp = client.post(
             "/api/settings/defaults",
             json={
-                "default_provider": "openai",
-                "default_model_id": "openai/gpt-4o",
+                "audit.default_transport": "sse",
+                "ipi.default_callback_url": "http://10.0.0.5:8080/callback",
             },
         )
         assert resp.status_code == 200
@@ -82,8 +82,16 @@ class TestSaveDefaults:
         resp = client.get("/api/settings/defaults")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["default_provider"] == "openai"
-        assert data["default_model_id"] == "openai/gpt-4o"
+        assert data["audit.default_transport"] == "sse"
+        assert data["ipi.default_callback_url"] == "http://10.0.0.5:8080/callback"
+
+    def test_no_provider_model_in_defaults(self, client: TestClient) -> None:
+        """Defaults API does not include provider/model keys."""
+        resp = client.get("/api/settings/defaults")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "default_provider" not in data
+        assert "default_model_id" not in data
 
 
 class TestProvidersInsecureKeyring:

@@ -1,19 +1,17 @@
 {# Two-step provider/model selector.
-   Required context: selector_id (unique per form), providers (configured list),
-                     default_provider, default_model_id #}
+   Required context: selector_id (unique per form), providers (configured list) #}
 
 <div class="form-control">
     <label class="label"><span class="label-text">Provider</span></label>
     <select name="provider" required
             id="{{ selector_id }}-provider"
             class="select select-bordered select-sm w-full"
-            onchange="(function(sel){ var dm={{ (default_model_id or '') | tojson }}; var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/' + sel.value + '/models?default=' + encodeURIComponent(dm) + '&selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })(this)">
-        <option value="" disabled {% if not default_provider %}selected{% endif %}>
+            onchange="(function(sel){ var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/' + sel.value + '/models?selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })(this)">
+        <option value="" disabled selected>
             Select a provider...
         </option>
         {% for p in providers %}
-        <option value="{{ p.name }}"
-                {% if p.name == default_provider %}selected{% endif %}>
+        <option value="{{ p.name }}">
             {{ p.label }}
         </option>
         {% endfor %}
