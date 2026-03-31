@@ -151,6 +151,58 @@ def reindex(force: bool = True) -> None:
     kb.ensure_indexed(force=force)
 
 
+def _retrieval_chunk_count(
+    model_string: str,
+    scan_context: str,
+    history: list[dict[str, str]] | None,
+) -> int:
+    """Compute how many retrieval chunks fit in the context budget.
+
+    Args:
+        model_string: litellm model string.
+        scan_context: Untrusted scan-derived content (may be empty).
+        history: Conversation history (may be None).
+
+    Returns:
+        Number of chunks to retrieve.
+    """
+    system_tokens = 800  # Base system prompt estimate
+    scan_tokens = len(scan_context) // CHARS_PER_TOKEN if scan_context else 0
+    history_tokens = sum(len(m.get("content", "")) // CHARS_PER_TOKEN for m in (history or []))
+    budget = compute_retrieval_budget(model_string, system_tokens, scan_tokens, history_tokens)
+    return budget_to_chunk_count(budget)
+
+
+def _prepare_messages(
+    query: str,
+    model_string: str,
+    kb: KnowledgeBase,
+    scan_context: str,
+    history: list[dict[str, str]] | None,
+) -> list[dict[str, str]]:
+    """Retrieve knowledge and assemble the LLM message sequence.
+
+    Args:
+        query: User's question.
+        model_string: litellm model string.
+        kb: Initialized KnowledgeBase.
+        scan_context: Untrusted scan-derived content.
+        history: Conversation history.
+
+    Returns:
+        Message list ready for litellm acompletion.
+    """
+    chunk_count = _retrieval_chunk_count(model_string, scan_context, history)
+    results = kb.retrieve(query, max_chunks=chunk_count)
+    return assemble_messages(
+        query=query,
+        model=model_string,
+        retrieval_results=results,
+        scan_context=scan_context,
+        history=history,
+    )
+
+
 async def chat(
     query: str,
     scan_context: str = "",
@@ -175,27 +227,8 @@ async def chat(
     kb = _get_knowledge_base()
     kb.ensure_indexed()
 
-    # Compute retrieval budget
-    system_tokens = 800  # Base system prompt estimate
-    scan_tokens = len(scan_context) // CHARS_PER_TOKEN if scan_context else 0
-    history_tokens = sum(len(m.get("content", "")) // CHARS_PER_TOKEN for m in (history or []))
+    messages = _prepare_messages(query, model_string, kb, scan_context, history)
 
-    budget = compute_retrieval_budget(model_string, system_tokens, scan_tokens, history_tokens)
-    chunk_count = budget_to_chunk_count(budget)
-
-    # Retrieve knowledge
-    results = kb.retrieve(query, max_chunks=chunk_count)
-
-    # Assemble messages
-    messages = assemble_messages(
-        query=query,
-        model=model_string,
-        retrieval_results=results,
-        scan_context=scan_context,
-        history=history,
-    )
-
-    # Call LLM
     response = await acompletion(  # type: ignore[no-untyped-call]
         model=model_string,
         messages=messages,
@@ -230,23 +263,7 @@ async def chat_stream(
     kb = _get_knowledge_base()
     kb.ensure_indexed()
 
-    # Compute retrieval budget
-    system_tokens = 800
-    scan_tokens = len(scan_context) // CHARS_PER_TOKEN if scan_context else 0
-    history_tokens = sum(len(m.get("content", "")) // CHARS_PER_TOKEN for m in (history or []))
-
-    budget = compute_retrieval_budget(model_string, system_tokens, scan_tokens, history_tokens)
-    chunk_count = budget_to_chunk_count(budget)
-
-    results = kb.retrieve(query, max_chunks=chunk_count)
-
-    messages = assemble_messages(
-        query=query,
-        model=model_string,
-        retrieval_results=results,
-        scan_context=scan_context,
-        history=history,
-    )
+    messages = _prepare_messages(query, model_string, kb, scan_context, history)
 
     response: Any = await acompletion(  # type: ignore[no-untyped-call]
         model=model_string,
