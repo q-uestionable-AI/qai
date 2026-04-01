@@ -2,7 +2,7 @@
 {% block title %}q-ai — Assistant{% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto px-6 py-6 flex flex-col" style="height: calc(100vh - 68px);">
+<div class="max-w-5xl mx-auto px-6 py-6 flex flex-col" style="height: calc(100vh - 68px);">
 
 {% if not assist_configured %}
     {# ── Setup card: pick provider & model ── #}
@@ -281,6 +281,10 @@
                     scrollToBottom();
                     break;
                 case "assist_done":
+                    if (currentAssistantBubble) {
+                        var copyBtn = currentAssistantBubble.querySelector(".assist-copy-btn");
+                        if (copyBtn) copyBtn.dataset.raw = currentAssistantText;
+                    }
                     currentAssistantBubble = null;
                     currentAssistantText = "";
                     isStreaming = false;
@@ -299,20 +303,47 @@
             }
         }
 
+        function makeCopyBtn(rawText, position) {
+            var btn = document.createElement("button");
+            btn.className = "assist-copy-btn " + position;
+            btn.type = "button";
+            btn.title = "Copy";
+            btn.dataset.raw = rawText;
+            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"'
+                + ' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'
+                + ' stroke-linecap="round" stroke-linejoin="round">'
+                + '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>'
+                + '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+            btn.onclick = function() {
+                navigator.clipboard.writeText(btn.dataset.raw);
+                btn.classList.add("copied");
+                setTimeout(function() { btn.classList.remove("copied"); }, 1500);
+            };
+            return btn;
+        }
+
         function addMessage(role, text) {
             var wrapper = document.createElement("div");
             if (role === "user") {
                 wrapper.className = "chat chat-end";
+                var container = document.createElement("div");
+                container.className = "assist-bubble-wrap";
                 var bubble = document.createElement("div");
                 bubble.className = "chat-bubble chat-bubble-primary";
                 bubble.textContent = text;
-                wrapper.appendChild(bubble);
+                container.appendChild(bubble);
+                container.appendChild(makeCopyBtn(text, "bottom-right"));
+                wrapper.appendChild(container);
             } else if (role === "assistant") {
                 wrapper.className = "chat chat-start";
+                var container = document.createElement("div");
+                container.className = "assist-bubble-wrap";
                 var bubble = document.createElement("div");
                 bubble.className = "chat-bubble assist-bubble";
                 bubble.innerHTML = text ? marked.parse(text) : "";
-                wrapper.appendChild(bubble);
+                container.appendChild(bubble);
+                container.appendChild(makeCopyBtn(text, "bottom-left"));
+                wrapper.appendChild(container);
             } else {
                 wrapper.className = "chat chat-start";
                 var bubble = document.createElement("div");

@@ -514,6 +514,67 @@ select.select:focus {
 .assist-bubble > *:first-child { margin-top: 0; }
 .assist-bubble > *:last-child { margin-bottom: 0; }
 
+/* Wider assistant bubbles — override DaisyUI default */
+.chat-start .assist-bubble,
+.chat-end .chat-bubble-primary {
+    max-width: 90%;
+}
+
+/* ── Bubble wrapper (positions copy button) ────────────────── */
+.assist-bubble-wrap {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
+
+/* ── Copy button ───────────────────────────────────────────── */
+.assist-copy-btn {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #94a3b8;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease;
+}
+.assist-bubble-wrap:hover .assist-copy-btn {
+    opacity: 1;
+}
+.assist-copy-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #e2e8f0;
+}
+.assist-copy-btn.bottom-left {
+    bottom: -2px;
+    left: -4px;
+}
+.assist-copy-btn.bottom-right {
+    bottom: -2px;
+    right: -4px;
+}
+/* "Copied!" tooltip */
+.assist-copy-btn.copied::after {
+    content: "Copied!";
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 4px;
+    padding: 2px 8px;
+    font-size: 0.7rem;
+    color: #e2e8f0;
+    background: rgba(0, 0, 0, 0.75);
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
 /* ── Suggested prompt chips ──────────────────────────────────── */
 .assist-chip {
     font-size: 0.8rem;

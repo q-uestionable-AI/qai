@@ -105,6 +105,10 @@
                 messagesEl.scrollTop = messagesEl.scrollHeight;
                 break;
             case "assist_done":
+                if (currentBubble) {
+                    var copyBtn = currentBubble.querySelector(".assist-copy-btn");
+                    if (copyBtn) copyBtn.dataset.raw = currentText;
+                }
                 currentBubble = null;
                 currentText = "";
                 isStreaming = false;
@@ -119,6 +123,25 @@
                 setPanelInputEnabled(true);
                 break;
         }
+    }
+
+    function makePanelCopyBtn(rawText, position) {
+        var btn = document.createElement("button");
+        btn.className = "assist-copy-btn " + position;
+        btn.type = "button";
+        btn.title = "Copy";
+        btn.dataset.raw = rawText;
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"'
+            + ' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'
+            + ' stroke-linecap="round" stroke-linejoin="round">'
+            + '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>'
+            + '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        btn.onclick = function() {
+            navigator.clipboard.writeText(btn.dataset.raw);
+            btn.classList.add("copied");
+            setTimeout(function() { btn.classList.remove("copied"); }, 1500);
+        };
+        return btn;
     }
 
     function addPanelMessage(role, text) {
@@ -139,7 +162,15 @@
         } else {
             bubble.textContent = text;
         }
-        wrapper.appendChild(bubble);
+        var container = document.createElement("div");
+        container.className = "assist-bubble-wrap";
+        container.appendChild(bubble);
+        if (role === "user") {
+            container.appendChild(makePanelCopyBtn(text, "bottom-right"));
+        } else if (role === "assistant") {
+            container.appendChild(makePanelCopyBtn(text, "bottom-left"));
+        }
+        wrapper.appendChild(container);
         messagesEl.appendChild(wrapper);
         messagesEl.scrollTop = messagesEl.scrollHeight;
         return wrapper;
