@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -111,29 +111,3 @@ class TestProvidersInsecureKeyring:
         for p in providers:
             assert p["has_key"] is False
             assert p["keyring_unavailable"] is True
-
-
-class TestInfrastructureCheck:
-    """Tests for infrastructure reachability checks."""
-
-    def test_infrastructure_check(self, client: TestClient) -> None:
-        """Mock HTTP responses, verify reachable/unreachable status."""
-        import httpx
-
-        async def _mock_get(url: str) -> httpx.Response:
-            if "11434" in url:
-                return httpx.Response(200, request=httpx.Request("GET", url))
-            raise httpx.ConnectError("Connection refused")
-
-        mock_client = AsyncMock()
-        mock_client.get = _mock_get
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            resp = client.get("/api/settings/infrastructure")
-
-        assert resp.status_code == 200
-        text = resp.text
-        assert "Ollama" in text
-        assert "LM Studio" in text

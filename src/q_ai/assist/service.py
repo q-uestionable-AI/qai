@@ -189,6 +189,7 @@ def _prepare_messages(
     kb: KnowledgeBase,
     scan_context: str,
     history: list[dict[str, str]] | None,
+    source: str = "",
 ) -> list[dict[str, str]]:
     """Retrieve knowledge and assemble the LLM message sequence.
 
@@ -198,6 +199,7 @@ def _prepare_messages(
         kb: Initialized KnowledgeBase.
         scan_context: Untrusted scan-derived content.
         history: Conversation history.
+        source: Interaction surface hint (e.g. "web_ui").
 
     Returns:
         Message list ready for litellm acompletion.
@@ -210,6 +212,7 @@ def _prepare_messages(
         retrieval_results=results,
         scan_context=scan_context,
         history=history,
+        source=source,
     )
 
 
@@ -217,6 +220,7 @@ async def chat(
     query: str,
     scan_context: str = "",
     history: list[dict[str, str]] | None = None,
+    source: str = "",
 ) -> str:
     """Send a query to the assistant and return the complete response.
 
@@ -224,6 +228,7 @@ async def chat(
         query: User's question.
         scan_context: Optional untrusted scan-derived content.
         history: Optional conversation history.
+        source: Interaction surface hint (e.g. "web_ui").
 
     Returns:
         Assistant's response text.
@@ -237,7 +242,7 @@ async def chat(
     kb = _get_knowledge_base()
     kb.ensure_indexed()
 
-    messages = _prepare_messages(query, model_string, kb, scan_context, history)
+    messages = _prepare_messages(query, model_string, kb, scan_context, history, source=source)
 
     call_kwargs: dict[str, Any] = {
         "model": model_string,
@@ -258,6 +263,7 @@ async def chat_stream(
     query: str,
     scan_context: str = "",
     history: list[dict[str, str]] | None = None,
+    source: str = "",
 ) -> AsyncIterator[str]:
     """Send a query and stream the response token by token.
 
@@ -265,6 +271,7 @@ async def chat_stream(
         query: User's question.
         scan_context: Optional untrusted scan-derived content.
         history: Optional conversation history.
+        source: Interaction surface hint (e.g. "web_ui").
 
     Yields:
         Response text chunks as they arrive.
@@ -278,7 +285,7 @@ async def chat_stream(
     kb = _get_knowledge_base()
     kb.ensure_indexed()
 
-    messages = _prepare_messages(query, model_string, kb, scan_context, history)
+    messages = _prepare_messages(query, model_string, kb, scan_context, history, source=source)
 
     call_kwargs: dict[str, Any] = {
         "model": model_string,
