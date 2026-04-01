@@ -230,7 +230,7 @@
     </div>
 
     {# ── Suggested prompts ── #}
-    <div id="assist-prompts" class="flex flex-wrap gap-2 mb-3" style="padding-left: 40px;">
+    <div id="assist-prompts" class="flex flex-wrap gap-2 mb-3" style="padding-left: 44px;">
         {% for prompt in suggested_prompts %}
         <button type="button" class="assist-chip"
                 onclick="sendSuggestedPrompt(this.textContent.trim())">{{ prompt }}</button>
@@ -238,21 +238,24 @@
     </div>
 
     {# ── Input area ── #}
-    <form id="assist-input-form" class="flex gap-2" onsubmit="return handleAssistSubmit(event)">
+    <form id="assist-input-form" class="relative" onsubmit="return handleAssistSubmit(event)">
         <button type="button" id="assist-new-chat-btn"
                 class="btn btn-sm btn-outline btn-square assist-new-chat-btn"
                 title="New Chat"
-                onclick="resetChat()">
+                onclick="resetChat()"
+                style="position: absolute; left: 0; top: 50%; transform: translateY(-50%);">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
             </svg>
         </button>
         <input type="text" id="assist-input"
-               class="input input-bordered input-sm flex-1"
+               class="input input-bordered input-sm w-full"
                placeholder="Ask the assistant..."
-               autocomplete="off" />
+               autocomplete="off"
+               style="padding-left: 44px; padding-right: 68px;" />
         <button type="submit" id="assist-send-btn"
-                class="btn btn-sm btn-outline btn-primary">
+                class="btn btn-sm btn-outline btn-primary"
+                style="position: absolute; right: 0; top: 50%; transform: translateY(-50%);">
             Send
         </button>
     </form>
