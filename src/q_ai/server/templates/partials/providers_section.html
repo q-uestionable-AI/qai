@@ -14,23 +14,19 @@
                 <tbody>
                     {% for p in providers if p.configured %}
                     <tr>
-                        <td class="font-mono text-sm">{{ p.name }}</td>
+                        <td class="text-sm">{{ p.label }}</td>
                         <td>
-                            <span class="badge badge-success badge-sm gap-1">configured</span>
+                            <span id="status-{{ p.name }}" class="badge badge-ghost badge-sm gap-1">
+                                <span class="loading loading-spinner loading-xs"></span>
+                                checking
+                            </span>
                         </td>
                         <td class="text-right">
-                            <span id="test-result-{{ p.name }}" class="text-xs mr-2"></span>
                             <div class="inline-flex gap-1">
                                 <button class="btn btn-xs btn-outline btn-secondary btn-square" title="Edit"
                                         onclick="editProvider('{{ p.name }}')">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
                                         <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
-                                    </svg>
-                                </button>
-                                <button class="btn btn-xs btn-outline btn-primary btn-square" title="Test"
-                                        onclick="testProvider('{{ p.name }}')">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
                                     </svg>
                                 </button>
                                 <button class="btn btn-xs btn-outline btn-error btn-square" title="Delete"
@@ -63,7 +59,7 @@
                         onchange="toggleProviderFields()">
                     <option value="" disabled selected>Select provider</option>
                     {% for p in providers %}
-                    <option value="{{ p.name }}">{{ p.name }}</option>
+                    <option value="{{ p.name }}">{{ p.label }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -133,7 +129,7 @@
 </div>
 
 <script>
-const CLOUD = new Set(["anthropic","openai","groq","openrouter"]);
+const CLOUD = new Set(["anthropic","google","openai","groq","openrouter","xai"]);
 const LOCAL_DEFAULTS = {ollama:"http://localhost:11434", lmstudio:"http://localhost:1234"};
 
 function toggleProviderFields() {
@@ -182,16 +178,29 @@ function addProvider(e) {
     return false;
 }
 
-function testProvider(name) {
-    const el = document.getElementById("test-result-" + name);
-    el.textContent = "testing...";
-    el.className = "text-xs mr-2 text-info";
+function checkProviderStatus(name) {
+    var badge = document.getElementById("status-" + name);
+    if (!badge) return;
     fetch("/api/settings/providers/" + name + "/test")
-        .then(r => r.json()).then(d => {
-            el.textContent = d.message || d.status;
-            el.className = "text-xs mr-2 " + (d.status === "ok" ? "text-success" : "text-error");
-        }).catch(() => { el.textContent = "failed"; el.className = "text-xs mr-2 text-error"; });
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.status === "ok") {
+                badge.className = "badge badge-success badge-sm gap-1";
+                badge.textContent = "online";
+            } else {
+                badge.className = "badge badge-error badge-sm gap-1";
+                badge.textContent = "offline";
+            }
+        }).catch(function() {
+            badge.className = "badge badge-warning badge-sm gap-1";
+            badge.textContent = "error";
+        });
 }
+
+/* Fire connectivity checks for all configured providers on page load. */
+{% for p in providers if p.configured %}
+checkProviderStatus("{{ p.name }}");
+{% endfor %}
 
 function deleteProvider(name) {
     if (!confirm("Delete provider " + name + "?")) return;
