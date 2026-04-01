@@ -27,6 +27,7 @@ from q_ai.assist.prompt import (
 )
 from q_ai.core.config import get_credential, resolve
 from q_ai.core.llm import parse_model_string
+from q_ai.core.providers import get_litellm_prefix, registry_key_from_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +44,13 @@ class AssistantNotConfiguredError(Exception):
 def _resolve_model_string() -> str:
     """Resolve the assistant model string from configuration.
 
+    The DB stores the registry key as ``assist.provider`` (e.g. "google")
+    and the model may or may not include a litellm prefix.  This function
+    ensures the returned string always uses the correct litellm routing
+    prefix (e.g. "gemini/gemini-2.5-pro", not "google/gemini-2.5-pro").
+
     Returns:
-        litellm model string in "provider/model" format.
+        litellm model string in "prefix/model" format.
 
     Raises:
         AssistantNotConfiguredError: If provider or model is not set.
@@ -59,9 +65,16 @@ def _resolve_model_string() -> str:
             "qai config set assist.model llama3.1"
         )
 
-    if model_val.startswith(f"{provider_val}/"):
+    prefix = get_litellm_prefix(provider_val)
+
+    # Model may already carry a litellm prefix (set via UI dropdown) or the
+    # registry key as prefix (stale DB value).  Strip either before rebuilding.
+    if model_val.startswith(f"{prefix}/"):
         return model_val
-    return f"{provider_val}/{model_val}"
+    if model_val.startswith(f"{provider_val}/"):
+        _, _, bare_model = model_val.partition("/")
+        return f"{prefix}/{bare_model}"
+    return f"{prefix}/{model_val}"
 
 
 def _resolve_base_url() -> str | None:
@@ -104,6 +117,10 @@ def _resolve_credential(model_string: str) -> str | None:
     Falls back to the bare ``<provider>`` key (shared target credential)
     for convenience when only one key is configured.
 
+    The model string carries the litellm prefix (e.g. "gemini"), but
+    credentials are stored under the registry key (e.g. "google").
+    ``registry_key_from_prefix`` bridges the two.
+
     Local providers (ollama, lmstudio, custom) may return ``None``
     without error — they don't require credentials.
 
@@ -116,7 +133,8 @@ def _resolve_credential(model_string: str) -> str | None:
     Raises:
         AssistantNotConfiguredError: If credentials are missing for cloud providers.
     """
-    provider, _ = parse_model_string(model_string)
+    litellm_prefix, _ = parse_model_string(model_string)
+    provider = registry_key_from_prefix(litellm_prefix)
     local_providers = {"ollama", "lmstudio", "custom"}
     if provider in local_providers:
         # Local providers: check namespaced key but don't require it.
