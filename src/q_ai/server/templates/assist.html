@@ -205,6 +205,11 @@
     <div class="flex-1 relative overflow-hidden">
         <div id="assist-chat-messages" class="h-full overflow-y-auto space-y-2 pr-1" style="padding-bottom: 6rem;">
             {# Messages rendered here by JS #}
+            <div id="assist-welcome" class="flex items-center justify-center h-full">
+                <p class="text-sm" style="opacity: 0.45;">
+                    Ask about findings, plan workflows, or explore capabilities.
+                </p>
+            </div>
         </div>
         <button type="button" id="assist-jump-bottom"
                 class="assist-jump-bottom"
@@ -413,8 +418,10 @@
             isStreaming = true;
             setInputEnabled(false);
 
-            // Hide prompts after first message
+            // Hide prompts and welcome after first message
             if (promptsEl) promptsEl.style.display = "none";
+            var welcome = document.getElementById("assist-welcome");
+            if (welcome) welcome.remove();
 
             addMessage("user", text);
             addTypingIndicator();
@@ -443,11 +450,14 @@
         };
 
         window.resetChat = function() {
-            messagesEl.innerHTML = "";
+            messagesEl.innerHTML = '<div id="assist-welcome" class="flex items-center justify-center h-full">'
+                + '<p class="text-sm" style="opacity: 0.45;">'
+                + 'Ask about findings, plan workflows, or explore capabilities.</p></div>';
             currentAssistantBubble = null;
             currentAssistantText = "";
             isStreaming = false;
             streamingBar.style.display = "none";
+            jumpBtn.style.display = "none";
             setInputEnabled(true);
             if (promptsEl) promptsEl.style.display = "";
             if (socket && socket.readyState === WebSocket.OPEN) {
@@ -457,8 +467,9 @@
 
         var jumpBtn = document.getElementById("assist-jump-bottom");
         messagesEl.addEventListener("scroll", function() {
+            var hasMessages = messagesEl.querySelector(".chat") !== null;
             var gap = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
-            jumpBtn.style.display = gap > 120 ? "" : "none";
+            jumpBtn.style.display = (hasMessages && gap > 120) ? "" : "none";
         });
 
         connectWs();
