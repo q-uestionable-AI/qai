@@ -101,7 +101,9 @@
                     currentText = "";
                 }
                 currentText += data.token;
-                currentBubble.querySelector(".chat-bubble").innerHTML = marked.parse(currentText);
+                currentBubble.querySelector(".chat-bubble").innerHTML = DOMPurify.sanitize(marked.parse(currentText));
+                var panelCopyBtn = currentBubble.querySelector(".assist-copy-btn");
+                if (panelCopyBtn) panelCopyBtn.dataset.raw = currentText;
                 messagesEl.scrollTop = messagesEl.scrollHeight;
                 break;
             case "assist_done":
@@ -130,6 +132,7 @@
         btn.className = "assist-copy-btn " + position;
         btn.type = "button";
         btn.title = "Copy";
+        btn.setAttribute("aria-label", "Copy message");
         btn.dataset.raw = rawText;
         btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"'
             + ' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'
@@ -158,7 +161,7 @@
             bubble.className = "chat-bubble chat-bubble-error text-sm";
         }
         if (role === "assistant") {
-            bubble.innerHTML = text ? marked.parse(text) : "";
+            bubble.innerHTML = text ? DOMPurify.sanitize(marked.parse(text)) : "";
         } else {
             bubble.textContent = text;
         }
