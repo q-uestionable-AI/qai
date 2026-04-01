@@ -376,7 +376,8 @@ class TestFilterCloudModels:
         result = _filter_google(data)
         assert len(result) == 0
 
-    def test_google_excludes_old_versions(self) -> None:
+    def test_google_keeps_all_gemini_versions(self) -> None:
+        """No version gate — old and new versions all pass if prefix + method match."""
         data = {
             "models": [
                 {
@@ -390,19 +391,6 @@ class TestFilterCloudModels:
                     "supportedGenerationMethods": ["generateContent"],
                 },
                 {
-                    "name": "models/gemini-1.0-pro",
-                    "displayName": "Gemini 1.0 Pro",
-                    "supportedGenerationMethods": ["generateContent"],
-                },
-            ]
-        }
-        result = _filter_google(data)
-        assert len(result) == 0
-
-    def test_google_keeps_version_3(self) -> None:
-        data = {
-            "models": [
-                {
                     "name": "models/gemini-3.0-pro",
                     "displayName": "Gemini 3.0 Pro",
                     "supportedGenerationMethods": ["generateContent"],
@@ -410,9 +398,23 @@ class TestFilterCloudModels:
             ]
         }
         result = _filter_google(data)
+        assert len(result) == 3
+
+    def test_google_keeps_preview_models(self) -> None:
+        """Preview models are NOT excluded — many current models are labeled preview."""
+        data = {
+            "models": [
+                {
+                    "name": "models/gemini-2.5-flash-preview",
+                    "displayName": "Gemini 2.5 Flash Preview",
+                    "supportedGenerationMethods": ["generateContent"],
+                },
+            ]
+        }
+        result = _filter_google(data)
         assert len(result) == 1
 
-    def test_google_excludes_nano_and_latest(self) -> None:
+    def test_google_excludes_nano(self) -> None:
         data = {
             "models": [
                 {
@@ -420,17 +422,12 @@ class TestFilterCloudModels:
                     "displayName": "Gemini 2.5 Flash Nano",
                     "supportedGenerationMethods": ["generateContent"],
                 },
-                {
-                    "name": "models/gemini-2.5-pro-latest",
-                    "displayName": "Gemini 2.5 Pro Latest",
-                    "supportedGenerationMethods": ["generateContent"],
-                },
             ]
         }
         result = _filter_google(data)
         assert len(result) == 0
 
-    def test_google_excludes_preview_tts_lite_embed_vision(self) -> None:
+    def test_google_excludes_tts_lite_embed_vision_code(self) -> None:
         data = {
             "models": [
                 {
@@ -441,11 +438,6 @@ class TestFilterCloudModels:
                 {
                     "name": "models/gemini-2.5-flash-lite",
                     "displayName": "Gemini 2.5 Flash Lite",
-                    "supportedGenerationMethods": ["generateContent"],
-                },
-                {
-                    "name": "models/gemini-2.5-flash-preview",
-                    "displayName": "Gemini 2.5 Flash Preview",
                     "supportedGenerationMethods": ["generateContent"],
                 },
                 {
@@ -463,7 +455,21 @@ class TestFilterCloudModels:
         result = _filter_google(data)
         assert len(result) == 0
 
-    def test_openai_keeps_allowed_aliases(self) -> None:
+    def test_google_excludes_by_display_name(self) -> None:
+        """Exclusion checks both model ID and displayName."""
+        data = {
+            "models": [
+                {
+                    "name": "models/gemini-2.5-special",
+                    "displayName": "Gemini 2.5 Nano Banana",
+                    "supportedGenerationMethods": ["generateContent"],
+                },
+            ]
+        }
+        result = _filter_google(data)
+        assert len(result) == 0
+
+    def test_openai_keeps_prefix_matched_models(self) -> None:
         data = {
             "data": [
                 {"id": "gpt-4.1"},
@@ -474,29 +480,31 @@ class TestFilterCloudModels:
                 {"id": "o1"},
                 {"id": "o3"},
                 {"id": "o3-mini"},
+                {"id": "o4-mini"},
             ]
         }
         result = _filter_openai(data)
-        assert len(result) == 8
+        assert len(result) == 9
         ids = {m.id for m in result}
         assert "openai/gpt-4.1" in ids
         assert "openai/o3-mini" in ids
+        assert "openai/o4-mini" in ids
 
-    def test_openai_keeps_gpt5(self) -> None:
-        data = {"data": [{"id": "gpt-5"}, {"id": "gpt-5-mini"}]}
+    def test_openai_keeps_future_gpt(self) -> None:
+        data = {"data": [{"id": "gpt-5"}, {"id": "gpt-5-mini"}, {"id": "gpt-6"}]}
         result = _filter_openai(data)
-        assert len(result) == 2
+        assert len(result) == 3
 
-    def test_openai_excludes_old_and_non_chat(self) -> None:
+    def test_openai_excludes_non_chat_and_non_prefixed(self) -> None:
         data = {
             "data": [
                 {"id": "gpt-4o"},
+                {"id": "gpt-4-turbo"},
                 {"id": "babbage-002"},
                 {"id": "davinci-002"},
                 {"id": "gpt-3.5-turbo"},
                 {"id": "gpt-3.5-turbo-0125"},
                 {"id": "chatgpt-image-latest"},
-                {"id": "gpt-4-turbo"},
                 {"id": "gpt-4o-audio-preview"},
                 {"id": "gpt-4o-realtime-preview"},
                 {"id": "gpt-4o-search-preview"},
@@ -504,8 +512,16 @@ class TestFilterCloudModels:
             ]
         }
         result = _filter_openai(data)
-        assert len(result) == 1
-        assert result[0].id == "openai/gpt-4o"
+        ids = {m.id for m in result}
+        assert "openai/gpt-4o" in ids
+        assert "openai/gpt-4-turbo" in ids
+        # Non-prefixed and non-chat models excluded
+        assert "openai/babbage-002" not in ids
+        assert "openai/gpt-3.5-turbo" not in ids
+        assert "openai/chatgpt-image-latest" not in ids
+        assert "openai/gpt-4o-audio-preview" not in ids
+        assert "openai/gpt-4o-realtime-preview" not in ids
+        assert "openai/gpt-4o-search-preview" not in ids
 
     def test_openai_excludes_dated_variants(self) -> None:
         data = {
