@@ -31,6 +31,21 @@ class TestResolveModelString:
         result = _resolve_model_string()
         assert result == "ollama/llama3.1"
 
+    @patch("q_ai.assist.service.resolve")
+    def test_strips_duplicate_provider_prefix(self, mock_resolve: object) -> None:
+        """Model set via UI already includes provider prefix — no double-prefix."""
+
+        def side_effect(key: str, **kwargs: object) -> tuple[str | None, str]:
+            if key == "assist.provider":
+                return "anthropic", "db"
+            if key == "assist.model":
+                return "anthropic/claude-opus-4-6", "db"
+            return None, "default"
+
+        mock_resolve.side_effect = side_effect  # type: ignore[attr-defined]
+        result = _resolve_model_string()
+        assert result == "anthropic/claude-opus-4-6"
+
     @patch("q_ai.assist.service.resolve", return_value=(None, "default"))
     def test_raises_when_not_configured(self, _mock: object) -> None:
         with pytest.raises(AssistantNotConfiguredError, match="not configured"):

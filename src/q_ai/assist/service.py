@@ -59,6 +59,8 @@ def _resolve_model_string() -> str:
             "qai config set assist.model llama3.1"
         )
 
+    if model_val.startswith(f"{provider_val}/"):
+        return model_val
     return f"{provider_val}/{model_val}"
 
 
