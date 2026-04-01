@@ -52,11 +52,11 @@
                 <p id="assist-apikey-hint" class="text-xs mt-1" style="opacity: 0.5;"></p>
             </div>
 
-            <div id="assist-baseurl-field" class="md:col-span-2">
-                <label class="label" for="assist-base-url">
+            <div id="assist-baseurl-field" class="md:col-span-2" style="display:none;">
+                <label class="label" for="assist-baseurl">
                     <span class="label-text" style="color: #94a3b8;">Base URL</span>
                 </label>
-                <input type="text" id="assist-base-url" name="base_url"
+                <input type="text" id="assist-baseurl" name="base_url"
                        class="input input-bordered input-sm w-full"
                        placeholder="e.g. http://inference-server:11434 for remote Ollama"
                        value="{{ assist_base_url or '' }}">
@@ -79,29 +79,61 @@
 
 <script>
 (function() {
+    var SID = "assist";
     var ASSIST_PROVIDERS = {{ assist_providers | tojson }};
     var providerMap = {};
     ASSIST_PROVIDERS.forEach(function(p) { providerMap[p.name] = p; });
 
-    var provSel = document.getElementById("assist-provider");
+    var provSel = document.getElementById(SID + "-provider");
+    var keyI = document.getElementById(SID + "-apikey");
+    var urlI = document.getElementById(SID + "-baseurl");
+
     if (provSel) {
         provSel.addEventListener("change", function() {
             toggleAssistProviderFields(this.value);
         });
     }
 
+    /* Trigger model fetch when the relevant credential field changes. */
+    if (keyI) {
+        keyI.addEventListener("change", function() {
+            var info = providerMap[(provSel && provSel.value) || ""] || {};
+            if (info.type === "cloud" && this.value.trim()) {
+                qaiRefetchModels(SID);
+            }
+        });
+    }
+    if (urlI) {
+        urlI.addEventListener("change", function() {
+            var info = providerMap[(provSel && provSel.value) || ""] || {};
+            if ((info.type === "local" || info.type === "custom") && this.value.trim()) {
+                qaiRefetchModels(SID);
+            }
+        });
+    }
+
+    function resetModelArea() {
+        var area = document.getElementById(SID + "-model-area");
+        if (area) {
+            area.innerHTML = '<select disabled class="select select-bordered select-sm w-full opacity-40">'
+                + '<option>Select a provider first</option></select>';
+        }
+    }
+
     function toggleAssistProviderFields(name) {
         var info = providerMap[name] || {};
         var ptype = info.type || "";
-        var keyF = document.getElementById("assist-apikey-field");
-        var urlF = document.getElementById("assist-baseurl-field");
-        var keyI = document.getElementById("assist-apikey");
-        var urlI = document.getElementById("assist-base-url");
-        var hint = document.getElementById("assist-apikey-hint");
+        var keyF = document.getElementById(SID + "-apikey-field");
+        var urlF = document.getElementById(SID + "-baseurl-field");
+        var hint = document.getElementById(SID + "-apikey-hint");
 
         var isCloud = ptype === "cloud";
         var isLocal = ptype === "local";
         var isCustom = ptype === "custom";
+
+        /* Clear values from previous provider selection. */
+        keyI.value = "";
+        urlI.value = "";
 
         keyF.style.display = (isCloud || isLocal || isCustom) ? "" : "none";
         urlF.style.display = (isLocal || isCustom) ? "" : "none";
@@ -111,8 +143,16 @@
         } else {
             hint.textContent = (isLocal || isCustom) ? "Optional" : "";
         }
-        if (isLocal && info.default_base_url && !urlI.value) {
+        if (isLocal && info.default_base_url) {
             urlI.value = info.default_base_url;
+        }
+
+        /* For local providers with a default URL, fetch models now.
+           For others, reset the model area until credentials are entered. */
+        if (isLocal && info.default_base_url) {
+            qaiRefetchModels(SID);
+        } else {
+            resetModelArea();
         }
     }
 
@@ -135,7 +175,7 @@
             return false;
         }
 
-        var apiKey = document.getElementById("assist-apikey").value.trim();
+        var apiKey = keyI.value.trim();
         var baseUrl = fd.get("base_url") || "";
 
         var info = providerMap[provider] || {};
@@ -180,7 +220,7 @@
             if (settingsOk && credOk) {
                 msg.className = "text-xs text-success";
                 msg.textContent = "Saved";
-                var sel = document.getElementById("assist-provider");
+                var sel = document.getElementById(SID + "-provider");
                 var provLabel = sel.options[sel.selectedIndex].text;
                 document.getElementById("assist-display-provider").textContent = provLabel;
                 document.getElementById("assist-display-model").textContent = model;

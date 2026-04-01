@@ -47,29 +47,61 @@
 
     <script>
     (function() {
+        var SID = "assist-setup";
         var ASSIST_SETUP_PROVIDERS = {{ assist_providers | tojson }};
         var providerMap = {};
         ASSIST_SETUP_PROVIDERS.forEach(function(p) { providerMap[p.name] = p; });
 
-        var provSel = document.getElementById("assist-setup-provider");
+        var provSel = document.getElementById(SID + "-provider");
+        var keyI = document.getElementById(SID + "-apikey");
+        var urlI = document.getElementById(SID + "-baseurl");
+
         if (provSel) {
             provSel.addEventListener("change", function() {
                 toggleSetupFields(this.value);
             });
         }
 
+        /* Trigger model fetch when the relevant credential field changes. */
+        if (keyI) {
+            keyI.addEventListener("change", function() {
+                var info = providerMap[(provSel && provSel.value) || ""] || {};
+                if (info.type === "cloud" && this.value.trim()) {
+                    qaiRefetchModels(SID);
+                }
+            });
+        }
+        if (urlI) {
+            urlI.addEventListener("change", function() {
+                var info = providerMap[(provSel && provSel.value) || ""] || {};
+                if ((info.type === "local" || info.type === "custom") && this.value.trim()) {
+                    qaiRefetchModels(SID);
+                }
+            });
+        }
+
+        function resetModelArea() {
+            var area = document.getElementById(SID + "-model-area");
+            if (area) {
+                area.innerHTML = '<select disabled class="select select-bordered select-sm w-full opacity-40">'
+                    + '<option>Select a provider first</option></select>';
+            }
+        }
+
         function toggleSetupFields(name) {
             var info = providerMap[name] || {};
             var ptype = info.type || "";
-            var keyF = document.getElementById("assist-setup-apikey-field");
-            var urlF = document.getElementById("assist-setup-baseurl-field");
-            var keyI = document.getElementById("assist-setup-apikey");
-            var urlI = document.getElementById("assist-setup-baseurl");
-            var hint = document.getElementById("assist-setup-apikey-hint");
+            var keyF = document.getElementById(SID + "-apikey-field");
+            var urlF = document.getElementById(SID + "-baseurl-field");
+            var hint = document.getElementById(SID + "-apikey-hint");
 
             var isCloud = ptype === "cloud";
             var isLocal = ptype === "local";
             var isCustom = ptype === "custom";
+
+            /* Clear values from previous provider selection. */
+            keyI.value = "";
+            urlI.value = "";
 
             keyF.style.display = (isCloud || isLocal || isCustom) ? "" : "none";
             urlF.style.display = (isLocal || isCustom) ? "" : "none";
@@ -83,13 +115,19 @@
             }
             if (isLocal && info.default_base_url) {
                 urlI.value = info.default_base_url;
-            } else if (!isLocal) {
-                urlI.value = "";
             }
             if (isCustom) {
                 urlI.required = true;
             } else {
                 urlI.required = false;
+            }
+
+            /* For local providers with a default URL, fetch models now.
+               For others, reset the model area until credentials are entered. */
+            if (isLocal && info.default_base_url) {
+                qaiRefetchModels(SID);
+            } else {
+                resetModelArea();
             }
         }
 

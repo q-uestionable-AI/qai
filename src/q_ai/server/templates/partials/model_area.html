@@ -1,5 +1,5 @@
 {# Model area partial — swapped in via HTMX when a provider is selected.
-   Context variables: models, supports_custom, error, message,
+   Context variables: models, supports_custom, error, error_hint, message,
                       selector_id, provider_name, default_model_id, provider_type #}
 
 {% if error %}
@@ -7,31 +7,16 @@
 <div style="border: 1px solid #ef4444; border-radius: 0.5rem; padding: 0.5rem 0.75rem;
             background: rgba(239,68,68,0.08); font-size: 0.8rem;">
     <div style="color: #ef4444; font-weight: 600; margin-bottom: 0.15rem;">{{ error }}</div>
-    <div style="opacity: 0.7;">Check that the provider is running.
-        <a href="/settings#providers" style="color: #7c3aed; text-decoration: underline;">Settings</a>
-    </div>
+    {% if error_hint %}
+    <div style="opacity: 0.7;">{{ error_hint }}</div>
+    {% endif %}
 </div>
-{% if supports_custom %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.35rem;">
-    {% if provider_type == "local" %}
+<div style="display: flex; justify-content: flex-start; margin-top: 0.35rem;">
     <button type="button" class="btn btn-xs btn-ghost"
-            onclick="(function(){ var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/{{ provider_name }}/models?selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })()">
+            onclick="qaiRefetchModels({{ selector_id | tojson }})">
         &#8635; Retry
     </button>
-    {% else %}
-    <span></span>
-    {% endif %}
-    <label style="font-size: 0.7rem; opacity: 0.5; font-style: italic; cursor: pointer;"
-           onclick="document.getElementById('{{ selector_id }}-custom-wrap').classList.toggle('hidden')">
-        or type a model ID manually
-    </label>
 </div>
-<div id="{{ selector_id }}-custom-wrap" class="hidden mt-1">
-    <input type="text" name="model"
-           placeholder="provider/model-id"
-           class="input input-bordered input-sm w-full" />
-</div>
-{% endif %}
 
 {% elif message %}
 {# State: reachable but empty model list #}
@@ -40,23 +25,12 @@
     <div style="color: #f59e0b; font-weight: 600; margin-bottom: 0.15rem;">No models loaded</div>
     <div style="opacity: 0.7;">{{ message }}</div>
 </div>
-{% if supports_custom %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.35rem;">
+<div style="display: flex; justify-content: flex-start; margin-top: 0.35rem;">
     <button type="button" class="btn btn-xs btn-ghost"
-            onclick="(function(){ var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/{{ provider_name }}/models?selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })()">
+            onclick="qaiRefetchModels({{ selector_id | tojson }})">
         &#8635; Refresh models
     </button>
-    <label style="font-size: 0.7rem; opacity: 0.5; font-style: italic; cursor: pointer;"
-           onclick="document.getElementById('{{ selector_id }}-custom-wrap').classList.toggle('hidden')">
-        or type a model ID manually
-    </label>
 </div>
-<div id="{{ selector_id }}-custom-wrap" class="hidden mt-1">
-    <input type="text" name="model"
-           placeholder="provider/model-id"
-           class="input input-bordered input-sm w-full" />
-</div>
-{% endif %}
 
 {% else %}
 {# State: models loaded (enumerated or curated) #}
@@ -76,7 +50,7 @@
 {% if provider_type == "local" %}
 <div style="display: flex; justify-content: flex-end; margin-top: 0.25rem;">
     <button type="button" class="btn btn-xs btn-ghost"
-            onclick="(function(){ var sid={{ selector_id | tojson }}; htmx.ajax('GET', '/api/providers/{{ provider_name }}/models?selector_id=' + encodeURIComponent(sid), {target: '#' + sid + '-model-area'}); })()">
+            onclick="qaiRefetchModels({{ selector_id | tojson }})">
         &#8635; Refresh models
     </button>
 </div>

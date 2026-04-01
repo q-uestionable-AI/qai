@@ -64,12 +64,14 @@ class ModelListResponse:
         models: Available models (may be empty).
         supports_custom: Whether free-text model ID input is allowed.
         error: Connection or fetch error message (None on success).
+        error_hint: Supplementary hint shown below the error (e.g. auth gateway).
         message: Informational message for empty-but-reachable state.
     """
 
     models: list[ModelInfo]
     supports_custom: bool
     error: str | None = None
+    error_hint: str | None = None
     message: str | None = None
 
 
@@ -190,7 +192,11 @@ def _parse_model_list(provider_name: str, data: dict[str, Any]) -> list[ModelInf
     return [ModelInfo(id=f"{provider_name}/{name}", label=name) for name in raw_names]
 
 
-async def fetch_models(provider_name: str, base_url: str | None) -> ModelListResponse:
+async def fetch_models(
+    provider_name: str,
+    base_url: str | None,
+    api_key: str | None = None,
+) -> ModelListResponse:
     """Fetch the list of models available from a provider.
 
     For CLOUD providers the curated registry list is returned with no network
@@ -202,6 +208,8 @@ async def fetch_models(provider_name: str, base_url: str | None) -> ModelListRes
         provider_name: Provider key (e.g. "anthropic", "ollama").
         base_url: Override base URL for local providers.  When ``None`` the
             registry ``default_base_url`` is used.
+        api_key: Optional API key forwarded as a Bearer token for local
+            provider endpoints behind an auth gateway.
 
     Returns:
         ModelListResponse describing the available models and any error state.
@@ -224,13 +232,14 @@ async def fetch_models(provider_name: str, base_url: str | None) -> ModelListRes
         return ModelListResponse(models=[], supports_custom=True)
 
     # LOCAL provider — hit the live endpoint
-    return await _fetch_local_models(provider_name, config, base_url)
+    return await _fetch_local_models(provider_name, config, base_url, api_key)
 
 
 async def _fetch_local_models(
     provider_name: str,
     config: ProviderConfig,
     base_url: str | None,
+    api_key: str | None = None,
 ) -> ModelListResponse:
     """Query a local provider's API endpoint for available models.
 
@@ -239,6 +248,8 @@ async def _fetch_local_models(
         config: Provider configuration from the registry.
         base_url: Caller-supplied base URL override; falls back to
             ``config.default_base_url`` when ``None``.
+        api_key: Optional API key sent as a Bearer token for endpoints
+            behind an auth gateway.
 
     Returns:
         ModelListResponse with enumerated models, an empty-but-reachable
@@ -247,9 +258,13 @@ async def _fetch_local_models(
     resolved_url = base_url or config.default_base_url or ""
     endpoint = f"{resolved_url}{config.models_endpoint}"
 
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
     try:
         async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT_S) as client:
-            response = await client.get(endpoint)
+            response = await client.get(endpoint, headers=headers)
         response.raise_for_status()
     except httpx.TimeoutException as exc:
         _log.debug("Timeout fetching models from %s: %s", provider_name, exc)
@@ -263,14 +278,22 @@ async def _fetch_local_models(
         return ModelListResponse(
             models=[],
             supports_custom=config.supports_custom,
-            error=f"Cannot connect to {config.label} at {resolved_url}.",
+            error="Could not reach the server \u2014 check the URL",
         )
     except httpx.HTTPStatusError as exc:
         _log.debug("HTTP error from %s: %s", provider_name, exc)
+        status = exc.response.status_code
+        if status in (401, 403):
+            return ModelListResponse(
+                models=[],
+                supports_custom=config.supports_custom,
+                error="Authentication failed \u2014 check your API key",
+                error_hint=("This server requires an API key \u2014 enter one above and retry."),
+            )
         return ModelListResponse(
             models=[],
             supports_custom=config.supports_custom,
-            error=f"{config.label} returned HTTP {exc.response.status_code}.",
+            error=f"{config.label} returned HTTP {status}.",
         )
 
     models = _parse_model_list(provider_name, response.json())

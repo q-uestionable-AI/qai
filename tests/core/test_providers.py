@@ -31,7 +31,16 @@ class TestProviderRegistry:
         assert config.supports_custom is True
 
     def test_all_providers_registered(self) -> None:
-        expected = {"anthropic", "openai", "groq", "openrouter", "ollama", "lmstudio", "custom"}
+        expected = {
+            "anthropic",
+            "openai",
+            "groq",
+            "openrouter",
+            "xai",
+            "ollama",
+            "lmstudio",
+            "custom",
+        }
         assert set(PROVIDERS.keys()) == expected
 
     def test_unknown_provider_returns_none(self) -> None:
@@ -163,7 +172,7 @@ class TestFetchModels:
         assert result.models == []
         assert result.supports_custom is True
         assert result.error is not None
-        assert "connect" in result.error.lower() or "Ollama" in result.error
+        assert "reach" in result.error.lower() or "check the URL" in result.error
 
     @pytest.mark.asyncio
     async def test_timeout_returns_error(self) -> None:

@@ -111,7 +111,7 @@ class TestProviderModelsEndpoint:
             resp = client.get("/api/providers/ollama/models?selector_id=test")
         assert resp.status_code == 200
         assert "Could not connect" in resp.text
-        assert "Settings" in resp.text
+        assert "Retry" in resp.text
 
     def test_default_model_preselected(self, client: TestClient) -> None:
         with patch("q_ai.server.routes.get_credential", return_value="test-key"):

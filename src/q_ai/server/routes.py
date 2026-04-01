@@ -2328,13 +2328,21 @@ async def api_provider_models(request: Request, name: str) -> Response:
             status_code=404,
         )
 
+    # Accept inline credentials from the setup/edit form so the model
+    # fetch works before the user has saved their configuration.
+    inline_api_key = request.headers.get("x-assist-api-key")
+    inline_base_url = request.query_params.get("base_url")
+
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
-        try:
-            cred = get_credential(name)
-        except RuntimeError:
-            cred = None
-        base_url = get_setting(conn, f"{name}.base_url") or ""
+        if inline_api_key is None:
+            try:
+                cred = get_credential(name)
+            except RuntimeError:
+                cred = None
+        else:
+            cred = inline_api_key
+        base_url = inline_base_url or get_setting(conn, f"{name}.base_url") or ""
 
     configured = cred is not None or bool(base_url)
     if not configured and config.type != ProviderType.CUSTOM:
@@ -2346,7 +2354,7 @@ async def api_provider_models(request: Request, name: str) -> Response:
             status_code=400,
         )
 
-    result = await fetch_models(name, base_url or None)
+    result = await fetch_models(name, base_url or None, api_key=inline_api_key)
 
     selector_id = request.query_params.get("selector_id", "default")
     default_model_id = request.query_params.get("default", "")
@@ -2358,6 +2366,7 @@ async def api_provider_models(request: Request, name: str) -> Response:
             "models": result.models,
             "supports_custom": result.supports_custom,
             "error": result.error,
+            "error_hint": result.error_hint,
             "message": result.message,
             "selector_id": selector_id,
             "provider_name": name,
