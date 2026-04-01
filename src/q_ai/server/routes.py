@@ -2023,7 +2023,7 @@ _ASSIST_PROVIDER_ORDER = [
 ]
 
 
-def _get_assist_provider_choices() -> list[dict[str, str]]:
+def _get_assist_provider_choices() -> list[dict[str, str | bool]]:
     """Build the provider list for the assistant selector.
 
     Returns all providers from the registry with name, label, type,
@@ -2036,6 +2036,7 @@ def _get_assist_provider_choices() -> list[dict[str, str]]:
             "label": PROVIDERS[name].label,
             "type": PROVIDERS[name].type.value,
             "default_base_url": PROVIDERS[name].default_base_url or "",
+            "has_models_endpoint": PROVIDERS[name].models_endpoint is not None,
         }
         for name in _ASSIST_PROVIDER_ORDER
         if name in PROVIDERS
@@ -2360,7 +2361,7 @@ async def api_provider_models(request: Request, name: str) -> Response:
         base_url = inline_base_url or get_setting(conn, f"{name}.base_url") or ""
 
     configured = cred is not None or bool(base_url)
-    if not configured and config.type != ProviderType.CUSTOM:
+    if not configured and config.type not in {ProviderType.CUSTOM, ProviderType.CLOUD}:
         return HTMLResponse(
             content=(
                 "<div class='text-error text-sm'>Provider not configured. "
@@ -2369,7 +2370,7 @@ async def api_provider_models(request: Request, name: str) -> Response:
             status_code=400,
         )
 
-    result = await fetch_models(name, base_url or None, api_key=inline_api_key)
+    result = await fetch_models(name, base_url or None, api_key=cred)
 
     selector_id = request.query_params.get("selector_id", "default")
     default_model_id = request.query_params.get("default", "")

@@ -18,8 +18,8 @@
     </button>
 </div>
 
-{% elif message %}
-{# State: reachable but empty model list #}
+{% elif not models and message %}
+{# State: reachable but empty model list (or no API key yet) #}
 <div style="border: 1px solid #f59e0b; border-radius: 0.5rem; padding: 0.5rem 0.75rem;
             background: rgba(245,158,11,0.08); font-size: 0.8rem;">
     <div style="color: #f59e0b; font-weight: 600; margin-bottom: 0.15rem;">No models loaded</div>
@@ -32,8 +32,22 @@
     </button>
 </div>
 
+{% elif not models and supports_custom %}
+{# State: aggregator / custom — free-text model ID only #}
+<input type="text" name="model" required
+       id="{{ selector_id }}-custom-direct"
+       placeholder="e.g. {{ provider_name }}/model-id"
+       class="input input-bordered input-sm w-full" />
+
 {% else %}
 {# State: models loaded (enumerated or curated) #}
+{% if message %}
+<div style="border: 1px solid #f59e0b; border-radius: 0.5rem; padding: 0.4rem 0.65rem;
+            background: rgba(245,158,11,0.06); font-size: 0.75rem; margin-bottom: 0.35rem;">
+    <span style="color: #f59e0b;">&#9888;</span>
+    <span style="opacity: 0.7;">{{ message }}</span>
+</div>
+{% endif %}
 <select name="model" required
         class="select select-bordered select-sm w-full"
         onchange="toggleCustomModel_{{ selector_id }}(this)">

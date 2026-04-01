@@ -44,4 +44,13 @@ window.qaiRefetchModels = function(selectorId) {
     }
     htmx.ajax('GET', url, {target: '#' + selectorId + '-model-area', headers: headers});
 };
+
+/** Reset the model area to a disabled placeholder with a custom message. */
+window.qaiResetModelArea = function(selectorId, msg) {
+    var area = document.getElementById(selectorId + '-model-area');
+    if (area) {
+        area.innerHTML = '<select disabled class="select select-bordered select-sm w-full opacity-40">'
+            + '<option>' + (msg || 'Select a provider first') + '</option></select>';
+    }
+};
 </script>

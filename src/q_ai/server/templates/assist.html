@@ -80,14 +80,6 @@
             });
         }
 
-        function resetModelArea() {
-            var area = document.getElementById(SID + "-model-area");
-            if (area) {
-                area.innerHTML = '<select disabled class="select select-bordered select-sm w-full opacity-40">'
-                    + '<option>Select a provider first</option></select>';
-            }
-        }
-
         function toggleSetupFields(name) {
             var info = providerMap[name] || {};
             var ptype = info.type || "";
@@ -98,17 +90,19 @@
             var isCloud = ptype === "cloud";
             var isLocal = ptype === "local";
             var isCustom = ptype === "custom";
+            var isAggregator = isCloud && !info.has_models_endpoint;
 
             /* Clear values from previous provider selection. */
             keyI.value = "";
             urlI.value = "";
 
+            /* Aggregators need an API key but not the models endpoint. */
             keyF.style.display = (isCloud || isLocal || isCustom) ? "" : "none";
             urlF.style.display = (isLocal || isCustom) ? "" : "none";
 
             if (isCloud) {
-                keyI.required = true;
-                hint.textContent = "Required";
+                keyI.required = !isAggregator;
+                hint.textContent = isAggregator ? "Required" : "Required";
             } else {
                 keyI.required = false;
                 hint.textContent = isLocal || isCustom ? "Optional" : "";
@@ -122,12 +116,17 @@
                 urlI.required = false;
             }
 
-            /* For local providers with a default URL, fetch models now.
-               For others, reset the model area until credentials are entered. */
+            /* Fetch models or show context-aware placeholder. */
             if (isLocal && info.default_base_url) {
                 qaiRefetchModels(SID);
+            } else if (isAggregator || isCustom) {
+                qaiRefetchModels(SID);
+            } else if (isCloud) {
+                qaiResetModelArea(SID, "Enter API key to load models");
+            } else if (isLocal) {
+                qaiResetModelArea(SID, "Enter URL to load models");
             } else {
-                resetModelArea();
+                qaiResetModelArea(SID, "Select a provider first");
             }
         }
 
