@@ -17,7 +17,7 @@ class TestCLIHelp:
     def test_help_exits_zero(self) -> None:
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "Security testing for agentic AI" in result.output
+        assert "Offensive security platform" in result.output
 
     @patch("q_ai.cli._run_server")
     def test_port_option_accepted(self, mock_run: MagicMock) -> None:
