@@ -409,6 +409,34 @@ def _filter_generic(provider_name: str, data: dict[str, Any]) -> list[ModelInfo]
     return models
 
 
+def _build_cloud_auth(
+    provider_name: str,
+    config: ProviderConfig,
+    api_key: str,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Build authentication headers and query params for a cloud provider.
+
+    Args:
+        provider_name: Provider key (e.g. "anthropic").
+        config: Provider configuration from the registry.
+        api_key: API key for authentication.
+
+    Returns:
+        Tuple of (headers, params) dicts ready for the HTTP request.
+    """
+    headers: dict[str, str] = {}
+    params: dict[str, str] = {}
+    if config.auth_style == AuthStyle.BEARER:
+        headers["Authorization"] = f"Bearer {api_key}"
+    elif config.auth_style == AuthStyle.X_API_KEY:
+        headers["x-api-key"] = api_key
+    elif config.auth_style == AuthStyle.QUERY_KEY:
+        params["key"] = api_key
+    if provider_name == "anthropic":
+        headers["anthropic-version"] = "2023-06-01"
+    return headers, params
+
+
 async def _fetch_cloud_models(
     provider_name: str,
     config: ProviderConfig,
@@ -431,15 +459,7 @@ async def _fetch_cloud_models(
     base = config.default_base_url or ""
     endpoint = f"{base}{config.models_endpoint}"
 
-    headers: dict[str, str] = {}
-    params: dict[str, str] = {}
-    if config.auth_style == AuthStyle.BEARER:
-        headers["Authorization"] = f"Bearer {api_key}"
-    elif config.auth_style == AuthStyle.X_API_KEY:
-        headers["x-api-key"] = api_key
-        headers["anthropic-version"] = "2023-06-01"
-    elif config.auth_style == AuthStyle.QUERY_KEY:
-        params["key"] = api_key
+    headers, params = _build_cloud_auth(provider_name, config, api_key)
 
     error_msg: str | None = None
     try:

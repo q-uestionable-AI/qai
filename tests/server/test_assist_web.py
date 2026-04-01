@@ -75,6 +75,7 @@ class TestAssistPageRoute:
         body = resp.text
         for label in [
             "Anthropic",
+            "Google",
             "OpenAI",
             "Groq",
             "OpenRouter",

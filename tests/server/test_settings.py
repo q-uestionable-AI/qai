@@ -19,12 +19,13 @@ class TestSettingsPage:
         assert resp.status_code == 200
 
     def test_settings_page_has_all_assist_provider_labels(self, client: TestClient) -> None:
-        """GET /settings contains all 8 provider labels in the assistant section."""
+        """GET /settings contains all 9 provider labels in the assistant section."""
         with patch("q_ai.server.routes.get_credential", return_value=None):
             resp = client.get("/settings")
         body = resp.text
         for label in [
             "Anthropic",
+            "Google",
             "OpenAI",
             "Groq",
             "OpenRouter",

@@ -177,7 +177,7 @@
         var baseUrl = fd.get("base_url") || "";
 
         var info = providerMap[provider] || {};
-        var msg = document.getElementById("assist-msg");
+        msg = document.getElementById("assist-msg");
         if (info.type === "cloud" && !apiKey) {
             msg.className = "text-xs text-error";
             msg.textContent = "API key is required for cloud providers.";

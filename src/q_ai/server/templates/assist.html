@@ -102,7 +102,7 @@
 
             if (isCloud) {
                 keyI.required = !isAggregator;
-                hint.textContent = isAggregator ? "Required" : "Required";
+                hint.textContent = "Required";
             } else {
                 keyI.required = false;
                 hint.textContent = isLocal || isCustom ? "Optional" : "";
