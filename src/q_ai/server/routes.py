@@ -2010,20 +2010,35 @@ async def assist_websocket(websocket: WebSocket) -> None:
 # ---------------------------------------------------------------------------
 
 
+_ASSIST_PROVIDER_ORDER = [
+    "anthropic",
+    "google",
+    "openai",
+    "xai",
+    "groq",
+    "openrouter",
+    "lmstudio",
+    "ollama",
+    "custom",
+]
+
+
 def _get_assist_provider_choices() -> list[dict[str, str]]:
     """Build the provider list for the assistant selector.
 
     Returns all providers from the registry with name, label, type,
     and default_base_url — independent of target provider configuration.
+    Providers are returned in a fixed display order.
     """
     return [
         {
             "name": name,
-            "label": cfg.label,
-            "type": cfg.type.value,
-            "default_base_url": cfg.default_base_url or "",
+            "label": PROVIDERS[name].label,
+            "type": PROVIDERS[name].type.value,
+            "default_base_url": PROVIDERS[name].default_base_url or "",
         }
-        for name, cfg in PROVIDERS.items()
+        for name in _ASSIST_PROVIDER_ORDER
+        if name in PROVIDERS
     ]
 
 
@@ -2114,7 +2129,7 @@ async def api_add_provider(request: Request) -> JSONResponse:
             content={"detail": "Provider name required"},
         )
 
-    cloud_providers = {"anthropic", "openai", "groq", "openrouter", "xai"}
+    cloud_providers = {"anthropic", "google", "openai", "groq", "openrouter", "xai"}
     if provider in cloud_providers and not api_key:
         return JSONResponse(
             status_code=422,

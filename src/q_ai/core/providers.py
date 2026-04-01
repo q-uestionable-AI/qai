@@ -88,6 +88,15 @@ PROVIDERS: dict[str, ProviderConfig] = {
             ModelInfo(id="anthropic/claude-haiku-4-5-20251001", label="Claude Haiku 4.5"),
         ],
     ),
+    "google": ProviderConfig(
+        label="Google",
+        type=ProviderType.CLOUD,
+        supports_custom=True,
+        curated_models=[
+            ModelInfo(id="google/gemini-2.5-pro", label="Gemini 2.5 Pro"),
+            ModelInfo(id="google/gemini-2.5-flash", label="Gemini 2.5 Flash"),
+        ],
+    ),
     "openai": ProviderConfig(
         label="OpenAI",
         type=ProviderType.CLOUD,

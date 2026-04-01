@@ -33,6 +33,7 @@ class TestProviderRegistry:
     def test_all_providers_registered(self) -> None:
         expected = {
             "anthropic",
+            "google",
             "openai",
             "groq",
             "openrouter",

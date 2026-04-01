@@ -153,7 +153,7 @@ class TestProvidersInsecureKeyring:
         assert resp.status_code == 200
         data = resp.json()
         providers = data["providers"]
-        assert len(providers) == 8
+        assert len(providers) == 9
         for p in providers:
             assert p["has_key"] is False
             assert p["keyring_unavailable"] is True
