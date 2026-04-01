@@ -277,7 +277,7 @@
                     }
                     currentAssistantText += data.token;
                     var contentEl = currentAssistantBubble.querySelector(".chat-bubble");
-                    contentEl.textContent = currentAssistantText;
+                    contentEl.innerHTML = marked.parse(currentAssistantText);
                     scrollToBottom();
                     break;
                 case "assist_done":
@@ -311,7 +311,7 @@
                 wrapper.className = "chat chat-start";
                 var bubble = document.createElement("div");
                 bubble.className = "chat-bubble assist-bubble";
-                bubble.textContent = text;
+                bubble.innerHTML = text ? marked.parse(text) : "";
                 wrapper.appendChild(bubble);
             } else {
                 wrapper.className = "chat chat-start";

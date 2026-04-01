@@ -101,7 +101,7 @@
                     currentText = "";
                 }
                 currentText += data.token;
-                currentBubble.querySelector(".chat-bubble").textContent = currentText;
+                currentBubble.querySelector(".chat-bubble").innerHTML = marked.parse(currentText);
                 messagesEl.scrollTop = messagesEl.scrollHeight;
                 break;
             case "assist_done":
@@ -134,7 +134,11 @@
             wrapper.className = "chat chat-start";
             bubble.className = "chat-bubble chat-bubble-error text-sm";
         }
-        bubble.textContent = text;
+        if (role === "assistant") {
+            bubble.innerHTML = text ? marked.parse(text) : "";
+        } else {
+            bubble.textContent = text;
+        }
         wrapper.appendChild(bubble);
         messagesEl.appendChild(wrapper);
         messagesEl.scrollTop = messagesEl.scrollHeight;
