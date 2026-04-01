@@ -123,6 +123,15 @@ PROVIDERS: dict[str, ProviderConfig] = {
             ),
         ],
     ),
+    "xai": ProviderConfig(
+        label="xAI",
+        type=ProviderType.CLOUD,
+        supports_custom=True,
+        curated_models=[
+            ModelInfo(id="xai/grok-4-1-fast", label="Grok 4.1 Fast"),
+            ModelInfo(id="xai/grok-4", label="Grok 4"),
+        ],
+    ),
     "ollama": ProviderConfig(
         label="Ollama",
         type=ProviderType.LOCAL,

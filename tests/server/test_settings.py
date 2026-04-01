@@ -19,7 +19,7 @@ class TestSettingsPage:
         assert resp.status_code == 200
 
     def test_settings_page_has_all_assist_provider_labels(self, client: TestClient) -> None:
-        """GET /settings contains all 7 provider labels in the assistant section."""
+        """GET /settings contains all 8 provider labels in the assistant section."""
         with patch("q_ai.server.routes.get_credential", return_value=None):
             resp = client.get("/settings")
         body = resp.text
@@ -28,6 +28,7 @@ class TestSettingsPage:
             "OpenAI",
             "Groq",
             "OpenRouter",
+            "xAI",
             "Ollama",
             "LM Studio",
             "Custom",
@@ -152,7 +153,49 @@ class TestProvidersInsecureKeyring:
         assert resp.status_code == 200
         data = resp.json()
         providers = data["providers"]
-        assert len(providers) == 7
+        assert len(providers) == 8
         for p in providers:
             assert p["has_key"] is False
             assert p["keyring_unavailable"] is True
+
+
+class TestAssistCredential:
+    """Tests for the assistant credential endpoint."""
+
+    def test_save_assist_credential(self, client: TestClient) -> None:
+        """POST assist credential stores under namespaced keyring key."""
+        with patch("q_ai.server.routes.set_credential") as mock_set:
+            resp = client.post(
+                "/api/settings/assist/credential",
+                json={"provider": "anthropic", "api_key": "sk-assist-test"},
+            )
+        assert resp.status_code == 200
+        mock_set.assert_called_once_with("assist.anthropic", "sk-assist-test")
+
+    def test_save_assist_credential_missing_provider(self, client: TestClient) -> None:
+        """POST assist credential without provider returns 422."""
+        resp = client.post(
+            "/api/settings/assist/credential",
+            json={"api_key": "sk-test"},
+        )
+        assert resp.status_code == 422
+
+    def test_save_assist_credential_missing_key(self, client: TestClient) -> None:
+        """POST assist credential without api_key returns 422."""
+        resp = client.post(
+            "/api/settings/assist/credential",
+            json={"provider": "anthropic"},
+        )
+        assert resp.status_code == 422
+
+    def test_save_assist_credential_keyring_unavailable(self, client: TestClient) -> None:
+        """POST assist credential with broken keyring returns 422."""
+        with patch(
+            "q_ai.server.routes.set_credential",
+            side_effect=RuntimeError("insecure backend"),
+        ):
+            resp = client.post(
+                "/api/settings/assist/credential",
+                json={"provider": "openai", "api_key": "sk-test"},
+            )
+        assert resp.status_code == 422

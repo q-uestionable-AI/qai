@@ -2013,10 +2013,18 @@ async def assist_websocket(websocket: WebSocket) -> None:
 def _get_assist_provider_choices() -> list[dict[str, str]]:
     """Build the provider list for the assistant selector.
 
-    Returns all providers from the registry with name and label,
-    independent of target provider configuration.
+    Returns all providers from the registry with name, label, type,
+    and default_base_url — independent of target provider configuration.
     """
-    return [{"name": name, "label": cfg.label} for name, cfg in PROVIDERS.items()]
+    return [
+        {
+            "name": name,
+            "label": cfg.label,
+            "type": cfg.type.value,
+            "default_base_url": cfg.default_base_url or "",
+        }
+        for name, cfg in PROVIDERS.items()
+    ]
 
 
 def _get_providers_status(request: Request) -> list[dict[str, Any]]:
@@ -2106,7 +2114,7 @@ async def api_add_provider(request: Request) -> JSONResponse:
             content={"detail": "Provider name required"},
         )
 
-    cloud_providers = {"anthropic", "openai", "groq", "openrouter"}
+    cloud_providers = {"anthropic", "openai", "groq", "openrouter", "xai"}
     if provider in cloud_providers and not api_key:
         return JSONResponse(
             status_code=422,
@@ -2266,6 +2274,46 @@ async def api_save_defaults(request: Request) -> JSONResponse:
             value = body.get(key)
             if value is not None:
                 set_setting(conn, key, str(value))
+    return JSONResponse(content={"status": "saved"})
+
+
+@router.post("/api/settings/assist/credential")
+async def api_save_assist_credential(request: Request) -> JSONResponse:
+    """Save an API key for the assistant's provider (namespaced keyring)."""
+    body = await request.json()
+    provider = body.get("provider", "").strip().lower()
+    api_key = body.get("api_key", "").strip()
+
+    if not provider:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Provider name required"},
+        )
+    if not api_key:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "API key required"},
+        )
+
+    keyring_key = f"assist.{provider}"
+    try:
+        set_credential(keyring_key, api_key)
+    except RuntimeError:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": (
+                    "Keyring unavailable — set credentials via environment variable instead."
+                ),
+            },
+        )
+    except Exception:
+        logger.exception("Failed to store assist credential for %s", provider)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to store credential"},
+        )
+
     return JSONResponse(content={"status": "saved"})
 
 

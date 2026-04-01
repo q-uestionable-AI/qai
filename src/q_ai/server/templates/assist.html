@@ -20,6 +20,21 @@
                 {% set providers = assist_providers %}
                 {% include "partials/model_selector.html" %}
 
+                <div id="assist-setup-apikey-field" class="form-control" style="display:none;">
+                    <label class="label"><span class="label-text">API Key</span></label>
+                    <input type="password" id="assist-setup-apikey"
+                           class="input input-bordered input-sm w-full"
+                           placeholder="sk-...">
+                    <p id="assist-setup-apikey-hint" class="text-xs mt-1" style="opacity: 0.5;"></p>
+                </div>
+
+                <div id="assist-setup-baseurl-field" class="form-control" style="display:none;">
+                    <label class="label"><span class="label-text">Base URL</span></label>
+                    <input type="text" id="assist-setup-baseurl"
+                           class="input input-bordered input-sm w-full"
+                           placeholder="http://localhost:11434">
+                </div>
+
                 <div class="flex items-center gap-2 mt-2">
                     <button type="submit" class="btn btn-sm btn-outline btn-primary">
                         Save &amp; Start
@@ -31,37 +46,121 @@
     </div>
 
     <script>
-    function saveAssistSetup(e) {
-        e.preventDefault();
-        var form = document.getElementById("assist-setup-form");
-        var fd = new FormData(form);
-        var provider = fd.get("provider") || "";
-        var model = fd.get("model") || "";
-        var msg = document.getElementById("assist-setup-msg");
+    (function() {
+        var ASSIST_SETUP_PROVIDERS = {{ assist_providers | tojson }};
+        var providerMap = {};
+        ASSIST_SETUP_PROVIDERS.forEach(function(p) { providerMap[p.name] = p; });
 
-        if (!provider || !model) {
-            msg.className = "text-xs text-error";
-            msg.textContent = "Select a provider and model.";
-            return false;
+        var provSel = document.getElementById("assist-setup-provider");
+        if (provSel) {
+            provSel.addEventListener("change", function() {
+                toggleSetupFields(this.value);
+            });
         }
 
-        fetch("/api/settings/defaults", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({"assist.provider": provider, "assist.model": model})
-        }).then(function(r) { return r.json(); }).then(function(d) {
-            if (d.status === "saved") {
-                window.location.reload();
+        function toggleSetupFields(name) {
+            var info = providerMap[name] || {};
+            var ptype = info.type || "";
+            var keyF = document.getElementById("assist-setup-apikey-field");
+            var urlF = document.getElementById("assist-setup-baseurl-field");
+            var keyI = document.getElementById("assist-setup-apikey");
+            var urlI = document.getElementById("assist-setup-baseurl");
+            var hint = document.getElementById("assist-setup-apikey-hint");
+
+            var isCloud = ptype === "cloud";
+            var isLocal = ptype === "local";
+            var isCustom = ptype === "custom";
+
+            keyF.style.display = (isCloud || isLocal || isCustom) ? "" : "none";
+            urlF.style.display = (isLocal || isCustom) ? "" : "none";
+
+            if (isCloud) {
+                keyI.required = true;
+                hint.textContent = "Required";
             } else {
-                msg.className = "text-xs text-error";
-                msg.textContent = d.detail || "Error saving settings.";
+                keyI.required = false;
+                hint.textContent = isLocal || isCustom ? "Optional" : "";
             }
-        }).catch(function() {
-            msg.className = "text-xs text-error";
-            msg.textContent = "Request failed.";
-        });
-        return false;
-    }
+            if (isLocal && info.default_base_url) {
+                urlI.value = info.default_base_url;
+            } else if (!isLocal) {
+                urlI.value = "";
+            }
+            if (isCustom) {
+                urlI.required = true;
+            } else {
+                urlI.required = false;
+            }
+        }
+
+        window.saveAssistSetup = function(e) {
+            e.preventDefault();
+            var form = document.getElementById("assist-setup-form");
+            var fd = new FormData(form);
+            var provider = fd.get("provider") || "";
+            var model = fd.get("model") || "";
+            var msg = document.getElementById("assist-setup-msg");
+
+            if (!provider || !model) {
+                msg.className = "text-xs text-error";
+                msg.textContent = "Select a provider and model.";
+                return false;
+            }
+
+            var apiKey = document.getElementById("assist-setup-apikey").value.trim();
+            var baseUrl = document.getElementById("assist-setup-baseurl").value.trim();
+
+            var info = providerMap[provider] || {};
+            if (info.type === "cloud" && !apiKey) {
+                msg.className = "text-xs text-error";
+                msg.textContent = "API key is required for cloud providers.";
+                return false;
+            }
+            if (info.type === "custom" && !baseUrl) {
+                msg.className = "text-xs text-error";
+                msg.textContent = "Base URL is required for custom providers.";
+                return false;
+            }
+
+            var settingsData = {
+                "assist.provider": provider,
+                "assist.model": model,
+                "assist.base_url": baseUrl
+            };
+
+            function saveSettings() {
+                return fetch("/api/settings/defaults", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(settingsData)
+                }).then(function(r) { return r.json(); });
+            }
+
+            function saveCredential() {
+                if (!apiKey) return Promise.resolve({status: "saved"});
+                return fetch("/api/settings/assist/credential", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({provider: provider, api_key: apiKey})
+                }).then(function(r) { return r.json(); });
+            }
+
+            Promise.all([saveSettings(), saveCredential()]).then(function(results) {
+                var settingsOk = results[0].status === "saved";
+                var credOk = results[1].status === "saved";
+                if (settingsOk && credOk) {
+                    window.location.reload();
+                } else {
+                    msg.className = "text-xs text-error";
+                    msg.textContent = results[0].detail || results[1].detail || "Error saving.";
+                }
+            }).catch(function() {
+                msg.className = "text-xs text-error";
+                msg.textContent = "Request failed.";
+            });
+            return false;
+        };
+    })();
     </script>
 
 {% else %}

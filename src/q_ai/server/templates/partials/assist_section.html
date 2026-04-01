@@ -44,7 +44,15 @@
             {% set providers = assist_providers %}
             {% include "partials/model_selector.html" %}
 
-            <div class="md:col-span-2">
+            <div id="assist-apikey-field" class="form-control" style="display:none;">
+                <label class="label"><span class="label-text">API Key</span></label>
+                <input type="password" id="assist-apikey"
+                       class="input input-bordered input-sm w-full"
+                       placeholder="sk-...">
+                <p id="assist-apikey-hint" class="text-xs mt-1" style="opacity: 0.5;"></p>
+            </div>
+
+            <div id="assist-baseurl-field" class="md:col-span-2">
                 <label class="label" for="assist-base-url">
                     <span class="label-text" style="color: #94a3b8;">Base URL</span>
                 </label>
@@ -53,7 +61,7 @@
                        placeholder="e.g. http://inference-server:11434 for remote Ollama"
                        value="{{ assist_base_url or '' }}">
                 <p class="text-xs mt-1" style="opacity: 0.5;">
-                    Endpoint for the assistant's LLM provider (e.g., http://inference-server:11434 for remote Ollama)
+                    Endpoint for the assistant's LLM provider
                 </p>
             </div>
 
@@ -70,58 +78,124 @@
 </div>
 
 <script>
-function toggleAssistEdit(show) {
-    document.getElementById("assist-display").style.display = show ? "none" : "";
-    document.getElementById("assist-edit").style.display = show ? "" : "none";
-}
+(function() {
+    var ASSIST_PROVIDERS = {{ assist_providers | tojson }};
+    var providerMap = {};
+    ASSIST_PROVIDERS.forEach(function(p) { providerMap[p.name] = p; });
 
-function saveAssistSettings(e) {
-    e.preventDefault();
-    var form = document.getElementById("assist-form");
-    var fd = new FormData(form);
-    var provider = fd.get("provider") || "";
-    var model = fd.get("model") || "";
-
-    if (!provider || !model) {
-        var msg = document.getElementById("assist-msg");
-        msg.className = "text-xs text-error";
-        msg.textContent = "Select a provider and model.";
-        return false;
+    var provSel = document.getElementById("assist-provider");
+    if (provSel) {
+        provSel.addEventListener("change", function() {
+            toggleAssistProviderFields(this.value);
+        });
     }
 
-    var baseUrl = fd.get("base_url") || "";
+    function toggleAssistProviderFields(name) {
+        var info = providerMap[name] || {};
+        var ptype = info.type || "";
+        var keyF = document.getElementById("assist-apikey-field");
+        var urlF = document.getElementById("assist-baseurl-field");
+        var keyI = document.getElementById("assist-apikey");
+        var urlI = document.getElementById("assist-base-url");
+        var hint = document.getElementById("assist-apikey-hint");
 
-    var data = {
-        "assist.provider": provider,
-        "assist.model": model,
-        "assist.base_url": baseUrl
+        var isCloud = ptype === "cloud";
+        var isLocal = ptype === "local";
+        var isCustom = ptype === "custom";
+
+        keyF.style.display = (isCloud || isLocal || isCustom) ? "" : "none";
+        urlF.style.display = (isLocal || isCustom) ? "" : "none";
+
+        if (isCloud) {
+            hint.textContent = "Required";
+        } else {
+            hint.textContent = (isLocal || isCustom) ? "Optional" : "";
+        }
+        if (isLocal && info.default_base_url && !urlI.value) {
+            urlI.value = info.default_base_url;
+        }
+    }
+
+    window.toggleAssistEdit = function(show) {
+        document.getElementById("assist-display").style.display = show ? "none" : "";
+        document.getElementById("assist-edit").style.display = show ? "" : "none";
     };
 
-    var msg = document.getElementById("assist-msg");
-    fetch("/api/settings/defaults", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(data)
-    }).then(function(r) { return r.json(); }).then(function(d) {
-        if (d.status === "saved") {
-            msg.className = "text-xs text-success";
-            msg.textContent = "Saved";
-            // Update display mode and swap back
-            var sel = document.getElementById("assist-provider");
-            var provLabel = sel.options[sel.selectedIndex].text;
-            document.getElementById("assist-display-provider").textContent = provLabel;
-            document.getElementById("assist-display-model").textContent = model;
-            var urlEl = document.getElementById("assist-display-base-url");
-            if (urlEl) urlEl.textContent = baseUrl;
-            toggleAssistEdit(false);
-        } else {
+    window.saveAssistSettings = function(e) {
+        e.preventDefault();
+        var form = document.getElementById("assist-form");
+        var fd = new FormData(form);
+        var provider = fd.get("provider") || "";
+        var model = fd.get("model") || "";
+
+        if (!provider || !model) {
+            var msg = document.getElementById("assist-msg");
             msg.className = "text-xs text-error";
-            msg.textContent = d.detail || "Error";
+            msg.textContent = "Select a provider and model.";
+            return false;
         }
-    }).catch(function() {
-        msg.className = "text-xs text-error";
-        msg.textContent = "Request failed";
-    });
-    return false;
-}
+
+        var apiKey = document.getElementById("assist-apikey").value.trim();
+        var baseUrl = fd.get("base_url") || "";
+
+        var info = providerMap[provider] || {};
+        var msg = document.getElementById("assist-msg");
+        if (info.type === "cloud" && !apiKey) {
+            msg.className = "text-xs text-error";
+            msg.textContent = "API key is required for cloud providers.";
+            return false;
+        }
+        if (info.type === "custom" && !baseUrl) {
+            msg.className = "text-xs text-error";
+            msg.textContent = "Base URL is required for custom providers.";
+            return false;
+        }
+
+        var settingsData = {
+            "assist.provider": provider,
+            "assist.model": model,
+            "assist.base_url": baseUrl
+        };
+
+        function saveSettings() {
+            return fetch("/api/settings/defaults", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(settingsData)
+            }).then(function(r) { return r.json(); });
+        }
+
+        function saveCredential() {
+            if (!apiKey) return Promise.resolve({status: "saved"});
+            return fetch("/api/settings/assist/credential", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({provider: provider, api_key: apiKey})
+            }).then(function(r) { return r.json(); });
+        }
+
+        Promise.all([saveSettings(), saveCredential()]).then(function(results) {
+            var settingsOk = results[0].status === "saved";
+            var credOk = results[1].status === "saved";
+            if (settingsOk && credOk) {
+                msg.className = "text-xs text-success";
+                msg.textContent = "Saved";
+                var sel = document.getElementById("assist-provider");
+                var provLabel = sel.options[sel.selectedIndex].text;
+                document.getElementById("assist-display-provider").textContent = provLabel;
+                document.getElementById("assist-display-model").textContent = model;
+                var urlEl = document.getElementById("assist-display-base-url");
+                if (urlEl) urlEl.textContent = baseUrl;
+                toggleAssistEdit(false);
+            } else {
+                msg.className = "text-xs text-error";
+                msg.textContent = results[0].detail || results[1].detail || "Error";
+            }
+        }).catch(function() {
+            msg.className = "text-xs text-error";
+            msg.textContent = "Request failed";
+        });
+        return false;
+    };
+})();
 </script>

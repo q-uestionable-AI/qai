@@ -78,6 +78,7 @@ class TestAssistPageRoute:
             "OpenAI",
             "Groq",
             "OpenRouter",
+            "xAI",
             "Ollama",
             "LM Studio",
             "Custom",
