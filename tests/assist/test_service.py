@@ -8,6 +8,7 @@ import pytest
 
 from q_ai.assist.service import (
     AssistantNotConfiguredError,
+    _resolve_base_url,
     _resolve_embedding_model,
     _resolve_knowledge_dir,
     _resolve_model_string,
@@ -30,6 +31,81 @@ class TestResolveModelString:
         mock_resolve.side_effect = side_effect  # type: ignore[attr-defined]
         result = _resolve_model_string()
         assert result == "ollama/llama3.1"
+
+    @patch("q_ai.assist.service.resolve")
+    def test_strips_duplicate_provider_prefix(self, mock_resolve: object) -> None:
+        """Model set via UI already includes provider prefix — no double-prefix."""
+
+        def side_effect(key: str, **kwargs: object) -> tuple[str | None, str]:
+            if key == "assist.provider":
+                return "anthropic", "db"
+            if key == "assist.model":
+                return "anthropic/claude-opus-4-6", "db"
+            return None, "default"
+
+        mock_resolve.side_effect = side_effect  # type: ignore[attr-defined]
+        result = _resolve_model_string()
+        assert result == "anthropic/claude-opus-4-6"
+
+    @patch("q_ai.assist.service.resolve")
+    def test_google_uses_gemini_prefix(self, mock_resolve: object) -> None:
+        """Google provider maps to gemini/ litellm prefix."""
+
+        def side_effect(key: str, **kwargs: object) -> tuple[str | None, str]:
+            if key == "assist.provider":
+                return "google", "db"
+            if key == "assist.model":
+                return "gemini-2.5-pro", "db"
+            return None, "default"
+
+        mock_resolve.side_effect = side_effect  # type: ignore[attr-defined]
+        result = _resolve_model_string()
+        assert result == "gemini/gemini-2.5-pro"
+
+    @patch("q_ai.assist.service.resolve")
+    def test_google_ui_model_with_litellm_prefix(self, mock_resolve: object) -> None:
+        """Google model set via UI already has gemini/ prefix."""
+
+        def side_effect(key: str, **kwargs: object) -> tuple[str | None, str]:
+            if key == "assist.provider":
+                return "google", "db"
+            if key == "assist.model":
+                return "gemini/gemini-2.5-pro", "db"
+            return None, "default"
+
+        mock_resolve.side_effect = side_effect  # type: ignore[attr-defined]
+        result = _resolve_model_string()
+        assert result == "gemini/gemini-2.5-pro"
+
+    @patch("q_ai.assist.service.resolve")
+    def test_google_stale_db_prefix_corrected(self, mock_resolve: object) -> None:
+        """Stale google/ prefix in DB is corrected to gemini/."""
+
+        def side_effect(key: str, **kwargs: object) -> tuple[str | None, str]:
+            if key == "assist.provider":
+                return "google", "db"
+            if key == "assist.model":
+                return "google/gemini-2.5-pro", "db"
+            return None, "default"
+
+        mock_resolve.side_effect = side_effect  # type: ignore[attr-defined]
+        result = _resolve_model_string()
+        assert result == "gemini/gemini-2.5-pro"
+
+    @patch("q_ai.assist.service.resolve")
+    def test_lmstudio_uses_lm_studio_prefix(self, mock_resolve: object) -> None:
+        """LM Studio provider maps to lm_studio/ litellm prefix."""
+
+        def side_effect(key: str, **kwargs: object) -> tuple[str | None, str]:
+            if key == "assist.provider":
+                return "lmstudio", "db"
+            if key == "assist.model":
+                return "qwen2.5-7b", "db"
+            return None, "default"
+
+        mock_resolve.side_effect = side_effect  # type: ignore[attr-defined]
+        result = _resolve_model_string()
+        assert result == "lm_studio/qwen2.5-7b"
 
     @patch("q_ai.assist.service.resolve", return_value=(None, "default"))
     def test_raises_when_not_configured(self, _mock: object) -> None:
@@ -78,3 +154,46 @@ class TestResolveKnowledgeDir:
         result = _resolve_knowledge_dir()
         # Compare as PurePosixPath to handle Windows path separator differences
         assert PurePosixPath(str(result).replace("\\", "/")) == PurePosixPath("/custom/path")
+
+
+class TestResolveBaseUrl:
+    """Base URL resolution with provider default fallback."""
+
+    @patch("q_ai.assist.service.resolve")
+    def test_explicit_base_url(self, mock_resolve: object) -> None:
+        mock_resolve.return_value = ("http://custom:8080", "db")  # type: ignore[attr-defined]
+        result = _resolve_base_url()
+        assert result == "http://custom:8080"
+
+    @patch("q_ai.assist.service.resolve")
+    def test_falls_back_to_provider_default(self, mock_resolve: object) -> None:
+        """When assist.base_url is empty, use provider's default_base_url."""
+
+        def side_effect(key: str, **kwargs: object) -> tuple[str | None, str]:
+            if key == "assist.base_url":
+                return None, "default"
+            if key == "assist.provider":
+                return "lmstudio", "db"
+            return None, "default"
+
+        mock_resolve.side_effect = side_effect  # type: ignore[attr-defined]
+        result = _resolve_base_url()
+        assert result == "http://localhost:1234"
+
+    @patch("q_ai.assist.service.resolve")
+    def test_ollama_default_url(self, mock_resolve: object) -> None:
+        def side_effect(key: str, **kwargs: object) -> tuple[str | None, str]:
+            if key == "assist.base_url":
+                return None, "default"
+            if key == "assist.provider":
+                return "ollama", "db"
+            return None, "default"
+
+        mock_resolve.side_effect = side_effect  # type: ignore[attr-defined]
+        result = _resolve_base_url()
+        assert result == "http://localhost:11434"
+
+    @patch("q_ai.assist.service.resolve", return_value=(None, "default"))
+    def test_no_provider_returns_none(self, _mock: object) -> None:
+        result = _resolve_base_url()
+        assert result is None

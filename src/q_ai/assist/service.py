@@ -27,6 +27,7 @@ from q_ai.assist.prompt import (
 )
 from q_ai.core.config import get_credential, resolve
 from q_ai.core.llm import parse_model_string
+from q_ai.core.providers import get_litellm_prefix, get_provider, registry_key_from_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +44,13 @@ class AssistantNotConfiguredError(Exception):
 def _resolve_model_string() -> str:
     """Resolve the assistant model string from configuration.
 
+    The DB stores the registry key as ``assist.provider`` (e.g. "google")
+    and the model may or may not include a litellm prefix.  This function
+    ensures the returned string always uses the correct litellm routing
+    prefix (e.g. "gemini/gemini-2.5-pro", not "google/gemini-2.5-pro").
+
     Returns:
-        litellm model string in "provider/model" format.
+        litellm model string in "prefix/model" format.
 
     Raises:
         AssistantNotConfiguredError: If provider or model is not set.
@@ -59,17 +65,36 @@ def _resolve_model_string() -> str:
             "qai config set assist.model llama3.1"
         )
 
-    return f"{provider_val}/{model_val}"
+    prefix = get_litellm_prefix(provider_val)
+
+    # Model may already carry a litellm prefix (set via UI dropdown) or the
+    # registry key as prefix (stale DB value).  Strip either before rebuilding.
+    if model_val.startswith(f"{prefix}/"):
+        return model_val
+    if model_val.startswith(f"{provider_val}/"):
+        _, _, bare_model = model_val.partition("/")
+        return f"{prefix}/{bare_model}"
+    return f"{prefix}/{model_val}"
 
 
 def _resolve_base_url() -> str | None:
     """Resolve the assistant base URL from configuration.
 
+    Falls back to the provider's ``default_base_url`` (e.g. Ollama's
+    ``http://localhost:11434``) when no explicit URL is configured.
+
     Returns:
-        Base URL string if configured, None otherwise.
+        Base URL string if configured or defaulted, None otherwise.
     """
     val, _ = resolve("assist.base_url", env_var="QAI_ASSIST_BASE_URL")
-    return val or None
+    if val:
+        return val
+    provider_val, _ = resolve("assist.provider", env_var="QAI_ASSIST_PROVIDER")
+    if provider_val:
+        config = get_provider(provider_val)
+        if config and config.default_base_url:
+            return config.default_base_url
+    return None
 
 
 def _resolve_embedding_model() -> str:
@@ -102,6 +127,10 @@ def _resolve_credential(model_string: str) -> str | None:
     Falls back to the bare ``<provider>`` key (shared target credential)
     for convenience when only one key is configured.
 
+    The model string carries the litellm prefix (e.g. "gemini"), but
+    credentials are stored under the registry key (e.g. "google").
+    ``registry_key_from_prefix`` bridges the two.
+
     Local providers (ollama, lmstudio, custom) may return ``None``
     without error — they don't require credentials.
 
@@ -114,7 +143,8 @@ def _resolve_credential(model_string: str) -> str | None:
     Raises:
         AssistantNotConfiguredError: If credentials are missing for cloud providers.
     """
-    provider, _ = parse_model_string(model_string)
+    litellm_prefix, _ = parse_model_string(model_string)
+    provider = registry_key_from_prefix(litellm_prefix)
     local_providers = {"ollama", "lmstudio", "custom"}
     if provider in local_providers:
         # Local providers: check namespaced key but don't require it.

@@ -164,7 +164,7 @@ class TestFetchModels:
             result = await fetch_models("lmstudio", base_url="http://localhost:1234")
 
         assert len(result.models) == 2
-        assert result.models[0].id == "lmstudio/qwen2.5-7b"
+        assert result.models[0].id == "lm_studio/qwen2.5-7b"
         assert result.models[0].label == "qwen2.5-7b"
         assert result.supports_custom is True
 

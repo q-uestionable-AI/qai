@@ -54,6 +54,9 @@ class ProviderConfig:
         curated_models: Static model list for cloud providers.
         default_base_url: Default endpoint URL for local providers.
         models_endpoint: API path for live model enumeration.
+        litellm_prefix: Routing prefix for litellm when it differs from the
+            registry key (e.g. "gemini" for the "google" provider). None means
+            the registry key is used as-is.
     """
 
     label: str
@@ -63,6 +66,7 @@ class ProviderConfig:
     default_base_url: str | None = None
     models_endpoint: str | None = None
     auth_style: AuthStyle | None = None
+    litellm_prefix: str | None = None
 
 
 @dataclass
@@ -107,9 +111,10 @@ PROVIDERS: dict[str, ProviderConfig] = {
         default_base_url="https://generativelanguage.googleapis.com",
         models_endpoint="/v1beta/models",
         auth_style=AuthStyle.QUERY_KEY,
+        litellm_prefix="gemini",
         curated_models=[
-            ModelInfo(id="google/gemini-2.5-pro", label="Gemini 2.5 Pro"),
-            ModelInfo(id="google/gemini-2.5-flash", label="Gemini 2.5 Flash"),
+            ModelInfo(id="gemini/gemini-2.5-pro", label="Gemini 2.5 Pro"),
+            ModelInfo(id="gemini/gemini-2.5-flash", label="Gemini 2.5 Flash"),
         ],
     ),
     "openai": ProviderConfig(
@@ -159,6 +164,7 @@ PROVIDERS: dict[str, ProviderConfig] = {
         supports_custom=True,
         default_base_url="http://localhost:1234",
         models_endpoint="/v1/models",
+        litellm_prefix="lm_studio",
     ),
     "custom": ProviderConfig(
         label="Custom",
@@ -180,14 +186,50 @@ def get_provider(name: str) -> ProviderConfig | None:
     return PROVIDERS.get(name)
 
 
+def get_litellm_prefix(provider_name: str) -> str:
+    """Return the litellm routing prefix for a provider.
+
+    Falls back to the provider key itself when no override is configured.
+
+    Args:
+        provider_name: Registry key (e.g. "google", "lmstudio").
+
+    Returns:
+        Litellm prefix string (e.g. "gemini", "lm_studio").
+    """
+    config = PROVIDERS.get(provider_name)
+    if config and config.litellm_prefix:
+        return config.litellm_prefix
+    return provider_name
+
+
+# Reverse map: litellm prefix → registry key (built once at import time).
+_LITELLM_PREFIX_TO_KEY: dict[str, str] = {}
+for _key, _cfg in PROVIDERS.items():
+    _LITELLM_PREFIX_TO_KEY[_cfg.litellm_prefix or _key] = _key
+
+
+def registry_key_from_prefix(prefix: str) -> str:
+    """Map a litellm prefix back to the provider registry key.
+
+    Args:
+        prefix: Litellm routing prefix (e.g. "gemini", "lm_studio").
+
+    Returns:
+        Registry key (e.g. "google", "lmstudio"). Falls back to the
+        prefix itself if no mapping exists.
+    """
+    return _LITELLM_PREFIX_TO_KEY.get(prefix, prefix)
+
+
 def _parse_model_list(provider_name: str, data: dict[str, Any]) -> list[ModelInfo]:
     """Parse a JSON response body into a list of ModelInfo objects.
 
     Handles both Ollama (`models[].name`) and LM Studio (`data[].id`) shapes.
-    Each model ID is prefixed with `provider_name/`.
+    Each model ID is prefixed with the provider's litellm routing prefix.
 
     Args:
-        provider_name: Provider key used as the ID prefix.
+        provider_name: Provider key used to look up the litellm prefix.
         data: Parsed JSON response body from the provider's models endpoint.
 
     Returns:
@@ -201,7 +243,8 @@ def _parse_model_list(provider_name: str, data: dict[str, Any]) -> list[ModelInf
         _log.warning("Unrecognised model list shape from %s: %s", provider_name, list(data.keys()))
         return []
 
-    return [ModelInfo(id=f"{provider_name}/{name}", label=name) for name in raw_names]
+    prefix = get_litellm_prefix(provider_name)
+    return [ModelInfo(id=f"{prefix}/{name}", label=name) for name in raw_names]
 
 
 async def fetch_models(
@@ -352,7 +395,7 @@ def _filter_google(data: dict[str, Any]) -> list[ModelInfo]:
         if any(pat in mid_lower or pat in display_lower for pat in _GOOGLE_EXCLUDE):
             continue
         display = m.get("displayName", model_id)
-        models.append(ModelInfo(id=f"google/{model_id}", label=display))
+        models.append(ModelInfo(id=f"gemini/{model_id}", label=display))
     return models
 
 
@@ -401,11 +444,12 @@ def _filter_xai(data: dict[str, Any]) -> list[ModelInfo]:
 
 def _filter_generic(provider_name: str, data: dict[str, Any]) -> list[ModelInfo]:
     """Fallback filter for providers without specific rules."""
+    prefix = get_litellm_prefix(provider_name)
     models: list[ModelInfo] = []
     for m in data.get("data", []):
         model_id = m.get("id", "")
         if model_id:
-            models.append(ModelInfo(id=f"{provider_name}/{model_id}", label=model_id))
+            models.append(ModelInfo(id=f"{prefix}/{model_id}", label=model_id))
     return models
 
 

@@ -1,4 +1,4 @@
-"""q-ai: Offensive security platform for agentic AI infrastructure."""
+"""q-ai: Security testing for agentic AI."""
 
 from importlib.metadata import version
 

@@ -30,7 +30,7 @@ from q_ai.server.helpers import (
 
 app = typer.Typer(
     name="qai",
-    help="Offensive security platform for agentic AI infrastructure.",
+    help="Security testing for agentic AI.",
 )
 
 
@@ -96,7 +96,7 @@ def main(
         help="Start the server without opening a browser.",
     ),
 ) -> None:
-    """q-ai: Offensive security platform for agentic AI infrastructure."""
+    """q-ai: Security testing for agentic AI."""
     if ctx.invoked_subcommand is not None:
         return
 
