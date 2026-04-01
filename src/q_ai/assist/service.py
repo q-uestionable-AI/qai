@@ -27,7 +27,7 @@ from q_ai.assist.prompt import (
 )
 from q_ai.core.config import get_credential, resolve
 from q_ai.core.llm import parse_model_string
-from q_ai.core.providers import get_litellm_prefix, registry_key_from_prefix
+from q_ai.core.providers import get_litellm_prefix, get_provider, registry_key_from_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -80,11 +80,21 @@ def _resolve_model_string() -> str:
 def _resolve_base_url() -> str | None:
     """Resolve the assistant base URL from configuration.
 
+    Falls back to the provider's ``default_base_url`` (e.g. Ollama's
+    ``http://localhost:11434``) when no explicit URL is configured.
+
     Returns:
-        Base URL string if configured, None otherwise.
+        Base URL string if configured or defaulted, None otherwise.
     """
     val, _ = resolve("assist.base_url", env_var="QAI_ASSIST_BASE_URL")
-    return val or None
+    if val:
+        return val
+    provider_val, _ = resolve("assist.provider", env_var="QAI_ASSIST_PROVIDER")
+    if provider_val:
+        config = get_provider(provider_val)
+        if config and config.default_base_url:
+            return config.default_base_url
+    return None
 
 
 def _resolve_embedding_model() -> str:

@@ -8,6 +8,7 @@ import pytest
 
 from q_ai.assist.service import (
     AssistantNotConfiguredError,
+    _resolve_base_url,
     _resolve_embedding_model,
     _resolve_knowledge_dir,
     _resolve_model_string,
@@ -153,3 +154,46 @@ class TestResolveKnowledgeDir:
         result = _resolve_knowledge_dir()
         # Compare as PurePosixPath to handle Windows path separator differences
         assert PurePosixPath(str(result).replace("\\", "/")) == PurePosixPath("/custom/path")
+
+
+class TestResolveBaseUrl:
+    """Base URL resolution with provider default fallback."""
+
+    @patch("q_ai.assist.service.resolve")
+    def test_explicit_base_url(self, mock_resolve: object) -> None:
+        mock_resolve.return_value = ("http://custom:8080", "db")  # type: ignore[attr-defined]
+        result = _resolve_base_url()
+        assert result == "http://custom:8080"
+
+    @patch("q_ai.assist.service.resolve")
+    def test_falls_back_to_provider_default(self, mock_resolve: object) -> None:
+        """When assist.base_url is empty, use provider's default_base_url."""
+
+        def side_effect(key: str, **kwargs: object) -> tuple[str | None, str]:
+            if key == "assist.base_url":
+                return None, "default"
+            if key == "assist.provider":
+                return "lmstudio", "db"
+            return None, "default"
+
+        mock_resolve.side_effect = side_effect  # type: ignore[attr-defined]
+        result = _resolve_base_url()
+        assert result == "http://localhost:1234"
+
+    @patch("q_ai.assist.service.resolve")
+    def test_ollama_default_url(self, mock_resolve: object) -> None:
+        def side_effect(key: str, **kwargs: object) -> tuple[str | None, str]:
+            if key == "assist.base_url":
+                return None, "default"
+            if key == "assist.provider":
+                return "ollama", "db"
+            return None, "default"
+
+        mock_resolve.side_effect = side_effect  # type: ignore[attr-defined]
+        result = _resolve_base_url()
+        assert result == "http://localhost:11434"
+
+    @patch("q_ai.assist.service.resolve", return_value=(None, "default"))
+    def test_no_provider_returns_none(self, _mock: object) -> None:
+        result = _resolve_base_url()
+        assert result is None
