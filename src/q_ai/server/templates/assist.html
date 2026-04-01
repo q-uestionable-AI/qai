@@ -225,7 +225,7 @@
     </div>
 
     {# ── Suggested prompts ── #}
-    <div id="assist-prompts" class="flex flex-wrap gap-2 mb-3">
+    <div id="assist-prompts" class="flex flex-wrap gap-2 mb-3" style="padding-left: 40px;">
         {% for prompt in suggested_prompts %}
         <button type="button" class="assist-chip"
                 onclick="sendSuggestedPrompt(this.textContent.trim())">{{ prompt }}</button>
