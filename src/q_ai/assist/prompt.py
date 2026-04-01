@@ -231,6 +231,7 @@ def assemble_messages(
     retrieval_results: list[RetrievalResult],
     scan_context: str = "",
     history: list[dict[str, str]] | None = None,
+    source: str = "",
 ) -> list[dict[str, str]]:
     """Assemble the full message sequence for the LLM.
 
@@ -243,6 +244,7 @@ def assemble_messages(
         retrieval_results: Retrieved knowledge chunks.
         scan_context: Optional untrusted scan-derived content.
         history: Optional conversation history (list of role/content dicts).
+        source: Interaction surface hint (e.g. "web_ui").
 
     Returns:
         List of message dicts ready for litellm acompletion.
@@ -255,6 +257,13 @@ def assemble_messages(
 
     # Build system prompt sections
     system_parts = [base_prompt]
+
+    if source == "web_ui":
+        system_parts.append(
+            "\nThe user is interacting via the qai Web UI. "
+            "Provide both CLI command syntax and Web UI navigation guidance "
+            "when suggesting how to use qai features."
+        )
 
     product_text = _format_product_knowledge(product_results)
     if product_text:

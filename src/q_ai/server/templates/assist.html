@@ -66,6 +66,13 @@
 
 {% else %}
     {# ── Chat interface ── #}
+    <div class="flex justify-end mb-2">
+        <button type="button" id="assist-new-chat-btn"
+                class="btn btn-xs btn-ghost"
+                onclick="resetChat()">
+            New Chat
+        </button>
+    </div>
     <div id="assist-chat-messages" class="flex-1 overflow-y-auto mb-4 space-y-2 pr-1">
         {# Messages rendered here by JS #}
     </div>
@@ -150,6 +157,8 @@
                     isStreaming = false;
                     setInputEnabled(true);
                     break;
+                case "assist_reset_done":
+                    break;
             }
         }
 
@@ -223,7 +232,7 @@
             socket.send(JSON.stringify({
                 type: "assist_query",
                 message: text,
-                context: {}
+                context: {source: "web_ui"}
             }));
             return true;
         }
@@ -240,6 +249,18 @@
 
         window.sendSuggestedPrompt = function(text) {
             sendMessage(text);
+        };
+
+        window.resetChat = function() {
+            messagesEl.innerHTML = "";
+            currentAssistantBubble = null;
+            currentAssistantText = "";
+            isStreaming = false;
+            setInputEnabled(true);
+            if (promptsEl) promptsEl.style.display = "";
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({type: "assist_reset"}));
+            }
         };
 
         connectWs();

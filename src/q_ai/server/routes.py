@@ -1915,6 +1915,59 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         manager.disconnect(websocket)
 
 
+async def _handle_assist_query(
+    websocket: WebSocket,
+    data: dict[str, Any],
+    history: list[dict[str, str]],
+) -> None:
+    """Process a single assist_query message over WebSocket.
+
+    Args:
+        websocket: Active WebSocket connection.
+        data: Parsed message dict with type, message, and context fields.
+        history: Mutable conversation history (updated in place).
+    """
+    message = str(data.get("message", "")).strip()
+    if not message:
+        await websocket.send_json({"type": "assist_error", "message": "Empty message"})
+        return
+
+    context = data.get("context") or {}
+    scan_context = str(context.get("findings", ""))
+    source = str(context.get("source", ""))
+
+    history.append({"role": "user", "content": message})
+
+    try:
+        from q_ai.assist.service import (
+            AssistantNotConfiguredError,
+            chat_stream,
+        )
+
+        full_response = ""
+        async for token in chat_stream(
+            query=message,
+            scan_context=scan_context,
+            history=history[:-1],  # exclude current query (already in messages)
+            source=source,
+        ):
+            full_response += token
+            await websocket.send_json({"type": "assist_token", "token": token})
+
+        history.append({"role": "assistant", "content": full_response})
+        await websocket.send_json({"type": "assist_done"})
+
+    except AssistantNotConfiguredError as exc:
+        history.pop()
+        await websocket.send_json({"type": "assist_error", "message": str(exc)})
+    except Exception:
+        history.pop()
+        logger.exception("Assistant WebSocket error")
+        await websocket.send_json(
+            {"type": "assist_error", "message": "An unexpected error occurred."}
+        )
+
+
 @router.websocket("/ws/assist")
 async def assist_websocket(websocket: WebSocket) -> None:
     """WebSocket endpoint for conversational assistant streaming.
@@ -1934,47 +1987,18 @@ async def assist_websocket(websocket: WebSocket) -> None:
                 await websocket.send_json({"type": "assist_error", "message": "Invalid JSON"})
                 continue
 
-            if not isinstance(data, dict) or data.get("type") != "assist_query":
+            if not isinstance(data, dict):
                 continue
 
-            message = str(data.get("message", "")).strip()
-            if not message:
-                await websocket.send_json({"type": "assist_error", "message": "Empty message"})
+            msg_type = data.get("type")
+
+            if msg_type == "assist_reset":
+                history.clear()
+                await websocket.send_json({"type": "assist_reset_done"})
                 continue
 
-            context = data.get("context") or {}
-            scan_context = str(context.get("findings", ""))
-
-            history.append({"role": "user", "content": message})
-
-            try:
-                from q_ai.assist.service import (
-                    AssistantNotConfiguredError,
-                    chat_stream,
-                )
-
-                full_response = ""
-                async for token in chat_stream(
-                    query=message,
-                    scan_context=scan_context,
-                    history=history[:-1],  # exclude current query (already in messages)
-                ):
-                    full_response += token
-                    await websocket.send_json({"type": "assist_token", "token": token})
-
-                history.append({"role": "assistant", "content": full_response})
-                await websocket.send_json({"type": "assist_done"})
-
-            except AssistantNotConfiguredError as exc:
-                # Remove the user message we appended since we failed
-                history.pop()
-                await websocket.send_json({"type": "assist_error", "message": str(exc)})
-            except Exception:
-                history.pop()
-                logger.exception("Assistant WebSocket error")
-                await websocket.send_json(
-                    {"type": "assist_error", "message": "An unexpected error occurred."}
-                )
+            if msg_type == "assist_query":
+                await _handle_assist_query(websocket, data, history)
 
     except WebSocketDisconnect:
         pass
@@ -2223,39 +2247,6 @@ async def api_save_defaults(request: Request) -> JSONResponse:
             if value is not None:
                 set_setting(conn, key, str(value))
     return JSONResponse(content={"status": "saved"})
-
-
-@router.get("/api/settings/infrastructure")
-async def api_infrastructure_status(request: Request) -> HTMLResponse:
-    """Check local endpoint reachability, return HTML partial."""
-    import httpx
-
-    templates = _get_templates(request)
-    db_path = _get_db_path(request)
-
-    with get_connection(db_path) as conn:
-        ollama_url = get_setting(conn, "ollama.base_url") or "http://localhost:11434"
-        lmstudio_url = get_setting(conn, "lmstudio.base_url") or "http://localhost:1234"
-
-    endpoints = [
-        ("Ollama", ollama_url, "/api/tags"),
-        ("LM Studio", lmstudio_url, "/v1/models"),
-    ]
-    results: list[dict[str, Any]] = []
-    for name, url, health_path in endpoints:
-        try:
-            async with httpx.AsyncClient(timeout=3.0) as http:
-                resp = await http.get(f"{url}{health_path}")
-                reachable = resp.status_code == 200
-        except Exception:
-            reachable = False
-        results.append({"name": name, "url": url, "reachable": reachable})
-
-    return templates.TemplateResponse(
-        request,
-        "partials/infrastructure_content.html",
-        {"infrastructure": results},
-    )
 
 
 @router.get("/api/providers/{name}/models")

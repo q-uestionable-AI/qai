@@ -196,3 +196,25 @@ class TestMessageAssembly:
         )
         # Should have system + some history + user, but not all 20 history items
         assert len(messages) < 22
+
+    def test_source_web_ui_adds_instruction(self) -> None:
+        """source='web_ui' injects Web UI guidance into system prompt."""
+        messages = assemble_messages(
+            query="how do I scan?",
+            model="ollama/llama3.1",
+            retrieval_results=[],
+            source="web_ui",
+        )
+        system_content = messages[0]["content"]
+        assert "Web UI" in system_content
+        assert "CLI command syntax" in system_content
+
+    def test_source_default_no_web_ui_instruction(self) -> None:
+        """No source (default) does not include Web UI instruction."""
+        messages = assemble_messages(
+            query="how do I scan?",
+            model="ollama/llama3.1",
+            retrieval_results=[],
+        )
+        system_content = messages[0]["content"]
+        assert "Web UI" not in system_content

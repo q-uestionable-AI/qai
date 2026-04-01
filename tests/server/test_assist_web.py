@@ -242,6 +242,49 @@ class TestAssistWebSocket:
         finally:
             stub.chat_stream = original  # type: ignore[union-attr]
 
+    def test_ws_assist_reset_clears_history(self, client: TestClient) -> None:
+        """assist_reset clears history and connection stays alive."""
+        with client.websocket_connect("/ws/assist") as ws:
+            ws.send_json({"type": "assist_reset"})
+            data = ws.receive_json()
+            assert data["type"] == "assist_reset_done"
+
+            # Verify connection still works after reset
+            ws.send_json({"type": "assist_query", "message": ""})
+            data = ws.receive_json()
+            assert data["type"] == "assist_error"
+            assert "Empty message" in data["message"]
+
+    def test_ws_assist_threads_source(self, client: TestClient) -> None:
+        """WebSocket passes source from context to chat_stream."""
+        stub = _ensure_assist_service_stub()
+
+        captured_kwargs: dict[str, object] = {}
+
+        async def _capture(*args: object, **kwargs: object) -> object:
+            captured_kwargs.update(kwargs)
+            yield "ok"
+
+        original = stub.chat_stream  # type: ignore[union-attr]
+        stub.chat_stream = _capture  # type: ignore[union-attr]
+        try:
+            with client.websocket_connect("/ws/assist") as ws:
+                ws.send_json(
+                    {
+                        "type": "assist_query",
+                        "message": "hello",
+                        "context": {"source": "web_ui"},
+                    }
+                )
+                # Drain tokens + done
+                while True:
+                    data = ws.receive_json()
+                    if data["type"] == "assist_done":
+                        break
+                assert captured_kwargs.get("source") == "web_ui"
+        finally:
+            stub.chat_stream = original  # type: ignore[union-attr]
+
     def test_ws_assist_not_configured_error(self, client: TestClient) -> None:
         """Unconfigured assistant returns error via WebSocket."""
         stub = _ensure_assist_service_stub()
