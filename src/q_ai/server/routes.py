@@ -38,6 +38,7 @@ from q_ai.core.mitigation import MitigationGuidance, SourceType
 from q_ai.core.models import Evidence, RunStatus, Severity
 from q_ai.core.providers import (
     PROVIDERS,
+    AuthStyle,
     ProviderType,
     fetch_models,
     get_configured_providers,
@@ -2060,6 +2061,7 @@ def _get_providers_status(request: Request) -> list[dict[str, Any]]:
             result.append(
                 {
                     "name": name,
+                    "label": PROVIDERS[name].label,
                     "configured": configured,
                     "has_key": cred is not None,
                     "base_url": base_url,
@@ -2228,15 +2230,54 @@ async def _test_local_provider(db_path: Path | None, provider: str) -> JSONRespo
         )
 
 
-@router.get("/api/settings/providers/{provider}/test")
-async def api_test_provider(request: Request, provider: str) -> JSONResponse:
-    """Test provider connectivity with a minimal check."""
-    local_providers = {"ollama", "lmstudio", "custom"}
+async def _ping_cloud_endpoint(provider: str, credential: str) -> dict[str, str]:
+    """Hit a cloud provider's models endpoint and return a status dict.
 
-    if provider in local_providers:
-        return await _test_local_provider(_get_db_path(request), provider)
+    Args:
+        provider: Provider key (e.g. "openai").
+        credential: API key for authentication.
 
-    # Cloud provider -- check if credential exists
+    Returns:
+        Dict with "status" ("ok" or "error") and "message".
+    """
+    config = PROVIDERS[provider]
+    headers: dict[str, str] = {}
+    params: dict[str, str] = {}
+    if config.auth_style == AuthStyle.BEARER:
+        headers["Authorization"] = f"Bearer {credential}"
+    elif config.auth_style == AuthStyle.X_API_KEY:
+        headers["x-api-key"] = credential
+    elif config.auth_style == AuthStyle.QUERY_KEY:
+        params["key"] = credential
+    if provider == "anthropic":
+        headers["anthropic-version"] = "2023-06-01"
+
+    endpoint = f"{config.default_base_url}{config.models_endpoint}"
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=5.0) as http:
+            resp = await http.get(endpoint, headers=headers, params=params)
+    except Exception:
+        logger.exception("Cloud connectivity check failed for %s", provider)
+        return {"status": "error", "message": "Connection check failed"}
+
+    if resp.status_code == 200:
+        return {"status": "ok", "message": "Connected"}
+    if resp.status_code in (401, 403):
+        return {"status": "error", "message": "Auth failed — check API key"}
+    return {"status": "error", "message": f"HTTP {resp.status_code}"}
+
+
+async def _test_cloud_provider(provider: str) -> JSONResponse:
+    """Test connectivity for a cloud provider by hitting its models endpoint.
+
+    Args:
+        provider: The cloud provider identifier.
+
+    Returns:
+        JSONResponse with connectivity status or error details.
+    """
     try:
         credential = get_credential(provider)
     except RuntimeError:
@@ -2253,9 +2294,26 @@ async def api_test_provider(request: Request, provider: str) -> JSONResponse:
             status_code=404,
             content={"detail": "Provider not configured"},
         )
-    return JSONResponse(
-        content={"status": "ok", "message": "Credential configured"},
-    )
+
+    config = PROVIDERS.get(provider)
+    if not config or not config.models_endpoint or not config.default_base_url:
+        return JSONResponse(
+            content={"status": "ok", "message": "Credential configured"},
+        )
+
+    result = await _ping_cloud_endpoint(provider, credential)
+    return JSONResponse(content=result)
+
+
+@router.get("/api/settings/providers/{provider}/test")
+async def api_test_provider(request: Request, provider: str) -> JSONResponse:
+    """Test provider connectivity with a minimal check."""
+    local_providers = {"ollama", "lmstudio", "custom"}
+
+    if provider in local_providers:
+        return await _test_local_provider(_get_db_path(request), provider)
+
+    return await _test_cloud_provider(provider)
 
 
 @router.get("/api/settings/defaults")

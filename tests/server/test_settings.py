@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -64,6 +64,46 @@ class TestSettingsPage:
         assert "llama3.1" in body
 
 
+class TestProvidersTableRendering:
+    """Tests for the target providers table HTML."""
+
+    def test_configured_provider_shows_label_in_table(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        """Configured provider row uses the friendly label, not the key."""
+        conn = sqlite3.connect(str(tmp_db))
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) "
+                "VALUES (?, ?, datetime('now'))",
+                ("ollama.base_url", "http://localhost:11434"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch("q_ai.server.routes.get_credential", return_value=None):
+            resp = client.get("/settings")
+        body = resp.text
+        assert 'id="row-ollama"' in body
+        assert "Ollama" in body
+
+    def test_settings_page_has_inline_edit_and_status_check(self, client: TestClient) -> None:
+        """Settings page JS includes inline edit and auto-status-check functions."""
+        with patch("q_ai.server.routes.get_credential", return_value=None):
+            resp = client.get("/settings")
+        body = resp.text
+        assert "editProviderInline" in body
+        assert "checkAllProviderStatuses" in body
+
+    def test_add_provider_divider_text(self, client: TestClient) -> None:
+        """Bottom form divider says 'Add Provider' not 'Add / Edit Provider'."""
+        with patch("q_ai.server.routes.get_credential", return_value=None):
+            resp = client.get("/settings")
+        assert "Add Provider" in resp.text
+        assert "Add / Edit Provider" not in resp.text
+
+
 class TestAddProvider:
     """Tests for adding a provider via API."""
 
@@ -110,6 +150,7 @@ class TestListProviders:
         openai_entry = next(p for p in providers if p["name"] == "openai")
         assert openai_entry["configured"] is True
         assert openai_entry["has_key"] is True
+        assert openai_entry["label"] == "OpenAI"
 
 
 class TestSaveDefaults:
@@ -200,3 +241,66 @@ class TestAssistCredential:
                 json={"provider": "openai", "api_key": "sk-test"},
             )
         assert resp.status_code == 422
+
+
+class TestProviderConnectivity:
+    """Tests for the provider connectivity check endpoint."""
+
+    def test_cloud_provider_hits_models_endpoint(self, client: TestClient) -> None:
+        """Cloud test with valid credential hits the models endpoint."""
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 200
+
+        mock_http = AsyncMock()
+        mock_http.get = AsyncMock(return_value=mock_resp)
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("q_ai.server.routes.get_credential", return_value="sk-test"),
+            patch("httpx.AsyncClient", return_value=mock_http),
+        ):
+            resp = client.get("/api/settings/providers/openai/test")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["message"] == "Connected"
+
+    def test_cloud_provider_auth_failure(self, client: TestClient) -> None:
+        """Cloud test returns error on 401."""
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 401
+
+        mock_http = AsyncMock()
+        mock_http.get = AsyncMock(return_value=mock_resp)
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("q_ai.server.routes.get_credential", return_value="sk-bad"),
+            patch("httpx.AsyncClient", return_value=mock_http),
+        ):
+            resp = client.get("/api/settings/providers/openai/test")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "error"
+        assert "Auth failed" in data["message"]
+
+    def test_cloud_provider_no_credential(self, client: TestClient) -> None:
+        """Cloud test without credential returns 404."""
+        with patch("q_ai.server.routes.get_credential", return_value=None):
+            resp = client.get("/api/settings/providers/openai/test")
+
+        assert resp.status_code == 404
+
+    def test_cloud_provider_no_models_endpoint_falls_back(self, client: TestClient) -> None:
+        """Providers without models_endpoint fall back to credential check."""
+        with patch("q_ai.server.routes.get_credential", return_value="sk-test"):
+            resp = client.get("/api/settings/providers/groq/test")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["message"] == "Credential configured"
