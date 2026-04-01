@@ -7,6 +7,7 @@ calls the LLM, and returns the response.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -93,14 +94,22 @@ def _resolve_knowledge_dir() -> Path:
     return Path.home() / ".qai" / "knowledge"
 
 
-def _ensure_credentials(model_string: str) -> None:
-    """Ensure API credentials are available for the provider.
+def _resolve_credential(model_string: str) -> str | None:
+    """Resolve the API key for the assistant's provider.
 
-    Ollama and other local providers don't need credentials.
-    For cloud providers, checks that a credential exists.
+    Uses the ``assist.<provider>`` namespace in the keyring so the
+    assistant's credential is independent of target-provider keys.
+    Falls back to the bare ``<provider>`` key (shared target credential)
+    for convenience when only one key is configured.
+
+    Local providers (ollama, lmstudio, custom) may return ``None``
+    without error — they don't require credentials.
 
     Args:
         model_string: litellm model string.
+
+    Returns:
+        API key string, or None for local providers.
 
     Raises:
         AssistantNotConfiguredError: If credentials are missing for cloud providers.
@@ -108,14 +117,25 @@ def _ensure_credentials(model_string: str) -> None:
     provider, _ = parse_model_string(model_string)
     local_providers = {"ollama", "lmstudio", "custom"}
     if provider in local_providers:
-        return
+        # Local providers: check namespaced key but don't require it.
+        try:
+            return get_credential(f"assist.{provider}")
+        except RuntimeError:
+            return None
 
-    credential = get_credential(provider)
+    # Cloud provider: try namespaced key first, then bare key.
+    credential: str | None = None
+    with contextlib.suppress(RuntimeError):
+        credential = get_credential(f"assist.{provider}")
+    if not credential:
+        with contextlib.suppress(RuntimeError):
+            credential = get_credential(provider)
     if not credential:
         raise AssistantNotConfiguredError(
-            f"No API key found for provider '{provider}'. "
-            f"Set it via: qai config set-credential {provider}"
+            f"No API key found for assistant provider '{provider}'. "
+            f"Configure it in Settings or via: qai config set-credential assist.{provider}"
         )
+    return credential
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +257,7 @@ async def chat(
         AssistantNotConfiguredError: If provider/model not configured.
     """
     model_string = _resolve_model_string()
-    _ensure_credentials(model_string)
+    credential = _resolve_credential(model_string)
 
     kb = _get_knowledge_base()
     kb.ensure_indexed()
@@ -252,6 +272,8 @@ async def chat(
     base_url = _resolve_base_url()
     if base_url:
         call_kwargs["api_base"] = base_url
+    if credential:
+        call_kwargs["api_key"] = credential
 
     response = await acompletion(**call_kwargs)  # type: ignore[no-untyped-call]
 
@@ -280,7 +302,7 @@ async def chat_stream(
         AssistantNotConfiguredError: If provider/model not configured.
     """
     model_string = _resolve_model_string()
-    _ensure_credentials(model_string)
+    credential = _resolve_credential(model_string)
 
     kb = _get_knowledge_base()
     kb.ensure_indexed()
@@ -296,6 +318,8 @@ async def chat_stream(
     base_url = _resolve_base_url()
     if base_url:
         call_kwargs["api_base"] = base_url
+    if credential:
+        call_kwargs["api_key"] = credential
 
     response: Any = await acompletion(**call_kwargs)  # type: ignore[no-untyped-call]
 

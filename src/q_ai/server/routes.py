@@ -176,6 +176,7 @@ async def assist_page(request: Request) -> HTMLResponse:
             "assist_provider": assist_provider,
             "assist_model": assist_model,
             "providers_status": providers_status,
+            "assist_providers": _get_assist_provider_choices(),
             "suggested_prompts": prompts,
         },
     )
@@ -2009,6 +2010,39 @@ async def assist_websocket(websocket: WebSocket) -> None:
 # ---------------------------------------------------------------------------
 
 
+_ASSIST_PROVIDER_ORDER = [
+    "anthropic",
+    "google",
+    "openai",
+    "xai",
+    "groq",
+    "openrouter",
+    "lmstudio",
+    "ollama",
+    "custom",
+]
+
+
+def _get_assist_provider_choices() -> list[dict[str, str | bool]]:
+    """Build the provider list for the assistant selector.
+
+    Returns all providers from the registry with name, label, type,
+    and default_base_url — independent of target provider configuration.
+    Providers are returned in a fixed display order.
+    """
+    return [
+        {
+            "name": name,
+            "label": PROVIDERS[name].label,
+            "type": PROVIDERS[name].type.value,
+            "default_base_url": PROVIDERS[name].default_base_url or "",
+            "has_models_endpoint": PROVIDERS[name].models_endpoint is not None,
+        }
+        for name in _ASSIST_PROVIDER_ORDER
+        if name in PROVIDERS
+    ]
+
+
 def _get_providers_status(request: Request) -> list[dict[str, Any]]:
     """Build a list of provider statuses."""
     db_path = _get_db_path(request)
@@ -2053,6 +2087,12 @@ async def settings_page(request: Request) -> HTMLResponse:
             "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
         }
         assist_base_url = get_setting(conn, "assist.base_url") or ""
+        assist_provider = get_setting(conn, "assist.provider") or ""
+        assist_model = get_setting(conn, "assist.model") or ""
+
+    assist_provider_label = ""
+    if assist_provider and assist_provider in PROVIDERS:
+        assist_provider_label = PROVIDERS[assist_provider].label
 
     return templates.TemplateResponse(
         request,
@@ -2060,8 +2100,12 @@ async def settings_page(request: Request) -> HTMLResponse:
         {
             "active": "settings",
             "providers_status": providers_status,
+            "assist_providers": _get_assist_provider_choices(),
             "defaults": defaults,
             "assist_base_url": assist_base_url,
+            "assist_provider": assist_provider,
+            "assist_model": assist_model,
+            "assist_provider_label": assist_provider_label,
         },
     )
 
@@ -2086,7 +2130,7 @@ async def api_add_provider(request: Request) -> JSONResponse:
             content={"detail": "Provider name required"},
         )
 
-    cloud_providers = {"anthropic", "openai", "groq", "openrouter"}
+    cloud_providers = {"anthropic", "google", "openai", "groq", "openrouter", "xai"}
     if provider in cloud_providers and not api_key:
         return JSONResponse(
             status_code=422,
@@ -2249,6 +2293,46 @@ async def api_save_defaults(request: Request) -> JSONResponse:
     return JSONResponse(content={"status": "saved"})
 
 
+@router.post("/api/settings/assist/credential")
+async def api_save_assist_credential(request: Request) -> JSONResponse:
+    """Save an API key for the assistant's provider (namespaced keyring)."""
+    body = await request.json()
+    provider = body.get("provider", "").strip().lower()
+    api_key = body.get("api_key", "").strip()
+
+    if not provider:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Provider name required"},
+        )
+    if not api_key:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "API key required"},
+        )
+
+    keyring_key = f"assist.{provider}"
+    try:
+        set_credential(keyring_key, api_key)
+    except RuntimeError:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": (
+                    "Keyring unavailable — set credentials via environment variable instead."
+                ),
+            },
+        )
+    except Exception:
+        logger.exception("Failed to store assist credential for %s", provider)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to store credential"},
+        )
+
+    return JSONResponse(content={"status": "saved"})
+
+
 @router.get("/api/providers/{name}/models")
 async def api_provider_models(request: Request, name: str) -> Response:
     """Fetch models for a provider and return an HTML partial."""
@@ -2260,16 +2344,24 @@ async def api_provider_models(request: Request, name: str) -> Response:
             status_code=404,
         )
 
+    # Accept inline credentials from the setup/edit form so the model
+    # fetch works before the user has saved their configuration.
+    inline_api_key = request.headers.get("x-assist-api-key")
+    inline_base_url = request.query_params.get("base_url")
+
     db_path = _get_db_path(request)
     with get_connection(db_path) as conn:
-        try:
-            cred = get_credential(name)
-        except RuntimeError:
-            cred = None
-        base_url = get_setting(conn, f"{name}.base_url") or ""
+        if inline_api_key is None:
+            try:
+                cred = get_credential(name)
+            except RuntimeError:
+                cred = None
+        else:
+            cred = inline_api_key
+        base_url = inline_base_url or get_setting(conn, f"{name}.base_url") or ""
 
     configured = cred is not None or bool(base_url)
-    if not configured and config.type != ProviderType.CUSTOM:
+    if not configured and config.type not in {ProviderType.CUSTOM, ProviderType.CLOUD}:
         return HTMLResponse(
             content=(
                 "<div class='text-error text-sm'>Provider not configured. "
@@ -2278,7 +2370,7 @@ async def api_provider_models(request: Request, name: str) -> Response:
             status_code=400,
         )
 
-    result = await fetch_models(name, base_url or None)
+    result = await fetch_models(name, base_url or None, api_key=cred)
 
     selector_id = request.query_params.get("selector_id", "default")
     default_model_id = request.query_params.get("default", "")
@@ -2290,6 +2382,7 @@ async def api_provider_models(request: Request, name: str) -> Response:
             "models": result.models,
             "supports_custom": result.supports_custom,
             "error": result.error,
+            "error_hint": result.error_hint,
             "message": result.message,
             "selector_id": selector_id,
             "provider_name": name,

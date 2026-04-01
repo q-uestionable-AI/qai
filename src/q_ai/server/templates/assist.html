@@ -17,8 +17,23 @@
                   onsubmit="return saveAssistSetup(event)">
 
                 {% set selector_id = "assist-setup" %}
-                {% set providers = providers_status %}
+                {% set providers = assist_providers %}
                 {% include "partials/model_selector.html" %}
+
+                <div id="assist-setup-apikey-field" class="form-control" style="display:none;">
+                    <label class="label"><span class="label-text">API Key</span></label>
+                    <input type="password" id="assist-setup-apikey"
+                           class="input input-bordered input-sm w-full"
+                           placeholder="sk-...">
+                    <p id="assist-setup-apikey-hint" class="text-xs mt-1" style="opacity: 0.5;"></p>
+                </div>
+
+                <div id="assist-setup-baseurl-field" class="form-control" style="display:none;">
+                    <label class="label"><span class="label-text">Base URL</span></label>
+                    <input type="text" id="assist-setup-baseurl"
+                           class="input input-bordered input-sm w-full"
+                           placeholder="http://localhost:11434">
+                </div>
 
                 <div class="flex items-center gap-2 mt-2">
                     <button type="submit" class="btn btn-sm btn-outline btn-primary">
@@ -31,48 +46,162 @@
     </div>
 
     <script>
-    function saveAssistSetup(e) {
-        e.preventDefault();
-        var form = document.getElementById("assist-setup-form");
-        var fd = new FormData(form);
-        var provider = fd.get("provider") || "";
-        var model = fd.get("model") || "";
-        var msg = document.getElementById("assist-setup-msg");
+    (function() {
+        var SID = "assist-setup";
+        var ASSIST_SETUP_PROVIDERS = {{ assist_providers | tojson }};
+        var providerMap = {};
+        ASSIST_SETUP_PROVIDERS.forEach(function(p) { providerMap[p.name] = p; });
 
-        if (!provider || !model) {
-            msg.className = "text-xs text-error";
-            msg.textContent = "Select a provider and model.";
-            return false;
+        var provSel = document.getElementById(SID + "-provider");
+        var keyI = document.getElementById(SID + "-apikey");
+        var urlI = document.getElementById(SID + "-baseurl");
+
+        if (provSel) {
+            provSel.addEventListener("change", function() {
+                toggleSetupFields(this.value);
+            });
         }
 
-        fetch("/api/settings/defaults", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({"assist.provider": provider, "assist.model": model})
-        }).then(function(r) { return r.json(); }).then(function(d) {
-            if (d.status === "saved") {
-                window.location.reload();
+        /* Trigger model fetch when the relevant credential field changes. */
+        if (keyI) {
+            keyI.addEventListener("change", function() {
+                var info = providerMap[(provSel && provSel.value) || ""] || {};
+                if (info.type === "cloud" && this.value.trim()) {
+                    qaiRefetchModels(SID);
+                }
+            });
+        }
+        if (urlI) {
+            urlI.addEventListener("change", function() {
+                var info = providerMap[(provSel && provSel.value) || ""] || {};
+                if ((info.type === "local" || info.type === "custom") && this.value.trim()) {
+                    qaiRefetchModels(SID);
+                }
+            });
+        }
+
+        function toggleSetupFields(name) {
+            var info = providerMap[name] || {};
+            var ptype = info.type || "";
+            var keyF = document.getElementById(SID + "-apikey-field");
+            var urlF = document.getElementById(SID + "-baseurl-field");
+            var hint = document.getElementById(SID + "-apikey-hint");
+
+            var isCloud = ptype === "cloud";
+            var isLocal = ptype === "local";
+            var isCustom = ptype === "custom";
+            var isAggregator = isCloud && !info.has_models_endpoint;
+
+            /* Clear values from previous provider selection. */
+            keyI.value = "";
+            urlI.value = "";
+
+            /* Aggregators need an API key but not the models endpoint. */
+            keyF.style.display = (isCloud || isLocal || isCustom) ? "" : "none";
+            urlF.style.display = (isLocal || isCustom) ? "" : "none";
+
+            if (isCloud) {
+                keyI.required = !isAggregator;
+                hint.textContent = "Required";
             } else {
-                msg.className = "text-xs text-error";
-                msg.textContent = d.detail || "Error saving settings.";
+                keyI.required = false;
+                hint.textContent = isLocal || isCustom ? "Optional" : "";
             }
-        }).catch(function() {
-            msg.className = "text-xs text-error";
-            msg.textContent = "Request failed.";
-        });
-        return false;
-    }
+            if (isLocal && info.default_base_url) {
+                urlI.value = info.default_base_url;
+            }
+            if (isCustom) {
+                urlI.required = true;
+            } else {
+                urlI.required = false;
+            }
+
+            /* Fetch models or show context-aware placeholder. */
+            if (isLocal && info.default_base_url) {
+                qaiRefetchModels(SID);
+            } else if (isAggregator || isCustom) {
+                qaiRefetchModels(SID);
+            } else if (isCloud) {
+                qaiResetModelArea(SID, "Enter API key to load models");
+            } else if (isLocal) {
+                qaiResetModelArea(SID, "Enter URL to load models");
+            } else {
+                qaiResetModelArea(SID, "Select a provider first");
+            }
+        }
+
+        window.saveAssistSetup = function(e) {
+            e.preventDefault();
+            var form = document.getElementById("assist-setup-form");
+            var fd = new FormData(form);
+            var provider = fd.get("provider") || "";
+            var model = fd.get("model") || "";
+            var msg = document.getElementById("assist-setup-msg");
+
+            if (!provider || !model) {
+                msg.className = "text-xs text-error";
+                msg.textContent = "Select a provider and model.";
+                return false;
+            }
+
+            var apiKey = document.getElementById("assist-setup-apikey").value.trim();
+            var baseUrl = document.getElementById("assist-setup-baseurl").value.trim();
+
+            var info = providerMap[provider] || {};
+            if (info.type === "cloud" && !apiKey) {
+                msg.className = "text-xs text-error";
+                msg.textContent = "API key is required for cloud providers.";
+                return false;
+            }
+            if (info.type === "custom" && !baseUrl) {
+                msg.className = "text-xs text-error";
+                msg.textContent = "Base URL is required for custom providers.";
+                return false;
+            }
+
+            var settingsData = {
+                "assist.provider": provider,
+                "assist.model": model,
+                "assist.base_url": baseUrl
+            };
+
+            function saveSettings() {
+                return fetch("/api/settings/defaults", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(settingsData)
+                }).then(function(r) { return r.json(); });
+            }
+
+            function saveCredential() {
+                if (!apiKey) return Promise.resolve({status: "saved"});
+                return fetch("/api/settings/assist/credential", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({provider: provider, api_key: apiKey})
+                }).then(function(r) { return r.json(); });
+            }
+
+            Promise.all([saveSettings(), saveCredential()]).then(function(results) {
+                var settingsOk = results[0].status === "saved";
+                var credOk = results[1].status === "saved";
+                if (settingsOk && credOk) {
+                    window.location.reload();
+                } else {
+                    msg.className = "text-xs text-error";
+                    msg.textContent = results[0].detail || results[1].detail || "Error saving.";
+                }
+            }).catch(function() {
+                msg.className = "text-xs text-error";
+                msg.textContent = "Request failed.";
+            });
+            return false;
+        };
+    })();
     </script>
 
 {% else %}
     {# ── Chat interface ── #}
-    <div class="flex justify-end mb-2">
-        <button type="button" id="assist-new-chat-btn"
-                class="btn btn-xs btn-ghost"
-                onclick="resetChat()">
-            New Chat
-        </button>
-    </div>
     <div id="assist-chat-messages" class="flex-1 overflow-y-auto mb-4 space-y-2 pr-1">
         {# Messages rendered here by JS #}
     </div>
@@ -87,6 +216,14 @@
 
     {# ── Input area ── #}
     <form id="assist-input-form" class="flex gap-2" onsubmit="return handleAssistSubmit(event)">
+        <button type="button" id="assist-new-chat-btn"
+                class="btn btn-sm btn-outline btn-secondary btn-square"
+                title="New Chat"
+                onclick="resetChat()">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+            </svg>
+        </button>
         <input type="text" id="assist-input"
                class="input input-bordered input-sm flex-1"
                placeholder="Ask the assistant..."

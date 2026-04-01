@@ -25,9 +25,15 @@ class TestProviderModelsEndpoint:
         resp = client.get("/api/providers/nonexistent/models?selector_id=test")
         assert resp.status_code == 404
 
-    def test_unconfigured_provider_returns_400(self, client: TestClient) -> None:
+    def test_unconfigured_cloud_provider_returns_message(self, client: TestClient) -> None:
         with patch("q_ai.server.routes.get_credential", return_value=None):
             resp = client.get("/api/providers/anthropic/models?selector_id=test")
+        assert resp.status_code == 200
+        assert "API key" in resp.text
+
+    def test_unconfigured_local_provider_returns_400(self, client: TestClient) -> None:
+        with patch("q_ai.server.routes.get_credential", return_value=None):
+            resp = client.get("/api/providers/ollama/models?selector_id=test")
         assert resp.status_code == 400
         assert "Settings" in resp.text
 
@@ -111,7 +117,7 @@ class TestProviderModelsEndpoint:
             resp = client.get("/api/providers/ollama/models?selector_id=test")
         assert resp.status_code == 200
         assert "Could not connect" in resp.text
-        assert "Settings" in resp.text
+        assert "Retry" in resp.text
 
     def test_default_model_preselected(self, client: TestClient) -> None:
         with patch("q_ai.server.routes.get_credential", return_value="test-key"):
