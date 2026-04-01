@@ -38,10 +38,30 @@ class TestFrameworkResolver:
         resolver = FrameworkResolver()
         result = resolver.resolve("command_injection")
         assert result["owasp_mcp_top10"] == "MCP05"
-        assert result["owasp_agentic_top10"] == "ASI02"
+        assert result["owasp_agentic_top10"] == ["ASI02", "ASI05"]
         assert "AML.T0043" in result["mitre_atlas"]
         assert "AML.T0050" in result["mitre_atlas"]
         assert "CWE-78" in result["cwe"]
+
+    def test_resolve_prompt_injection(self) -> None:
+        resolver = FrameworkResolver()
+        result = resolver.resolve("prompt_injection")
+        assert result["owasp_mcp_top10"] == "MCP06"
+        assert result["owasp_agentic_top10"] == ["ASI01", "ASI09"]
+        assert "AML.T0051.000" in result["mitre_atlas"]
+        assert "AML.T0051.001" in result["mitre_atlas"]
+        assert "CWE-94" in result["cwe"]
+        assert "CWE-1427" in result["cwe"]
+
+    def test_resolve_permissions(self) -> None:
+        resolver = FrameworkResolver()
+        result = resolver.resolve("permissions")
+        assert result["owasp_mcp_top10"] == "MCP02"
+        assert result["owasp_agentic_top10"] == "ASI03"
+        assert "AML.T0054" in result["mitre_atlas"]
+        assert "AML.T0081" in result["mitre_atlas"]
+        assert "CWE-269" in result["cwe"]
+        assert "CWE-1434" in result["cwe"]
 
     def test_command_injection_atlas_does_not_contain_t0040(self) -> None:
         resolver = FrameworkResolver()

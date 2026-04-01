@@ -1,6 +1,6 @@
 # Framework mapping data for q-ai
 # Maps internal categories to external security framework identifiers
-# Updated: 2026-03-19
+# Updated: 2026-04-01
 
 frameworks:
   owasp_mcp_top10:
@@ -22,16 +22,18 @@ frameworks:
     version: "2026"
     url: "https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/"
     mappings:
-      prompt_injection: "ASI01"
+      prompt_injection:
+        - "ASI01"
+        - "ASI09"
       tool_poisoning: "ASI02"
-      command_injection: "ASI02"
+      command_injection:
+        - "ASI02"
+        - "ASI05"
       supply_chain: "ASI04"
       context_sharing: "ASI06"
       auth: "ASI03"
       token_exposure: "ASI03"
-      permissions:
-        - "ASI03"
-        - "ASI09"
+      permissions: "ASI03"
       shadow_servers:
         - "ASI04"
         - "ASI10"
