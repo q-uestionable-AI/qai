@@ -38,7 +38,7 @@ class TestFrameworkResolver:
         resolver = FrameworkResolver()
         result = resolver.resolve("command_injection")
         assert result["owasp_mcp_top10"] == "MCP05"
-        assert result["owasp_agentic_top10"] == "ASI02"
+        assert result["owasp_agentic_top10"] == ["ASI02", "ASI05"]
         assert "AML.T0043" in result["mitre_atlas"]
         assert "AML.T0050" in result["mitre_atlas"]
         assert "CWE-78" in result["cwe"]
