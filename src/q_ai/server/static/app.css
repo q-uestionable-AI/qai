@@ -575,6 +575,42 @@ select.select:focus {
     pointer-events: none;
 }
 
+/* ── New Chat button (cyan accent) ─────────────────────────── */
+.assist-new-chat-btn {
+    border-color: #06b6d4 !important;
+    color: #06b6d4 !important;
+}
+.assist-new-chat-btn:hover {
+    background: rgba(6, 182, 212, 0.15) !important;
+    border-color: #22d3ee !important;
+    color: #22d3ee !important;
+}
+
+/* ── Jump-to-bottom button ─────────────────────────────────── */
+.assist-jump-bottom {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 50%;
+    background: rgba(30, 30, 40, 0.85);
+    color: #94a3b8;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    z-index: 10;
+}
+.assist-jump-bottom:hover {
+    background: rgba(30, 30, 40, 0.95);
+    color: #e2e8f0;
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
 /* ── Suggested prompt chips ──────────────────────────────────── */
 .assist-chip {
     font-size: 0.8rem;

@@ -202,8 +202,20 @@
 
 {% else %}
     {# ── Chat interface ── #}
-    <div id="assist-chat-messages" class="flex-1 overflow-y-auto mb-4 space-y-2 pr-1">
-        {# Messages rendered here by JS #}
+    <div class="flex-1 relative overflow-hidden">
+        <div id="assist-chat-messages" class="h-full overflow-y-auto mb-4 space-y-2 pr-1">
+            {# Messages rendered here by JS #}
+        </div>
+        <button type="button" id="assist-jump-bottom"
+                class="assist-jump-bottom"
+                onclick="document.getElementById('assist-chat-messages').scrollTop = document.getElementById('assist-chat-messages').scrollHeight"
+                style="display: none;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+            </svg>
+        </button>
     </div>
 
     {# ── Suggested prompts ── #}
@@ -217,7 +229,7 @@
     {# ── Input area ── #}
     <form id="assist-input-form" class="flex gap-2" onsubmit="return handleAssistSubmit(event)">
         <button type="button" id="assist-new-chat-btn"
-                class="btn btn-sm btn-outline btn-secondary btn-square"
+                class="btn btn-sm btn-outline btn-square assist-new-chat-btn"
                 title="New Chat"
                 onclick="resetChat()">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -430,6 +442,12 @@
                 socket.send(JSON.stringify({type: "assist_reset"}));
             }
         };
+
+        var jumpBtn = document.getElementById("assist-jump-bottom");
+        messagesEl.addEventListener("scroll", function() {
+            var gap = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
+            jumpBtn.style.display = gap > 120 ? "" : "none";
+        });
 
         connectWs();
         inputEl.focus();
