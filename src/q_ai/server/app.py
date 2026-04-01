@@ -36,7 +36,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     """
     app = FastAPI(
         title="q-ai",
-        description="Offensive security platform for agentic AI infrastructure",
+        description="Security testing for agentic AI",
         lifespan=_lifespan,
     )
 
