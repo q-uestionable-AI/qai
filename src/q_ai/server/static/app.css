@@ -490,12 +490,20 @@ select.select:focus {
     margin-top: 0.5em;
     margin-bottom: 0.5em;
     font-size: 0.9em;
+    table-layout: auto;
 }
 .assist-bubble th,
 .assist-bubble td {
     border: 1px solid rgba(255, 255, 255, 0.15);
     padding: 0.35em 0.6em;
     text-align: left;
+    white-space: nowrap;
+}
+/* Allow the last column (typically description/details) to wrap */
+.assist-bubble td:last-child,
+.assist-bubble th:last-child {
+    white-space: normal;
+    min-width: 12em;
 }
 .assist-bubble th {
     background: rgba(255, 255, 255, 0.06);
@@ -651,6 +659,23 @@ select.select:focus {
 @keyframes assist-dot-pulse {
     0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
     40% { opacity: 1; transform: scale(1); }
+}
+
+/* ── Streaming status bar ──────────────────────────────────── */
+.assist-streaming-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.35rem 0;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+.assist-streaming-bar .assist-typing-dots {
+    height: 1em;
+}
+.assist-streaming-bar .assist-typing-dots span {
+    width: 5px;
+    height: 5px;
 }
 
 /* ── Assist panel collapse overrides ─────────────────────────── */

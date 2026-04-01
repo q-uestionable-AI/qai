@@ -203,7 +203,7 @@
 {% else %}
     {# ── Chat interface ── #}
     <div class="flex-1 relative overflow-hidden">
-        <div id="assist-chat-messages" class="h-full overflow-y-auto mb-4 space-y-2 pr-1">
+        <div id="assist-chat-messages" class="h-full overflow-y-auto space-y-2 pr-1" style="padding-bottom: 2.5rem;">
             {# Messages rendered here by JS #}
         </div>
         <button type="button" id="assist-jump-bottom"
@@ -218,8 +218,14 @@
         </button>
     </div>
 
+    {# ── Streaming status bar ── #}
+    <div id="assist-streaming-bar" class="assist-streaming-bar" style="display: none;">
+        <span class="assist-typing-dots"><span></span><span></span><span></span></span>
+        <span>Thinking...</span>
+    </div>
+
     {# ── Suggested prompts ── #}
-    <div id="assist-prompts" class="flex flex-wrap gap-2 mb-3">
+    <div id="assist-prompts" class="flex flex-wrap gap-2 mb-3 justify-center">
         {% for prompt in suggested_prompts %}
         <button type="button" class="assist-chip"
                 onclick="sendSuggestedPrompt(this.textContent.trim())">{{ prompt }}</button>
@@ -252,6 +258,7 @@
         var inputEl = document.getElementById("assist-input");
         var sendBtn = document.getElementById("assist-send-btn");
         var promptsEl = document.getElementById("assist-prompts");
+        var streamingBar = document.getElementById("assist-streaming-bar");
         var wsUrl = (location.protocol === "https:" ? "wss://" : "ws://")
                     + location.host + "/ws/assist";
         var socket = null;
@@ -272,6 +279,7 @@
                     currentAssistantBubble = null;
                     currentAssistantText = "";
                     isStreaming = false;
+                    streamingBar.style.display = "none";
                     setInputEnabled(true);
                 }
                 setTimeout(connectWs, 2000);
@@ -300,6 +308,7 @@
                     currentAssistantBubble = null;
                     currentAssistantText = "";
                     isStreaming = false;
+                    streamingBar.style.display = "none";
                     setInputEnabled(true);
                     break;
                 case "assist_error":
@@ -308,6 +317,7 @@
                     currentAssistantBubble = null;
                     currentAssistantText = "";
                     isStreaming = false;
+                    streamingBar.style.display = "none";
                     setInputEnabled(true);
                     break;
                 case "assist_reset_done":
@@ -408,6 +418,7 @@
 
             addMessage("user", text);
             addTypingIndicator();
+            streamingBar.style.display = "";
 
             socket.send(JSON.stringify({
                 type: "assist_query",
@@ -436,6 +447,7 @@
             currentAssistantBubble = null;
             currentAssistantText = "";
             isStreaming = false;
+            streamingBar.style.display = "none";
             setInputEnabled(true);
             if (promptsEl) promptsEl.style.display = "";
             if (socket && socket.readyState === WebSocket.OPEN) {
