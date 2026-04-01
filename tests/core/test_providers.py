@@ -376,22 +376,76 @@ class TestFilterCloudModels:
         result = _filter_google(data)
         assert len(result) == 0
 
-    def test_google_excludes_preview_tts_lite_embed_vision(self) -> None:
+    def test_google_excludes_old_versions(self) -> None:
         data = {
             "models": [
                 {
-                    "name": "models/gemini-2.0-flash-preview",
-                    "displayName": "Gemini 2.0 Flash Preview",
+                    "name": "models/gemini-2.0-flash",
+                    "displayName": "Gemini 2.0 Flash",
                     "supportedGenerationMethods": ["generateContent"],
                 },
+                {
+                    "name": "models/gemini-1.5-pro",
+                    "displayName": "Gemini 1.5 Pro",
+                    "supportedGenerationMethods": ["generateContent"],
+                },
+                {
+                    "name": "models/gemini-1.0-pro",
+                    "displayName": "Gemini 1.0 Pro",
+                    "supportedGenerationMethods": ["generateContent"],
+                },
+            ]
+        }
+        result = _filter_google(data)
+        assert len(result) == 0
+
+    def test_google_keeps_version_3(self) -> None:
+        data = {
+            "models": [
+                {
+                    "name": "models/gemini-3.0-pro",
+                    "displayName": "Gemini 3.0 Pro",
+                    "supportedGenerationMethods": ["generateContent"],
+                },
+            ]
+        }
+        result = _filter_google(data)
+        assert len(result) == 1
+
+    def test_google_excludes_nano_and_latest(self) -> None:
+        data = {
+            "models": [
+                {
+                    "name": "models/gemini-2.5-flash-nano",
+                    "displayName": "Gemini 2.5 Flash Nano",
+                    "supportedGenerationMethods": ["generateContent"],
+                },
+                {
+                    "name": "models/gemini-2.5-pro-latest",
+                    "displayName": "Gemini 2.5 Pro Latest",
+                    "supportedGenerationMethods": ["generateContent"],
+                },
+            ]
+        }
+        result = _filter_google(data)
+        assert len(result) == 0
+
+    def test_google_excludes_preview_tts_lite_embed_vision(self) -> None:
+        data = {
+            "models": [
                 {
                     "name": "models/gemini-2.5-flash-tts",
                     "displayName": "Gemini 2.5 Flash TTS",
                     "supportedGenerationMethods": ["generateContent"],
                 },
                 {
-                    "name": "models/gemini-2.0-flash-lite",
-                    "displayName": "Gemini 2.0 Flash Lite",
+                    "name": "models/gemini-2.5-flash-lite",
+                    "displayName": "Gemini 2.5 Flash Lite",
+                    "supportedGenerationMethods": ["generateContent"],
+                },
+                {
+                    "name": "models/gemini-2.5-flash-preview",
+                    "displayName": "Gemini 2.5 Flash Preview",
                     "supportedGenerationMethods": ["generateContent"],
                 },
                 {
@@ -400,8 +454,8 @@ class TestFilterCloudModels:
                     "supportedGenerationMethods": ["generateContent"],
                 },
                 {
-                    "name": "models/gemini-1.5-pro-vision",
-                    "displayName": "Gemini 1.5 Pro Vision",
+                    "name": "models/gemini-2.5-pro-vision",
+                    "displayName": "Gemini 2.5 Pro Vision",
                     "supportedGenerationMethods": ["generateContent"],
                 },
             ]
@@ -409,19 +463,29 @@ class TestFilterCloudModels:
         result = _filter_google(data)
         assert len(result) == 0
 
-    def test_openai_keeps_gpt4_o1_o3(self) -> None:
+    def test_openai_keeps_allowed_aliases(self) -> None:
         data = {
             "data": [
+                {"id": "gpt-4.1"},
+                {"id": "gpt-4.1-mini"},
+                {"id": "gpt-4.1-nano"},
                 {"id": "gpt-4o"},
                 {"id": "gpt-4o-mini"},
-                {"id": "gpt-4-turbo"},
                 {"id": "o1"},
-                {"id": "o1-mini"},
+                {"id": "o3"},
                 {"id": "o3-mini"},
             ]
         }
         result = _filter_openai(data)
-        assert len(result) == 6
+        assert len(result) == 8
+        ids = {m.id for m in result}
+        assert "openai/gpt-4.1" in ids
+        assert "openai/o3-mini" in ids
+
+    def test_openai_keeps_gpt5(self) -> None:
+        data = {"data": [{"id": "gpt-5"}, {"id": "gpt-5-mini"}]}
+        result = _filter_openai(data)
+        assert len(result) == 2
 
     def test_openai_excludes_old_and_non_chat(self) -> None:
         data = {
@@ -432,10 +496,35 @@ class TestFilterCloudModels:
                 {"id": "gpt-3.5-turbo"},
                 {"id": "gpt-3.5-turbo-0125"},
                 {"id": "chatgpt-image-latest"},
+                {"id": "gpt-4-turbo"},
                 {"id": "gpt-4o-audio-preview"},
                 {"id": "gpt-4o-realtime-preview"},
                 {"id": "gpt-4o-search-preview"},
                 {"id": "gpt-4o-transcription"},
+            ]
+        }
+        result = _filter_openai(data)
+        assert len(result) == 1
+        assert result[0].id == "openai/gpt-4o"
+
+    def test_openai_excludes_dated_variants(self) -> None:
+        data = {
+            "data": [
+                {"id": "gpt-4o"},
+                {"id": "gpt-4o-2024-11-20"},
+                {"id": "gpt-4o-mini-2024-07-18"},
+                {"id": "o1-2025-04-16"},
+            ]
+        }
+        result = _filter_openai(data)
+        assert len(result) == 1
+        assert result[0].id == "openai/gpt-4o"
+
+    def test_openai_excludes_transcribe(self) -> None:
+        data = {
+            "data": [
+                {"id": "gpt-4o"},
+                {"id": "gpt-4o-mini-transcribe"},
             ]
         }
         result = _filter_openai(data)
@@ -453,13 +542,15 @@ class TestFilterCloudModels:
         result = _filter_xai(data)
         assert len(result) == 3
 
-    def test_xai_excludes_vision_image_embed(self) -> None:
+    def test_xai_excludes_vision_image_embed_imagine_multiagent(self) -> None:
         data = {
             "data": [
                 {"id": "grok-4"},
                 {"id": "grok-2-vision-1212"},
                 {"id": "grok-image-gen"},
                 {"id": "grok-embed-v1"},
+                {"id": "grok-imagine-video"},
+                {"id": "grok-multi-agent-v1"},
                 {"id": "some-other-model"},
             ]
         }
@@ -467,17 +558,17 @@ class TestFilterCloudModels:
         assert len(result) == 1
         assert result[0].id == "xai/grok-4"
 
-    def test_filter_cloud_models_sorts_alphabetically(self) -> None:
+    def test_filter_cloud_models_sorts_newest_first(self) -> None:
         data = {
             "data": [
-                {"id": "claude-sonnet-4-20250514"},
                 {"id": "claude-haiku-4-5-20251001"},
+                {"id": "claude-sonnet-4-20250514"},
                 {"id": "claude-opus-4-20250514"},
             ]
         }
         result = _filter_cloud_models("anthropic", data)
         labels = [m.label for m in result]
-        assert labels == sorted(labels)
+        assert labels == sorted(labels, reverse=True)
 
     def test_filter_cloud_models_dispatches_per_provider(self) -> None:
         """Each provider key routes to its specific filter."""

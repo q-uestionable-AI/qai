@@ -287,10 +287,28 @@ async def _resolve_cloud_models(
 
 
 # Per-provider filter rules (case-insensitive substring match).
-_GOOGLE_EXCLUDE = ("preview", "tts", "lite", "embed", "vision")
-_OPENAI_PREFIXES = ("gpt-4", "o1", "o3")
-_OPENAI_EXCLUDE = ("audio", "image", "realtime", "search", "transcription")
-_XAI_EXCLUDE = ("vision", "image", "embed")
+_GOOGLE_EXCLUDE = ("preview", "tts", "lite", "embed", "vision", "nano", "latest")
+_GOOGLE_ALLOWED_VERSIONS = ("2.5", "3")
+_OPENAI_ALLOWED = (
+    "gpt-4.1",
+    "gpt-4.1-mini",
+    "gpt-4.1-nano",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "o1",
+    "o3",
+    "o3-mini",
+)
+_OPENAI_EXCLUDE = (
+    "audio",
+    "image",
+    "realtime",
+    "search",
+    "transcription",
+    "transcribe",
+)
+_OPENAI_DATE_PATTERN = ("-2024-", "-2025-", "-2026-")
+_XAI_EXCLUDE = ("vision", "image", "embed", "imagine", "multi-agent")
 
 
 def _filter_cloud_models(
@@ -320,12 +338,12 @@ def _filter_cloud_models(
     else:
         models = _filter_generic(provider_name, data)
 
-    models.sort(key=lambda m: m.label)
+    models.sort(key=lambda m: m.label, reverse=True)
     return models
 
 
 def _filter_google(data: dict[str, Any]) -> list[ModelInfo]:
-    """Filter Google models: gemini-* with generateContent, no preview/tts/lite/embed/vision."""
+    """Filter Google models: gemini-2.5+/3+ with generateContent, tight exclusions."""
     models: list[ModelInfo] = []
     for m in data.get("models", []):
         name = m.get("name", "")
@@ -337,6 +355,10 @@ def _filter_google(data: dict[str, Any]) -> list[ModelInfo]:
             continue
         mid_lower = model_id.lower()
         if any(pat in mid_lower for pat in _GOOGLE_EXCLUDE):
+            continue
+        # Version gate: only 2.5+ and 3+
+        suffix = mid_lower.removeprefix("gemini-")
+        if not any(suffix.startswith(v) for v in _GOOGLE_ALLOWED_VERSIONS):
             continue
         display = m.get("displayName", model_id)
         models.append(ModelInfo(id=f"google/{model_id}", label=display))
@@ -355,16 +377,19 @@ def _filter_anthropic(data: dict[str, Any]) -> list[ModelInfo]:
 
 
 def _filter_openai(data: dict[str, Any]) -> list[ModelInfo]:
-    """Filter OpenAI models: gpt-4*/o1*/o3* only, no audio/image/realtime/search/transcription."""
+    """Filter OpenAI models: explicit alias allowlist, no dated variants."""
     models: list[ModelInfo] = []
     for m in data.get("data", []):
         model_id = m.get("id", "")
         if not model_id:
             continue
-        if not any(model_id.startswith(p) for p in _OPENAI_PREFIXES):
+        # Must match an allowed alias exactly or be a gpt-5* model
+        if model_id not in _OPENAI_ALLOWED and not model_id.startswith("gpt-5"):
             continue
         mid_lower = model_id.lower()
         if any(pat in mid_lower for pat in _OPENAI_EXCLUDE):
+            continue
+        if any(d in model_id for d in _OPENAI_DATE_PATTERN):
             continue
         models.append(ModelInfo(id=f"openai/{model_id}", label=model_id))
     return models
