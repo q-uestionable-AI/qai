@@ -64,6 +64,46 @@ class TestSettingsPage:
         assert "llama3.1" in body
 
 
+class TestProvidersTableRendering:
+    """Tests for the target providers table HTML."""
+
+    def test_configured_provider_shows_label_in_table(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        """Configured provider row uses the friendly label, not the key."""
+        conn = sqlite3.connect(str(tmp_db))
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) "
+                "VALUES (?, ?, datetime('now'))",
+                ("ollama.base_url", "http://localhost:11434"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch("q_ai.server.routes.get_credential", return_value=None):
+            resp = client.get("/settings")
+        body = resp.text
+        assert 'id="row-ollama"' in body
+        assert "Ollama" in body
+
+    def test_settings_page_has_inline_edit_and_status_check(self, client: TestClient) -> None:
+        """Settings page JS includes inline edit and auto-status-check functions."""
+        with patch("q_ai.server.routes.get_credential", return_value=None):
+            resp = client.get("/settings")
+        body = resp.text
+        assert "editProviderInline" in body
+        assert "checkAllProviderStatuses" in body
+
+    def test_add_provider_divider_text(self, client: TestClient) -> None:
+        """Bottom form divider says 'Add Provider' not 'Add / Edit Provider'."""
+        with patch("q_ai.server.routes.get_credential", return_value=None):
+            resp = client.get("/settings")
+        assert "Add Provider" in resp.text
+        assert "Add / Edit Provider" not in resp.text
+
+
 class TestAddProvider:
     """Tests for adding a provider via API."""
 
