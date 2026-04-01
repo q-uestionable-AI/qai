@@ -17,7 +17,7 @@
                   onsubmit="return saveAssistSetup(event)">
 
                 {% set selector_id = "assist-setup" %}
-                {% set providers = providers_status %}
+                {% set providers = assist_providers %}
                 {% include "partials/model_selector.html" %}
 
                 <div class="flex items-center gap-2 mt-2">
@@ -66,13 +66,6 @@
 
 {% else %}
     {# ── Chat interface ── #}
-    <div class="flex justify-end mb-2">
-        <button type="button" id="assist-new-chat-btn"
-                class="btn btn-xs btn-ghost"
-                onclick="resetChat()">
-            New Chat
-        </button>
-    </div>
     <div id="assist-chat-messages" class="flex-1 overflow-y-auto mb-4 space-y-2 pr-1">
         {# Messages rendered here by JS #}
     </div>
@@ -87,6 +80,14 @@
 
     {# ── Input area ── #}
     <form id="assist-input-form" class="flex gap-2" onsubmit="return handleAssistSubmit(event)">
+        <button type="button" id="assist-new-chat-btn"
+                class="btn btn-sm btn-outline btn-secondary btn-square"
+                title="New Chat"
+                onclick="resetChat()">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+            </svg>
+        </button>
         <input type="text" id="assist-input"
                class="input input-bordered input-sm flex-1"
                placeholder="Ask the assistant..."

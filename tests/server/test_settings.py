@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -15,6 +17,49 @@ class TestSettingsPage:
         with patch("q_ai.server.routes.get_credential", return_value=None):
             resp = client.get("/settings")
         assert resp.status_code == 200
+
+    def test_settings_page_has_all_assist_provider_labels(self, client: TestClient) -> None:
+        """GET /settings contains all 7 provider labels in the assistant section."""
+        with patch("q_ai.server.routes.get_credential", return_value=None):
+            resp = client.get("/settings")
+        body = resp.text
+        for label in [
+            "Anthropic",
+            "OpenAI",
+            "Groq",
+            "OpenRouter",
+            "Ollama",
+            "LM Studio",
+            "Custom",
+        ]:
+            assert label in body, f"Provider label {label!r} missing from settings page"
+
+    def test_settings_assist_display_when_configured(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        """When assist is configured, settings page shows provider label and model."""
+        conn = sqlite3.connect(str(tmp_db))
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) "
+                "VALUES (?, ?, datetime('now'))",
+                ("assist.provider", "ollama"),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) "
+                "VALUES (?, ?, datetime('now'))",
+                ("assist.model", "llama3.1"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch("q_ai.server.routes.get_credential", return_value=None):
+            resp = client.get("/settings")
+        body = resp.text
+        assert "assist-display" in body
+        assert "Ollama" in body
+        assert "llama3.1" in body
 
 
 class TestAddProvider:

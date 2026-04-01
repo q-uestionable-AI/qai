@@ -87,6 +87,49 @@
                 <span id="add-provider-msg" class="text-xs"></span>
             </div>
         </form>
+
+        <!-- Defaults -->
+        <div class="divider text-sm text-base-content/40">Defaults</div>
+        <form id="defaults-form"
+              class="grid grid-cols-1 md:grid-cols-2 gap-4"
+              onsubmit="return saveDefaults(event)">
+
+            <div class="form-control">
+                <label class="label">
+                    <span class="label-text">Default Audit Transport</span>
+                </label>
+                <select name="audit.default_transport"
+                        class="select select-bordered select-sm">
+                    <option value="stdio"
+                        {% if defaults['audit.default_transport'] == 'stdio' %}selected{% endif %}>
+                        stdio
+                    </option>
+                    <option value="sse"
+                        {% if defaults['audit.default_transport'] == 'sse' %}selected{% endif %}>
+                        sse
+                    </option>
+                    <option value="streamable-http"
+                        {% if defaults['audit.default_transport'] == 'streamable-http' %}selected{% endif %}>
+                        streamable-http
+                    </option>
+                </select>
+            </div>
+
+            <div class="form-control">
+                <label class="label">
+                    <span class="label-text">IPI Callback URL</span>
+                </label>
+                <input type="text" name="ipi.default_callback_url"
+                       class="input input-bordered input-sm"
+                       placeholder="https://example.com/callback"
+                       value="{{ defaults['ipi.default_callback_url'] }}">
+            </div>
+
+            <div class="md:col-span-2 flex items-end gap-2">
+                <button type="submit" class="btn btn-sm btn-outline btn-primary">Save</button>
+                <span id="defaults-msg" class="text-xs"></span>
+            </div>
+        </form>
 </div>
 
 <script>
@@ -156,5 +199,31 @@ function deleteProvider(name) {
         .then(r => r.json()).then(() => {
             htmx.ajax("GET", "/settings", {target: "#providers", select: "#providers"});
         });
+}
+
+function saveDefaults(e) {
+    e.preventDefault();
+    var form = document.getElementById("defaults-form");
+    var data = {};
+    new FormData(form).forEach(function(v, k) { data[k] = v; });
+
+    var msg = document.getElementById("defaults-msg");
+    fetch("/api/settings/defaults", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.status === "saved") {
+            msg.className = "text-xs text-success";
+            msg.textContent = "Saved";
+        } else {
+            msg.className = "text-xs text-error";
+            msg.textContent = d.detail || "Error";
+        }
+    }).catch(function() {
+        msg.className = "text-xs text-error";
+        msg.textContent = "Request failed";
+    });
+    return false;
 }
 </script>

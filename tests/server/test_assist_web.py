@@ -69,6 +69,21 @@ class TestAssistPageRoute:
         assert "Configure Assistant" in resp.text
         assert "Save &amp; Start" in resp.text
 
+    def test_unconfigured_setup_card_has_provider_labels(self, client: TestClient) -> None:
+        """Unconfigured GET / has all provider labels in the setup card."""
+        resp = client.get("/")
+        body = resp.text
+        for label in [
+            "Anthropic",
+            "OpenAI",
+            "Groq",
+            "OpenRouter",
+            "Ollama",
+            "LM Studio",
+            "Custom",
+        ]:
+            assert label in body, f"Provider label {label!r} missing from setup card"
+
     def test_configured_shows_chat_interface(self, client: TestClient, tmp_db: Path) -> None:
         """When assist provider/model are set, shows chat interface."""
         conn = sqlite3.connect(str(tmp_db))

@@ -176,6 +176,7 @@ async def assist_page(request: Request) -> HTMLResponse:
             "assist_provider": assist_provider,
             "assist_model": assist_model,
             "providers_status": providers_status,
+            "assist_providers": _get_assist_provider_choices(),
             "suggested_prompts": prompts,
         },
     )
@@ -2009,6 +2010,15 @@ async def assist_websocket(websocket: WebSocket) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _get_assist_provider_choices() -> list[dict[str, str]]:
+    """Build the provider list for the assistant selector.
+
+    Returns all providers from the registry with name and label,
+    independent of target provider configuration.
+    """
+    return [{"name": name, "label": cfg.label} for name, cfg in PROVIDERS.items()]
+
+
 def _get_providers_status(request: Request) -> list[dict[str, Any]]:
     """Build a list of provider statuses."""
     db_path = _get_db_path(request)
@@ -2053,6 +2063,12 @@ async def settings_page(request: Request) -> HTMLResponse:
             "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
         }
         assist_base_url = get_setting(conn, "assist.base_url") or ""
+        assist_provider = get_setting(conn, "assist.provider") or ""
+        assist_model = get_setting(conn, "assist.model") or ""
+
+    assist_provider_label = ""
+    if assist_provider and assist_provider in PROVIDERS:
+        assist_provider_label = PROVIDERS[assist_provider].label
 
     return templates.TemplateResponse(
         request,
@@ -2060,8 +2076,12 @@ async def settings_page(request: Request) -> HTMLResponse:
         {
             "active": "settings",
             "providers_status": providers_status,
+            "assist_providers": _get_assist_provider_choices(),
             "defaults": defaults,
             "assist_base_url": assist_base_url,
+            "assist_provider": assist_provider,
+            "assist_model": assist_model,
+            "assist_provider_label": assist_provider_label,
         },
     )
 
