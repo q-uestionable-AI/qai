@@ -22,6 +22,14 @@ class ProviderType(Enum):
     CUSTOM = "custom"
 
 
+class AuthStyle(Enum):
+    """How a cloud provider authenticates API requests."""
+
+    BEARER = "bearer"  # Authorization: Bearer <key>
+    X_API_KEY = "x-api-key"  # x-api-key: <key>
+    QUERY_KEY = "query_key"  # ?key=<key> query parameter
+
+
 @dataclass(frozen=True)
 class ModelInfo:
     """A model available from a provider.
@@ -54,6 +62,7 @@ class ProviderConfig:
     curated_models: list[ModelInfo] = field(default_factory=list)
     default_base_url: str | None = None
     models_endpoint: str | None = None
+    auth_style: AuthStyle | None = None
 
 
 @dataclass
@@ -83,6 +92,9 @@ PROVIDERS: dict[str, ProviderConfig] = {
         label="Anthropic",
         type=ProviderType.CLOUD,
         supports_custom=True,
+        default_base_url="https://api.anthropic.com",
+        models_endpoint="/v1/models",
+        auth_style=AuthStyle.X_API_KEY,
         curated_models=[
             ModelInfo(id="anthropic/claude-sonnet-4-20250514", label="Claude Sonnet 4"),
             ModelInfo(id="anthropic/claude-haiku-4-5-20251001", label="Claude Haiku 4.5"),
@@ -92,6 +104,9 @@ PROVIDERS: dict[str, ProviderConfig] = {
         label="Google",
         type=ProviderType.CLOUD,
         supports_custom=True,
+        default_base_url="https://generativelanguage.googleapis.com",
+        models_endpoint="/v1beta/models",
+        auth_style=AuthStyle.QUERY_KEY,
         curated_models=[
             ModelInfo(id="google/gemini-2.5-pro", label="Gemini 2.5 Pro"),
             ModelInfo(id="google/gemini-2.5-flash", label="Gemini 2.5 Flash"),
@@ -101,6 +116,9 @@ PROVIDERS: dict[str, ProviderConfig] = {
         label="OpenAI",
         type=ProviderType.CLOUD,
         supports_custom=True,
+        default_base_url="https://api.openai.com",
+        models_endpoint="/v1/models",
+        auth_style=AuthStyle.BEARER,
         curated_models=[
             ModelInfo(id="openai/gpt-4o", label="GPT-4o"),
             ModelInfo(id="openai/gpt-4o-mini", label="GPT-4o Mini"),
@@ -110,34 +128,19 @@ PROVIDERS: dict[str, ProviderConfig] = {
         label="Groq",
         type=ProviderType.CLOUD,
         supports_custom=True,
-        curated_models=[
-            ModelInfo(id="groq/llama-3.3-70b-versatile", label="Llama 3.3 70B"),
-            ModelInfo(id="groq/mixtral-8x7b-32768", label="Mixtral 8x7B"),
-        ],
     ),
     "openrouter": ProviderConfig(
         label="OpenRouter",
         type=ProviderType.CLOUD,
         supports_custom=True,
-        curated_models=[
-            ModelInfo(
-                id="openrouter/anthropic/claude-sonnet-4-20250514",
-                label="Claude Sonnet 4",
-            ),
-            ModelInfo(
-                id="openrouter/meta-llama/llama-3.3-70b-instruct",
-                label="Llama 3.3 70B",
-            ),
-            ModelInfo(
-                id="openrouter/google/gemini-2.5-flash-preview",
-                label="Gemini 2.5 Flash",
-            ),
-        ],
     ),
     "xai": ProviderConfig(
         label="xAI",
         type=ProviderType.CLOUD,
         supports_custom=True,
+        default_base_url="https://api.x.ai",
+        models_endpoint="/v1/models",
+        auth_style=AuthStyle.BEARER,
         curated_models=[
             ModelInfo(id="xai/grok-4-1-fast", label="Grok 4.1 Fast"),
             ModelInfo(id="xai/grok-4", label="Grok 4"),
@@ -208,8 +211,13 @@ async def fetch_models(
 ) -> ModelListResponse:
     """Fetch the list of models available from a provider.
 
-    For CLOUD providers the curated registry list is returned with no network
-    call.  For CUSTOM providers an empty list is returned with
+    For CLOUD providers with a ``models_endpoint`` and an API key, the
+    provider's API is queried live; on failure the curated fallback list is
+    returned with a warning.  Aggregator cloud providers (no
+    ``models_endpoint``) return an empty list with ``supports_custom=True``
+    so the UI renders a free-text model ID input.
+
+    For CUSTOM providers an empty list is returned with
     ``supports_custom=True``.  For LOCAL providers (Ollama, LM Studio) the
     provider's API endpoint is queried with a 3-second timeout.
 
@@ -217,8 +225,7 @@ async def fetch_models(
         provider_name: Provider key (e.g. "anthropic", "ollama").
         base_url: Override base URL for local providers.  When ``None`` the
             registry ``default_base_url`` is used.
-        api_key: Optional API key forwarded as a Bearer token for local
-            provider endpoints behind an auth gateway.
+        api_key: Optional API key forwarded for authentication.
 
     Returns:
         ModelListResponse describing the available models and any error state.
@@ -232,16 +239,236 @@ async def fetch_models(
         )
 
     if config.type == ProviderType.CLOUD:
-        return ModelListResponse(
-            models=list(config.curated_models),
-            supports_custom=config.supports_custom,
-        )
+        return await _resolve_cloud_models(provider_name, config, api_key)
 
     if config.type == ProviderType.CUSTOM:
         return ModelListResponse(models=[], supports_custom=True)
 
     # LOCAL provider — hit the live endpoint
     return await _fetch_local_models(provider_name, config, base_url, api_key)
+
+
+async def _resolve_cloud_models(
+    provider_name: str,
+    config: ProviderConfig,
+    api_key: str | None,
+) -> ModelListResponse:
+    """Resolve the model list for a cloud provider.
+
+    Aggregators (no ``models_endpoint``) get a free-text input.  Direct
+    providers are live-fetched when an API key is available, with a
+    curated fallback on failure.
+
+    Args:
+        provider_name: Provider key.
+        config: Provider configuration from the registry.
+        api_key: API key for authentication (may be ``None``).
+
+    Returns:
+        ModelListResponse for the cloud provider.
+    """
+    if not config.models_endpoint:
+        # Aggregator (Groq, OpenRouter) — free-text model ID only
+        return ModelListResponse(models=[], supports_custom=True)
+    if not api_key:
+        return ModelListResponse(
+            models=[],
+            supports_custom=config.supports_custom,
+            message=f"Enter an API key to load {config.label} models.",
+        )
+    result = await _fetch_cloud_models(provider_name, config, api_key)
+    if result.error and config.curated_models:
+        return ModelListResponse(
+            models=list(config.curated_models),
+            supports_custom=config.supports_custom,
+            message=f"Live fetch failed: {result.error}",
+        )
+    return result
+
+
+# Per-provider filter rules (case-insensitive substring match).
+_GOOGLE_EXCLUDE = ("preview", "tts", "lite", "embed", "vision")
+_OPENAI_PREFIXES = ("gpt-4", "o1", "o3")
+_OPENAI_EXCLUDE = ("audio", "image", "realtime", "search", "transcription")
+_XAI_EXCLUDE = ("vision", "image", "embed")
+
+
+def _filter_cloud_models(
+    provider_name: str,
+    data: dict[str, Any],
+) -> list[ModelInfo]:
+    """Parse and filter a cloud provider's model list response.
+
+    Each provider returns a different shape and needs tight filtering
+    to include only current chat/text-generation models.
+
+    Args:
+        provider_name: Provider key for ID prefixing and filter selection.
+        data: Parsed JSON response from the provider's models endpoint.
+
+    Returns:
+        Sorted list of ModelInfo for chat/text-generation models only.
+    """
+    if provider_name == "google":
+        models = _filter_google(data)
+    elif provider_name == "anthropic":
+        models = _filter_anthropic(data)
+    elif provider_name == "openai":
+        models = _filter_openai(data)
+    elif provider_name == "xai":
+        models = _filter_xai(data)
+    else:
+        models = _filter_generic(provider_name, data)
+
+    models.sort(key=lambda m: m.label)
+    return models
+
+
+def _filter_google(data: dict[str, Any]) -> list[ModelInfo]:
+    """Filter Google models: gemini-* with generateContent, no preview/tts/lite/embed/vision."""
+    models: list[ModelInfo] = []
+    for m in data.get("models", []):
+        name = m.get("name", "")
+        methods = m.get("supportedGenerationMethods", [])
+        if "generateContent" not in methods:
+            continue
+        model_id = name.removeprefix("models/")
+        if not model_id.startswith("gemini-"):
+            continue
+        mid_lower = model_id.lower()
+        if any(pat in mid_lower for pat in _GOOGLE_EXCLUDE):
+            continue
+        display = m.get("displayName", model_id)
+        models.append(ModelInfo(id=f"google/{model_id}", label=display))
+    return models
+
+
+def _filter_anthropic(data: dict[str, Any]) -> list[ModelInfo]:
+    """Filter Anthropic models: only IDs containing 'claude'."""
+    models: list[ModelInfo] = []
+    for m in data.get("data", []):
+        model_id = m.get("id", "")
+        if not model_id or "claude" not in model_id.lower():
+            continue
+        models.append(ModelInfo(id=f"anthropic/{model_id}", label=model_id))
+    return models
+
+
+def _filter_openai(data: dict[str, Any]) -> list[ModelInfo]:
+    """Filter OpenAI models: gpt-4*/o1*/o3* only, no audio/image/realtime/search/transcription."""
+    models: list[ModelInfo] = []
+    for m in data.get("data", []):
+        model_id = m.get("id", "")
+        if not model_id:
+            continue
+        if not any(model_id.startswith(p) for p in _OPENAI_PREFIXES):
+            continue
+        mid_lower = model_id.lower()
+        if any(pat in mid_lower for pat in _OPENAI_EXCLUDE):
+            continue
+        models.append(ModelInfo(id=f"openai/{model_id}", label=model_id))
+    return models
+
+
+def _filter_xai(data: dict[str, Any]) -> list[ModelInfo]:
+    """Filter xAI models: grok-* only, no vision/image/embed."""
+    models: list[ModelInfo] = []
+    for m in data.get("data", []):
+        model_id = m.get("id", "")
+        if not model_id or not model_id.startswith("grok-"):
+            continue
+        mid_lower = model_id.lower()
+        if any(pat in mid_lower for pat in _XAI_EXCLUDE):
+            continue
+        models.append(ModelInfo(id=f"xai/{model_id}", label=model_id))
+    return models
+
+
+def _filter_generic(provider_name: str, data: dict[str, Any]) -> list[ModelInfo]:
+    """Fallback filter for providers without specific rules."""
+    models: list[ModelInfo] = []
+    for m in data.get("data", []):
+        model_id = m.get("id", "")
+        if model_id:
+            models.append(ModelInfo(id=f"{provider_name}/{model_id}", label=model_id))
+    return models
+
+
+async def _fetch_cloud_models(
+    provider_name: str,
+    config: ProviderConfig,
+    api_key: str,
+) -> ModelListResponse:
+    """Query a cloud provider's API for available models.
+
+    Builds authentication headers or query parameters based on the
+    provider's ``auth_style``, then calls the models endpoint and filters
+    the response to chat/text-generation models.
+
+    Args:
+        provider_name: Provider key for logging and ID prefixing.
+        config: Provider configuration from the registry.
+        api_key: API key for authentication.
+
+    Returns:
+        ModelListResponse with live models or an error message.
+    """
+    base = config.default_base_url or ""
+    endpoint = f"{base}{config.models_endpoint}"
+
+    headers: dict[str, str] = {}
+    params: dict[str, str] = {}
+    if config.auth_style == AuthStyle.BEARER:
+        headers["Authorization"] = f"Bearer {api_key}"
+    elif config.auth_style == AuthStyle.X_API_KEY:
+        headers["x-api-key"] = api_key
+        headers["anthropic-version"] = "2023-06-01"
+    elif config.auth_style == AuthStyle.QUERY_KEY:
+        params["key"] = api_key
+
+    error_msg: str | None = None
+    try:
+        async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT_S) as client:
+            response = await client.get(endpoint, headers=headers, params=params)
+        response.raise_for_status()
+    except httpx.TimeoutException as exc:
+        _log.debug("Timeout fetching models from %s: %s", provider_name, exc)
+        error_msg = f"Request to {config.label} timed out after {_FETCH_TIMEOUT_S:.0f}s."
+    except httpx.ConnectError as exc:
+        _log.debug("Cannot connect to %s: %s", provider_name, exc)
+        error_msg = f"Could not reach {config.label} API."
+    except httpx.HTTPStatusError as exc:
+        _log.debug("HTTP error from %s: %s", provider_name, exc)
+        status = exc.response.status_code
+        error_msg = (
+            "Authentication failed \u2014 check your API key."
+            if status in (401, 403)
+            else f"{config.label} returned HTTP {status}."
+        )
+
+    if error_msg:
+        return ModelListResponse(
+            models=[],
+            supports_custom=config.supports_custom,
+            error=error_msg,
+        )
+
+    body = response.json()
+    if not isinstance(body, dict):
+        return ModelListResponse(
+            models=[],
+            supports_custom=config.supports_custom,
+            error=f"Unexpected response shape from {config.label}.",
+        )
+
+    models = _filter_cloud_models(provider_name, body)
+    if not models:
+        return ModelListResponse(
+            models=[],
+            supports_custom=config.supports_custom,
+            message=f"No chat models found from {config.label}.",
+        )
+    return ModelListResponse(models=models, supports_custom=config.supports_custom)
 
 
 async def _fetch_local_models(
