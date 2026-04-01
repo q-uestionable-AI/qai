@@ -31,7 +31,7 @@ dependencies = [
     "websockets>=15.0",
     "mcp>=1.26,<2",
     "anthropic>=0.84",
-    "litellm>=1.80,!=1.82.8",
+    "litellm>=1.80,!=1.82.7,!=1.82.8",
     "keyring>=25.0",
     "textual>=0.80",
     # IPI document generators
