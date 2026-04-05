@@ -3661,16 +3661,14 @@ async def api_proxy_sessions(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "partials/proxy_tab.html", {"sessions": sessions})
 
 
-@router.get("/api/proxy/sessions/{run_id}")
-async def api_proxy_session_detail(request: Request, run_id: str) -> HTMLResponse:
-    """Return proxy session detail partial."""
-    templates = _get_templates(request)
-    db_path = _get_db_path(request)
+def _sync_fetch_proxy_session_detail(
+    db_path: Path | None, run_id: str
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Blocking helper to fetch proxy session details and parse JSON off the event loop."""
     with get_connection(db_path) as conn:
         row = conn.execute("SELECT * FROM proxy_sessions WHERE run_id = ?", (run_id,)).fetchone()
     session_data: dict[str, Any] = dict(row) if row else {}
 
-    # Load message summary from session JSON if available
     messages_summary: list[dict[str, Any]] = []
     if session_data.get("session_file"):
         artifacts_dir = _ARTIFACTS_BASE.resolve()
@@ -3694,6 +3692,18 @@ async def api_proxy_session_detail(request: Request, run_id: str) -> HTMLRespons
                         "method": msg.get("method") or "(response)",
                     }
                 )
+    return session_data, messages_summary
+
+
+@router.get("/api/proxy/sessions/{run_id}")
+async def api_proxy_session_detail(request: Request, run_id: str) -> HTMLResponse:
+    """Return proxy session detail partial."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+
+    session_data, messages_summary = await asyncio.to_thread(
+        _sync_fetch_proxy_session_detail, db_path, run_id
+    )
 
     return templates.TemplateResponse(
         request,
