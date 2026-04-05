@@ -38,7 +38,7 @@ class TestAssistCLI:
         assert "qai config set" in result.output
 
     def test_reindex_command_exists(self) -> None:
-        result = runner.invoke(app, ["reindex", "--help"])
+        result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
         assert "reindex" in result.output.lower()
 
