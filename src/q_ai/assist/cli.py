@@ -8,14 +8,12 @@ Commands:
     reindex     Force rebuild of the knowledge base index
 
 Usage:
-    $ qai assist "what can qai test for?"
+    $ qai assist -q "what can qai test for?"
     $ qai assist
-    $ echo '{"findings": [...]}' | qai assist "explain this"
-    $ qai assist --run <run_id> "summarize findings"
+    $ echo '{"findings": [...]}' | qai assist -q "explain this"
+    $ qai assist --run <run_id> -q "summarize findings"
     $ qai assist reindex
 """
-
-from __future__ import annotations
 
 import asyncio
 import json
@@ -150,7 +148,7 @@ def assist_main(
     ctx: typer.Context,
     query: Annotated[
         str | None,
-        typer.Argument(help="Question to ask the assistant."),
+        typer.Option("--query", "-q", help="Question to ask the assistant."),
     ] = None,
     run: Annotated[
         str | None,
@@ -160,7 +158,7 @@ def assist_main(
     """Ask the qai assistant a question or enter interactive mode.
 
     Without arguments, enters an interactive chat session.
-    With a question argument, returns a single response and exits.
+    With -q/--query, returns a single response and exits.
     Piped stdin is treated as untrusted scan-derived context.
     """
     if ctx.invoked_subcommand is not None:
