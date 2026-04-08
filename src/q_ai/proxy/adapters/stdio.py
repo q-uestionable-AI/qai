@@ -180,6 +180,7 @@ class StdioServerAdapter:
         except Exception:
             if not self._closed:
                 logger.debug("Writer loop ended", exc_info=True)
+                await self.close()
 
 
 class StdioClientAdapter:
@@ -316,3 +317,4 @@ class StdioClientAdapter:
         except Exception:
             if not self._closed:
                 logger.debug("Writer loop ended", exc_info=True)
+                await self.close()

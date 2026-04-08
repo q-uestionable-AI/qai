@@ -23,21 +23,40 @@ app = typer.Typer(
 )
 
 _VALID_TRANSPORTS = ("stdio", "sse", "streamable-http")
+_VALID_LISTEN_TRANSPORTS = ("sse", "streamable-http")
+_DEFAULT_LISTEN_PORT = 8080
 
 
 @app.command()
 def start(
     transport: str = typer.Option(
         ...,
-        help="MCP transport type: 'stdio', 'sse', or 'streamable-http'.",
+        help=(
+            "Server-side transport: how the proxy connects to the real MCP server. "
+            "'stdio', 'sse', or 'streamable-http'."
+        ),
     ),
     target_command: str | None = typer.Option(
         None,
-        help="Server command (stdio only).",
+        help="Server command to spawn (stdio transport).",
     ),
     target_url: str | None = typer.Option(
         None,
-        help="Server URL (SSE/HTTP only).",
+        help="Server endpoint URL (SSE/HTTP transport).",
+    ),
+    listen_transport: str | None = typer.Option(
+        None,
+        "--listen-transport",
+        help=(
+            "Client-side transport: how MCP clients connect to the proxy. "
+            "'sse' or 'streamable-http'. When omitted, the proxy uses stdio "
+            "(must be spawned as a subprocess by the client)."
+        ),
+    ),
+    listen_port: int = typer.Option(
+        _DEFAULT_LISTEN_PORT,
+        "--listen-port",
+        help="Port for the client-facing endpoint (used with --listen-transport).",
     ),
     intercept: bool = typer.Option(
         False,
@@ -65,6 +84,31 @@ def start(
         typer.echo("Error: --target-url is required for SSE/HTTP transport.", err=True)
         raise typer.Exit(code=1)
 
+    if listen_transport is None and listen_port != _DEFAULT_LISTEN_PORT:
+        typer.echo(
+            "Error: --listen-port requires --listen-transport.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if not (1 <= listen_port <= 65535):
+        typer.echo(
+            f"Error: --listen-port must be between 1 and 65535, got {listen_port}.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    listen_transport_lower: str | None = None
+    if listen_transport is not None:
+        listen_transport_lower = listen_transport.lower()
+        if listen_transport_lower not in _VALID_LISTEN_TRANSPORTS:
+            typer.echo(
+                f"Error: Invalid listen-transport '{listen_transport}'. "
+                f"Must be one of: {', '.join(_VALID_LISTEN_TRANSPORTS)}",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
     from q_ai.proxy.tui.app import ProxyApp
 
     transport_enum = Transport(transport_lower)
@@ -72,6 +116,8 @@ def start(
         transport=transport_enum,
         server_command=target_command,
         server_url=target_url,
+        listen_transport=listen_transport_lower,
+        listen_port=listen_port,
         intercept=intercept,
         session_file=Path(session_file) if session_file else None,
     )
