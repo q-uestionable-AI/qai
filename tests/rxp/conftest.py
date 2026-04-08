@@ -2,9 +2,33 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
+import numpy as np
 import pytest
 
 from q_ai.rxp.models import CorpusDocument
+
+
+@pytest.fixture(autouse=True)
+def mock_embedder():
+    """Mock get_embedder to avoid HuggingFace network calls.
+
+    Returns deterministic embeddings based on text hash so retrieval
+    logic still works without downloading a real model.
+    """
+    fake = MagicMock()
+
+    def _encode(texts: list[str]) -> list[list[float]]:
+        vecs = []
+        for text in texts:
+            rng = np.random.default_rng(hash(text) % 2**32)
+            vecs.append(rng.standard_normal(384).tolist())
+        return vecs
+
+    fake.encode = _encode
+    with patch("q_ai.rxp.validator.get_embedder", return_value=fake):
+        yield fake
 
 
 @pytest.fixture()

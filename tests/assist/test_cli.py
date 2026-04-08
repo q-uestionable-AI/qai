@@ -32,7 +32,7 @@ class TestAssistCLI:
     )
     def test_unconfigured_shows_setup_instructions(self, _mock: MagicMock) -> None:
         """When provider/model not configured, prints setup instructions and exits 1."""
-        result = runner.invoke(app, ["what can qai do?"])
+        result = runner.invoke(app, ["-q", "what can qai do?"])
         assert result.exit_code == 1
         assert "not configured" in result.output.lower()
         assert "qai config set" in result.output
@@ -55,7 +55,7 @@ class TestAssistSingleShot:
         _mock_stdin: MagicMock,
         _mock_cfg: MagicMock,
     ) -> None:
-        result = runner.invoke(app, ["what is audit?"])
+        result = runner.invoke(app, ["-q", "what is audit?"])
         assert result.exit_code == 0
         mock_single.assert_called_once()
         args = mock_single.call_args
@@ -76,7 +76,7 @@ class TestAssistRunFlag:
         _mock_stdin: MagicMock,
         _mock_cfg: MagicMock,
     ) -> None:
-        result = runner.invoke(app, ["--run", "abc123", "summarize"])
+        result = runner.invoke(app, ["--run", "abc123", "-q", "summarize"])
         assert result.exit_code == 0
         mock_load.assert_called_once_with("abc123")
         mock_single.assert_called_once()
