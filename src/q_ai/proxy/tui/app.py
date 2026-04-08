@@ -57,6 +57,9 @@ class ProxyApp(App[None]):
         transport: The MCP transport type (STDIO, SSE, STREAMABLE_HTTP).
         server_command: For stdio transport, the command to launch the server.
         server_url: For SSE/HTTP transport, the server endpoint URL.
+        listen_transport: Client-side transport ("sse" or "streamable-http").
+            When set, the proxy exposes a network endpoint instead of stdio.
+        listen_port: Port for the client-facing network endpoint.
         intercept: Whether to start in intercept mode.
         session_file: Optional path to auto-save the session on exit.
         run_pipeline_on_mount: If False, skip launching the pipeline worker
@@ -86,6 +89,8 @@ class ProxyApp(App[None]):
         transport: Transport = Transport.STDIO,
         server_command: str | None = None,
         server_url: str | None = None,
+        listen_transport: str | None = None,
+        listen_port: int = 8080,
         intercept: bool = False,
         session_file: Path | None = None,
         run_pipeline_on_mount: bool = True,
@@ -94,6 +99,8 @@ class ProxyApp(App[None]):
         self.transport = transport
         self.server_command = server_command
         self.server_url = server_url
+        self.listen_transport = listen_transport
+        self.listen_port = listen_port
         self.intercept = intercept
         self.session_file = session_file
         self._run_pipeline_on_mount = run_pipeline_on_mount
@@ -115,7 +122,13 @@ class ProxyApp(App[None]):
 
         # Set the title
         target = server_command or server_url or "unknown"
-        self.title = f"qai-proxy \u2014 {transport.value} \u2014 {target}"
+        if listen_transport:
+            self.title = (
+                f"qai-proxy \u2014 {listen_transport} \u2014 "
+                f"listening on 0.0.0.0:{listen_port} \u2192 {target}"
+            )
+        else:
+            self.title = f"qai-proxy \u2014 {transport.value} \u2014 {target}"
 
     def compose(self) -> ComposeResult:
         """Compose the main layout.
@@ -156,7 +169,13 @@ class ProxyApp(App[None]):
 
     def _launch_pipeline(self) -> None:
         """Build adapters and start the pipeline worker."""
-        if self.transport == Transport.STDIO:
+        if self.listen_transport:
+            self._pipeline_worker = self.run_worker(
+                self._run_proxy_network(),
+                name="pipeline",
+                exclusive=True,
+            )
+        elif self.transport == Transport.STDIO:
             self._pipeline_worker = self.run_worker(
                 self._run_proxy_stdio(),
                 name="pipeline",
@@ -226,6 +245,67 @@ class ProxyApp(App[None]):
             async with (
                 server_adapter_cm as server_adapter,
                 StdioClientAdapter() as client_adapter,
+            ):
+                session = self._build_pipeline_session()
+                await run_pipeline(client_adapter, server_adapter, session)
+        except Exception as exc:
+            logger.error("Pipeline error: %s", exc, exc_info=True)
+            self.post_message(PipelineError(exc))
+        finally:
+            self.post_message(PipelineStopped())
+
+    async def _run_proxy_network(self) -> None:
+        """Pipeline worker for network client-facing transports.
+
+        Builds a network client adapter (SSE or Streamable HTTP) based on
+        ``listen_transport``, pairs it with the appropriate server adapter
+        based on ``transport``, and runs the pipeline.
+        """
+        from q_ai.proxy.adapters.sse import SseClientAdapter, SseServerAdapter
+        from q_ai.proxy.adapters.stdio import StdioServerAdapter
+        from q_ai.proxy.adapters.streamable_http import (
+            StreamableHttpClientAdapter,
+            StreamableHttpServerAdapter,
+        )
+
+        # Build client-facing adapter
+        client_adapter_cm: SseClientAdapter | StreamableHttpClientAdapter
+        if self.listen_transport == "sse":
+            client_adapter_cm = SseClientAdapter(
+                host="0.0.0.0",  # noqa: S104
+                port=self.listen_port,
+            )
+        else:
+            client_adapter_cm = StreamableHttpClientAdapter(
+                host="0.0.0.0",  # noqa: S104
+                port=self.listen_port,
+            )
+
+        # Build server-facing adapter
+        server_adapter_cm: StdioServerAdapter | SseServerAdapter | StreamableHttpServerAdapter
+        if self.transport == Transport.STDIO:
+            if not self.server_command:
+                self.post_message(PipelineError(ValueError("No server command")))
+                return
+            parts = shlex.split(self.server_command)
+            server_adapter_cm = StdioServerAdapter(
+                command=parts[0], args=parts[1:] if len(parts) > 1 else []
+            )
+        elif self.transport == Transport.SSE:
+            if not self.server_url:
+                self.post_message(PipelineError(ValueError("No server URL")))
+                return
+            server_adapter_cm = SseServerAdapter(url=self.server_url)
+        else:
+            if not self.server_url:
+                self.post_message(PipelineError(ValueError("No server URL")))
+                return
+            server_adapter_cm = StreamableHttpServerAdapter(url=self.server_url)
+
+        try:
+            async with (
+                client_adapter_cm as client_adapter,
+                server_adapter_cm as server_adapter,
             ):
                 session = self._build_pipeline_session()
                 await run_pipeline(client_adapter, server_adapter, session)

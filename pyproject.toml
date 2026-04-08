@@ -110,6 +110,7 @@ max-args = 6
 "src/q_ai/ipi/generators/*" = ["PLR0913"]  # document generators take many params
 "src/q_ai/audit/mapper.py" = ["PLR0913"]  # audit scan creation takes many params
 "src/q_ai/cxp/db.py" = ["PLR0913"]  # CXP record_result takes many params
+"src/q_ai/proxy/tui/app.py" = ["PLR0913"]  # TUI app constructor takes transport config params
 
 [tool.bandit]
 # Skip checks already enforced by ruff's flake8-bandit (S) rules.
