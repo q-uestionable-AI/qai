@@ -123,6 +123,7 @@ skips = [
     "B310",  # urlopen — framework update fetcher, reviewed
     "B506",  # yaml.load — uses custom DuplicateKeyLoader, not unsafe default
     "B608",  # SQL injection — all use parameterized ? placeholders with f-string placeholder counts
+    "B104",  # hardcoded bind all interfaces — proxy client adapters must accept network connections
 ]
 
 [tool.mypy]
