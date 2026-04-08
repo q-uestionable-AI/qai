@@ -184,6 +184,7 @@ class StreamableHttpServerAdapter:
         except Exception:
             if not self._closed:
                 logger.debug("Writer loop ended", exc_info=True)
+                await self.close()
 
 
 class StreamableHttpClientAdapter:
@@ -217,8 +218,10 @@ class StreamableHttpClientAdapter:
         self._uvicorn_server: uvicorn.Server | None = None
         self._client_connected: asyncio.Event = asyncio.Event()
 
+    _STARTUP_TIMEOUT: float = 5.0
+
     async def __aenter__(self) -> StreamableHttpClientAdapter:
-        """Enter the adapter context — start HTTP server and connect transport."""
+        """Enter the adapter context — start HTTP server and wait for it to listen."""
         session_id = uuid.uuid4().hex
         self._http_transport = StreamableHTTPServerTransport(
             mcp_session_id=session_id,
@@ -247,7 +250,26 @@ class StreamableHttpClientAdapter:
             self._uvicorn_server.serve(),
             name="streamable-http-client-uvicorn",
         )
+        await self._wait_for_server_ready()
         return self
+
+    async def _wait_for_server_ready(self) -> None:
+        """Wait for uvicorn to bind and start listening.
+
+        Raises:
+            RuntimeError: If the server fails to start within the timeout.
+        """
+        deadline = asyncio.get_event_loop().time() + self._STARTUP_TIMEOUT
+        while not self._uvicorn_server or not self._uvicorn_server.started:
+            if self._uvicorn_server and self._uvicorn_server.should_exit:
+                raise RuntimeError(f"Uvicorn failed to start on {self._host}:{self._port}")
+            if asyncio.get_event_loop().time() > deadline:
+                await self.close()
+                raise RuntimeError(
+                    f"Uvicorn did not start within {self._STARTUP_TIMEOUT}s "
+                    f"on {self._host}:{self._port}"
+                )
+            await asyncio.sleep(0.05)
 
     async def _run_transport_connect(self) -> None:
         """Enter the SDK transport connect context and bridge streams.
@@ -380,3 +402,4 @@ class StreamableHttpClientAdapter:
         except Exception:
             if not self._closed:
                 logger.debug("Writer loop ended", exc_info=True)
+                await self.close()

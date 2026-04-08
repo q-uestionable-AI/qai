@@ -84,6 +84,20 @@ def start(
         typer.echo("Error: --target-url is required for SSE/HTTP transport.", err=True)
         raise typer.Exit(code=1)
 
+    if listen_transport is None and listen_port != _DEFAULT_LISTEN_PORT:
+        typer.echo(
+            "Error: --listen-port requires --listen-transport.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if not (1 <= listen_port <= 65535):
+        typer.echo(
+            f"Error: --listen-port must be between 1 and 65535, got {listen_port}.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
     listen_transport_lower: str | None = None
     if listen_transport is not None:
         listen_transport_lower = listen_transport.lower()

@@ -22,7 +22,7 @@ from mcp.client.sse import sse_client
 from mcp.server.sse import SseServerTransport
 from mcp.shared.message import SessionMessage
 from starlette.applications import Starlette
-from starlette.routing import Mount, Route
+from starlette.routing import Mount
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +187,7 @@ class SseServerAdapter:
         except Exception:
             if not self._closed:
                 logger.debug("Writer loop ended", exc_info=True)
+                await self.close()
 
 
 class SseClientAdapter:
@@ -219,8 +220,10 @@ class SseClientAdapter:
         self._uvicorn_server: uvicorn.Server | None = None
         self._client_connected: asyncio.Event = asyncio.Event()
 
+    _STARTUP_TIMEOUT: float = 5.0
+
     async def __aenter__(self) -> SseClientAdapter:
-        """Enter the adapter context — start HTTP server and wait for client."""
+        """Enter the adapter context — start HTTP server and wait for it to listen."""
         self._sse_transport = SseServerTransport("/messages")
 
         async def handle_sse(scope, receive, send):  # type: ignore[no-untyped-def]
@@ -245,7 +248,7 @@ class SseClientAdapter:
 
         starlette_app = Starlette(
             routes=[
-                Route("/sse", endpoint=handle_sse),
+                Mount("/sse", app=handle_sse),
                 Mount("/messages", app=self._sse_transport.handle_post_message),
             ],
         )
@@ -262,7 +265,26 @@ class SseClientAdapter:
             self._uvicorn_server.serve(),
             name="sse-client-uvicorn",
         )
+        await self._wait_for_server_ready()
         return self
+
+    async def _wait_for_server_ready(self) -> None:
+        """Wait for uvicorn to bind and start listening.
+
+        Raises:
+            RuntimeError: If the server fails to start within the timeout.
+        """
+        deadline = asyncio.get_event_loop().time() + self._STARTUP_TIMEOUT
+        while not self._uvicorn_server or not self._uvicorn_server.started:
+            if self._uvicorn_server and self._uvicorn_server.should_exit:
+                raise RuntimeError(f"Uvicorn failed to start on {self._host}:{self._port}")
+            if asyncio.get_event_loop().time() > deadline:
+                await self.close()
+                raise RuntimeError(
+                    f"Uvicorn did not start within {self._STARTUP_TIMEOUT}s "
+                    f"on {self._host}:{self._port}"
+                )
+            await asyncio.sleep(0.05)
 
     async def __aexit__(
         self,
@@ -365,3 +387,4 @@ class SseClientAdapter:
         except Exception:
             if not self._closed:
                 logger.debug("Writer loop ended", exc_info=True)
+                await self.close()
