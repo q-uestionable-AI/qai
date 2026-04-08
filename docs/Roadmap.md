@@ -158,7 +158,7 @@ template schema. Breaking changes require major version bump after 1.0.
 
 ### Explicitly Post-1.0
 
-- Proxy client-facing HTTP adapters (proxy as standalone network service)
+- ~~Proxy client-facing HTTP adapters (proxy as standalone network service)~~ shipped in PR #94
 - Chain `blast-radius` and `detect` command implementations (stubs ship at v1.0)
 - Multi-model comparison in RXP
 - Detection rule export automation
