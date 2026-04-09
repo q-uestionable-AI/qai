@@ -17,7 +17,7 @@
 - Execute multi-step attack chains
 - Generate IPI payloads
 - Poison coding assistant context files
-- Measure RAG retrieval rank.
+- Measure RAG retrieval rank
 
 Local web UI orchestrates multi-module workflows.
 All findings stored in a SQLite database.
