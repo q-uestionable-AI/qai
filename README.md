@@ -9,7 +9,7 @@
 
 [![Docs](https://img.shields.io/badge/docs-q--uestionable.ai-8b5cf6)](https://docs.q-uestionable.ai)
 
-**Security testing for agentic AI.**
+**Security testing for agentic AI**
 
 - Audit MCP servers
 - Intercept agent traffic
@@ -19,7 +19,7 @@
 - Poison coding assistant context files
 - Measure RAG retrieval rank
 
-Local web UI orchestrates multi-module workflows.
+Local web UI orchestrates multi-module workflows.  
 All findings stored in a SQLite database.
 
 > Research program by [Richard Spicer](https://richardspicer.io) · [{q-AI}](https://q-uestionable.ai)
