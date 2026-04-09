@@ -7,10 +7,10 @@ The q-ai Web UI is a browser-based interface for running workflows, examining re
 
 ## Launching the Web UI
 
-Start the server with the `qai` command:
+Start the server with `qai ui`:
 
 ```bash
-qai
+qai ui
 ```
 
 This launches the FastAPI backend and automatically opens your browser. The port is auto-selected (first available); the URL is printed to the terminal.
@@ -20,7 +20,7 @@ This launches the FastAPI backend and automatically opens your browser. The port
 Specify a fixed port:
 
 ```bash
-qai --port 8080
+qai ui --port 8080
 ```
 
 ### Headless Mode
@@ -28,7 +28,7 @@ qai --port 8080
 Start the server without opening a browser:
 
 ```bash
-qai --no-browser
+qai ui --no-browser
 ```
 
 The server will still be accessible at the default address. Use this when running on remote machines or in automation contexts.

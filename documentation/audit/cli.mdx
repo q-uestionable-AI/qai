@@ -14,48 +14,70 @@ qai audit --help
 Scan an MCP server for security vulnerabilities across all 10 OWASP MCP Top 10 categories.
 
 ```bash
-qai audit scan --transport <type> [OPTIONS]
+qai audit scan [TARGET] [OPTIONS]
 ```
+
+TARGET can be a URL (for SSE or Streamable HTTP servers) or a command string (for stdio servers). When provided, transport is inferred automatically and printed to the terminal. Use `--transport` to override the inference.
 
 ### Options
 
 | Flag | Type | Required | Description |
 |------|------|----------|-------------|
-| `--transport` | enum | Yes | Transport type: `stdio`, `sse`, or `streamable-http` |
-| `--command` | string | When transport=stdio | Server command to spawn (e.g., `"python my_server.py"`) |
-| `--url` | string | When transport=sse or streamable-http | Server URL to connect to |
+| `TARGET` | positional | No | Server URL or command. Prompted interactively if omitted. |
+| `--transport` | enum | No | Transport type: `stdio`, `sse`, or `streamable-http`. Inferred from TARGET when omitted. |
+| `--command` | string | No | Server command for stdio (alternative to positional TARGET) |
+| `--url` | string | No | Server URL for SSE/HTTP (alternative to positional TARGET) |
 | `--checks` | string | No | Comma-separated scanner names (e.g., `injection,auth,token_exposure`). Omit to run all 10. |
 | `--format` | enum | No | Output format: `json`, `sarif`, `html`, `ndjson`, `csv` (default: `json`) |
 | `--output` | string | No | Output file path (default: `results/scan.{format_ext}`) |
 | `--verbose` / `-v` | flag | No | Enable debug logging |
 
+### Transport Inference
+
+When `--transport` is omitted, qai infers the transport from TARGET:
+
+- **URL ending in `/sse`** → SSE (high confidence, proceeds automatically)
+- **URL without clear signal** → prompts for transport choice in interactive terminals, fails with error in scripts
+- **Command string** (no `://`) → stdio (high confidence, proceeds automatically)
+
+The inferred transport is always printed: `Inferred transport: sse (override with --transport)`.
+
 ### Examples
 
-Scan via stdio transport:
+Scan an SSE server (transport inferred from URL):
 
 ```bash
-qai audit scan \
-  --transport stdio \
-  --command "python my_server.py"
+qai audit scan http://localhost:3000/sse
 ```
 
-Scan via SSE and output SARIF:
+Scan a stdio server:
 
 ```bash
-qai audit scan \
-  --transport sse \
-  --url "http://localhost:3000/sse" \
-  --format sarif \
-  --output audit-report.sarif
+qai audit scan "npx @modelcontextprotocol/server-memory"
+```
+
+Explicit transport override:
+
+```bash
+qai audit scan http://localhost:3000/mcp --transport streamable-http
+```
+
+Output as SARIF:
+
+```bash
+qai audit scan http://localhost:3000/sse --format sarif --output audit-report.sarif
 ```
 
 Run specific scanners only:
 
 ```bash
-qai audit scan \
-  --transport stdio \
-  --command "python my_server.py" \
-  --checks injection,auth,token_exposure
+qai audit scan "python my_server.py" --checks injection,auth,token_exposure
+```
+
+Backward-compatible flag syntax (still works):
+
+```bash
+qai audit scan --transport stdio --command "python my_server.py"
 ```
 
 <Note>
@@ -71,23 +93,25 @@ Use `--format sarif` to generate reports compatible with GitHub Code Scanning in
 Enumerate MCP server capabilities without running security checks. Useful for discovery and asset inventory.
 
 ```bash
-qai audit enumerate --transport <type> [OPTIONS]
+qai audit enumerate [TARGET] [OPTIONS]
 ```
+
+TARGET works the same as `audit scan` — URL or command string with automatic transport inference.
 
 ### Options
 
 | Flag | Type | Required | Description |
 |------|------|----------|-------------|
-| `--transport` | enum | Yes | Transport type: `stdio`, `sse`, or `streamable-http` |
-| `--command` | string | When transport=stdio | Server command to spawn |
-| `--url` | string | When transport=sse or streamable-http | Server URL to connect to |
+| `TARGET` | positional | No | Server URL or command. Prompted interactively if omitted. |
+| `--transport` | enum | No | Transport type override: `stdio`, `sse`, or `streamable-http` |
+| `--command` | string | No | Server command for stdio (alternative to positional TARGET) |
+| `--url` | string | No | Server URL for SSE/HTTP (alternative to positional TARGET) |
 
-### Example
+### Examples
 
 ```bash
-qai audit enumerate \
-  --transport stdio \
-  --command "python my_server.py"
+qai audit enumerate http://localhost:3000/sse
+qai audit enumerate "npx @modelcontextprotocol/server-memory"
 ```
 
 Output includes server name, protocol version, and lists of all tools, resources, and prompts.

@@ -3,6 +3,21 @@ title: Changelog
 description: Release history for q-ai
 ---
 
+## v0.8.0
+
+CLI usability overhaul — first experience and ergonomics.
+
+**Breaking change:** `qai` with no arguments now prints a grouped help screen instead of launching the web UI. Use `qai ui` to launch the web UI.
+
+- **New `qai ui` command** — launches the web UI with `--port` and `--no-browser` options (moved from root)
+- **`qai audit scan` positional target** — `qai audit scan http://localhost:3000/sse` works. Transport is inferred automatically from the target (URL ending in `/sse` → SSE, command string → stdio). Override with `--transport`. Backward-compatible flag syntax still works.
+- **`qai audit enumerate`** — same positional target and transport inference as `audit scan`
+- **`qai targets add` positional args** — `qai targets add "My Server" http://example.com` works. `--type` defaults to "server". `--metadata` JSON flag replaced with `--meta key=value` repeatable flag.
+- **`qai ipi generate` positional callback** — `qai ipi generate http://localhost:8080` works. `--callback` flag still works as alternative.
+- **Interactive prompts** — when required arguments are missing and running in a terminal, commands prompt interactively instead of throwing usage errors. After interactive completion, a teaching tip shows the equivalent full command. Non-TTY environments (scripts, pipes) fail immediately with clear errors.
+- **Grouped help output** — root `--help` groups commands by purpose (Start, Modules, Manage, Utilities) instead of a flat list
+- **Per-command examples** — copy-paste examples in help text for `audit scan`, `targets add`, `ipi generate`, `cxp generate`
+
 ## v0.6.1
 
 CI and repo hygiene.
