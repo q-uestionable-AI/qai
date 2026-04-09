@@ -2,9 +2,13 @@
 
 Provides commands for scanning MCP servers, enumerating capabilities,
 and generating reports. Maps findings to security framework categories.
-"""
 
-from __future__ import annotations
+Examples:
+    $ qai audit scan http://localhost:3000/sse
+    $ qai audit scan --transport stdio --command "npx @modelcontextprotocol/server"
+    $ qai audit enumerate http://localhost:3000/sse
+    $ qai audit list-checks --framework owasp_mcp_top10
+"""
 
 import asyncio
 import logging
@@ -20,6 +24,7 @@ from q_ai.audit.reporting.html_report import generate_html_report
 from q_ai.audit.reporting.json_report import generate_json_report
 from q_ai.audit.reporting.ndjson_report import generate_ndjson_report
 from q_ai.audit.reporting.sarif_report import generate_sarif_report
+from q_ai.core.cli.prompt import prompt_or_fail, prompt_transport
 from q_ai.mcp.connection import MCPConnection
 from q_ai.mcp.discovery import enumerate_server
 
@@ -126,11 +131,72 @@ def _build_connection(
     raise typer.BadParameter(f"Unknown transport: {transport}")
 
 
-@app.command()
+def _resolve_target(
+    target: str | None,
+    transport: str | None,
+    command: str | None,
+    url: str | None,
+) -> tuple[str, str | None, str | None]:
+    """Resolve TARGET positional arg into transport/command/url.
+
+    Explicit --transport/--command/--url flags always take precedence.
+    When TARGET is provided without flags, infer transport and set
+    command or url accordingly.
+
+    Args:
+        target: Positional target (URL or command string), or None.
+        transport: Explicit --transport value, or None.
+        command: Explicit --command value, or None.
+        url: Explicit --url value, or None.
+
+    Returns:
+        Tuple of (transport, command, url) ready for _build_connection.
+
+    Raises:
+        typer.Exit: If target is missing and no TTY, or inference fails.
+    """
+    # If explicit flags are fully specified, use them directly
+    if transport is not None and (command is not None or url is not None):
+        return (transport, command, url)
+
+    # Resolve target value (prompt if needed)
+    if target is None and (command is None and url is None):
+        target = prompt_or_fail("TARGET", None, "Target URL or command")
+
+    # If we have a target, infer transport and set command/url
+    if target is not None:
+        resolved_transport = transport or prompt_transport(target)
+
+        if resolved_transport == "stdio":
+            return (resolved_transport, command or target, url)
+        return (resolved_transport, command, url or target)
+
+    # Fall through: explicit flags without target
+    if transport is None:
+        raise typer.BadParameter(
+            "Provide a TARGET positional argument or use --transport with --url/--command."
+        )
+    return (transport, command, url)
+
+
+@app.command(
+    epilog=(
+        "Examples:\n"
+        "  qai audit scan http://localhost:3000/sse\n"
+        '  qai audit scan "npx @modelcontextprotocol/server-everything"\n'
+        "  qai audit scan http://localhost:3000 --transport streamable-http\n"
+        '  qai audit scan --transport stdio --command "python my_server.py"\n'
+        "  qai audit scan http://localhost:3000/sse --checks injection -f sarif"
+    ),
+)
 def scan(
-    transport: str = typer.Option(
-        ...,
-        help="Transport type: 'stdio', 'sse', or 'streamable-http'",
+    target: str | None = typer.Argument(
+        None,
+        help="Target URL or command string. Transport is inferred automatically.",
+    ),
+    transport: str | None = typer.Option(
+        None,
+        help="Transport type: 'stdio', 'sse', or 'streamable-http'. Inferred if omitted.",
     ),
     command: str | None = typer.Option(
         None,
@@ -167,12 +233,15 @@ def scan(
             f"Unknown format: {format}. Use 'json', 'sarif', 'html', 'ndjson', or 'csv'."
         )
 
+    resolved_transport, resolved_command, resolved_url = _resolve_target(
+        target, transport, command, url
+    )
     output = _resolve_output_path(format, output)
     _configure_logging(verbose)
 
     console.print("[bold blue]q-ai audit[/bold blue] — MCP Security Scanner\n")
 
-    conn = _build_connection(transport, command, url)
+    conn = _build_connection(resolved_transport, resolved_command, resolved_url)
     check_names = [c.strip() for c in checks.split(",")] if checks else None
 
     async def _do_scan() -> None:
@@ -202,7 +271,7 @@ def scan(
             # Persist to database
             from q_ai.audit.mapper import persist_scan
 
-            run_id = persist_scan(result, transport=transport, source="cli")
+            run_id = persist_scan(result, transport=resolved_transport, source="cli")
             console.print(f"[dim]Run saved to database: {run_id}[/dim]")
 
     try:
@@ -269,11 +338,22 @@ def list_checks(
     console.print(table)
 
 
-@app.command()
+@app.command(
+    epilog=(
+        "Examples:\n"
+        "  qai audit enumerate http://localhost:3000/sse\n"
+        '  qai audit enumerate "npx @modelcontextprotocol/server-everything"\n'
+        '  qai audit enumerate --transport stdio --command "python my_server.py"'
+    ),
+)
 def enumerate(  # noqa: A001
-    transport: str = typer.Option(
-        ...,
-        help="Transport type: 'stdio', 'sse', or 'streamable-http'",
+    target: str | None = typer.Argument(
+        None,
+        help="Target URL or command string. Transport is inferred automatically.",
+    ),
+    transport: str | None = typer.Option(
+        None,
+        help="Transport type: 'stdio', 'sse', or 'streamable-http'. Inferred if omitted.",
     ),
     command: str | None = typer.Option(
         None,
@@ -285,9 +365,13 @@ def enumerate(  # noqa: A001
     ),
 ) -> None:
     """Enumerate MCP server capabilities without scanning."""
+    resolved_transport, resolved_command, resolved_url = _resolve_target(
+        target, transport, command, url
+    )
+
     console.print("[bold blue]q-ai audit[/bold blue] — Server Enumeration\n")
 
-    conn = _build_connection(transport, command, url)
+    conn = _build_connection(resolved_transport, resolved_command, resolved_url)
 
     async def _do_scan() -> None:
         async with conn:

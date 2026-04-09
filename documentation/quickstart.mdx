@@ -85,10 +85,10 @@ When selecting a model, use the `provider/model` format (e.g., `anthropic/claude
     against it — each mapped to the OWASP MCP Top 10 and MITRE ATLAS.
 
     ```bash
-    qai audit scan \
-      --transport stdio \
-      --command "npx @modelcontextprotocol/server-memory"
+    qai audit scan "npx @modelcontextprotocol/server-memory"
     ```
+
+    The transport is inferred automatically — a URL is treated as SSE or Streamable HTTP, a command string as stdio. Override with `--transport` if needed.
   </Step>
 
   <Step title="Review the output">
@@ -105,19 +105,15 @@ When selecting a model, use the `provider/model` format (e.g., `anthropic/claude
 Before a full scan, you can quickly check what a server exposes:
 
 ```bash
-qai audit enumerate \
-  --transport stdio \
-  --command "npx @modelcontextprotocol/server-memory"
+qai audit enumerate "npx @modelcontextprotocol/server-memory"
 ```
 
 This lists the server's tools, resources, and prompts without running any security checks.
 
 ## Launch the web UI
 
-Running `qai` with no subcommand starts the web UI:
-
 ```bash
-qai
+qai ui
 ```
 
 This opens a browser with the workflow launcher — workflow cards for guided security assessments. The same findings are accessible via both the web UI and CLI (`qai findings list`).
@@ -128,7 +124,7 @@ Use `--port` to specify a port, or `--no-browser` to start the server without op
 
 ```bash
 # Generate indirect prompt injection payloads
-qai ipi generate --callback http://localhost:8080 --technique all --format markdown
+qai ipi generate http://localhost:8080 --technique all --format markdown
 
 # Launch the CXP interactive builder
 qai cxp generate

@@ -28,6 +28,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
+from q_ai.core.cli.prompt import build_teaching_tip, is_tty, prompt_or_fail
 from q_ai.ipi import db
 from q_ai.ipi.generate_service import GenerateResult, generate_documents
 from q_ai.ipi.generators import get_techniques_for_format
@@ -413,9 +414,26 @@ def _display_generate_results(
     console.print(f"\n[dim]Callback URL: {callback_url}/c/<uuid>[/dim]")
 
 
-@app.command()
+@app.command(
+    epilog=(
+        "Examples:\n"
+        "  qai ipi generate http://localhost:8080\n"
+        "  qai ipi generate http://localhost:8080 --format image --technique all\n"
+        "  qai ipi generate --callback http://localhost:8080 --technique phase1\n"
+        "  qai ipi generate  (interactive — prompts for callback URL)"
+    ),
+)
 def generate(
-    callback_url: Annotated[str, typer.Option("--callback", "-c", help="Callback server URL")],
+    callback: Annotated[
+        str | None,
+        typer.Argument(
+            help="Callback server URL (prompted interactively if omitted).",
+        ),
+    ] = None,
+    callback_option: Annotated[
+        str | None,
+        typer.Option("--callback", "-c", help="Callback server URL (alternative to positional)."),
+    ] = None,
     output: Annotated[
         Path, typer.Option("--output", "-o", help="Output path (file or directory)")
     ] = Path("./payloads/"),
@@ -468,6 +486,9 @@ def generate(
 ) -> None:
     """Generate document(s) with hidden prompt injection payload.
 
+    CALLBACK can be provided as the first positional argument, via
+    --callback, or entered interactively when running in a terminal.
+
     Creates one or more documents containing hidden prompt injection
     payloads using the specified technique(s). Each generated document
     is registered in the database for callback tracking.
@@ -494,6 +515,15 @@ def generate(
       embedded_file  - Hidden file attachment (Phase 2)
       incremental    - PDF incremental update section (Phase 2)
     """
+    # Resolve callback: positional > --callback > prompt
+    provided_directly = callback is not None or callback_option is not None
+    raw_callback = callback or callback_option or None
+    callback_url = prompt_or_fail("CALLBACK", raw_callback, "Callback server URL")
+
+    if not provided_directly and is_tty():
+        tip = build_teaching_tip("qai ipi generate", [callback_url])
+        console.print(f"[dim]{tip}[/dim]")
+
     format_name = validate_format(format_name)
     style = _parse_payload_style(payload_style)
     payload_type_enum = _parse_payload_type(payload_type)

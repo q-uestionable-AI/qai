@@ -28,8 +28,10 @@ Indirect Prompt Injection — Generate payloads and detect AI agent execution vi
 Generate document(s) with hidden prompt injection payload.
 
 ```bash
-qai ipi generate [OPTIONS]
+qai ipi generate [CALLBACK] [OPTIONS]
 ```
+
+CALLBACK is the callback server URL. It can be provided as the first positional argument, via `--callback`, or entered interactively when running in a terminal.
 
 Creates one or more documents containing hidden prompt injection payloads using the specified technique(s). Each generated document is registered in the database for callback tracking.
 
@@ -37,7 +39,8 @@ Creates one or more documents containing hidden prompt injection payloads using 
 
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
-| `--callback`, `-c` | TEXT | Yes | — | Callback server URL |
+| `CALLBACK` | positional | No | — | Callback server URL (prompted interactively if omitted) |
+| `--callback`, `-c` | TEXT | No | — | Callback server URL (alternative to positional) |
 | `--output`, `-o` | PATH | No | `./payloads/` | Output path (file or directory) |
 | `--format` | TEXT | No | `pdf` | Output format (pdf, image, markdown, html, docx, ics, eml) |
 | `--technique`, `-t` | TEXT | No | `all` | Technique(s): all, phase1, phase2, or specific names (comma-separated) |
@@ -61,27 +64,24 @@ Individual technique names can also be specified directly or as a comma-separate
 
 <CodeGroup>
 ```bash Generate all PDF techniques
-qai ipi generate --callback http://localhost:8080
+qai ipi generate http://localhost:8080
 ```
 
 ```bash Generate markdown payloads with citation style
-qai ipi generate \
-  --callback http://localhost:8080 \
+qai ipi generate http://localhost:8080 \
   --format markdown \
   --payload-style citation
 ```
 
 ```bash Generate a specific technique with dangerous payload
-qai ipi generate \
-  --callback http://localhost:8080 \
+qai ipi generate http://localhost:8080 \
   --technique white_ink \
   --payload-type exfil_summary \
   --dangerous
 ```
 
 ```bash Reproducible corpus with seed
-qai ipi generate \
-  --callback http://localhost:8080 \
+qai ipi generate http://localhost:8080 \
   --technique all \
   --seed 42
 ```

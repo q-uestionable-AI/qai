@@ -26,6 +26,22 @@ All findings stored in a SQLite database.
 
 ---
 
+## Quick Start
+
+Scan an MCP server:
+
+```bash
+qai audit scan http://localhost:3000/sse
+```
+
+Transport is inferred automatically. Launch the web UI:
+
+```bash
+qai ui
+```
+
+---
+
 ## Built-in Assistant
 
 An AI assistant helps you discover capabilities, interpret scan results, and plan testing workflows. It uses RAG over qai's documentation and your own reference material, with a trust boundary model that separates trusted docs from untrusted scan output. Works with local models (Ollama) or cloud APIs.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
@@ -21,20 +22,18 @@ class TestTargetsList:
         assert result.exit_code == 0
 
 
-class TestTargetsAdd:
-    def test_add_target(self, tmp_path: Path) -> None:
+class TestTargetsAddPositional:
+    """targets add with positional NAME and URI."""
+
+    def test_add_positional_args(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"
         result = runner.invoke(
             app,
             [
                 "targets",
                 "add",
-                "--type",
-                "server",
-                "--name",
-                "test-mcp",
-                "--uri",
-                "http://localhost",
+                "My MCP Server",
+                "http://localhost:3000/sse",
                 "--db-path",
                 str(db_path),
             ],
@@ -42,18 +41,31 @@ class TestTargetsAdd:
         assert result.exit_code == 0
         assert "Created target" in result.output
 
-    def test_add_then_list(self, tmp_path: Path) -> None:
+    def test_add_with_spaces_in_name(self, tmp_path: Path) -> None:
+        """Spaces in target name work as positional arg."""
+        db_path = tmp_path / "qai.db"
+        result = runner.invoke(
+            app,
+            [
+                "targets",
+                "add",
+                "Server With Spaces",
+                "http://example.com",
+                "--db-path",
+                str(db_path),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Created target" in result.output
+
+    def test_add_then_list_positional(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"
         runner.invoke(
             app,
             [
                 "targets",
                 "add",
-                "--type",
-                "server",
-                "--name",
                 "visible-target",
-                "--uri",
                 "http://localhost:8080",
                 "--db-path",
                 str(db_path),
@@ -64,21 +76,143 @@ class TestTargetsAdd:
         assert "visible-target" in result.output
         assert "http://localhost:8080" in result.output
 
-    def test_add_with_metadata(self, tmp_path: Path) -> None:
+    def test_default_type_is_server(self, tmp_path: Path) -> None:
+        """Type defaults to 'server' when not specified."""
         db_path = tmp_path / "qai.db"
         result = runner.invoke(
             app,
             [
                 "targets",
                 "add",
-                "--type",
-                "server",
-                "--name",
-                "meta-target",
-                "--metadata",
-                '{"transport": "stdio"}',
+                "test-target",
+                "http://localhost",
                 "--db-path",
                 str(db_path),
             ],
         )
         assert result.exit_code == 0
+        # Verify by listing
+        list_result = runner.invoke(app, ["targets", "list", "--db-path", str(db_path)])
+        assert "server" in list_result.output
+
+    def test_explicit_type_flag(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "qai.db"
+        result = runner.invoke(
+            app,
+            [
+                "targets",
+                "add",
+                "test-target",
+                "http://localhost",
+                "--type",
+                "endpoint",
+                "--db-path",
+                str(db_path),
+            ],
+        )
+        assert result.exit_code == 0
+
+
+class TestTargetsAddMeta:
+    """targets add --meta key=value flag."""
+
+    def test_meta_single(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "qai.db"
+        result = runner.invoke(
+            app,
+            [
+                "targets",
+                "add",
+                "meta-target",
+                "http://example.com",
+                "--meta",
+                "transport=sse",
+                "--db-path",
+                str(db_path),
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_meta_multiple(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "qai.db"
+        result = runner.invoke(
+            app,
+            [
+                "targets",
+                "add",
+                "meta-target",
+                "http://example.com",
+                "--meta",
+                "transport=sse",
+                "--meta",
+                "owner=alice",
+                "--db-path",
+                str(db_path),
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_meta_malformed_fails(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "qai.db"
+        result = runner.invoke(
+            app,
+            [
+                "targets",
+                "add",
+                "meta-target",
+                "http://example.com",
+                "--meta",
+                "nope",
+                "--db-path",
+                str(db_path),
+            ],
+        )
+        assert result.exit_code != 0
+
+
+class TestTargetsAddInteractive:
+    """Interactive prompting for targets add."""
+
+    @patch("q_ai.core.cli.targets.is_tty", return_value=False)
+    @patch("q_ai.core.cli.prompt.is_tty", return_value=False)
+    def test_non_tty_no_args_fails(
+        self, _mock_prompt: object, _mock_targets: object, tmp_path: Path
+    ) -> None:
+        db_path = tmp_path / "qai.db"
+        result = runner.invoke(
+            app,
+            ["targets", "add", "--db-path", str(db_path)],
+        )
+        assert result.exit_code != 0
+
+    @patch("q_ai.core.cli.targets.is_tty", return_value=True)
+    @patch("q_ai.core.cli.prompt.is_tty", return_value=True)
+    def test_teaching_tip_shown_on_interactive(
+        self, _mock_prompt: object, _mock_targets: object, tmp_path: Path
+    ) -> None:
+        """When args are prompted, a teaching tip is printed."""
+        db_path = tmp_path / "qai.db"
+        result = runner.invoke(
+            app,
+            ["targets", "add", "--db-path", str(db_path)],
+            input="My Server\nhttp://example.com\n",
+        )
+        assert result.exit_code == 0
+        assert "Tip:" in result.output
+
+    def test_no_teaching_tip_when_args_provided(self, tmp_path: Path) -> None:
+        """No teaching tip when all args are provided directly."""
+        db_path = tmp_path / "qai.db"
+        result = runner.invoke(
+            app,
+            [
+                "targets",
+                "add",
+                "My Server",
+                "http://example.com",
+                "--db-path",
+                str(db_path),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Tip:" not in result.output
