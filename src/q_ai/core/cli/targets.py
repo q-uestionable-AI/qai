@@ -76,7 +76,17 @@ def add_cmd(
     """Add a new target.
 
     NAME and URI can be provided as positional arguments or entered
-    interactively when running in a terminal.
+    interactively when running in a terminal. Type defaults to "server".
+
+    Args:
+        name: Target name. Prompted interactively if omitted in a TTY.
+        uri: Target URI. Prompted interactively if omitted in a TTY.
+        type: Target type (e.g. server, endpoint). Defaults to "server".
+        meta: Metadata as repeatable key=value strings.
+        db_path: Database path override (hidden, for testing).
+
+    Raises:
+        typer.Exit: If required args are missing in a non-TTY context.
     """
     all_provided = name is not None and uri is not None
     name, uri = prompt_or_fail_multiple(

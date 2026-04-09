@@ -61,12 +61,17 @@ def _print_help_screen() -> None:
 
     # Contextual hint: check if any targets exist
     try:
-        from q_ai.core.db import get_connection, list_targets
+        from pathlib import Path
 
-        with get_connection() as conn:
-            targets = list_targets(conn)
-        if not targets:
+        from q_ai.core.db import _DEFAULT_DB_PATH, get_connection, list_targets
+
+        if not Path(_DEFAULT_DB_PATH).exists():
             console.print(f"  {_HINT_NO_TARGETS}\n")
+        else:
+            with get_connection() as conn:
+                targets = list_targets(conn)
+            if not targets:
+                console.print(f"  {_HINT_NO_TARGETS}\n")
     except Exception:  # noqa: S110
         pass  # DB may not exist yet on first run
 
@@ -142,7 +147,12 @@ def main(
         help="Show version and exit.",
     ),
 ) -> None:
-    """q-ai: Security testing for agentic AI."""
+    """Root callback — prints help screen when invoked without a subcommand.
+
+    Args:
+        ctx: Typer context for subcommand detection.
+        version: If True, print version and exit (eager option).
+    """
     if ctx.invoked_subcommand is not None:
         return
 
@@ -177,7 +187,18 @@ def ui_cmd(
         help="Start the server without opening a browser.",
     ),
 ) -> None:
-    """Launch the q-ai web UI in your browser."""
+    """Launch the q-ai web UI in your browser.
+
+    Starts the FastAPI backend on the specified port (or auto-selects one)
+    and opens the default browser.
+
+    Args:
+        port: Port to bind the server to. Auto-selected if omitted.
+        no_browser: If True, start the server without opening a browser.
+
+    Raises:
+        typer.Exit: If the port number is invalid.
+    """
     resolved_port = port or find_free_port()
     if not 1 <= resolved_port <= 65535:
         typer.echo("Invalid port number. Must be between 1 and 65535.", err=True)

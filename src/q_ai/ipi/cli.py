@@ -517,7 +517,7 @@ def generate(
     """
     # Resolve callback: positional > --callback > prompt
     provided_directly = callback is not None or callback_option is not None
-    raw_callback = callback or callback_option
+    raw_callback = callback or callback_option or None
     callback_url = prompt_or_fail("CALLBACK", raw_callback, "Callback server URL")
 
     if not provided_directly and is_tty():

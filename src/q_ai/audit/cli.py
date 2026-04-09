@@ -131,9 +131,6 @@ def _build_connection(
     raise typer.BadParameter(f"Unknown transport: {transport}")
 
 
-_URL_SCHEMES = ("http://", "https://")
-
-
 def _resolve_target(
     target: str | None,
     transport: str | None,

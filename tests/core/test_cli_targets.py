@@ -173,8 +173,11 @@ class TestTargetsAddMeta:
 class TestTargetsAddInteractive:
     """Interactive prompting for targets add."""
 
+    @patch("q_ai.core.cli.targets.is_tty", return_value=False)
     @patch("q_ai.core.cli.prompt.is_tty", return_value=False)
-    def test_non_tty_no_args_fails(self, _mock: object, tmp_path: Path) -> None:
+    def test_non_tty_no_args_fails(
+        self, _mock_prompt: object, _mock_targets: object, tmp_path: Path
+    ) -> None:
         db_path = tmp_path / "qai.db"
         result = runner.invoke(
             app,
