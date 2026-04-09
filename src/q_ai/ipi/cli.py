@@ -435,8 +435,13 @@ def generate(
         typer.Option("--callback", "-c", help="Callback server URL (alternative to positional)."),
     ] = None,
     output: Annotated[
-        Path, typer.Option("--output", "-o", help="Output path (file or directory)")
-    ] = Path("./payloads/"),
+        Path,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Output path (file or directory, default: ~/.qai/payloads/)",
+        ),
+    ] = Path.home() / ".qai" / "payloads",
     format_name: Annotated[
         str, typer.Option("--format", help="Output format (default: pdf)")
     ] = "pdf",
@@ -843,15 +848,21 @@ def _build_ipi_interpret_prompt(campaigns: list, hits: list) -> str:
 
 @app.command()
 def export(
-    output: Annotated[Path, typer.Option("--output", "-o", help="Output file")] = Path(
-        "tracking.json"
-    ),
+    output: Annotated[
+        Path,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Output file (default: ~/.qai/exports/tracking.json)",
+        ),
+    ] = Path.home() / ".qai" / "exports" / "tracking.json",
 ) -> None:
     """Export campaigns and hits to JSON.
 
     Exports all campaign and hit data to a JSON file for external
     analysis, reporting, or backup purposes.
     """
+    output.parent.mkdir(parents=True, exist_ok=True)
     campaigns = db.get_all_campaigns()
     all_hits = db.get_hits()
 

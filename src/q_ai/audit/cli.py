@@ -13,6 +13,7 @@ Examples:
 import asyncio
 import logging
 import shlex
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -66,7 +67,7 @@ def _resolve_output_path(format_name: str, output: str | None) -> str:
     if output is not None:
         return output
     ext_map = {"json": "json", "sarif": "sarif", "html": "html", "ndjson": "ndjson", "csv": "csv"}
-    return f"results/scan.{ext_map[format_name]}"
+    return str(Path.home() / ".qai" / "results" / f"scan.{ext_map[format_name]}")
 
 
 def _print_scan_summary(result: ScanResult) -> None:
@@ -218,7 +219,7 @@ def scan(
     ),
     output: str | None = typer.Option(
         None,
-        help="Output file path (default: results/scan.{json,sarif,html,ndjson,csv})",
+        help="Output file path (default: ~/.qai/results/scan.{json,sarif,html,ndjson,csv})",
     ),
     verbose: bool = typer.Option(
         False,

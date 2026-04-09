@@ -10,7 +10,7 @@ Usage:
     >>> from q_ai.ipi.generate_service import generate_documents
     >>> result = generate_documents(
     ...     callback_url="http://localhost:8080",
-    ...     output=Path("./payloads/"),
+    ...     output=Path.home() / ".qai" / "payloads",
     ...     format_name=Format.PDF,
     ...     techniques=[Technique.WHITE_INK],
     ...     payload_style=PayloadStyle.CITATION,
