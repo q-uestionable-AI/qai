@@ -5,6 +5,7 @@ import threading
 
 import typer
 import uvicorn
+from rich.console import Console
 
 from q_ai import __version__
 from q_ai.assist.cli import app as assist_app
@@ -31,7 +32,53 @@ from q_ai.server.helpers import (
 app = typer.Typer(
     name="qai",
     help="Security testing for agentic AI.",
+    no_args_is_help=False,
+    rich_markup_mode="rich",
 )
+console = Console()
+
+# ---------------------------------------------------------------------------
+# Help screen content
+# ---------------------------------------------------------------------------
+
+_QUICK_START = """\
+[bold]Quick Start[/bold]
+  qai audit scan http://localhost:3000/sse   Scan an MCP server
+  qai targets add "My Server" http://...     Register a target
+  qai ui                                     Launch the web UI
+"""
+
+_HINT_NO_TARGETS = (
+    "[yellow]No targets found yet[/yellow] — run [bold]qai targets add[/bold] to get started."
+)
+_HINT_WEB_UI = "Prefer a browser? Run [bold]qai ui[/bold]"
+
+
+def _print_help_screen() -> None:
+    """Print the grouped help screen with quick-start examples."""
+    console.print(f"\n[bold]qai[/bold] v{__version__} — Security testing for agentic AI.\n")
+    console.print(_QUICK_START)
+
+    # Contextual hint: check if any targets exist
+    try:
+        from q_ai.core.db import get_connection, list_targets
+
+        with get_connection() as conn:
+            targets = list_targets(conn)
+        if not targets:
+            console.print(f"  {_HINT_NO_TARGETS}\n")
+    except Exception:  # noqa: S110
+        pass  # DB may not exist yet on first run
+
+    console.print(f"  {_HINT_WEB_UI}\n")
+    console.print(
+        "[dim]Run qai --help for full command list, or qai <command> --help for details.[/dim]"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Version callback
+# ---------------------------------------------------------------------------
 
 
 def version_callback(value: bool) -> None:
@@ -39,6 +86,11 @@ def version_callback(value: bool) -> None:
     if value:
         typer.echo(f"qai {__version__}")
         raise typer.Exit()
+
+
+# ---------------------------------------------------------------------------
+# Server launcher (used by `qai ui`)
+# ---------------------------------------------------------------------------
 
 
 def _run_server(port: int, no_browser: bool = False) -> None:
@@ -73,6 +125,11 @@ def _run_server(port: int, no_browser: bool = False) -> None:
         delete_port_file()
 
 
+# ---------------------------------------------------------------------------
+# Root callback: bare `qai` prints help, subcommands pass through
+# ---------------------------------------------------------------------------
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
@@ -84,6 +141,30 @@ def main(
         is_eager=True,
         help="Show version and exit.",
     ),
+) -> None:
+    """q-ai: Security testing for agentic AI."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    _print_help_screen()
+
+
+# ---------------------------------------------------------------------------
+# `qai ui` command
+# ---------------------------------------------------------------------------
+
+
+@app.command(
+    "ui",
+    rich_help_panel="Start",
+    epilog=(
+        "Examples:\n"
+        "  qai ui                  Launch web UI on auto-selected port\n"
+        "  qai ui --port 9000      Launch on port 9000\n"
+        "  qai ui --no-browser     Start server without opening browser"
+    ),
+)
+def ui_cmd(
     port: int | None = typer.Option(
         None,
         "--port",
@@ -96,10 +177,7 @@ def main(
         help="Start the server without opening a browser.",
     ),
 ) -> None:
-    """q-ai: Security testing for agentic AI."""
-    if ctx.invoked_subcommand is not None:
-        return
-
+    """Launch the q-ai web UI in your browser."""
     resolved_port = port or find_free_port()
     if not 1 <= resolved_port <= 65535:
         typer.echo("Invalid port number. Must be between 1 and 65535.", err=True)
@@ -108,21 +186,60 @@ def main(
     _run_server(port=resolved_port, no_browser=no_browser)
 
 
-app.add_typer(runs_app)
-app.add_typer(findings_app)
-app.add_typer(targets_app)
-app.add_typer(config_app)
-app.add_typer(assist_app, name="assist", help="AI assistant — guidance and results.")
-app.add_typer(audit_app, name="audit", help="MCP server security scanning.")
-app.add_typer(inject_app, name="inject", help="Tool poisoning and prompt injection testing.")
-app.add_typer(proxy_app, name="proxy", help="MCP traffic interception and replay.")
-app.add_typer(chain_app, name="chain", help="Multi-agent attack chain exploitation.")
-app.add_typer(ipi_app, name="ipi", help="Indirect prompt injection testing.")
-app.add_typer(cxp_app, name="cxp", help="Context file poisoning for coding assistants.")
-app.add_typer(rxp_app, name="rxp", help="RAG retrieval poisoning validation.")
-app.command("import", help="Import findings from external tools.")(import_cmd)
+# ---------------------------------------------------------------------------
+# Register subcommands with grouped help panels
+# ---------------------------------------------------------------------------
+
+# Start
+app.add_typer(targets_app, rich_help_panel="Start")
+
+# Modules
+app.add_typer(
+    audit_app, name="audit", help="MCP server security scanning.", rich_help_panel="Modules"
+)
+app.add_typer(
+    inject_app,
+    name="inject",
+    help="Tool poisoning and prompt injection testing.",
+    rich_help_panel="Modules",
+)
+app.add_typer(
+    proxy_app, name="proxy", help="MCP traffic interception and replay.", rich_help_panel="Modules"
+)
+app.add_typer(
+    chain_app,
+    name="chain",
+    help="Multi-agent attack chain exploitation.",
+    rich_help_panel="Modules",
+)
+app.add_typer(
+    ipi_app, name="ipi", help="Indirect prompt injection testing.", rich_help_panel="Modules"
+)
+app.add_typer(
+    cxp_app,
+    name="cxp",
+    help="Context file poisoning for coding assistants.",
+    rich_help_panel="Modules",
+)
+app.add_typer(
+    rxp_app, name="rxp", help="RAG retrieval poisoning validation.", rich_help_panel="Modules"
+)
+
+# Manage
+app.add_typer(runs_app, rich_help_panel="Manage")
+app.add_typer(findings_app, rich_help_panel="Manage")
+app.command("import", help="Import findings from external tools.", rich_help_panel="Manage")(
+    import_cmd
+)
+app.add_typer(config_app, rich_help_panel="Manage")
+app.add_typer(
+    assist_app, name="assist", help="AI assistant — guidance and results.", rich_help_panel="Manage"
+)
+
+# Utilities
 app.add_typer(
     update_frameworks_app,
     name="update-frameworks",
     help="Check frameworks for upstream changes.",
+    rich_help_panel="Utilities",
 )

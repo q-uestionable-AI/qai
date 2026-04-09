@@ -19,20 +19,6 @@ class TestCLIHelp:
         assert result.exit_code == 0
         assert "Security testing for agentic AI" in result.output
 
-    @patch("q_ai.cli._run_server")
-    def test_port_option_accepted(self, mock_run: MagicMock) -> None:
-        """--port is accepted and passed through to the server."""
-        result = runner.invoke(app, ["--port", "9000"])
-        assert result.exit_code == 0
-        assert mock_run.call_args.kwargs["port"] == 9000
-
-    @patch("q_ai.cli._run_server")
-    def test_no_browser_option_accepted(self, mock_run: MagicMock) -> None:
-        """--no-browser is accepted and passed through to the server."""
-        result = runner.invoke(app, ["--no-browser"])
-        assert result.exit_code == 0
-        assert mock_run.call_args.kwargs["no_browser"] is True
-
 
 class TestCLIVersion:
     """qai --version shows version string."""
@@ -52,35 +38,75 @@ class TestCLIVersion:
         assert f"qai {__version__}" in result.output
 
 
-class TestCLIServerLaunch:
-    """qai with no subcommand launches the web server."""
+class TestBareQai:
+    """Bare `qai` prints help screen instead of launching server."""
 
-    @patch("q_ai.cli._run_server")
-    def test_no_args_launches_server(self, mock_run: MagicMock) -> None:
+    def test_no_args_prints_help(self) -> None:
         result = runner.invoke(app, [])
         assert result.exit_code == 0
-        mock_run.assert_called_once()
+        assert "Quick Start" in result.output
 
-    @patch("q_ai.cli._run_server")
-    def test_no_browser_flag(self, mock_run: MagicMock) -> None:
-        result = runner.invoke(app, ["--no-browser"])
+    def test_no_args_shows_ui_hint(self) -> None:
+        result = runner.invoke(app, [])
         assert result.exit_code == 0
-        mock_run.assert_called_once()
-        assert mock_run.call_args.kwargs["no_browser"] is True
+        assert "qai ui" in result.output
 
     @patch("q_ai.cli._run_server")
-    def test_port_flag(self, mock_run: MagicMock) -> None:
-        result = runner.invoke(app, ["--port", "9000"])
-        assert result.exit_code == 0
+    def test_no_args_does_not_launch_server(self, mock_run: MagicMock) -> None:
+        runner.invoke(app, [])
+        mock_run.assert_not_called()
 
-    @patch("q_ai.cli._run_server")
-    def test_invalid_port_fails(self, mock_run: MagicMock) -> None:
-        result = runner.invoke(app, ["--port", "99999"])
-        assert result.exit_code != 0
-
-    @patch("q_ai.cli._run_server")
-    def test_subcommands_still_work(self, mock_run: MagicMock) -> None:
+    def test_subcommands_still_work(self) -> None:
         result = runner.invoke(app, ["runs", "--help"])
         assert result.exit_code == 0
         assert "runs" in result.output.lower()
-        mock_run.assert_not_called()
+
+
+class TestQaiUi:
+    """qai ui launches the web UI."""
+
+    @patch("q_ai.cli._run_server")
+    def test_ui_launches_server(self, mock_run: MagicMock) -> None:
+        result = runner.invoke(app, ["ui"])
+        assert result.exit_code == 0
+        mock_run.assert_called_once()
+
+    @patch("q_ai.cli._run_server")
+    def test_ui_port_option(self, mock_run: MagicMock) -> None:
+        result = runner.invoke(app, ["ui", "--port", "9000"])
+        assert result.exit_code == 0
+        assert mock_run.call_args.kwargs["port"] == 9000
+
+    @patch("q_ai.cli._run_server")
+    def test_ui_no_browser_option(self, mock_run: MagicMock) -> None:
+        result = runner.invoke(app, ["ui", "--no-browser"])
+        assert result.exit_code == 0
+        assert mock_run.call_args.kwargs["no_browser"] is True
+
+    def test_ui_invalid_port_fails(self) -> None:
+        result = runner.invoke(app, ["ui", "--port", "99999"])
+        assert result.exit_code != 0
+
+
+class TestGroupedHelp:
+    """Root --help shows grouped command panels."""
+
+    def test_help_shows_modules_group(self) -> None:
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "Modules" in result.output
+
+    def test_help_shows_start_group(self) -> None:
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "Start" in result.output
+
+    def test_help_shows_manage_group(self) -> None:
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "Manage" in result.output
+
+    def test_help_shows_audit_in_modules(self) -> None:
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "audit" in result.output
