@@ -9,6 +9,19 @@ q-ai tests the security of MCP (Model Context Protocol) servers and agentic AI s
 
 All findings are mapped to four security frameworks: OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, and CWE.
 
+## Bring what you have, prove what matters
+
+Already running Garak or PyRIT? qai picks up where they leave off. Import your existing results, associate them with a target, and qai uses those findings to drive its native modules — prioritizing inject payloads based on the compliance patterns your tools already discovered.
+
+```bash
+qai import report.jsonl --format garak --target my-server
+qai import conversations.json --format pyrit --target my-server
+```
+
+A Garak result says "this model follows injected instructions." An audit result says "this MCP server has a vulnerable tool." A qai finding connects the two: the model weakness was exploitable end-to-end through a real agentic system, with proof.
+
+See [Import Overview](/imports/overview) for supported formats and [Inject Campaigns](/inject/campaigns) for how imported findings inform payload selection.
+
 ## Modules
 
 | Module     | What it does                                                                                           |

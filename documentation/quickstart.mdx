@@ -110,6 +110,26 @@ qai audit enumerate "npx @modelcontextprotocol/server-memory"
 
 This lists the server's tools, resources, and prompts without running any security checks.
 
+## Import external results
+
+If you already use Garak, PyRIT, or any SARIF-producing tool, import their results into qai and associate them with a target. Imported findings inform which inject payloads are prioritized when you run campaigns against that target.
+
+```bash
+# Register a target
+qai targets add "My Server" http://localhost:3000/sse
+
+# Import Garak results for that target
+qai import report.jsonl --format garak --target <target-id>
+
+# Import PyRIT results for the same target
+qai import conversations.json --format pyrit --target <target-id>
+
+# View all findings (native + imported) for the target
+qai findings list --target <target-id>
+```
+
+See [Import Overview](/imports/overview) for supported formats, taxonomy bridging, and how imported findings drive workflow integration.
+
 ## Launch the web UI
 
 ```bash

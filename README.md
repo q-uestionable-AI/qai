@@ -42,6 +42,20 @@ qai ui
 
 ---
 
+## Bring What You Have
+
+Already running [Garak](https://github.com/NVIDIA/garak) or [PyRIT](https://github.com/Azure/PyRIT)? Import their results and let qai prove whether the weaknesses they found are exploitable in real agentic systems.
+
+```bash
+qai targets add "My Server" http://localhost:3000/sse
+qai import report.jsonl --format garak --target <target-id>
+qai import conversations.json --format pyrit --target <target-id>
+```
+
+Imported findings drive qai's native modules — inject payloads are prioritized based on compliance patterns your tools already discovered. Also supports SARIF from any tool.
+
+---
+
 ## Built-in Assistant
 
 An AI assistant helps you discover capabilities, interpret scan results, and plan testing workflows. It uses RAG over qai's documentation and your own reference material, with a trust boundary model that separates trusted docs from untrusted scan output. Works with local models (Ollama) or cloud APIs.
