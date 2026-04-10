@@ -217,6 +217,188 @@ def test_import_with_target(tmp_path: Path) -> None:
         assert runs[0].target_id == "tgt-1"
 
 
+def test_import_scored_per_prompt(tmp_path: Path) -> None:
+    db = tmp_path / "test.db"
+    result = runner.invoke(
+        app,
+        [
+            "import",
+            str(FIXTURES / "scored_per_prompt.json"),
+            "--format",
+            "scored",
+            "--db-path",
+            str(db),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Imported 4 findings" in result.output
+
+    with get_connection(db) as conn:
+        runs = list_runs(conn, module="import")
+        assert len(runs) == 1
+        assert runs[0].source == "scored-prompts"
+
+        findings = list_findings(conn, run_id=runs[0].id)
+        assert len(findings) == 4
+
+
+def test_import_scored_aggregate(tmp_path: Path) -> None:
+    db = tmp_path / "test.db"
+    result = runner.invoke(
+        app,
+        [
+            "import",
+            str(FIXTURES / "scored_aggregate.json"),
+            "--format",
+            "scored",
+            "--db-path",
+            str(db),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Imported 1 findings" in result.output
+
+    with get_connection(db) as conn:
+        runs = list_runs(conn, module="import")
+        assert len(runs) == 1
+        assert runs[0].source == "bipia"
+
+        findings = list_findings(conn, run_id=runs[0].id)
+        assert len(findings) == 1
+
+
+def test_import_scored_dry_run(tmp_path: Path) -> None:
+    db = tmp_path / "test.db"
+    result = runner.invoke(
+        app,
+        [
+            "import",
+            str(FIXTURES / "scored_per_prompt.json"),
+            "--format",
+            "scored",
+            "--dry-run",
+            "--db-path",
+            str(db),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Dry Run" in result.output
+    assert "4 findings would be imported" in result.output
+
+    with get_connection(db) as conn:
+        runs = list_runs(conn, module="import")
+        assert len(runs) == 0
+
+
+def test_import_scored_with_target(tmp_path: Path) -> None:
+    db = tmp_path / "test.db"
+    with get_connection(db) as conn:
+        conn.execute(
+            "INSERT INTO targets (id, type, name, created_at) VALUES (?, ?, ?, ?)",
+            ("tgt-scored", "server", "scored-target", "2026-01-01T00:00:00"),
+        )
+
+    result = runner.invoke(
+        app,
+        [
+            "import",
+            str(FIXTURES / "scored_per_prompt.json"),
+            "--format",
+            "scored",
+            "--target",
+            "tgt-scored",
+            "--db-path",
+            str(db),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    with get_connection(db) as conn:
+        runs = list_runs(conn, module="import")
+        assert len(runs) == 1
+        assert runs[0].target_id == "tgt-scored"
+
+
+def test_import_scored_invalid_json(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json", encoding="utf-8")
+    result = runner.invoke(app, ["import", str(bad), "--format", "scored"])
+    assert result.exit_code == 1
+    assert "Import failed" in result.output
+
+
+def test_import_scored_missing_model(tmp_path: Path) -> None:
+    bad = tmp_path / "no_model.json"
+    bad.write_text('{"format": "scored-prompts"}', encoding="utf-8")
+    result = runner.invoke(app, ["import", str(bad), "--format", "scored"])
+    assert result.exit_code == 1
+    assert "Import failed" in result.output
+
+
+def test_import_bipia(tmp_path: Path) -> None:
+    db = tmp_path / "test.db"
+    result = runner.invoke(
+        app,
+        [
+            "import",
+            str(FIXTURES / "bipia_sample.csv"),
+            "--format",
+            "bipia",
+            "--db-path",
+            str(db),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Imported 5 findings" in result.output
+
+    with get_connection(db) as conn:
+        runs = list_runs(conn, module="import")
+        assert len(runs) == 1
+        assert runs[0].source == "bipia"
+
+        findings = list_findings(conn, run_id=runs[0].id)
+        assert len(findings) == 5
+
+
+def test_import_bipia_dry_run(tmp_path: Path) -> None:
+    db = tmp_path / "test.db"
+    result = runner.invoke(
+        app,
+        [
+            "import",
+            str(FIXTURES / "bipia_sample.csv"),
+            "--format",
+            "bipia",
+            "--dry-run",
+            "--db-path",
+            str(db),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Dry Run" in result.output
+    assert "5 findings would be imported" in result.output
+
+    with get_connection(db) as conn:
+        runs = list_runs(conn, module="import")
+        assert len(runs) == 0
+
+
+def test_import_bipia_missing_columns(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.csv"
+    bad.write_text("category,prompt\nfoo,bar\n", encoding="utf-8")
+    result = runner.invoke(app, ["import", str(bad), "--format", "bipia"])
+    assert result.exit_code == 1
+    assert "Import failed" in result.output
+
+
+def test_import_bipia_empty_file(tmp_path: Path) -> None:
+    bad = tmp_path / "empty.csv"
+    bad.write_text("", encoding="utf-8")
+    result = runner.invoke(app, ["import", str(bad), "--format", "bipia"])
+    assert result.exit_code == 1
+    assert "Import failed" in result.output
+
+
 def test_import_without_target_has_null_target_id(tmp_path: Path) -> None:
     """Import without --target leaves target_id NULL (backward compat)."""
     db = tmp_path / "test.db"
