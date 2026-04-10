@@ -335,6 +335,70 @@ def test_import_scored_missing_model(tmp_path: Path) -> None:
     assert "Import failed" in result.output
 
 
+def test_import_bipia(tmp_path: Path) -> None:
+    db = tmp_path / "test.db"
+    result = runner.invoke(
+        app,
+        [
+            "import",
+            str(FIXTURES / "bipia_sample.csv"),
+            "--format",
+            "bipia",
+            "--db-path",
+            str(db),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Imported 5 findings" in result.output
+
+    with get_connection(db) as conn:
+        runs = list_runs(conn, module="import")
+        assert len(runs) == 1
+        assert runs[0].source == "bipia"
+
+        findings = list_findings(conn, run_id=runs[0].id)
+        assert len(findings) == 5
+
+
+def test_import_bipia_dry_run(tmp_path: Path) -> None:
+    db = tmp_path / "test.db"
+    result = runner.invoke(
+        app,
+        [
+            "import",
+            str(FIXTURES / "bipia_sample.csv"),
+            "--format",
+            "bipia",
+            "--dry-run",
+            "--db-path",
+            str(db),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Dry Run" in result.output
+    assert "5 findings would be imported" in result.output
+
+    with get_connection(db) as conn:
+        runs = list_runs(conn, module="import")
+        assert len(runs) == 0
+
+
+def test_import_bipia_missing_columns(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.csv"
+    bad.write_text("category,prompt\nfoo,bar\n", encoding="utf-8")
+    result = runner.invoke(app, ["import", str(bad), "--format", "bipia"])
+    assert result.exit_code == 1
+    assert "Import failed" in result.output
+
+
+def test_import_bipia_empty_file(tmp_path: Path) -> None:
+    bad = tmp_path / "empty.csv"
+    bad.write_text("", encoding="utf-8")
+    result = runner.invoke(app, ["import", str(bad), "--format", "bipia"])
+    assert result.exit_code == 1
+    assert "Import failed" in result.output
+
+
 def test_import_without_target_has_null_target_id(tmp_path: Path) -> None:
     """Import without --target leaves target_id NULL (backward compat)."""
     db = tmp_path / "test.db"

@@ -20,6 +20,7 @@ from q_ai.core.db import (
     update_run_status,
 )
 from q_ai.core.models import RunStatus
+from q_ai.imports.bipia import parse_bipia
 from q_ai.imports.garak import parse_garak
 from q_ai.imports.models import ImportResult
 from q_ai.imports.pyrit import parse_pyrit
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 _PARSERS = {
+    "bipia": parse_bipia,
     "garak": parse_garak,
     "pyrit": parse_pyrit,
     "sarif": parse_sarif,
@@ -172,7 +174,7 @@ def import_cmd(
         ...,
         "--format",
         "-f",
-        help="Source format: garak, pyrit, sarif, or scored.",
+        help="Source format: bipia, garak, pyrit, sarif, or scored.",
     ),
     target: str | None = typer.Option(
         None,
@@ -190,14 +192,14 @@ def import_cmd(
     """Import findings from an external tool report.
 
     Parses a report file produced by Garak, PyRIT, a SARIF-producing tool,
-    or the scored-prompts format from ``qai ipi probe --export``.
-    Normalizes findings with taxonomy bridging and persists them to the
-    qai database under a parent run with ``module=import``.
+    the scored-prompts format from ``qai ipi probe --export``, or BIPIA
+    benchmark CSV.  Normalizes findings with taxonomy bridging and persists
+    them to the qai database under a parent run with ``module=import``.
 
     Args:
         file: Path to the external tool report file.
-        fmt: Source format identifier — ``"garak"``, ``"pyrit"``,
-            ``"sarif"``, or ``"scored"``.
+        fmt: Source format identifier — ``"bipia"``, ``"garak"``,
+            ``"pyrit"``, ``"sarif"``, or ``"scored"``.
         target: Optional target ID to associate the import with, enabling
             imported findings to inform workflow template selection.
         dry_run: When ``True``, parse and display what would be imported
