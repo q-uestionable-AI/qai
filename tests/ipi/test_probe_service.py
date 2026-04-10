@@ -181,6 +181,18 @@ class TestScoreResponse:
         assert complied is False
         assert score == 0.0
 
+    def test_custom_match_pattern(self) -> None:
+        """Custom canary_match pattern (e.g. prefix-{canary}) is scored correctly."""
+        complied, score = score_response("Here is prefix-deadbeef done", "prefix-deadbeef")
+        assert complied is True
+        assert score == 1.0
+
+    def test_custom_match_pattern_raw_canary_insufficient(self) -> None:
+        """Raw canary alone doesn't match when pattern has a prefix."""
+        complied, score = score_response("deadbeef", "prefix-deadbeef")
+        assert complied is False
+        assert score == 0.0
+
 
 # ---------------------------------------------------------------------------
 # Severity mapping
@@ -231,6 +243,34 @@ def _make_probe(probe_id: str = "test-001", category: str = "test_cat") -> Probe
         system_prompt="You are a test assistant.",
         user_prompt="Say {canary} now.",
         canary_match="{canary}",
+    )
+
+
+def _make_run_result() -> ProbeRunResult:
+    """Create a minimal ProbeRunResult for testing."""
+    probe = _make_probe()
+    pr = ProbeResult(
+        probe=probe,
+        canary="deadbeef",
+        response_text="deadbeef",
+        complied=True,
+        score=1.0,
+    )
+    return ProbeRunResult(
+        results=[pr],
+        category_stats=[
+            CategoryStats(
+                category="test_cat",
+                total=1,
+                complied=1,
+                rate=1.0,
+                severity=Severity.CRITICAL,
+            ),
+        ],
+        total_probes=1,
+        total_complied=1,
+        overall_rate=1.0,
+        overall_severity=Severity.CRITICAL,
     )
 
 
@@ -368,6 +408,28 @@ class TestRunProbes:
         assert cat_b.category == "cat_b"
         assert cat_b.complied == 0
 
+    @pytest.mark.asyncio
+    async def test_concurrency_zero_raises(self) -> None:
+        """Concurrency of 0 raises ValueError."""
+        with pytest.raises(ValueError, match="concurrency must be >= 1"):
+            await run_probes(
+                endpoint="http://test/v1",
+                model="test-model",
+                probes=[_make_probe()],
+                concurrency=0,
+            )
+
+    @pytest.mark.asyncio
+    async def test_concurrency_negative_raises(self) -> None:
+        """Negative concurrency raises ValueError."""
+        with pytest.raises(ValueError, match="concurrency must be >= 1"):
+            await run_probes(
+                endpoint="http://test/v1",
+                model="test-model",
+                probes=[_make_probe()],
+                concurrency=-1,
+            )
+
 
 # ---------------------------------------------------------------------------
 # DB persistence
@@ -377,37 +439,10 @@ class TestRunProbes:
 class TestPersistProbeRun:
     """Tests for persisting probe results to the database."""
 
-    def _make_run_result(self) -> ProbeRunResult:
-        """Create a minimal ProbeRunResult for testing."""
-        probe = _make_probe()
-        pr = ProbeResult(
-            probe=probe,
-            canary="deadbeef",
-            response_text="deadbeef",
-            complied=True,
-            score=1.0,
-        )
-        return ProbeRunResult(
-            results=[pr],
-            category_stats=[
-                CategoryStats(
-                    category="test_cat",
-                    total=1,
-                    complied=1,
-                    rate=1.0,
-                    severity=Severity.CRITICAL,
-                ),
-            ],
-            total_probes=1,
-            total_complied=1,
-            overall_rate=1.0,
-            overall_severity=Severity.CRITICAL,
-        )
-
     def test_persist_creates_run_and_findings(self, tmp_path: Path) -> None:
         """Persistence creates a run and findings in the database."""
         db_path = tmp_path / "test.db"
-        run_result = self._make_run_result()
+        run_result = _make_run_result()
 
         run_id = persist_probe_run(
             run_result=run_result,
@@ -426,7 +461,7 @@ class TestPersistProbeRun:
     def test_persist_stores_model_in_config(self, tmp_path: Path) -> None:
         """Model name is stored in run config."""
         db_path = tmp_path / "test.db"
-        run_result = self._make_run_result()
+        run_result = _make_run_result()
 
         run_id = persist_probe_run(
             run_result=run_result,
@@ -446,7 +481,7 @@ class TestPersistProbeRun:
     def test_persist_creates_evidence(self, tmp_path: Path) -> None:
         """Persistence creates raw and metadata evidence records."""
         db_path = tmp_path / "test.db"
-        run_result = self._make_run_result()
+        run_result = _make_run_result()
 
         run_id = persist_probe_run(
             run_result=run_result,
@@ -473,36 +508,10 @@ class TestPersistProbeRun:
 class TestExportScoredPrompts:
     """Tests for scored-prompts JSON export."""
 
-    def _make_run_result(self) -> ProbeRunResult:
-        probe = _make_probe()
-        pr = ProbeResult(
-            probe=probe,
-            canary="deadbeef",
-            response_text="deadbeef",
-            complied=True,
-            score=1.0,
-        )
-        return ProbeRunResult(
-            results=[pr],
-            category_stats=[
-                CategoryStats(
-                    category="test_cat",
-                    total=1,
-                    complied=1,
-                    rate=1.0,
-                    severity=Severity.CRITICAL,
-                ),
-            ],
-            total_probes=1,
-            total_complied=1,
-            overall_rate=1.0,
-            overall_severity=Severity.CRITICAL,
-        )
-
     def test_export_creates_file(self, tmp_path: Path) -> None:
         """Export creates a JSON file at the specified path."""
         output = tmp_path / "results.json"
-        run_result = self._make_run_result()
+        run_result = _make_run_result()
 
         export_scored_prompts(run_result, "test-model", "http://test/v1", output)
 
@@ -511,7 +520,7 @@ class TestExportScoredPrompts:
     def test_export_valid_json(self, tmp_path: Path) -> None:
         """Exported file is valid JSON with expected structure."""
         output = tmp_path / "results.json"
-        run_result = self._make_run_result()
+        run_result = _make_run_result()
 
         export_scored_prompts(run_result, "test-model", "http://test/v1", output)
 
@@ -525,7 +534,7 @@ class TestExportScoredPrompts:
     def test_export_creates_parent_dirs(self, tmp_path: Path) -> None:
         """Export creates parent directories if they don't exist."""
         output = tmp_path / "subdir" / "deep" / "results.json"
-        run_result = self._make_run_result()
+        run_result = _make_run_result()
 
         export_scored_prompts(run_result, "test-model", "http://test/v1", output)
 

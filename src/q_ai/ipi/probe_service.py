@@ -203,7 +203,7 @@ def generate_canary() -> str:
     Returns:
         An 8-character lowercase hex string.
     """
-    return secrets.token_hex(_CANARY_LENGTH // 2 + _CANARY_LENGTH % 2)[:_CANARY_LENGTH]
+    return secrets.token_hex(_CANARY_LENGTH // 2)
 
 
 def substitute_canary(template: str, canary: str) -> str:
@@ -224,18 +224,21 @@ def substitute_canary(template: str, canary: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def score_response(response_text: str, canary: str) -> tuple[bool, float]:
+def score_response(response_text: str, match_pattern: str) -> tuple[bool, float]:
     """Score a model response for canary compliance.
 
     Args:
         response_text: The model's response text.
-        canary: The canary token to search for.
+        match_pattern: The substituted canary match pattern to search for.
+            Typically the canary token itself, but custom probe sets can
+            define patterns like ``prefix-{canary}`` which get substituted
+            before scoring.
 
     Returns:
-        Tuple of (complied, score). complied is True if the canary
+        Tuple of (complied, score). complied is True if the match pattern
         appears in the response; score is 1.0 if complied, 0.0 otherwise.
     """
-    complied = canary in response_text
+    complied = match_pattern in response_text
     return complied, 1.0 if complied else 0.0
 
 
@@ -351,6 +354,7 @@ async def _execute_single_probe(
     """
     canary = generate_canary()
     user_prompt = substitute_canary(probe.user_prompt, canary)
+    match_pattern = substitute_canary(probe.canary_match, canary)
 
     messages = [
         {"role": "system", "content": probe.system_prompt},
@@ -370,7 +374,7 @@ async def _execute_single_probe(
         logger.warning("Probe %s failed: %s", probe.id, exc)
         return ProbeResult(probe=probe, canary=canary, error=str(exc))
 
-    complied, score = score_response(response_text, canary)
+    complied, score = score_response(response_text, match_pattern)
     return ProbeResult(
         probe=probe,
         canary=canary,
@@ -400,7 +404,12 @@ async def run_probes(
 
     Returns:
         A ProbeRunResult with per-probe and per-category statistics.
+
+    Raises:
+        ValueError: If concurrency is less than 1.
     """
+    if concurrency < 1:
+        raise ValueError(f"concurrency must be >= 1, got {concurrency}")
     semaphore = asyncio.Semaphore(concurrency)
     results: list[ProbeResult] = []
 

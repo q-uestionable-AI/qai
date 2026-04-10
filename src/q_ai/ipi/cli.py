@@ -20,11 +20,16 @@ For detailed help on any command:
     $ qai ipi <command> --help
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import os
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
+
+if TYPE_CHECKING:
+    from q_ai.ipi.probe_service import Probe, ProbeRunResult
 
 import typer
 from rich.console import Console
@@ -655,6 +660,10 @@ def probe(
     # Resolve API key: --api-key > env var
     resolved_api_key = api_key or os.environ.get("QAI_PROBE_API_KEY")
 
+    if concurrency < 1:
+        console.print("[red]Error: --concurrency must be >= 1[/red]")
+        raise typer.Exit(1)
+
     # Execute probes
     console.print(
         f"[bold]Running {len(probes)} probes against {resolved_model}"
@@ -688,7 +697,7 @@ def probe(
     _display_probe_results(run_result, run_id)
 
 
-def _display_probe_dry_run(probes: list) -> None:
+def _display_probe_dry_run(probes: list[Probe]) -> None:
     """Display a table of probes for dry-run mode.
 
     Args:
@@ -707,7 +716,7 @@ def _display_probe_dry_run(probes: list) -> None:
     console.print(f"\n[bold]{len(probes)}[/bold] probes would be sent.")
 
 
-def _display_probe_results(run_result: object, run_id: str) -> None:
+def _display_probe_results(run_result: ProbeRunResult, run_id: str) -> None:
     """Display probe results as a Rich table with per-category breakdown.
 
     Args:
@@ -729,7 +738,7 @@ def _display_probe_results(run_result: object, run_id: str) -> None:
     table.add_column("Rate", justify="center")
     table.add_column("Severity", justify="center")
 
-    for stat in run_result.category_stats:  # type: ignore[attr-defined]
+    for stat in run_result.category_stats:
         sev_name = stat.severity.name
         sev_color = severity_colors.get(sev_name, "white")
         table.add_row(
@@ -741,10 +750,10 @@ def _display_probe_results(run_result: object, run_id: str) -> None:
         )
 
     # Total row
-    total = run_result.total_probes  # type: ignore[attr-defined]
-    complied = run_result.total_complied  # type: ignore[attr-defined]
-    rate = run_result.overall_rate  # type: ignore[attr-defined]
-    sev_name = run_result.overall_severity.name  # type: ignore[attr-defined]
+    total = run_result.total_probes
+    complied = run_result.total_complied
+    rate = run_result.overall_rate
+    sev_name = run_result.overall_severity.name
     sev_color = severity_colors.get(sev_name, "white")
     table.add_section()
     table.add_row(
