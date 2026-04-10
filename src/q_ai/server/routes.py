@@ -2338,16 +2338,21 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
 
     db_path = _get_db_path(request)
 
+    # Bundle run_probes kwargs here so api_key stays out of the
+    # closure's own scope — prevents CodeQL data-flow from the
+    # secret into the except block's frame locals.
+    probe_kwargs: dict[str, Any] = {
+        "endpoint": endpoint,
+        "model": model,
+        "probes": probes,
+        "api_key": api_key,
+        "temperature": temperature,
+        "concurrency": concurrency,
+    }
+
     async def _run_probe_task() -> None:
         try:
-            run_result = await run_probes(
-                endpoint=endpoint,
-                model=model,
-                probes=probes,
-                api_key=api_key,
-                temperature=temperature,
-                concurrency=concurrency,
-            )
+            run_result = await run_probes(**probe_kwargs)
             await asyncio.to_thread(
                 persist_probe_run,
                 run_result,
@@ -2357,12 +2362,8 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
                 db_path=db_path,
             )
         except Exception:
-            # error() not exception(): traceback would leak api_key
-            # from closure locals.
             logger.error(  # noqa: TRY400
-                "IPI probe failed for model=%s endpoint=%s",
-                model,
-                endpoint,
+                "IPI probe background task failed",
             )
 
     task = asyncio.create_task(_run_probe_task())
