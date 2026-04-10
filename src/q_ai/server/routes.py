@@ -2357,7 +2357,9 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
                 db_path=db_path,
             )
         except Exception:
-            logger.exception(
+            # error() not exception(): traceback would leak api_key
+            # from closure locals.
+            logger.error(  # noqa: TRY400
                 "IPI probe failed for model=%s endpoint=%s",
                 model,
                 endpoint,
