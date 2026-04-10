@@ -2,6 +2,7 @@
 
 Commands:
     generate    Create document(s) with hidden prompt injection payloads
+    probe       Test model susceptibility to indirect prompt injection
     techniques  List all available hiding techniques
     formats     List supported output formats
     listen      Start the callback listener server
@@ -19,7 +20,9 @@ For detailed help on any command:
     $ qai ipi <command> --help
 """
 
+import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -554,6 +557,206 @@ def generate(
         persist_generate(result.campaigns, source="cli")
 
     _display_generate_results(result, format_name, style, payload_type_enum, callback_url)
+
+
+@app.command(
+    epilog=(
+        "Examples:\n"
+        "  qai ipi probe http://localhost:8000/v1 --model my-model\n"
+        "  qai ipi probe http://localhost:8000/v1 -m my-model --concurrency 4\n"
+        "  qai ipi probe --dry-run\n"
+        "  qai ipi probe  (interactive — prompts for endpoint and model)"
+    ),
+)
+def probe(
+    endpoint_url: Annotated[
+        str | None,
+        typer.Argument(
+            help="OpenAI-compatible API base URL (prompted interactively if omitted).",
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", "-m", help="Model name for chat completions."),
+    ] = None,
+    api_key: Annotated[
+        str | None,
+        typer.Option(
+            "--api-key",
+            help="Bearer token for authentication (also reads QAI_PROBE_API_KEY env var).",
+        ),
+    ] = None,
+    target: Annotated[
+        str | None,
+        typer.Option("--target", "-t", help="Target ID to associate results with."),
+    ] = None,
+    temperature: Annotated[
+        float,
+        typer.Option("--temperature", help="Sampling temperature (default 0.0)."),
+    ] = 0.0,
+    concurrency: Annotated[
+        int,
+        typer.Option("--concurrency", help="Max parallel probe requests (default 1)."),
+    ] = 1,
+    probe_set: Annotated[
+        Path | None,
+        typer.Option("--probe-set", help="Custom YAML probe file (overrides built-in)."),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="List probes without sending requests."),
+    ] = False,
+    export: Annotated[
+        Path | None,
+        typer.Option("--export", "-o", help="Write raw results JSON to this path."),
+    ] = None,
+) -> None:
+    """Test model susceptibility to indirect prompt injection.
+
+    Sends a set of probe prompts to an OpenAI-compatible chat completions
+    endpoint and scores responses for canary compliance. Results are
+    persisted to the qai database as findings.
+
+    ENDPOINT_URL is the API base URL (e.g. http://localhost:8000/v1);
+    the service appends /chat/completions automatically.
+    """
+    from q_ai.ipi.probe_service import (
+        export_scored_prompts,
+        load_probes,
+        persist_probe_run,
+        run_probes,
+    )
+
+    # Load probes early — dry-run needs them but not endpoint/model.
+    try:
+        probes = load_probes(probe_set)
+    except (FileNotFoundError, ValueError) as exc:
+        console.print(f"[red]Error loading probes: {exc}[/red]")
+        raise typer.Exit(1) from None
+
+    # Dry run — display probes and exit (no endpoint/model needed).
+    if dry_run:
+        _display_probe_dry_run(probes)
+        raise typer.Exit()
+
+    # Resolve endpoint: positional > prompt
+    provided_directly = endpoint_url is not None
+    resolved_endpoint = prompt_or_fail("ENDPOINT_URL", endpoint_url, "API base URL")
+
+    # Resolve model: --model > prompt
+    model_provided_directly = model is not None
+    resolved_model = prompt_or_fail("MODEL", model, "Model name")
+
+    if (not provided_directly or not model_provided_directly) and is_tty():
+        tip_args = [resolved_endpoint, "--model", resolved_model]
+        tip = build_teaching_tip("qai ipi probe", tip_args)
+        console.print(f"[dim]{tip}[/dim]")
+
+    # Resolve API key: --api-key > env var
+    resolved_api_key = api_key or os.environ.get("QAI_PROBE_API_KEY")
+
+    # Execute probes
+    console.print(
+        f"[bold]Running {len(probes)} probes against {resolved_model}"
+        f" at {resolved_endpoint}...[/bold]"
+    )
+    run_result = asyncio.run(
+        run_probes(
+            endpoint=resolved_endpoint,
+            model=resolved_model,
+            probes=probes,
+            api_key=resolved_api_key,
+            temperature=temperature,
+            concurrency=concurrency,
+        )
+    )
+
+    # Persist to DB
+    run_id = persist_probe_run(
+        run_result=run_result,
+        model=resolved_model,
+        endpoint=resolved_endpoint,
+        target_id=target,
+    )
+
+    # Export if requested
+    if export:
+        export_scored_prompts(run_result, resolved_model, resolved_endpoint, export)
+        console.print(f"[green]Exported results to {export}[/green]")
+
+    # Display results
+    _display_probe_results(run_result, run_id)
+
+
+def _display_probe_dry_run(probes: list) -> None:
+    """Display a table of probes for dry-run mode.
+
+    Args:
+        probes: List of Probe objects to display.
+    """
+    table = Table(title="IPI Probes (dry run)")
+    table.add_column("#", style="dim", justify="right")
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Category", style="magenta")
+    table.add_column("Description")
+
+    for idx, p in enumerate(probes, start=1):
+        table.add_row(str(idx), p.id, p.category, p.description)
+
+    console.print(table)
+    console.print(f"\n[bold]{len(probes)}[/bold] probes would be sent.")
+
+
+def _display_probe_results(run_result: object, run_id: str) -> None:
+    """Display probe results as a Rich table with per-category breakdown.
+
+    Args:
+        run_result: ProbeRunResult with category_stats and totals.
+        run_id: The database run ID for display.
+    """
+    severity_colors = {
+        "INFO": "dim",
+        "LOW": "green",
+        "MEDIUM": "yellow",
+        "HIGH": "red",
+        "CRITICAL": "bold red",
+    }
+
+    table = Table(title="IPI Probe Results")
+    table.add_column("Category", style="magenta")
+    table.add_column("Probes", justify="center")
+    table.add_column("Complied", justify="center")
+    table.add_column("Rate", justify="center")
+    table.add_column("Severity", justify="center")
+
+    for stat in run_result.category_stats:  # type: ignore[attr-defined]
+        sev_name = stat.severity.name
+        sev_color = severity_colors.get(sev_name, "white")
+        table.add_row(
+            stat.category,
+            str(stat.total),
+            str(stat.complied),
+            f"{stat.rate:.0%}",
+            f"[{sev_color}]{sev_name}[/{sev_color}]",
+        )
+
+    # Total row
+    total = run_result.total_probes  # type: ignore[attr-defined]
+    complied = run_result.total_complied  # type: ignore[attr-defined]
+    rate = run_result.overall_rate  # type: ignore[attr-defined]
+    sev_name = run_result.overall_severity.name  # type: ignore[attr-defined]
+    sev_color = severity_colors.get(sev_name, "white")
+    table.add_section()
+    table.add_row(
+        "[bold]TOTAL[/bold]",
+        f"[bold]{total}[/bold]",
+        f"[bold]{complied}[/bold]",
+        f"[bold]{rate:.0%}[/bold]",
+        f"[bold][{sev_color}]{sev_name}[/{sev_color}][/bold]",
+    )
+
+    console.print(table)
+    console.print(f"\n[dim]Run ID: {run_id}[/dim]")
 
 
 @app.command()

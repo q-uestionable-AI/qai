@@ -22,9 +22,26 @@ _OWASP_LLM_BRIDGES: dict[str, tuple[str | None, str]] = {
     "LLM10": (None, "none"),  # Model Theft
 }
 
+_IPI_PROBE_FRAMEWORK = "ipi_probe"
+
+# Mapping: probe category -> (qai_category | None, confidence)
+# All probe categories relate to prompt injection; direct for techniques
+# that explicitly hijack instructions, adjacent for indirect methods.
+_IPI_PROBE_BRIDGES: dict[str, tuple[str | None, str]] = {
+    "instruction_override": ("prompt_injection", "direct"),
+    "delimiter_confusion": ("prompt_injection", "direct"),
+    "context_manipulation": ("prompt_injection", "adjacent"),
+    "authority_spoofing": ("prompt_injection", "adjacent"),
+    "task_hijacking": ("prompt_injection", "direct"),
+    "exfil_framing": ("prompt_injection", "adjacent"),
+    "encoding": ("prompt_injection", "adjacent"),
+    "subtle_injection": ("prompt_injection", "adjacent"),
+}
+
 # Registry keyed by framework name for extensibility.
 _BRIDGE_REGISTRY: dict[str, dict[str, tuple[str | None, str]]] = {
     _OWASP_LLM_FRAMEWORK: _OWASP_LLM_BRIDGES,
+    _IPI_PROBE_FRAMEWORK: _IPI_PROBE_BRIDGES,
 }
 
 
