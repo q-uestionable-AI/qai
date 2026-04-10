@@ -75,7 +75,7 @@ def _build_finding(
     complied = _parse_bool(row.get("complied", "false"))
     try:
         score = float(row["score"])
-    except (KeyError, ValueError):
+    except (KeyError, TypeError, ValueError):
         score = 1.0 if complied else 0.0
 
     compliance_label = "complied" if complied else "resisted"

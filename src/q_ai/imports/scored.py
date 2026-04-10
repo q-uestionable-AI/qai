@@ -46,6 +46,9 @@ _KNOWN_ENTRY_FIELDS = frozenset(
 
 _MAX_TEXT_LEN = 300
 
+# Fields that identify an aggregate-mode payload (no per-prompt results).
+_AGGREGATE_FIELDS = frozenset({"total_probes", "overall_compliance_rate", "category_summary"})
+
 
 def _severity_from_compliance(rate: float) -> Severity:
     """Map a compliance rate to a severity level.
@@ -81,12 +84,16 @@ def _build_per_prompt_finding(
     bridge = resolve_bridge(_IPI_PROBE_FRAMEWORK, category)
     bridged_category = bridge.qai_category if bridge.confidence != "none" else None
 
-    try:
-        score = float(entry.get("score", 0.0))
-    except (TypeError, ValueError):
-        score = 0.0
-
     complied = bool(entry.get("complied", False))
+
+    raw_score = entry.get("score")
+    if raw_score is None:
+        score = 1.0 if complied else 0.0
+    else:
+        try:
+            score = float(raw_score)
+        except (TypeError, ValueError):
+            score = 1.0 if complied else 0.0
     compliance_label = "complied" if complied else "resisted"
 
     prompt = _truncate(str(entry.get("user_prompt", "")))
@@ -178,18 +185,12 @@ def _resolve_source(data: dict) -> str:
     return "scored"
 
 
-def parse_scored(path: Path) -> ImportResult:
-    """Parse a scored-prompts JSON file.
-
-    Args:
-        path: Path to the scored-prompts JSON file.
-
-    Returns:
-        An :class:`ImportResult` with parsed findings.
+def _load_and_validate(path: Path) -> dict:
+    """Read, parse, and validate the scored-prompts JSON file.
 
     Raises:
-        ValueError: If the file is not valid JSON or is missing required
-            fields.
+        ValueError: If the file is empty, invalid JSON, or missing ``model``.
+        TypeError: If the top-level value is not a dict or ``results`` is not a list.
     """
     text = path.read_text(encoding="utf-8")
     if not text.strip():
@@ -203,9 +204,30 @@ def parse_scored(path: Path) -> ImportResult:
     if not isinstance(data, dict):
         raise TypeError(f"Expected a JSON object in {path.name}, got {type(data).__name__}")
 
-    model = data.get("model")
-    if not model:
+    if not data.get("model"):
         raise ValueError(f"Missing required field 'model' in {path.name}")
+
+    results = data.get("results")
+    if results is not None and not isinstance(results, list):
+        raise TypeError(f"'results' must be a list in {path.name}, got {type(results).__name__}")
+
+    return data
+
+
+def parse_scored(path: Path) -> ImportResult:
+    """Parse a scored-prompts JSON file.
+
+    Args:
+        path: Path to the scored-prompts JSON file.
+
+    Returns:
+        An :class:`ImportResult` with parsed findings.
+
+    Raises:
+        ValueError: If the file is not valid JSON or is missing required
+            fields.
+    """
+    data = _load_and_validate(path)
 
     source = _resolve_source(data)
     source_version = data.get("source_version") or data.get("version")
@@ -227,6 +249,8 @@ def parse_scored(path: Path) -> ImportResult:
                 errors.append(f"Entry {idx}: unexpected error — {exc}")
         logger.info("Parsed %d per-prompt findings from %s", len(findings), path.name)
     else:
+        if not _AGGREGATE_FIELDS & data.keys():
+            raise ValueError(f"No 'results' array and no aggregate summary fields in {path.name}")
         finding = _build_aggregate_finding(data, source, source_version)
         findings.append(finding)
         logger.info("Parsed aggregate finding from %s", path.name)

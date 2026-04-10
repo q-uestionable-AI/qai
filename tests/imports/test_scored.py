@@ -223,8 +223,8 @@ def test_missing_model_raises(tmp_path: Path) -> None:
         parse_scored(p)
 
 
-def test_empty_results_imports_zero_findings(tmp_path: Path) -> None:
-    """Empty results array triggers aggregate mode with one finding."""
+def test_empty_results_with_aggregate_fields(tmp_path: Path) -> None:
+    """Empty results array with aggregate fields triggers aggregate mode."""
     data = {
         "format": "scored-prompts",
         "model": "test-model",
@@ -238,6 +238,22 @@ def test_empty_results_imports_zero_findings(tmp_path: Path) -> None:
     # Falls through to aggregate mode since results is empty.
     assert len(result.findings) == 1
     assert result.errors == []
+
+
+def test_model_only_raises(tmp_path: Path) -> None:
+    """A file with only a model field and no results or aggregate fields is rejected."""
+    p = tmp_path / "model_only.json"
+    p.write_text(json.dumps({"model": "foo"}), encoding="utf-8")
+    with pytest.raises(ValueError, match="No 'results' array and no aggregate summary"):
+        parse_scored(p)
+
+
+def test_results_not_list_raises(tmp_path: Path) -> None:
+    """``results`` must be a list, not a dict or other type."""
+    p = tmp_path / "results_dict.json"
+    p.write_text(json.dumps({"model": "x", "results": {}}), encoding="utf-8")
+    with pytest.raises(TypeError, match=r"results.*must be a list"):
+        parse_scored(p)
 
 
 def test_malformed_entry_skipped_with_warning(tmp_path: Path) -> None:
@@ -290,3 +306,50 @@ def test_unbridged_category_uses_original(tmp_path: Path) -> None:
     p.write_text(json.dumps(data), encoding="utf-8")
     result = parse_scored(p)
     assert result.findings[0].category == "novel_attack_vector"
+
+
+# ---------------------------------------------------------------------------
+# Score fallback from complied field
+# ---------------------------------------------------------------------------
+
+
+def test_complied_true_no_score_severity(tmp_path: Path) -> None:
+    """Per-prompt entry with complied=true and no score derives score 1.0 (CRITICAL)."""
+    data = {
+        "format": "scored-prompts",
+        "model": "test-model",
+        "results": [
+            {
+                "probe_id": "p1",
+                "category": "instruction_override",
+                "complied": True,
+                "response_text": "resp",
+                "user_prompt": "prompt",
+            }
+        ],
+    }
+    p = tmp_path / "no_score.json"
+    p.write_text(json.dumps(data), encoding="utf-8")
+    result = parse_scored(p)
+    assert result.findings[0].severity == Severity.CRITICAL
+
+
+def test_complied_false_no_score_severity(tmp_path: Path) -> None:
+    """Per-prompt entry with complied=false and no score derives score 0.0 (INFO)."""
+    data = {
+        "format": "scored-prompts",
+        "model": "test-model",
+        "results": [
+            {
+                "probe_id": "p1",
+                "category": "instruction_override",
+                "complied": False,
+                "response_text": "resp",
+                "user_prompt": "prompt",
+            }
+        ],
+    }
+    p = tmp_path / "no_score_resisted.json"
+    p.write_text(json.dumps(data), encoding="utf-8")
+    result = parse_scored(p)
+    assert result.findings[0].severity == Severity.INFO
