@@ -2083,8 +2083,11 @@ async def intel_page(request: Request) -> HTMLResponse:
     templates = _get_templates(request)
     db_path = _get_db_path(request)
 
-    with get_connection(db_path) as conn:
-        targets = list_targets(conn)
+    def _load_targets() -> list:
+        with get_connection(db_path) as conn:
+            return list_targets(conn)
+
+    targets = await asyncio.to_thread(_load_targets)
 
     return templates.TemplateResponse(
         request,
@@ -2116,20 +2119,32 @@ async def intel_import_preview(
         )
 
     suffix = Path(file.filename or "upload").suffix or ".tmp"
-    tmp_path: Path | None = None
-    try:
-        with _tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp_path = Path(tmp.name)
-            content = await file.read()
-            tmp.write(content)
+    file_bytes = await file.read()
 
-        result = parser(tmp_path)
-    except (ValueError, TypeError, OSError) as exc:
-        return JSONResponse(status_code=422, content={"detail": f"Parse failed: {exc}"})
-    finally:
-        if tmp_path is not None:
-            with contextlib.suppress(OSError):
-                tmp_path.unlink()
+    from q_ai.imports.models import ImportResult
+
+    def _parse_file() -> ImportResult:
+        tmp_path: Path | None = None
+        try:
+            with _tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+                tmp.write(file_bytes)
+            return parser(tmp_path)
+        finally:
+            if tmp_path is not None:
+                with contextlib.suppress(OSError):
+                    tmp_path.unlink()
+
+    try:
+        result = await asyncio.to_thread(_parse_file)
+    except (ValueError, TypeError, OSError):
+        logger.exception("Import preview failed for format=%s", fmt)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": "Failed to parse the uploaded file. Check format and file contents.",
+            },
+        )
 
     findings = [
         {
@@ -2173,22 +2188,49 @@ async def intel_import_commit(
         )
 
     db_path = _get_db_path(request)
-    suffix = Path(file.filename or "upload").suffix or ".tmp"
-    tmp_path: Path | None = None
-    try:
-        with _tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp_path = Path(tmp.name)
-            content = await file.read()
-            tmp.write(content)
 
-        result = parser(tmp_path)
-        run_id = _persist(result, db_path, tmp_path, target_id=target_id)
-    except (ValueError, TypeError, OSError) as exc:
-        return JSONResponse(status_code=422, content={"detail": f"Import failed: {exc}"})
-    finally:
-        if tmp_path is not None:
-            with contextlib.suppress(OSError):
-                tmp_path.unlink()
+    # Validate target_id exists before persisting.
+    if target_id:
+
+        def _check_target() -> bool:
+            with get_connection(db_path) as conn:
+                return get_target(conn, target_id) is not None
+
+        if not await asyncio.to_thread(_check_target):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Target not found"},
+            )
+
+    suffix = Path(file.filename or "upload").suffix or ".tmp"
+    file_bytes = await file.read()
+
+    from q_ai.imports.models import ImportResult
+
+    def _parse_and_persist() -> tuple[ImportResult, str]:
+        tmp_path: Path | None = None
+        try:
+            with _tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+                tmp.write(file_bytes)
+            result = parser(tmp_path)
+            run_id = _persist(result, db_path, tmp_path, target_id=target_id)
+            return result, run_id
+        finally:
+            if tmp_path is not None:
+                with contextlib.suppress(OSError):
+                    tmp_path.unlink()
+
+    try:
+        result, run_id = await asyncio.to_thread(_parse_and_persist)
+    except (ValueError, TypeError, OSError):
+        logger.exception("Import commit failed for format=%s", fmt)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": "Failed to import the uploaded file. Check format and file contents.",
+            },
+        )
 
     return JSONResponse(
         status_code=201,
@@ -2198,6 +2240,65 @@ async def intel_import_commit(
             "run_id": run_id,
         },
     )
+
+
+def _validate_probe_body(
+    body: Any,
+) -> dict[str, Any] | JSONResponse:
+    """Validate and extract probe launch parameters from a JSON body.
+
+    Args:
+        body: Parsed JSON body (may be any type).
+
+    Returns:
+        A dict of validated parameters, or a JSONResponse on error.
+    """
+    if not isinstance(body, dict):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Request body must be a JSON object"},
+        )
+
+    endpoint = (body.get("endpoint") or "").strip()
+    model = (body.get("model") or "").strip()
+
+    try:
+        temperature = float(body.get("temperature", 0.0))
+    except (TypeError, ValueError):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "temperature must be a number"},
+        )
+
+    try:
+        concurrency = int(body.get("concurrency", 1))
+    except (TypeError, ValueError):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "concurrency must be an integer"},
+        )
+
+    # Check required fields and value constraints together.
+    error = (
+        "endpoint is required"
+        if not endpoint
+        else "model is required"
+        if not model
+        else "concurrency must be >= 1"
+        if concurrency < 1
+        else None
+    )
+    if error:
+        return JSONResponse(status_code=422, content={"detail": error})
+
+    return {
+        "endpoint": endpoint,
+        "model": model,
+        "api_key": (body.get("api_key") or "").strip() or None,
+        "target_id": (body.get("target_id") or "").strip() or None,
+        "temperature": temperature,
+        "concurrency": concurrency,
+    }
 
 
 @router.post("/api/intel/probe/launch")
@@ -2210,23 +2311,30 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
     """
     from q_ai.ipi.probe_service import load_probes, persist_probe_run, run_probes
 
-    body = await request.json()
-    endpoint = (body.get("endpoint") or "").strip()
-    model = (body.get("model") or "").strip()
-    api_key = (body.get("api_key") or "").strip() or None
-    temperature = float(body.get("temperature", 0.0))
-    concurrency = int(body.get("concurrency", 1))
-    target_id = (body.get("target_id") or "").strip() or None
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON body"})
 
-    if not endpoint:
-        return JSONResponse(status_code=422, content={"detail": "endpoint is required"})
-    if not model:
-        return JSONResponse(status_code=422, content={"detail": "model is required"})
+    validated = _validate_probe_body(body)
+    if isinstance(validated, JSONResponse):
+        return validated
+
+    endpoint = validated["endpoint"]
+    model = validated["model"]
+    api_key = validated["api_key"]
+    target_id = validated["target_id"]
+    temperature = validated["temperature"]
+    concurrency = validated["concurrency"]
 
     try:
-        probes = load_probes()
-    except (FileNotFoundError, ValueError) as exc:
-        return JSONResponse(status_code=500, content={"detail": f"Failed to load probes: {exc}"})
+        probes = await asyncio.to_thread(load_probes)
+    except (FileNotFoundError, ValueError):
+        logger.exception("Failed to load probe definitions")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to load probe definitions"},
+        )
 
     db_path = _get_db_path(request)
 
@@ -2240,7 +2348,8 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
                 temperature=temperature,
                 concurrency=concurrency,
             )
-            persist_probe_run(
+            await asyncio.to_thread(
+                persist_probe_run,
                 run_result,
                 model=model,
                 endpoint=endpoint,
@@ -2248,7 +2357,11 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
                 db_path=db_path,
             )
         except Exception:
-            logger.exception("IPI probe failed for model=%s endpoint=%s", model, endpoint)
+            logger.exception(
+                "IPI probe failed for model=%s endpoint=%s",
+                model,
+                endpoint,
+            )
 
     task = asyncio.create_task(_run_probe_task())
     _background_tasks.add(task)

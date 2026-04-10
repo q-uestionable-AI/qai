@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -170,3 +171,125 @@ class TestProbeLaunch:
         )
         assert resp.status_code == 422
         assert "model" in resp.json()["detail"]
+
+    def test_invalid_json_body(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/probe/launch",
+            content=b"not json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 400
+        assert "Invalid JSON" in resp.json()["detail"]
+
+    def test_non_dict_json_body(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/probe/launch",
+            json=["a", "list"],
+        )
+        assert resp.status_code == 422
+        assert "object" in resp.json()["detail"]
+
+    def test_non_numeric_temperature(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/probe/launch",
+            json={"endpoint": "http://localhost:8000/v1", "model": "m", "temperature": "hot"},
+        )
+        assert resp.status_code == 422
+        assert "temperature" in resp.json()["detail"]
+
+    def test_non_numeric_concurrency(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/probe/launch",
+            json={"endpoint": "http://localhost:8000/v1", "model": "m", "concurrency": "many"},
+        )
+        assert resp.status_code == 422
+        assert "concurrency" in resp.json()["detail"]
+
+    def test_concurrency_below_one(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/probe/launch",
+            json={"endpoint": "http://localhost:8000/v1", "model": "m", "concurrency": 0},
+        )
+        assert resp.status_code == 422
+        assert "concurrency" in resp.json()["detail"]
+
+    def test_happy_path_launches(self, client: TestClient) -> None:
+        mock_probes = [MagicMock()]
+        mock_result = MagicMock()
+        with (
+            patch("q_ai.ipi.probe_service.load_probes", return_value=mock_probes) as m_load,
+            patch(
+                "q_ai.ipi.probe_service.run_probes",
+                new_callable=AsyncMock,
+                return_value=mock_result,
+            ),
+            patch("q_ai.ipi.probe_service.persist_probe_run"),
+        ):
+            resp = client.post(
+                "/api/intel/probe/launch",
+                json={
+                    "endpoint": "http://localhost:8000/v1",
+                    "model": "gpt-4o-mini",
+                },
+            )
+
+        assert resp.status_code == 202
+        data = resp.json()
+        assert data["status"] == "launched"
+        assert data["redirect"] == "/runs"
+        m_load.assert_called_once()
+
+
+class TestImportCommitTargetValidation:
+    """POST /api/intel/import/commit validates target_id."""
+
+    def test_invalid_target_id_returns_422(self, client: TestClient, tmp_path: Path) -> None:
+        file_path = tmp_path / "garak.jsonl"
+        file_path.write_text(_garak_jsonl(), encoding="utf-8")
+
+        with file_path.open("rb") as f:
+            resp = client.post(
+                "/api/intel/import/commit",
+                files={"file": ("garak.jsonl", f, "application/jsonl")},
+                data={"format": "garak", "target_id": "nonexistent-target-id"},
+            )
+
+        assert resp.status_code == 422
+        assert "Target not found" in resp.json()["detail"]
+
+
+class TestErrorMessagesAreGeneric:
+    """Error responses must not leak exception text."""
+
+    def test_preview_error_is_generic(self, client: TestClient, tmp_path: Path) -> None:
+        file_path = tmp_path / "bad.jsonl"
+        file_path.write_text("not valid garak data\n", encoding="utf-8")
+
+        with file_path.open("rb") as f:
+            resp = client.post(
+                "/api/intel/import/preview",
+                files={"file": ("bad.jsonl", f, "application/jsonl")},
+                data={"format": "garak"},
+            )
+
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        # Must be generic — no internal paths or parser class names.
+        assert "Parse failed:" not in detail
+        assert "Traceback" not in detail
+
+    def test_commit_error_is_generic(self, client: TestClient, tmp_path: Path) -> None:
+        file_path = tmp_path / "bad.jsonl"
+        file_path.write_text("not valid garak data\n", encoding="utf-8")
+
+        with file_path.open("rb") as f:
+            resp = client.post(
+                "/api/intel/import/commit",
+                files={"file": ("bad.jsonl", f, "application/jsonl")},
+                data={"format": "garak"},
+            )
+
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "Import failed:" not in detail
+        assert "Traceback" not in detail
