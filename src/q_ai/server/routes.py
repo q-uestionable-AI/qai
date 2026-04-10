@@ -7,12 +7,13 @@ import contextlib
 import datetime as _dt
 import json as _json
 import logging
+import tempfile as _tempfile
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Query, Request, Response, WebSocket
+from fastapi import APIRouter, Query, Request, Response, UploadFile, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.websockets import WebSocketDisconnect
@@ -2069,6 +2070,197 @@ def _get_providers_status(request: Request) -> list[dict[str, Any]]:
                 }
             )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Intel routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/intel")
+async def intel_page(request: Request) -> HTMLResponse:
+    """Render the Intel page — evidence collection hub."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+
+    with get_connection(db_path) as conn:
+        targets = list_targets(conn)
+
+    return templates.TemplateResponse(
+        request,
+        "intel.html",
+        {"active": "intel", "targets": targets},
+    )
+
+
+@router.post("/api/intel/import/preview")
+async def intel_import_preview(
+    request: Request,
+    file: UploadFile,
+) -> JSONResponse:
+    """Parse an uploaded file and return a preview without writing to DB.
+
+    Expects multipart form with ``file`` and ``format`` fields.
+    Returns finding summaries for display before committing.
+    """
+    from q_ai.imports.cli import _PARSERS
+
+    form = await request.form()
+    fmt = str(form.get("format") or "").strip()
+
+    parser = _PARSERS.get(fmt)
+    if parser is None:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"Unknown format '{fmt}'. Supported: {', '.join(sorted(_PARSERS))}"},
+        )
+
+    suffix = Path(file.filename or "upload").suffix or ".tmp"
+    tmp_path: Path | None = None
+    try:
+        with _tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+            content = await file.read()
+            tmp.write(content)
+
+        result = parser(tmp_path)
+    except (ValueError, TypeError, OSError) as exc:
+        return JSONResponse(status_code=422, content={"detail": f"Parse failed: {exc}"})
+    finally:
+        if tmp_path is not None:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink()
+
+    findings = [
+        {
+            "severity": f.severity.name,
+            "category": f.category,
+            "title": f.title,
+        }
+        for f in result.findings
+    ]
+
+    return JSONResponse(
+        content={
+            "finding_count": len(result.findings),
+            "warning_count": len(result.errors),
+            "findings": findings,
+        }
+    )
+
+
+@router.post("/api/intel/import/commit")
+async def intel_import_commit(
+    request: Request,
+    file: UploadFile,
+) -> JSONResponse:
+    """Parse an uploaded file and persist findings to the database.
+
+    Expects multipart form with ``file``, ``format``, and optional
+    ``target_id`` fields.  Returns the finding count and run ID.
+    """
+    from q_ai.imports.cli import _PARSERS, _persist
+
+    form = await request.form()
+    fmt = str(form.get("format") or "").strip()
+    target_id = str(form.get("target_id") or "").strip() or None
+
+    parser = _PARSERS.get(fmt)
+    if parser is None:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"Unknown format '{fmt}'. Supported: {', '.join(sorted(_PARSERS))}"},
+        )
+
+    db_path = _get_db_path(request)
+    suffix = Path(file.filename or "upload").suffix or ".tmp"
+    tmp_path: Path | None = None
+    try:
+        with _tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+            content = await file.read()
+            tmp.write(content)
+
+        result = parser(tmp_path)
+        run_id = _persist(result, db_path, tmp_path, target_id=target_id)
+    except (ValueError, TypeError, OSError) as exc:
+        return JSONResponse(status_code=422, content={"detail": f"Import failed: {exc}"})
+    finally:
+        if tmp_path is not None:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink()
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "finding_count": len(result.findings),
+            "warning_count": len(result.errors),
+            "run_id": run_id,
+        },
+    )
+
+
+@router.post("/api/intel/probe/launch")
+async def intel_probe_launch(request: Request) -> JSONResponse:
+    """Launch IPI probing against a model endpoint.
+
+    Runs probes in the background (fire-and-forget) and redirects
+    to the runs page, following the same async pattern as workflow
+    launches.
+    """
+    from q_ai.ipi.probe_service import load_probes, persist_probe_run, run_probes
+
+    body = await request.json()
+    endpoint = (body.get("endpoint") or "").strip()
+    model = (body.get("model") or "").strip()
+    api_key = (body.get("api_key") or "").strip() or None
+    temperature = float(body.get("temperature", 0.0))
+    concurrency = int(body.get("concurrency", 1))
+    target_id = (body.get("target_id") or "").strip() or None
+
+    if not endpoint:
+        return JSONResponse(status_code=422, content={"detail": "endpoint is required"})
+    if not model:
+        return JSONResponse(status_code=422, content={"detail": "model is required"})
+
+    try:
+        probes = load_probes()
+    except (FileNotFoundError, ValueError) as exc:
+        return JSONResponse(status_code=500, content={"detail": f"Failed to load probes: {exc}"})
+
+    db_path = _get_db_path(request)
+
+    async def _run_probe_task() -> None:
+        try:
+            run_result = await run_probes(
+                endpoint=endpoint,
+                model=model,
+                probes=probes,
+                api_key=api_key,
+                temperature=temperature,
+                concurrency=concurrency,
+            )
+            persist_probe_run(
+                run_result,
+                model=model,
+                endpoint=endpoint,
+                target_id=target_id,
+                db_path=db_path,
+            )
+        except Exception:
+            logger.exception("IPI probe failed for model=%s endpoint=%s", model, endpoint)
+
+    task = asyncio.create_task(_run_probe_task())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "launched",
+            "redirect": "/runs",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@ class TestLauncherRoute:
         assert 'href="/"' in resp.text
         assert 'href="/runs"' in resp.text
         assert 'href="/launcher"' in resp.text
+        assert 'href="/intel"' in resp.text
 
     def test_contains_docs_pill(self, client: TestClient) -> None:
         resp = client.get("/launcher")

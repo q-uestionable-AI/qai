@@ -1,0 +1,172 @@
+"""Tests for the Intel page routes."""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from q_ai.core.db import create_target
+
+
+class TestIntelPage:
+    """GET /intel renders the Intel page."""
+
+    def test_returns_200(self, client: TestClient) -> None:
+        resp = client.get("/intel")
+        assert resp.status_code == 200
+
+    def test_contains_nav_link(self, client: TestClient) -> None:
+        resp = client.get("/intel")
+        assert 'href="/intel"' in resp.text
+
+    def test_nav_link_present_on_other_pages(self, client: TestClient) -> None:
+        resp = client.get("/launcher")
+        assert 'href="/intel"' in resp.text
+
+    def test_contains_import_card(self, client: TestClient) -> None:
+        resp = client.get("/intel")
+        assert "Import Results" in resp.text
+        assert "form-import" in resp.text
+
+    def test_contains_probe_card(self, client: TestClient) -> None:
+        resp = client.get("/intel")
+        assert "Probe Model" in resp.text
+        assert "form-probe" in resp.text
+
+    def test_format_options_present(self, client: TestClient) -> None:
+        resp = client.get("/intel")
+        for fmt in ["garak", "pyrit", "sarif", "scored", "bipia"]:
+            assert fmt in resp.text.lower()
+
+    def test_target_selector_populated(self, tmp_db: Path, client: TestClient) -> None:
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            create_target(conn, type="server", name="intel-test-target")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get("/intel")
+        assert "intel-test-target" in resp.text
+
+
+def _garak_jsonl() -> str:
+    """Build a minimal valid Garak JSONL report."""
+    lines = [
+        json.dumps(
+            {
+                "entry_type": "start_run setup",
+                "garak_version": "0.9.0.13",
+                "run_id": "test-run",
+                "model_type": "openai",
+                "model_name": "gpt-4",
+            }
+        ),
+        json.dumps(
+            {
+                "entry_type": "eval",
+                "eval_id": "eval-001",
+                "probe": "promptinject.HijackHateHumansMini",
+                "detector": "toxicity.ToxicityClassifier",
+                "passed": 2,
+                "total": 10,
+                "owasp_llm": "LLM01",
+            }
+        ),
+    ]
+    return "\n".join(lines) + "\n"
+
+
+class TestImportPreview:
+    """POST /api/intel/import/preview parses without persisting."""
+
+    def test_preview_garak(self, client: TestClient, tmp_path: Path) -> None:
+        file_path = tmp_path / "garak.jsonl"
+        file_path.write_text(_garak_jsonl(), encoding="utf-8")
+
+        with file_path.open("rb") as f:
+            resp = client.post(
+                "/api/intel/import/preview",
+                files={"file": ("garak.jsonl", f, "application/jsonl")},
+                data={"format": "garak"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["finding_count"] >= 1
+        assert isinstance(data["findings"], list)
+        assert "severity" in data["findings"][0]
+        assert "category" in data["findings"][0]
+        assert "title" in data["findings"][0]
+
+    def test_preview_unknown_format(self, client: TestClient, tmp_path: Path) -> None:
+        file_path = tmp_path / "data.json"
+        file_path.write_text("{}", encoding="utf-8")
+
+        with file_path.open("rb") as f:
+            resp = client.post(
+                "/api/intel/import/preview",
+                files={"file": ("data.json", f, "application/json")},
+                data={"format": "unknown"},
+            )
+
+        assert resp.status_code == 422
+        assert "Unknown format" in resp.json()["detail"]
+
+
+class TestImportCommit:
+    """POST /api/intel/import/commit parses and persists."""
+
+    def test_commit_garak(self, client: TestClient, tmp_path: Path) -> None:
+        file_path = tmp_path / "garak.jsonl"
+        file_path.write_text(_garak_jsonl(), encoding="utf-8")
+
+        with file_path.open("rb") as f:
+            resp = client.post(
+                "/api/intel/import/commit",
+                files={"file": ("garak.jsonl", f, "application/jsonl")},
+                data={"format": "garak"},
+            )
+
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["finding_count"] >= 1
+        assert "run_id" in data
+
+    def test_commit_unknown_format(self, client: TestClient, tmp_path: Path) -> None:
+        file_path = tmp_path / "data.json"
+        file_path.write_text("{}", encoding="utf-8")
+
+        with file_path.open("rb") as f:
+            resp = client.post(
+                "/api/intel/import/commit",
+                files={"file": ("data.json", f, "application/json")},
+                data={"format": "unknown"},
+            )
+
+        assert resp.status_code == 422
+
+
+class TestProbeLaunch:
+    """POST /api/intel/probe/launch validates and accepts."""
+
+    def test_missing_endpoint(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/probe/launch",
+            json={"model": "gpt-4o-mini"},
+        )
+        assert resp.status_code == 422
+        assert "endpoint" in resp.json()["detail"]
+
+    def test_missing_model(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/probe/launch",
+            json={"endpoint": "http://localhost:8000/v1"},
+        )
+        assert resp.status_code == 422
+        assert "model" in resp.json()["detail"]
