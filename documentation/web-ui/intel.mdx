@@ -1,0 +1,70 @@
+---
+title: Intel
+description: Evidence collection hub — gather intelligence about targets before launching operations
+---
+
+The Intel page is a top-level section in the qai Web UI, accessible from the navigation bar between Runs and Settings. It unifies all evidence collection in one place: build understanding of your target's vulnerabilities before you launch operations against it.
+
+## Layout
+
+Intel uses a card-based layout with two source cards. Each card is self-contained with its own form, actions, and result display. Future evidence sources add new cards without redesigning the page.
+
+## Import Results Card
+
+Upload findings from external tools and benchmarks. Supports all import formats: Garak (JSONL), PyRIT (JSON), SARIF, scored-prompts (JSON), and BIPIA (CSV).
+
+### Workflow
+
+1. **Select format** from the dropdown
+2. **Upload file** using the file input
+3. **Optionally select a target** to associate findings with (enables workflow integration)
+4. **Preview** — parses the file and shows a findings summary without writing to the database
+5. **Import** — commits findings to the database, returns finding count and run ID
+
+The preview step lets you verify what will be imported before committing. This is the same two-step flow as the CLI's `--dry-run` flag.
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/intel/import/preview` | Parse file, return findings summary (no DB write) |
+| POST | `/api/intel/import/commit` | Parse file, persist to DB, return run ID |
+
+## Probe Model Card
+
+Test a model endpoint directly for IPI susceptibility. This is the Web UI equivalent of `qai ipi probe`.
+
+### Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| Endpoint URL | Yes | OpenAI-compatible API base URL |
+| Model | Yes | Model name for chat completions |
+| API Key | No | Bearer token (not logged or stored beyond the request) |
+| Temperature | No | Sampling temperature (default: 0.0) |
+| Concurrency | No | Max parallel requests (default: 1) |
+| Target | No | Associate results with a target |
+
+### Workflow
+
+1. Fill in endpoint and model (minimum required fields)
+2. **Launch** — probing runs as a background task
+3. Results appear in the Runs page when complete
+
+Probing runs 20 built-in probes across 8 IPI categories with canary-based scoring. Results are persisted to the database and visible in the Runs page alongside audit scans and other operations.
+
+### API Endpoint
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/intel/probe/launch` | Launch probing as background task, returns 202 |
+
+<Note>
+The API key entered in the Probe form is used only for the probe request and is not logged or stored in the database. It is passed to the background task in memory and discarded after probing completes.
+</Note>
+
+## Next Steps
+
+- [IPI Probe CLI](/ipi/cli#probe) — CLI reference for `qai ipi probe`
+- [Import Overview](/imports/overview) — Supported formats and taxonomy bridging
+- [Runs](/web-ui/runs) — View probe and import results

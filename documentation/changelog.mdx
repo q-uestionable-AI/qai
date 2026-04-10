@@ -3,6 +3,48 @@ title: Changelog
 description: Release history for q-ai
 ---
 
+## v0.9.0
+
+IPI probe command, benchmark import, and Intel web UI.
+
+### New: `qai ipi probe`
+
+Model-layer IPI probing via OpenAI-compatible endpoints. Runs 20 built-in probes across 8 categories with canary-based scoring. Results persist to the database and can be exported in scored-prompts JSON format.
+
+- Positional endpoint URL with `--model` (required), `--api-key` / `QAI_PROBE_API_KEY` env var
+- `--probe-set` for custom YAML probe definitions
+- `--export` for scored-prompts JSON output
+- `--dry-run` to inspect probes without executing
+- Rich table output with per-category breakdown and severity mapping
+- Self-hosted endpoints only per Inference Provider Strategy
+
+### New: `qai import --format scored`
+
+Generic scored-prompts JSON parser consuming the format produced by `qai ipi probe --export`. Supports per-prompt mode (one finding per entry) and aggregate mode (single summary finding). Unknown fields are passed through to metadata.
+
+### New: `qai import --format bipia`
+
+Native BIPIA (KDD 2025) CSV benchmark parser. Reads BIPIA data directly — no intermediate conversion step. Required columns: `category`, `prompt`, `response`, `complied`.
+
+### New: Intel page in Web UI
+
+New top-level nav item "Intel" between Runs and Settings. Card-based layout with two evidence sources:
+
+- **Import Results** — file upload with format selector (garak, pyrit, sarif, scored, bipia), optional target association, preview/commit two-step flow
+- **Probe Model** — endpoint URL, model, API key, temperature, concurrency. Launches probing as a background task with results in Runs page.
+
+### Taxonomy bridge
+
+Added `ipi_probe` framework to the taxonomy bridge registry, mapping 8 probe categories to qai categories with `direct` and `adjacent` confidence levels.
+
+## v0.8.2
+
+Default CLI output paths moved to `~/.qai/` subdirectories.
+
+- `qai ipi generate` → `~/.qai/payloads/`
+- `qai ipi export` → `~/.qai/exports/`
+- `qai audit scan` → `~/.qai/results/`
+
 ## v0.8.1
 
 Surface import→workflow integration across user-facing documentation.

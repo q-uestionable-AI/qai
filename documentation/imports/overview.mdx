@@ -1,9 +1,9 @@
 ---
 title: Overview
-description: Import findings from Garak, PyRIT, and SARIF-producing tools into the qai database
+description: Import findings from Garak, PyRIT, SARIF-producing tools, scored-prompts data, and BIPIA benchmarks into the qai database
 ---
 
-The import module brings external tool results into qai's unified findings table. Findings from Garak, PyRIT, or any SARIF-producing security tool are parsed, normalized with taxonomy bridging, and stored alongside native audit and inject findings. Imported findings can then inform inject template selection in the assess workflow.
+The import module brings external tool results into qai's unified findings table. Findings from Garak, PyRIT, SARIF-producing security tools, scored-prompts exports (including `qai ipi probe --export`), or BIPIA benchmark data are parsed, normalized with taxonomy bridging, and stored alongside native audit and inject findings. Imported findings can then inform inject template selection in the assess workflow.
 
 ## Supported Formats
 
@@ -12,6 +12,8 @@ The import module brings external tool results into qai's unified findings table
 | `garak` | [Garak](https://github.com/NVIDIA/garak) | JSONL report | Eval-level summaries — probe, detector, pass rate, taxonomy tags |
 | `pyrit` | [PyRIT](https://github.com/Azure/PyRIT) | JSON conversation export | Final scored results — orchestrator, score value/type, labels |
 | `sarif` | Any SARIF producer | SARIF 2.1.0 JSON | Results with rule metadata, severity, and message text |
+| `scored` | `qai ipi probe --export` or external | Scored-prompts JSON | Per-prompt or aggregate compliance results with canary scoring |
+| `bipia` | [BIPIA](https://github.com/microsoft/BIPIA) | CSV benchmark data | Per-row IPI benchmark results with compliance scoring |
 
 ## CLI Usage
 
@@ -30,13 +32,19 @@ qai import conversations.json --format pyrit --target my-target-id
 
 # Import SARIF output from any tool
 qai import results.sarif --format sarif
+
+# Import scored-prompts JSON (e.g., from qai ipi probe --export)
+qai import probe-results.json --format scored --target my-target-id
+
+# Import BIPIA benchmark CSV
+qai import bipia_results.csv --format bipia --target my-target-id
 ```
 
 ### Flags
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--format` | `-f` | **Required.** Source format: `garak`, `pyrit`, or `sarif` |
+| `--format` | `-f` | **Required.** Source format: `garak`, `pyrit`, `sarif`, `scored`, or `bipia` |
 | `--target` | `-t` | Target ID to associate imported findings with. Enables imported findings to inform inject template selection in workflows |
 | `--dry-run` | | Parse and display what would be imported without writing to the database |
 
@@ -113,6 +121,21 @@ A SARIF 2.1.0 JSON file with standard structure. The parser extracts:
 - Tool name and version from `runs[].tool.driver`
 
 Severity uses `security-severity` property (CVSS-style thresholds) when available, falling back to the SARIF `level` field.
+
+### Scored-Prompts
+
+A JSON file in the canonical scored-prompts format, as produced by `qai ipi probe --export`. Supports two modes:
+
+- **Per-prompt** — contains a `results` array with individual probe entries. Each entry produces one finding with taxonomy bridging through the `ipi_probe` framework.
+- **Aggregate** — no `results` array, just summary statistics (`total_probes`, `overall_compliance_rate`, `category_summary`). Produces a single aggregate finding.
+
+Required top-level field: `model`. Severity is derived from compliance rate: ≥75% → Critical, ≥50% → High, ≥25% → Medium, >0% → Low, 0% → Info. Unknown fields in per-prompt entries are passed through to metadata.
+
+### BIPIA
+
+A CSV file from the [BIPIA benchmark](https://github.com/microsoft/BIPIA) (KDD 2025). Required columns: `category`, `prompt`, `response`, `complied`. Optional columns: `probe_id`, `description`, `score`, `model`.
+
+Each row produces one finding with taxonomy bridging through the `ipi_probe` framework. Severity is derived from compliance rate using the same thresholds as the scored parser. When `score` is missing, it defaults to 1.0 if complied, 0.0 otherwise.
 
 <Warning>
 qai maintains best-effort parsers for current versions of Garak and PyRIT. External tool output formats may change between releases. If a parser fails on a newer format version, file an issue.

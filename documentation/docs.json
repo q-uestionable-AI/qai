@@ -36,6 +36,7 @@
           "web-ui/overview",
           "web-ui/launcher",
           "web-ui/runs",
+          "web-ui/intel",
           "web-ui/settings"
         ]
       },

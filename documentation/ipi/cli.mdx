@@ -14,6 +14,7 @@ Indirect Prompt Injection — Generate payloads and detect AI agent execution vi
 | Command | Description |
 |---------|-------------|
 | `generate` | Generate document(s) with hidden prompt injection payloads |
+| `probe` | Probe a model endpoint for IPI susceptibility |
 | `techniques` | List all available hiding techniques |
 | `formats` | List supported output formats |
 | `listen` | Start the callback listener server |
@@ -84,6 +85,83 @@ qai ipi generate http://localhost:8080 \
 qai ipi generate http://localhost:8080 \
   --technique all \
   --seed 42
+```
+</CodeGroup>
+
+---
+
+## probe
+
+Probe a model endpoint for indirect prompt injection susceptibility.
+
+```bash
+qai ipi probe [ENDPOINT_URL] [OPTIONS]
+```
+
+ENDPOINT_URL is the OpenAI-compatible API base URL (e.g., `http://localhost:8000/v1`). It can be provided as the first positional argument or via `--endpoint`. The service appends `/chat/completions` automatically.
+
+Runs 20 built-in probes across 8 IPI categories against the target model, using canary-based scoring to measure compliance. Results are persisted to the database and can be exported in scored-prompts JSON format for import into other qai workflows.
+
+<Note>
+Self-hosted endpoints only. This command is designed for testing models you control on your own infrastructure (e.g., vLLM on RunPod). See the [Inference Provider Strategy](/concepts) for rationale.
+</Note>
+
+### Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `ENDPOINT_URL` | positional | Yes | — | API base URL (prompted interactively if omitted) |
+| `--model`, `-m` | TEXT | Yes | — | Model name for chat completions |
+| `--api-key` | TEXT | No | `$QAI_PROBE_API_KEY` | Bearer token for the endpoint |
+| `--target`, `-t` | TEXT | No | — | Target ID to associate results with |
+| `--temperature` | FLOAT | No | `0.0` | Sampling temperature |
+| `--concurrency` | INT | No | `1` | Max parallel requests |
+| `--probe-set` | PATH | No | built-in | Custom probe YAML file |
+| `--export` | PATH | No | — | Export results to scored-prompts JSON |
+| `--dry-run` | FLAG | No | `false` | List probes without executing |
+
+### Probe Categories
+
+The built-in probe set covers 8 IPI attack categories:
+
+| Category | Probes | Description |
+|----------|--------|-------------|
+| `instruction_override` | 4 | Direct instruction hijacking |
+| `delimiter_confusion` | 2 | Boundary/delimiter exploitation |
+| `context_manipulation` | 3 | Context framing attacks |
+| `authority_spoofing` | 2 | False authority claims |
+| `task_hijacking` | 3 | Task redirection |
+| `exfil_framing` | 2 | Data exfiltration framing |
+| `encoding` | 2 | Encoding-based evasion |
+| `subtle_injection` | 2 | Low-profile injection |
+
+### Output
+
+Results are displayed as a Rich table with per-category breakdown showing probe count, compliance count, compliance rate, and severity. The overall compliance rate and severity are shown in a summary row, along with the database run ID.
+
+### Examples
+
+<CodeGroup>
+```bash Probe a local vLLM endpoint
+qai ipi probe http://localhost:8000/v1 \
+  --model Qwen/Qwen3.5-27B \
+  --concurrency 4
+```
+
+```bash Probe with API key from environment
+export QAI_PROBE_API_KEY=sk-your-key
+qai ipi probe https://pod-id-8000.proxy.runpod.net/v1 \
+  --model google/gemma-4-31B-it
+```
+
+```bash Dry run to inspect probes
+qai ipi probe --dry-run
+```
+
+```bash Export results for benchmark import
+qai ipi probe http://localhost:8000/v1 \
+  --model my-model \
+  --export ~/.qai/exports/probe-results.json
 ```
 </CodeGroup>
 

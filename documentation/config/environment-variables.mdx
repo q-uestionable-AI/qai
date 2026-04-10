@@ -51,6 +51,18 @@ export QAI_MODEL=anthropic/claude-sonnet-4-20250514
 
 Bare model names without a provider prefix are treated as Anthropic.
 
+## IPI Probe
+
+### QAI_PROBE_API_KEY
+
+Bearer token for the `qai ipi probe` command. Used when probing OpenAI-compatible endpoints that require authentication (e.g., vLLM on RunPod with `VLLM_API_KEY` set).
+
+```bash
+export QAI_PROBE_API_KEY=sk-your-endpoint-key
+```
+
+Can also be passed directly via `--api-key` on the CLI. The CLI flag takes precedence over the environment variable.
+
 ## Credential Resolution Order
 
 qai resolves credentials in this order:
