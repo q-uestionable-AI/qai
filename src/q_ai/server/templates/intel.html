@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+{% block title %}q-ai — Intel{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-6 pt-12 lg:pt-16 pb-6 lg:pb-8">
+
+    {# ── Page header ── #}
+    <div style="margin-bottom: 2rem; text-align: center;">
+        <h1 class="font-mono text-2xl font-bold" style="color: #a78bfa; letter-spacing: 0.04em;">
+            INTEL
+        </h1>
+        <p style="color: #64748b; font-size: 0.95rem; margin-top: 0.5rem;">
+            Gather intelligence on your targets — import external results or probe models directly.
+        </p>
+    </div>
+
+    {# ── Card container ── #}
+    <div class="intel-cards" style="display: flex; flex-direction: column; gap: 1.5rem; max-width: 725px; margin: 0 auto;">
+
+        {# ════════════════════════════════════════════════════════
+           Import Results Card
+           ════════════════════════════════════════════════════════ #}
+        <div class="intel-card" id="card-import">
+            <div class="intel-card-header">
+                <div class="intel-card-bar"></div>
+                <span class="intel-card-name">Import Results</span>
+            </div>
+            <p class="intel-card-desc">
+                Import findings from external tools — Garak, PyRIT, SARIF reports, scored prompts, or BIPIA benchmarks.
+            </p>
+
+            <form id="form-import" class="space-y-4" onsubmit="return false;">
+                <div class="form-control">
+                    <label class="label"><span class="label-text">File</span></label>
+                    <input type="file" name="file" required
+                           class="file-input file-input-bordered file-input-sm w-full"
+                           accept=".json,.jsonl,.csv,.sarif" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Format</span></label>
+                    <select name="format" required class="select select-bordered select-sm w-full">
+                        <option value="" disabled selected>Select format...</option>
+                        <option value="garak">Garak</option>
+                        <option value="pyrit">PyRIT</option>
+                        <option value="sarif">SARIF</option>
+                        <option value="scored">Scored Prompts</option>
+                        <option value="bipia">BIPIA Benchmark</option>
+                    </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Target (optional)</span></label>
+                    <select name="target_id" class="select select-bordered select-sm w-full">
+                        <option value="">No target</option>
+                        {% for t in targets %}
+                        <option value="{{ t.id }}">{{ t.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="flex gap-2">
+                    <button type="button" class="btn btn-sm btn-launch" onclick="importPreview()">
+                        Preview
+                    </button>
+                    <button type="button" class="btn btn-sm btn-launch" id="btn-import-commit"
+                            onclick="importCommit()" disabled>
+                        Import
+                    </button>
+                </div>
+
+                <div id="import-error" class="text-sm hidden" style="color: #f87171;"></div>
+            </form>
+
+            {# Preview results area #}
+            <div id="import-preview" class="hidden" style="margin-top: 1rem;">
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(139,92,246,0.2); border-radius: 8px; padding: 1rem;">
+                    <h3 class="font-mono text-sm font-semibold" style="color: #a78bfa; margin-bottom: 0.5rem;">Preview</h3>
+                    <div id="import-preview-body"></div>
+                </div>
+            </div>
+
+            {# Import result area #}
+            <div id="import-result" class="hidden" style="margin-top: 1rem;">
+                <div style="background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); border-radius: 8px; padding: 1rem;">
+                    <div id="import-result-body"></div>
+                </div>
+            </div>
+        </div>
+
+        {# ════════════════════════════════════════════════════════
+           Probe Model Card
+           ════════════════════════════════════════════════════════ #}
+        <div class="intel-card" id="card-probe">
+            <div class="intel-card-header">
+                <div class="intel-card-bar"></div>
+                <span class="intel-card-name">Probe Model</span>
+            </div>
+            <p class="intel-card-desc">
+                Test a model's susceptibility to indirect prompt injection via canary-based probing.
+            </p>
+
+            <form id="form-probe" class="space-y-4" onsubmit="return launchProbe(event)">
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Endpoint URL</span></label>
+                    <input type="url" name="endpoint" required
+                           placeholder="http://localhost:8000/v1"
+                           class="input input-bordered input-sm w-full" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Model</span></label>
+                    <input type="text" name="model" required
+                           placeholder="gpt-4o-mini"
+                           class="input input-bordered input-sm w-full" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">API Key (optional)</span></label>
+                    <input type="password" name="api_key"
+                           placeholder="sk-..."
+                           class="input input-bordered input-sm w-full"
+                           autocomplete="off" />
+                </div>
+
+                <div class="flex gap-4">
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Temperature</span></label>
+                        <input type="number" name="temperature" value="0.0"
+                               min="0" max="2" step="0.1"
+                               class="input input-bordered input-sm w-24" />
+                    </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Concurrency</span></label>
+                        <input type="number" name="concurrency" value="1"
+                               min="1" max="10"
+                               class="input input-bordered input-sm w-24" />
+                    </div>
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Target (optional)</span></label>
+                    <select name="target_id" class="select select-bordered select-sm w-full">
+                        <option value="">No target</option>
+                        {% for t in targets %}
+                        <option value="{{ t.id }}">{{ t.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-sm btn-launch">Launch Probes</button>
+
+                <div id="probe-error" class="text-sm hidden" style="color: #f87171;"></div>
+            </form>
+        </div>
+
+    </div>{# /intel-cards #}
+</div>
+
+<style>
+.intel-card {
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    padding: 1.5rem 2rem;
+    transition: border-color 0.2s ease;
+}
+.intel-card:hover {
+    border-color: rgba(139, 92, 246, 0.35);
+}
+.intel-card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 0.5rem;
+}
+.intel-card-bar {
+    width: 4px;
+    height: 28px;
+    border-radius: 2px;
+    background: #a78bfa;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+.intel-card-name {
+    font-family: 'Fira Code', monospace;
+    font-size: 1.05rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #a78bfa;
+}
+.intel-card-desc {
+    color: #64748b;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-bottom: 1rem;
+}
+.intel-card .btn-launch {
+    background: transparent;
+    color: #06b6d4;
+    border: 1px solid rgba(6, 182, 212, 0.4);
+    font-weight: 600;
+}
+.intel-card .btn-launch:hover:not(:disabled) {
+    background: rgba(6, 182, 212, 0.1);
+    border-color: #22d3ee;
+    color: #22d3ee;
+}
+.intel-card .btn-launch:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Preview table */
+.import-preview-table {
+    width: 100%;
+    font-size: 0.85rem;
+    border-collapse: collapse;
+}
+.import-preview-table th {
+    text-align: left;
+    color: #94a3b8;
+    font-weight: 500;
+    padding: 0.25rem 0.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.import-preview-table td {
+    padding: 0.25rem 0.5rem;
+    color: #e2e8f0;
+}
+</style>
+
+<script>
+/* ── Import: Preview ─────────────────────────────────────────── */
+async function importPreview() {
+    var form = document.getElementById('form-import');
+    var errEl = document.getElementById('import-error');
+    var previewEl = document.getElementById('import-preview');
+    var previewBody = document.getElementById('import-preview-body');
+    var resultEl = document.getElementById('import-result');
+    var commitBtn = document.getElementById('btn-import-commit');
+
+    errEl.classList.add('hidden');
+    previewEl.classList.add('hidden');
+    resultEl.classList.add('hidden');
+    commitBtn.disabled = true;
+
+    var fileInput = form.querySelector('input[name="file"]');
+    var formatSel = form.querySelector('select[name="format"]');
+
+    if (!fileInput.files.length) {
+        errEl.textContent = 'Please select a file.';
+        errEl.classList.remove('hidden');
+        return;
+    }
+    if (!formatSel.value) {
+        errEl.textContent = 'Please select a format.';
+        errEl.classList.remove('hidden');
+        return;
+    }
+
+    var fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    fd.append('format', formatSel.value);
+
+    try {
+        var resp = await fetch('/api/intel/import/preview', { method: 'POST', body: fd });
+        var data = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = data.detail || 'Preview failed';
+            errEl.classList.remove('hidden');
+            return;
+        }
+
+        /* Render preview table */
+        var html = '<table class="import-preview-table">';
+        html += '<thead><tr><th>#</th><th>Severity</th><th>Category</th><th>Title</th></tr></thead><tbody>';
+        data.findings.forEach(function(f, i) {
+            html += '<tr><td>' + (i + 1) + '</td>';
+            html += '<td>' + escapeHtml(f.severity) + '</td>';
+            html += '<td>' + escapeHtml(f.category) + '</td>';
+            html += '<td>' + escapeHtml(f.title) + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        html += '<p style="margin-top: 0.75rem; color: #94a3b8; font-size: 0.85rem;">';
+        html += '<strong>' + data.finding_count + '</strong> findings ready to import.';
+        if (data.warning_count > 0) {
+            html += ' <span style="color: #fbbf24;">' + data.warning_count + ' warning(s).</span>';
+        }
+        html += '</p>';
+
+        previewBody.innerHTML = html;
+        previewEl.classList.remove('hidden');
+        commitBtn.disabled = false;
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+    }
+}
+
+/* ── Import: Commit ──────────────────────────────────────────── */
+async function importCommit() {
+    var form = document.getElementById('form-import');
+    var errEl = document.getElementById('import-error');
+    var resultEl = document.getElementById('import-result');
+    var resultBody = document.getElementById('import-result-body');
+    var previewEl = document.getElementById('import-preview');
+    var commitBtn = document.getElementById('btn-import-commit');
+
+    errEl.classList.add('hidden');
+    resultEl.classList.add('hidden');
+    commitBtn.disabled = true;
+
+    var fileInput = form.querySelector('input[name="file"]');
+    var formatSel = form.querySelector('select[name="format"]');
+    var targetSel = form.querySelector('select[name="target_id"]');
+
+    var fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    fd.append('format', formatSel.value);
+    if (targetSel.value) {
+        fd.append('target_id', targetSel.value);
+    }
+
+    try {
+        var resp = await fetch('/api/intel/import/commit', { method: 'POST', body: fd });
+        var data = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = data.detail || 'Import failed';
+            errEl.classList.remove('hidden');
+            commitBtn.disabled = false;
+            return;
+        }
+
+        previewEl.classList.add('hidden');
+        var html = '<p style="color: #22c55e; font-weight: 600;">';
+        html += 'Imported ' + data.finding_count + ' findings.</p>';
+        html += '<p style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.25rem;">';
+        html += 'Run ID: <code style="color: #a78bfa;">' + escapeHtml(data.run_id) + '</code>';
+        html += ' &mdash; <a href="/runs?run_id=' + encodeURIComponent(data.run_id) + '" ';
+        html += 'style="color: #06b6d4;">View in Runs</a></p>';
+        if (data.warning_count > 0) {
+            html += '<p style="color: #fbbf24; font-size: 0.85rem; margin-top: 0.25rem;">';
+            html += data.warning_count + ' parse warning(s).</p>';
+        }
+        resultBody.innerHTML = html;
+        resultEl.classList.remove('hidden');
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+        commitBtn.disabled = false;
+    }
+}
+
+/* ── Probe: Launch ───────────────────────────────────────────── */
+var _probeInFlight = false;
+async function launchProbe(e) {
+    e.preventDefault();
+    if (_probeInFlight) return false;
+
+    var form = document.getElementById('form-probe');
+    var errEl = document.getElementById('probe-error');
+    var btn = form.querySelector('button[type="submit"]');
+
+    errEl.classList.add('hidden');
+    _probeInFlight = true;
+    if (btn) btn.disabled = true;
+
+    try {
+        var fd = new FormData(form);
+        var data = {};
+        for (var [key, val] of fd.entries()) {
+            data[key] = val;
+        }
+        data.temperature = parseFloat(data.temperature) || 0.0;
+        data.concurrency = parseInt(data.concurrency, 10) || 1;
+        if (!data.api_key) delete data.api_key;
+        if (!data.target_id) delete data.target_id;
+
+        var resp = await fetch('/api/intel/probe/launch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+        });
+        var result = await resp.json();
+        if (resp.ok) {
+            window.location.href = result.redirect;
+        } else {
+            errEl.textContent = result.detail || 'Probe launch failed';
+            errEl.classList.remove('hidden');
+        }
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+    } finally {
+        _probeInFlight = false;
+        if (btn) btn.disabled = false;
+    }
+    return false;
+}
+
+/* ── Utility ─────────────────────────────────────────────────── */
+function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(str || ''));
+    return div.innerHTML;
+}
+</script>
+{% endblock %}
