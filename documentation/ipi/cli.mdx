@@ -114,8 +114,8 @@ Self-hosted endpoints only. This command is designed for testing models you cont
 | `--model`, `-m` | TEXT | Yes | — | Model name for chat completions |
 | `--api-key` | TEXT | No | `$QAI_PROBE_API_KEY` | Bearer token for the endpoint |
 | `--target`, `-t` | TEXT | No | — | Target ID to associate results with |
-| `--temperature` | FLOAT | No | `0.0` | Sampling temperature |
-| `--concurrency` | INT | No | `1` | Max parallel requests |
+| `--temperature` | FLOAT | No | `0.0` | Sampling temperature. Use 0.0 for reproducible results; higher values add randomness. |
+| `--concurrency` | INT | No | `1` | Max parallel requests. Increase for faster sweeps if the endpoint supports it. |
 | `--probe-set` | PATH | No | built-in | Custom probe YAML file |
 | `--export` | PATH | No | — | Export results to scored-prompts JSON |
 | `--dry-run` | FLAG | No | `false` | List probes without executing |

@@ -38,12 +38,12 @@ Test a model endpoint directly for IPI susceptibility. This is the Web UI equiva
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| Endpoint URL | Yes | OpenAI-compatible API base URL |
+| Endpoint URL | Yes | OpenAI-compatible API base URL (e.g., `http://localhost:8000/v1`) |
 | Model | Yes | Model name for chat completions |
 | API Key | No | Bearer token (not logged or stored beyond the request) |
-| Temperature | No | Sampling temperature (default: 0.0) |
-| Concurrency | No | Max parallel requests (default: 1) |
-| Target | No | Associate results with a target |
+| Temperature | No | Sampling temperature (default: 0.0). Use 0.0 for reproducible probing results. Higher values add randomness to model responses. |
+| Concurrency | No | Max parallel requests (default: 1). Increase to 4–8 for faster sweeps on endpoints that support concurrent requests. Too high may cause rate limiting or out-of-memory errors on the target. |
+| Target | No | Associate results with a target for workflow integration |
 
 ### Workflow
 
