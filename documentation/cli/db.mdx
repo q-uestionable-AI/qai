@@ -1,0 +1,88 @@
+---
+title: "qai db"
+description: "Database management commands"
+---
+
+Database backup and reset operations.
+
+## Commands
+
+### `qai db backup`
+
+Create a backup of the database.
+
+```bash
+qai db backup [PATH]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `PATH` | Optional. Custom path for the backup file. |
+
+**Default location:** `~/.qai/backups/qai-{YYYY-MM-DD-HHMMSS}.db`
+
+**Examples:**
+
+```bash
+# Backup to default location
+qai db backup
+# Output: Backup created: /home/user/.qai/backups/qai-2025-04-10-143052.db
+
+# Backup to custom path
+qai db backup /tmp/my-backup.db
+# Output: Backup created: /tmp/my-backup.db
+```
+
+<Tip>
+Run backups before destructive operations like reset, or before upgrading q-ai versions.
+</Tip>
+
+---
+
+### `qai db reset`
+
+Reset the database to a clean state. Creates an automatic backup before deletion.
+
+```bash
+qai db reset [--yes]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--yes` | Skip confirmation prompt. |
+
+**What gets deleted:**
+
+- All scan targets
+- All runs, findings, and evidence
+- All IPI campaigns and callback hits
+
+**What's preserved:**
+
+- Provider credentials (stored in OS keyring)
+- Provider configurations
+- Default settings
+
+**Examples:**
+
+```bash
+# Interactive reset with confirmation
+qai db reset
+# Output:
+# ⚠️  This will delete all targets, runs, findings, and evidence.
+# Settings and credentials will be preserved.
+# Type RESET to confirm: RESET
+# Backup created: /home/user/.qai/backups/qai-2025-04-10-143052.db
+# Database reset complete.
+
+# Non-interactive reset
+qai db reset --yes
+```
+
+<Warning>
+Reset is irreversible. The automatic backup is your only recovery option.
+</Warning>

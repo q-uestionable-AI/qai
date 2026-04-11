@@ -1,0 +1,86 @@
+---
+title: "qai targets"
+description: "Manage scan targets"
+---
+
+Create, list, and delete scan targets — the MCP servers, platforms, or endpoints that security tests run against.
+
+## Commands
+
+### `qai targets list`
+
+List all configured targets.
+
+```bash
+qai targets list
+```
+
+Displays a table with Name, Type, URI, and ID for each target.
+
+---
+
+### `qai targets create`
+
+Create a new scan target.
+
+```bash
+qai targets create --name <NAME> --type <TYPE> [--uri <URI>]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--name` | Human-readable name for the target. |
+| `--type` | Target type: `server` (MCP server) or `platform` (agentic platform). |
+| `--uri` | Connection endpoint (optional). |
+
+---
+
+### `qai targets delete`
+
+Delete a scan target.
+
+```bash
+qai targets delete <ID> [--yes]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `ID` | Target ID. Supports partial IDs (first 8+ characters). |
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--yes` | Skip confirmation prompt. |
+
+**Behavior:**
+
+- Removes the target from the database
+- Associated runs are orphaned (their `target_id` is set to NULL)
+- Runs, findings, and evidence are **not** deleted
+
+**Examples:**
+
+```bash
+# Delete with confirmation
+qai targets delete a1b2c3d4
+# Output:
+# Delete target 'My Test Server'? Runs will be unlinked but not deleted.
+# Confirm? [y/N]: y
+# Target deleted.
+
+# Delete without confirmation
+qai targets delete a1b2c3d4 --yes
+
+# Using partial ID
+qai targets delete a1b2c3d4e5f6 --yes
+# Works with just: qai targets delete a1b2c3d4 --yes
+```
+
+<Note>
+Partial ID matching requires at least 8 characters and must be unambiguous. If multiple targets match, you'll be prompted to use a longer prefix.
+</Note>

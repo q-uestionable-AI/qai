@@ -1,0 +1,89 @@
+---
+title: "qai runs"
+description: "Manage scan runs"
+---
+
+List, inspect, and delete scan runs.
+
+## Commands
+
+### `qai runs list`
+
+List recent runs.
+
+```bash
+qai runs list [--limit N]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--limit` | 20 | Maximum number of runs to display. |
+
+Displays a table with ID, Module, Target, Status, and timestamp for each run.
+
+---
+
+### `qai runs show`
+
+Show details for a specific run.
+
+```bash
+qai runs show <ID>
+```
+
+Displays run metadata, configuration, and summary of findings.
+
+---
+
+### `qai runs delete`
+
+Delete a run and all associated data.
+
+```bash
+qai runs delete <ID> [--yes]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `ID` | Run ID. Supports partial IDs (first 8+ characters). |
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--yes` | Skip confirmation prompt. |
+
+**Cascade behavior:**
+
+Deleting a run also deletes:
+
+- All findings associated with the run
+- All evidence associated with those findings
+- IPI callback hits linked to the run (if applicable)
+
+**Examples:**
+
+```bash
+# Delete with confirmation showing impact
+qai runs delete f9e8d7c6
+# Output:
+# Delete run 'audit-2025-04-10'?
+# This will also delete 12 findings and 3 evidence items.
+# Confirm? [y/N]: y
+# Deleted run with 12 findings and 3 evidence items.
+
+# Delete without confirmation
+qai runs delete f9e8d7c6 --yes
+```
+
+<Warning>
+Run deletion is permanent. Associated findings and evidence cannot be recovered. Consider exporting results before deletion if needed for compliance or audit purposes.
+</Warning>
+
+<Note>
+Partial ID matching requires at least 8 characters. If multiple runs match the prefix, you'll be prompted to use a longer ID.
+</Note>
