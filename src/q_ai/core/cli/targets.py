@@ -1,6 +1,8 @@
 """CLI commands for managing targets."""
 
+import sys
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -12,7 +14,8 @@ from q_ai.core.cli.prompt import (
     parse_meta_flags,
     prompt_or_fail_multiple,
 )
-from q_ai.core.db import create_target, get_connection, list_targets
+from q_ai.core.db import create_target, get_connection, get_target, list_targets
+from q_ai.services.db_service import delete_target, resolve_partial_id
 
 app = typer.Typer(name="targets", help="Manage scan targets.", no_args_is_help=True)
 console = Console()
@@ -111,3 +114,56 @@ def add_cmd(
     if not all_provided and is_tty():
         tip = build_teaching_tip("qai targets add", [name, uri])
         console.print(f"[dim]{tip}[/dim]")
+
+
+@app.command("delete")
+def delete_cmd(
+    target_id: Annotated[str, typer.Argument(help="Target ID (full or partial).")],
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Skip confirmation prompt."),
+    ] = False,
+    db_path: Path | None = typer.Option(None, hidden=True),
+) -> None:
+    """Delete a target and unlink its associated runs.
+
+    Accepts a partial ID prefix (minimum 8 characters). Associated
+    runs keep their data but lose the target reference.
+
+    Args:
+        target_id: Full or partial target ID (minimum 8 characters).
+        yes: Skip the confirmation prompt.
+        db_path: Database path override (hidden, for testing).
+
+    Raises:
+        typer.Exit: If the target ID is too short, not found, or ambiguous.
+    """
+    if len(target_id) < 8:
+        console.print("[red]Error: ID prefix must be at least 8 characters.[/red]")
+        raise typer.Exit(code=1)
+
+    with get_connection(db_path) as conn:
+        try:
+            full_id = resolve_partial_id(conn, "targets", target_id)
+        except ValueError as exc:
+            console.print(f"[red]Error: {exc}[/red]")
+            raise typer.Exit(code=1) from None
+
+        target = get_target(conn, full_id)
+        if target is None:
+            console.print("[red]Error: target not found.[/red]")
+            raise typer.Exit(code=1)
+
+        if not yes:
+            if not sys.stdin.isatty():
+                console.print("[red]Error: --yes required in non-interactive mode.[/red]")
+                raise typer.Exit(code=1)
+            typer.confirm(
+                f"Delete target '{target.name}'? Associated runs will be unlinked.",
+                default=False,
+                abort=True,
+            )
+
+        orphaned = delete_target(conn, full_id)
+
+    console.print(f"Deleted target '{target.name}'. {orphaned} runs unlinked.")

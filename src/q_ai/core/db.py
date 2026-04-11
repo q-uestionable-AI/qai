@@ -715,7 +715,7 @@ def get_target(
 
 
 def list_targets(conn: sqlite3.Connection) -> list[Target]:
-    """List all targets ordered by creation date descending.
+    """List all targets ordered by name alphabetically.
 
     Args:
         conn: Active database connection.
@@ -723,7 +723,7 @@ def list_targets(conn: sqlite3.Connection) -> list[Target]:
     Returns:
         List of Target objects.
     """
-    rows = conn.execute("SELECT * FROM targets ORDER BY created_at DESC").fetchall()
+    rows = conn.execute("SELECT * FROM targets ORDER BY name COLLATE NOCASE").fetchall()
     return [Target.from_row(dict(row)) for row in rows]
 
 

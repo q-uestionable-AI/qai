@@ -1,9 +1,11 @@
 ---
-title: "Settings"
-description: "Configure providers, defaults, and MCP infrastructure"
+title: "Admin"
+description: "Configure providers, manage targets, and perform database operations"
 ---
 
-The Settings page manages LLM provider credentials, defaults, and MCP connection configuration. All settings persist in a local SQLite database with credentials stored securely in the OS keyring.
+The Admin page manages LLM provider credentials, scan targets, defaults, and database operations. All settings persist in a local SQLite database with credentials stored securely in the OS keyring.
+
+Access via the gear icon in the navigation bar, or navigate to `/admin`.
 
 ## Providers Section
 
@@ -129,6 +131,77 @@ To rotate the bridge token:
 
 A new token is generated on next startup.
 
+## Scan Targets
+
+Manage scan targets — the MCP servers, platforms, or endpoints that security tests run against.
+
+### Target Table
+
+Displays all configured targets with:
+
+- **Name**: Human-readable identifier
+- **Type**: `server` (MCP server) or `platform` (agentic platform)
+- **URI**: Connection endpoint (if configured)
+- **Delete button**: Remove the target
+
+Targets are sorted alphabetically by name.
+
+### Deleting Targets
+
+Click the trash icon to delete a target. A confirmation modal appears showing:
+
+- The target name
+- Warning that associated runs will be orphaned (not deleted)
+
+Deleting a target sets `target_id` to NULL on associated runs. The runs themselves remain accessible with their findings and evidence intact.
+
+<Note>
+Use target deletion to clean up test targets or remove duplicates. Historical run data is preserved for audit purposes.
+</Note>
+
+## Database
+
+Database management operations for backup and reset.
+
+### Backup
+
+Click **Create Backup** to create a snapshot of the database. Backups are saved to `~/.qai/backups/` with timestamped filenames:
+
+```
+~/.qai/backups/qai-2025-04-10-143052.db
+```
+
+A success toast shows the backup path. Use backups before destructive operations or when migrating to a new machine.
+
+<Tip>
+You can also create backups via CLI: `qai db backup` or `qai db backup /custom/path.db`
+</Tip>
+
+### Danger Zone
+
+The Danger Zone contains destructive operations that require explicit confirmation.
+
+#### Reset Database
+
+Resets the database to a clean state. Before resetting:
+
+1. An automatic backup is created
+2. You must type `RESET` to confirm
+
+**What gets deleted:**
+- All scan targets
+- All runs, findings, and evidence
+- All IPI campaigns and callback hits
+
+**What's preserved:**
+- Provider credentials (stored in OS keyring)
+- Provider configurations
+- Default settings
+
+<Warning>
+Reset is irreversible. The automatic backup is your safety net — verify it exists before proceeding.
+</Warning>
+
 ## Data Persistence
 
 All settings are stored in the local SQLite database (`~/.qai/qai.db`). This includes:
@@ -139,7 +212,9 @@ All settings are stored in the local SQLite database (`~/.qai/qai.db`). This inc
 
 ### Backing Up Settings
 
-Stop the qai server before copying the database to ensure a consistent snapshot:
+The easiest way to back up is via the Admin page's **Create Backup** button or `qai db backup` CLI command.
+
+For manual backup (e.g., scripted or when the server isn't running), stop the server and copy all database files:
 
 ```bash
 # Stop the server first (Ctrl+C in the terminal, or kill the process)
@@ -196,7 +271,9 @@ Example workflow:
 
 ## Resetting Settings
 
-To completely reset settings:
+The Admin page's **Reset Database** button in the Danger Zone provides a safe reset with automatic backup. You can also use `qai db reset` from the CLI.
+
+For a complete manual reset:
 
 1. Remove the settings database: `rm ~/.qai/qai.db`
 2. Restart the server: `qai`

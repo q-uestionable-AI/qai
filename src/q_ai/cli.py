@@ -12,6 +12,7 @@ from q_ai.assist.cli import app as assist_app
 from q_ai.audit.cli import app as audit_app
 from q_ai.chain.cli import app as chain_app
 from q_ai.core.cli.config import app as config_app
+from q_ai.core.cli.db import app as db_app
 from q_ai.core.cli.findings import app as findings_app
 from q_ai.core.cli.runs import app as runs_app
 from q_ai.core.cli.targets import app as targets_app
@@ -253,6 +254,7 @@ app.command("import", help="Import findings from external tools.", rich_help_pan
     import_cmd
 )
 app.add_typer(config_app, rich_help_panel="Manage")
+app.add_typer(db_app, rich_help_panel="Manage")
 app.add_typer(
     assist_app, name="assist", help="AI assistant — guidance and results.", rich_help_panel="Manage"
 )

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -10,6 +12,7 @@ from rich.table import Table
 
 from q_ai.core.db import get_connection, list_runs
 from q_ai.core.models import RunStatus
+from q_ai.services.db_service import delete_run, resolve_partial_id
 
 app = typer.Typer(name="runs", help="Manage scan runs.", no_args_is_help=True)
 console = Console()
@@ -44,3 +47,65 @@ def list_cmd(
             str(run.started_at or ""),
         )
     console.print(table)
+
+
+@app.command("delete")
+def delete_cmd(
+    run_id: Annotated[str, typer.Argument(help="Run ID (full or partial).")],
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Skip confirmation prompt."),
+    ] = False,
+    db_path: Path | None = typer.Option(None, hidden=True),
+) -> None:
+    """Delete a run and its associated findings and evidence.
+
+    Accepts a partial ID prefix (minimum 8 characters).
+
+    Args:
+        run_id: Full or partial run ID (minimum 8 characters).
+        yes: Skip the confirmation prompt.
+        db_path: Database path override (hidden, for testing).
+
+    Raises:
+        typer.Exit: If the run ID is too short, not found, or ambiguous.
+    """
+    if len(run_id) < 8:
+        console.print("[red]Error: ID prefix must be at least 8 characters.[/red]")
+        raise typer.Exit(code=1)
+
+    with get_connection(db_path) as conn:
+        try:
+            full_id = resolve_partial_id(conn, "runs", run_id)
+        except ValueError as exc:
+            console.print(f"[red]Error: {exc}[/red]")
+            raise typer.Exit(code=1) from None
+
+        # Preview counts for the confirmation prompt
+        findings_count: int = conn.execute(
+            "SELECT COUNT(*) FROM findings WHERE run_id = ?", (full_id,)
+        ).fetchone()[0]
+        evidence_count: int = conn.execute(
+            "SELECT COUNT(*) FROM evidence WHERE run_id = ? "
+            "OR finding_id IN (SELECT id FROM findings WHERE run_id = ?)",
+            (full_id, full_id),
+        ).fetchone()[0]
+
+        if not yes:
+            if not sys.stdin.isatty():
+                console.print("[red]Error: --yes required in non-interactive mode.[/red]")
+                raise typer.Exit(code=1)
+            typer.confirm(
+                f"Delete run '{full_id[:8]}'? This will delete "
+                f"{findings_count} findings and {evidence_count} evidence records.",
+                default=False,
+                abort=True,
+            )
+
+        result = delete_run(conn, full_id)
+
+    console.print(
+        f"Deleted run '{full_id[:8]}' with "
+        f"{result['findings_deleted']} findings and "
+        f"{result['evidence_deleted']} evidence records."
+    )

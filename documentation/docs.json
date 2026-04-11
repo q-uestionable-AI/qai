@@ -37,7 +37,7 @@
           "web-ui/launcher",
           "web-ui/runs",
           "web-ui/intel",
-          "web-ui/settings"
+          "web-ui/admin"
         ]
       },
       {
@@ -145,6 +145,14 @@
           "config/callback-server",
           "config/dangerous-payloads",
           "config/environment-variables"
+        ]
+      },
+      {
+        "group": "Database & Targets",
+        "pages": [
+          "cli/db",
+          "cli/targets",
+          "cli/runs"
         ]
       },
       {

@@ -196,7 +196,7 @@
         };
 
         function saveSettings() {
-            return fetch("/api/settings/defaults", {
+            return fetch("/api/admin/defaults", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify(settingsData)
@@ -205,7 +205,7 @@
 
         function saveCredential() {
             if (!apiKey) return Promise.resolve({status: "saved"});
-            return fetch("/api/settings/assist/credential", {
+            return fetch("/api/admin/assist/credential", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({provider: provider, api_key: apiKey})
