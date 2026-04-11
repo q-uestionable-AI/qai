@@ -60,13 +60,20 @@ def delete_cmd(
 ) -> None:
     """Delete a run and its associated findings and evidence.
 
-    Accepts a partial ID prefix (e.g. first 8 characters).
+    Accepts a partial ID prefix (minimum 8 characters).
 
     Args:
-        run_id: Full or partial run ID.
+        run_id: Full or partial run ID (minimum 8 characters).
         yes: Skip the confirmation prompt.
         db_path: Database path override (hidden, for testing).
+
+    Raises:
+        typer.Exit: If the run ID is too short, not found, or ambiguous.
     """
+    if len(run_id) < 8:
+        console.print("[red]Error: ID prefix must be at least 8 characters.[/red]")
+        raise typer.Exit(code=1)
+
     with get_connection(db_path) as conn:
         try:
             full_id = resolve_partial_id(conn, "runs", run_id)

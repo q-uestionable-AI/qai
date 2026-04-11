@@ -139,7 +139,9 @@ function showToast(message, type) {
     if (type === 'success') alert.className += ' alert-success';
     else if (type === 'error') alert.className += ' alert-error';
     else alert.className += ' alert-info';
-    alert.innerHTML = '<span>' + message + '</span>';
+    var span = document.createElement('span');
+    span.textContent = message;
+    alert.appendChild(span);
     container.appendChild(alert);
     setTimeout(function() { alert.remove(); }, 4000);
 }

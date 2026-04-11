@@ -18,6 +18,8 @@ from q_ai.services.db_service import (
 
 
 class TestBackupDatabase:
+    """Tests for backup_database service function."""
+
     def test_backup_database_default_path(self, db: sqlite3.Connection, tmp_path: Path) -> None:
         """Backup with no output_path creates a timestamped file in ~/.qai/backups/."""
         db_file = tmp_path / "test.db"
@@ -40,6 +42,8 @@ class TestBackupDatabase:
 
 
 class TestResetDatabase:
+    """Tests for reset_database service function."""
+
     def test_reset_database_clears_data(self, db: sqlite3.Connection, tmp_path: Path) -> None:
         """Reset deletes all records from operational tables."""
         target_id = create_target(db, type="server", name="t1", uri="http://x")
@@ -89,6 +93,8 @@ class TestResetDatabase:
 
 
 class TestDeleteTarget:
+    """Tests for delete_target service function."""
+
     def test_delete_target_orphans_runs(self, db: sqlite3.Connection) -> None:
         """Deleting a target nullifies target_id on associated runs."""
         target_id = create_target(db, type="server", name="t1", uri="http://x")
@@ -116,6 +122,8 @@ class TestDeleteTarget:
 
 
 class TestDeleteRun:
+    """Tests for delete_run service function."""
+
     def test_delete_run_cascades(self, db: sqlite3.Connection) -> None:
         """Deleting a run removes its findings and evidence."""
         run_id = create_run(db, module="audit")

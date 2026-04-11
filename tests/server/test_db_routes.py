@@ -26,6 +26,8 @@ def _seed_run(db_path: Path, target_id: str | None = None) -> str:
 
 
 class TestDeleteTargetAPI:
+    """Tests for DELETE /api/targets/{id} endpoint."""
+
     def test_delete_target_api(self, client: TestClient, tmp_db: Path) -> None:
         """DELETE /api/targets/{id} removes the target."""
         tid = _seed_target(tmp_db)
@@ -43,6 +45,8 @@ class TestDeleteTargetAPI:
 
 
 class TestDeleteRunAPI:
+    """Tests for DELETE /api/runs/{id} endpoint."""
+
     def test_delete_run_api(self, client: TestClient, tmp_db: Path) -> None:
         """DELETE /api/runs/{id} removes the run."""
         rid = _seed_run(tmp_db)
@@ -56,6 +60,8 @@ class TestDeleteRunAPI:
 
 
 class TestBackupAPI:
+    """Tests for POST /api/db/backup endpoint."""
+
     def test_backup_api(self, client: TestClient, tmp_db: Path) -> None:
         """POST /api/db/backup creates a backup file."""
         resp = client.post("/api/db/backup")
@@ -69,6 +75,8 @@ class TestBackupAPI:
 
 
 class TestResetAPI:
+    """Tests for POST /api/db/reset endpoint."""
+
     def test_reset_api(self, client: TestClient, tmp_db: Path) -> None:
         """POST /api/db/reset clears data and returns backup path."""
         tid = _seed_target(tmp_db)

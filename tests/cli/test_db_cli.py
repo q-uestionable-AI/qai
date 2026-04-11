@@ -17,6 +17,8 @@ runner = CliRunner()
 
 
 class TestDbBackup:
+    """Tests for qai db backup command."""
+
     def test_db_backup(self, tmp_path: Path) -> None:
         """qai db backup creates a backup file."""
         db_path = tmp_path / "qai.db"
@@ -31,6 +33,8 @@ class TestDbBackup:
 
 
 class TestDbReset:
+    """Tests for qai db reset command."""
+
     def test_db_reset_with_yes(self, tmp_path: Path) -> None:
         """qai db reset --yes clears data and reports completion."""
         db_path = tmp_path / "qai.db"

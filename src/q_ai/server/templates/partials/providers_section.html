@@ -264,7 +264,7 @@ function saveInlineEdit(name) {
 function checkProviderStatus(name) {
     var badge = document.getElementById("status-" + name);
     if (!badge) return;
-    fetch("/api/admin/providers/" + name + "/test")
+    fetch("/api/admin/providers/" + encodeURIComponent(name) + "/test")
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (d.status === "ok") {
@@ -300,7 +300,7 @@ if (!window._providerSwapBound) {
 /* ── Delete provider ── */
 function deleteProvider(name) {
     if (!confirm("Delete provider " + name + "?")) return;
-    fetch("/api/admin/providers/" + name, {method: "DELETE"})
+    fetch("/api/admin/providers/" + encodeURIComponent(name), {method: "DELETE"})
         .then(function(r) { return r.json(); }).then(function() {
             htmx.ajax("GET", "/admin", {target: "#providers", select: "#providers"});
         });

@@ -58,7 +58,7 @@ def reset_database(
 ) -> Path | None:
     """Delete all operational data while preserving settings.
 
-    Clears: ipi_hits, ipi_campaigns, evidence, findings, runs, targets.
+    Clears: ipi_hits, ipi_payloads, evidence, findings, runs, targets.
     Preserves: settings, schema_version.
 
     Args:

@@ -19,6 +19,8 @@ runner = CliRunner()
 
 
 class TestRunsDelete:
+    """Tests for qai runs delete command."""
+
     def test_runs_delete_with_yes(self, tmp_path: Path) -> None:
         """qai runs delete --yes removes the run."""
         db_path = tmp_path / "qai.db"
