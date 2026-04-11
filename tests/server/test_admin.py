@@ -55,7 +55,7 @@ class TestAdminPage:
             conn.close()
 
         with patch("q_ai.server.routes.get_credential", return_value=None):
-            resp = client.get("/settings")
+            resp = client.get("/admin")
         body = resp.text
         assert "assist-display" in body
         assert "Ollama" in body
@@ -81,15 +81,15 @@ class TestProvidersTableRendering:
             conn.close()
 
         with patch("q_ai.server.routes.get_credential", return_value=None):
-            resp = client.get("/settings")
+            resp = client.get("/admin")
         body = resp.text
         assert 'id="row-ollama"' in body
         assert "Ollama" in body
 
-    def test_settings_page_has_inline_edit_and_status_check(self, client: TestClient) -> None:
-        """Settings page JS includes inline edit and auto-status-check functions."""
+    def test_admin_page_has_inline_edit_and_status_check(self, client: TestClient) -> None:
+        """Admin page JS includes inline edit and auto-status-check functions."""
         with patch("q_ai.server.routes.get_credential", return_value=None):
-            resp = client.get("/settings")
+            resp = client.get("/admin")
         body = resp.text
         assert "editProviderInline" in body
         assert "checkAllProviderStatuses" in body
@@ -97,7 +97,7 @@ class TestProvidersTableRendering:
     def test_add_provider_divider_text(self, client: TestClient) -> None:
         """Bottom form divider says 'Add Provider' not 'Add / Edit Provider'."""
         with patch("q_ai.server.routes.get_credential", return_value=None):
-            resp = client.get("/settings")
+            resp = client.get("/admin")
         assert "Add Provider" in resp.text
         assert "Add / Edit Provider" not in resp.text
 
