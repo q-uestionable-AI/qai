@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,9 +9,21 @@ from pathlib import Path
 _BACKUPS_DIR = Path.home() / ".qai" / "backups"
 
 # Tables cleared by reset_database (order matters for FK constraints).
+# Child tables must be deleted before parent tables.
 _RESET_TABLES = (
+    # IPI module
     "ipi_hits",
     "ipi_payloads",
+    # Chain module (step_outputs → executions → runs)
+    "chain_step_outputs",
+    "chain_executions",
+    # Other module tables with run_id FK
+    "cxp_test_results",
+    "rxp_validations",
+    "audit_scans",
+    "inject_results",
+    "proxy_sessions",
+    # Core tables
     "evidence",
     "findings",
     "runs",
@@ -46,7 +57,15 @@ def backup_database(
         output_path = _BACKUPS_DIR / f"qai-{stamp}.db"
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(str(db_path), str(output_path))
+    # Use SQLite backup API for WAL-safe backup (shutil.copy2 would miss -wal/-shm)
+    # Explicit close() required on Windows to release file handles
+    src = sqlite3.connect(str(db_path))
+    dst = sqlite3.connect(str(output_path))
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
     return output_path
 
 
@@ -149,6 +168,14 @@ def delete_run(
     ).fetchone()[0]
 
     # Delete in FK-safe order
+    # First, recursively delete child runs to avoid FK violation on parent_run_id
+    child_ids = [
+        r[0]
+        for r in conn.execute("SELECT id FROM runs WHERE parent_run_id = ?", (run_id,)).fetchall()
+    ]
+    for child_id in child_ids:
+        delete_run(conn, child_id)
+
     conn.execute(
         "DELETE FROM evidence WHERE finding_id IN (SELECT id FROM findings WHERE run_id = ?)",
         (run_id,),

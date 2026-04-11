@@ -47,7 +47,7 @@
                         </td>
                         <td>
                             <button class="btn btn-ghost btn-xs opacity-40 hover:opacity-100 hover:text-error"
-                                    onclick="confirmDeleteTarget('{{ t.id }}', '{{ t.name | e }}')"
+                                    onclick='confirmDeleteTarget({{ t.id | tojson }}, {{ t.name | tojson }})'
                                     title="Delete target">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                      stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
@@ -152,7 +152,7 @@ function confirmDeleteTarget(targetId, targetName) {
         "Delete target '" + targetName + "'? Associated runs will be unlinked but not deleted.";
     var btn = document.getElementById('delete-target-confirm');
     btn.onclick = function() {
-        fetch('/api/targets/' + targetId, { method: 'DELETE' })
+        fetch('/api/targets/' + encodeURIComponent(targetId), { method: 'DELETE' })
             .then(function(resp) {
                 if (resp.ok) {
                     modal.close();
@@ -219,9 +219,9 @@ function executeReset() {
         })
         .catch(function() { showToast('Network error', 'error'); })
         .finally(function() {
-            btn.disabled = false;
-            btn.textContent = 'Confirm Reset';
             document.getElementById('reset-confirm-input').value = '';
+            btn.textContent = 'Confirm Reset';
+            btn.disabled = true;
         });
 }
 </script>
