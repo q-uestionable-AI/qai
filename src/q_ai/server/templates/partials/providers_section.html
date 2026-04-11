@@ -159,7 +159,7 @@ function addProvider(e) {
     var base_url = document.getElementById("provider-base-url").value;
     var msg = document.getElementById("add-provider-msg");
     if (!provider) { msg.textContent = "Select a provider"; return false; }
-    fetch("/api/settings/providers", {
+    fetch("/api/admin/providers", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({provider: provider, api_key: api_key, base_url: base_url})
@@ -167,7 +167,7 @@ function addProvider(e) {
         if (d.status === "ok") {
             msg.className = "text-xs text-success";
             msg.textContent = "Saved";
-            htmx.ajax("GET", "/settings", {target: "#providers", select: "#providers"});
+            htmx.ajax("GET", "/admin", {target: "#providers", select: "#providers"});
         } else {
             msg.className = "text-xs text-error";
             msg.textContent = d.detail || "Error";
@@ -241,7 +241,7 @@ function saveInlineEdit(name) {
     var keyVal = api_key ? api_key.value.trim() : "";
     var urlVal = base_url ? base_url.value.trim() : "";
 
-    fetch("/api/settings/providers", {
+    fetch("/api/admin/providers", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({provider: name, api_key: keyVal, base_url: urlVal})
@@ -249,7 +249,7 @@ function saveInlineEdit(name) {
         if (d.status === "ok") {
             msg.className = "text-xs text-success";
             msg.textContent = "Saved";
-            htmx.ajax("GET", "/settings", {target: "#providers", select: "#providers"});
+            htmx.ajax("GET", "/admin", {target: "#providers", select: "#providers"});
         } else {
             msg.className = "text-xs text-error";
             msg.textContent = d.detail || "Error";
@@ -264,7 +264,7 @@ function saveInlineEdit(name) {
 function checkProviderStatus(name) {
     var badge = document.getElementById("status-" + name);
     if (!badge) return;
-    fetch("/api/settings/providers/" + name + "/test")
+    fetch("/api/admin/providers/" + name + "/test")
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (d.status === "ok") {
@@ -300,9 +300,9 @@ if (!window._providerSwapBound) {
 /* ── Delete provider ── */
 function deleteProvider(name) {
     if (!confirm("Delete provider " + name + "?")) return;
-    fetch("/api/settings/providers/" + name, {method: "DELETE"})
+    fetch("/api/admin/providers/" + name, {method: "DELETE"})
         .then(function(r) { return r.json(); }).then(function() {
-            htmx.ajax("GET", "/settings", {target: "#providers", select: "#providers"});
+            htmx.ajax("GET", "/admin", {target: "#providers", select: "#providers"});
         });
 }
 
@@ -314,7 +314,7 @@ function saveDefaults(e) {
     new FormData(form).forEach(function(v, k) { data[k] = v; });
 
     var msg = document.getElementById("defaults-msg");
-    fetch("/api/settings/defaults", {
+    fetch("/api/admin/defaults", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(data)

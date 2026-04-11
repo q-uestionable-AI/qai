@@ -23,6 +23,7 @@ from q_ai.audit.reporting.ndjson_report import generate_ndjson_report
 from q_ai.audit.scanner.registry import list_scanner_names
 from q_ai.core.config import delete_credential, get_credential, set_credential
 from q_ai.core.db import (
+    _DEFAULT_DB_PATH,
     create_target,
     delete_run_cascade,
     export_run_bundle,
@@ -49,7 +50,7 @@ from q_ai.cxp.formats import list_formats as list_cxp_formats
 from q_ai.inject.models import InjectionTechnique
 from q_ai.orchestrator.registry import get_workflow, list_workflows
 from q_ai.orchestrator.runner import WorkflowRunner
-from q_ai.services import finding_service, run_service
+from q_ai.services import db_service, finding_service, run_service
 
 logger = logging.getLogger(__name__)
 
@@ -2380,13 +2381,13 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
-# Settings routes
+# Admin routes
 # ---------------------------------------------------------------------------
 
 
-@router.get("/settings")
-async def settings_page(request: Request) -> HTMLResponse:
-    """Render the settings page."""
+@router.get("/admin")
+async def admin_page(request: Request) -> HTMLResponse:
+    """Render the admin page."""
     templates = _get_templates(request)
     providers_status = _get_providers_status(request)
     db_path = _get_db_path(request)
@@ -2399,6 +2400,7 @@ async def settings_page(request: Request) -> HTMLResponse:
         assist_base_url = get_setting(conn, "assist.base_url") or ""
         assist_provider = get_setting(conn, "assist.provider") or ""
         assist_model = get_setting(conn, "assist.model") or ""
+        targets = list_targets(conn)
 
     assist_provider_label = ""
     if assist_provider and assist_provider in PROVIDERS:
@@ -2406,9 +2408,9 @@ async def settings_page(request: Request) -> HTMLResponse:
 
     return templates.TemplateResponse(
         request,
-        "settings.html",
+        "admin.html",
         {
-            "active": "settings",
+            "active": "admin",
             "providers_status": providers_status,
             "assist_providers": _get_assist_provider_choices(),
             "defaults": defaults,
@@ -2416,17 +2418,18 @@ async def settings_page(request: Request) -> HTMLResponse:
             "assist_provider": assist_provider,
             "assist_model": assist_model,
             "assist_provider_label": assist_provider_label,
+            "targets": targets,
         },
     )
 
 
-@router.get("/api/settings/providers")
+@router.get("/api/admin/providers")
 async def api_list_providers(request: Request) -> JSONResponse:
     """List configured providers with status."""
     return JSONResponse(content={"providers": _get_providers_status(request)})
 
 
-@router.post("/api/settings/providers")
+@router.post("/api/admin/providers")
 async def api_add_provider(request: Request) -> JSONResponse:
     """Add a provider -- key to keyring, base_url to DB settings."""
     body = await request.json()
@@ -2477,7 +2480,7 @@ async def api_add_provider(request: Request) -> JSONResponse:
     )
 
 
-@router.delete("/api/settings/providers/{provider}")
+@router.delete("/api/admin/providers/{provider}")
 async def api_delete_provider(request: Request, provider: str) -> JSONResponse:
     """Delete a provider -- remove from keyring and DB."""
     provider = provider.strip().lower()
@@ -2613,7 +2616,7 @@ async def _test_cloud_provider(provider: str) -> JSONResponse:
     return JSONResponse(content=result)
 
 
-@router.get("/api/settings/providers/{provider}/test")
+@router.get("/api/admin/providers/{provider}/test")
 async def api_test_provider(request: Request, provider: str) -> JSONResponse:
     """Test provider connectivity with a minimal check."""
     local_providers = {"ollama", "lmstudio", "custom"}
@@ -2624,7 +2627,7 @@ async def api_test_provider(request: Request, provider: str) -> JSONResponse:
     return await _test_cloud_provider(provider)
 
 
-@router.get("/api/settings/defaults")
+@router.get("/api/admin/defaults")
 async def api_get_defaults(request: Request) -> JSONResponse:
     """Get default settings."""
     db_path = _get_db_path(request)
@@ -2639,7 +2642,7 @@ async def api_get_defaults(request: Request) -> JSONResponse:
     return JSONResponse(content=defaults)
 
 
-@router.post("/api/settings/defaults")
+@router.post("/api/admin/defaults")
 async def api_save_defaults(request: Request) -> JSONResponse:
     """Save default settings to DB."""
     body = await request.json()
@@ -2659,7 +2662,7 @@ async def api_save_defaults(request: Request) -> JSONResponse:
     return JSONResponse(content={"status": "saved"})
 
 
-@router.post("/api/settings/assist/credential")
+@router.post("/api/admin/assist/credential")
 async def api_save_assist_credential(request: Request) -> JSONResponse:
     """Save an API key for the assistant's provider (namespaced keyring)."""
     body = await request.json()
@@ -4114,3 +4117,108 @@ async def api_runs_proxy_messages(
             "direction_filter": direction,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Database management routes
+# ---------------------------------------------------------------------------
+
+
+def _sync_delete_target(db_path: Path | None, target_id: str) -> int:
+    """Delete a target and orphan its runs (blocking).
+
+    Args:
+        db_path: Path to the SQLite database.
+        target_id: Full UUID of the target.
+
+    Returns:
+        Count of orphaned runs.
+
+    Raises:
+        ValueError: If target_id does not exist.
+    """
+    with get_connection(db_path) as conn:
+        return db_service.delete_target(conn, target_id)
+
+
+@router.delete("/api/targets/{target_id}", response_model=None)
+async def api_delete_target(request: Request, target_id: str) -> JSONResponse:
+    """Delete a target and orphan its associated runs.
+
+    Args:
+        request: The incoming HTTP request.
+        target_id: Full UUID of the target to delete.
+
+    Returns:
+        JSON with status and orphaned_runs count, or 404.
+    """
+    db_path = _get_db_path(request)
+    try:
+        orphaned = await asyncio.to_thread(_sync_delete_target, db_path, target_id)
+    except ValueError:
+        return JSONResponse(status_code=404, content={"detail": "Target not found"})
+    return JSONResponse(content={"status": "deleted", "orphaned_runs": orphaned})
+
+
+def _sync_backup_database(db_path: Path | None) -> str:
+    """Create a database backup (blocking).
+
+    Args:
+        db_path: Path to the SQLite database.
+
+    Returns:
+        String path to the created backup file.
+    """
+    source = db_path or _DEFAULT_DB_PATH
+    result = db_service.backup_database(source)
+    return str(result)
+
+
+@router.post("/api/db/backup", response_model=None)
+async def api_db_backup(request: Request) -> JSONResponse:
+    """Create a backup of the database.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        JSON with status and backup path.
+    """
+    db_path = _get_db_path(request)
+    try:
+        path = await asyncio.to_thread(_sync_backup_database, db_path)
+    except FileNotFoundError:
+        return JSONResponse(status_code=404, content={"detail": "Database file not found"})
+    return JSONResponse(content={"status": "created", "path": path})
+
+
+def _sync_reset_database(db_path: Path | None) -> str | None:
+    """Reset the database (blocking).
+
+    Args:
+        db_path: Path to the SQLite database.
+
+    Returns:
+        String path to the backup file, or None.
+    """
+    source = db_path or _DEFAULT_DB_PATH
+    with get_connection(db_path) as conn:
+        backup_path = db_service.reset_database(conn, source)
+    return str(backup_path) if backup_path else None
+
+
+@router.post("/api/db/reset", response_model=None)
+async def api_db_reset(request: Request) -> JSONResponse:
+    """Reset the database — delete all operational data.
+
+    Settings and credentials are preserved. A backup is created first.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        JSON with status and backup_path.
+    """
+    db_path = _get_db_path(request)
+    backup_path = await asyncio.to_thread(_sync_reset_database, db_path)
+    return JSONResponse(content={"status": "reset", "backup_path": backup_path})
