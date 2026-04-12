@@ -43,8 +43,7 @@ Thumbs.db
 
 # uv
 uv.lock
-# Codex
-AGENTS.md
+
 # Claude Code
 .claude/
 CLAUDE.md
