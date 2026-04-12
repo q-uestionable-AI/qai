@@ -86,8 +86,34 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
-    from q_ai.server.routes import router
+    from q_ai.server.routes import (
+        admin,
+        assist,
+        db_ops,
+        intel,
+        internal,
+        runs,
+        websocket,
+        workflows,
+    )
+    from q_ai.server.routes.modules import audit, chain, cxp, ipi, proxy, rxp
 
-    app.include_router(router)
+    for module in (
+        runs,
+        workflows,
+        admin,
+        db_ops,
+        intel,
+        assist,
+        websocket,
+        internal,
+        audit,
+        chain,
+        cxp,
+        ipi,
+        proxy,
+        rxp,
+    ):
+        app.include_router(module.router)
 
     return app

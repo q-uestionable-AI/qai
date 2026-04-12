@@ -71,8 +71,8 @@ class TestDuplicateTargetName:
             "rounds": 1,
         }
         with (
-            patch("q_ai.server.routes.get_credential", return_value="test-key"),
-            patch("q_ai.server.routes.get_workflow") as mock_get_wf,
+            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
         ):
             mock_get_wf.return_value.executor = AsyncMock()
             mock_get_wf.return_value.id = "assess"

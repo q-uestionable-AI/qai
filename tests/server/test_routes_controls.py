@@ -37,7 +37,7 @@ class TestAssessConfigTechniques:
     """Assess config builder extracts technique and check selections."""
 
     def test_assess_config_includes_techniques_when_provided(self) -> None:
-        from q_ai.server.routes import _build_assess_config
+        from q_ai.server.routes.workflows import _build_assess_config
 
         body = {
             "transport": "stdio",
@@ -50,7 +50,7 @@ class TestAssessConfigTechniques:
         assert result["inject"]["techniques"] == ["description_poisoning", "output_injection"]
 
     def test_assess_config_defaults_techniques_to_none(self) -> None:
-        from q_ai.server.routes import _build_assess_config
+        from q_ai.server.routes.workflows import _build_assess_config
 
         body = {
             "transport": "stdio",
@@ -62,7 +62,7 @@ class TestAssessConfigTechniques:
         assert result["inject"]["techniques"] is None
 
     def test_assess_config_includes_payload_names_when_provided(self) -> None:
-        from q_ai.server.routes import _build_assess_config
+        from q_ai.server.routes.workflows import _build_assess_config
 
         body = {
             "transport": "stdio",
@@ -78,7 +78,7 @@ class TestAssessConfigTechniques:
         ]
 
     def test_assess_config_includes_checks_when_provided(self) -> None:
-        from q_ai.server.routes import _build_assess_config
+        from q_ai.server.routes.workflows import _build_assess_config
 
         body = {
             "transport": "stdio",
@@ -91,7 +91,7 @@ class TestAssessConfigTechniques:
         assert result["audit"]["checks"] == ["injection", "auth"]
 
     def test_assess_config_defaults_checks_to_none(self) -> None:
-        from q_ai.server.routes import _build_assess_config
+        from q_ai.server.routes.workflows import _build_assess_config
 
         body = {
             "transport": "stdio",
@@ -104,7 +104,7 @@ class TestAssessConfigTechniques:
 
     def test_assess_config_preserves_empty_techniques_list(self) -> None:
         """Empty techniques list is preserved (not collapsed to None)."""
-        from q_ai.server.routes import _build_assess_config
+        from q_ai.server.routes.workflows import _build_assess_config
 
         body = {
             "transport": "stdio",
@@ -118,7 +118,7 @@ class TestAssessConfigTechniques:
 
     def test_assess_config_preserves_empty_checks_list(self) -> None:
         """Empty checks list is preserved (not collapsed to None)."""
-        from q_ai.server.routes import _build_assess_config
+        from q_ai.server.routes.workflows import _build_assess_config
 
         body = {
             "transport": "stdio",
@@ -135,7 +135,7 @@ class TestQuickActionConfigTechniques:
     """Quick action config builder passes techniques and checks."""
 
     def test_campaign_config_includes_techniques(self) -> None:
-        from q_ai.server.routes import _build_quick_action_config
+        from q_ai.server.routes.workflows import _build_quick_action_config
 
         body = {
             "transport": "stdio",
@@ -148,7 +148,7 @@ class TestQuickActionConfigTechniques:
         assert config["techniques"] == ["description_poisoning"]
 
     def test_campaign_config_defaults_techniques_to_none(self) -> None:
-        from q_ai.server.routes import _build_quick_action_config
+        from q_ai.server.routes.workflows import _build_quick_action_config
 
         body = {
             "transport": "stdio",
@@ -160,7 +160,7 @@ class TestQuickActionConfigTechniques:
         assert config.get("techniques") is None
 
     def test_scan_config_includes_checks(self) -> None:
-        from q_ai.server.routes import _build_quick_action_config
+        from q_ai.server.routes.workflows import _build_quick_action_config
 
         body = {
             "transport": "stdio",
@@ -171,7 +171,7 @@ class TestQuickActionConfigTechniques:
         assert config["checks"] == ["injection", "auth", "permissions"]
 
     def test_scan_config_defaults_checks_to_none(self) -> None:
-        from q_ai.server.routes import _build_quick_action_config
+        from q_ai.server.routes.workflows import _build_quick_action_config
 
         body = {
             "transport": "stdio",
@@ -182,7 +182,7 @@ class TestQuickActionConfigTechniques:
 
     def test_campaign_config_preserves_empty_techniques(self) -> None:
         """Empty techniques list is forwarded, not dropped."""
-        from q_ai.server.routes import _build_quick_action_config
+        from q_ai.server.routes.workflows import _build_quick_action_config
 
         body = {
             "transport": "stdio",
@@ -196,7 +196,7 @@ class TestQuickActionConfigTechniques:
 
     def test_scan_config_preserves_empty_checks(self) -> None:
         """Empty checks list is forwarded, not dropped."""
-        from q_ai.server.routes import _build_quick_action_config
+        from q_ai.server.routes.workflows import _build_quick_action_config
 
         body = {
             "transport": "stdio",

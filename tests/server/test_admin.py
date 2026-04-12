@@ -14,13 +14,13 @@ class TestAdminPage:
 
     def test_admin_page_renders(self, client: TestClient) -> None:
         """GET /admin returns 200."""
-        with patch("q_ai.server.routes.get_credential", return_value=None):
+        with patch("q_ai.server.routes.admin.get_credential", return_value=None):
             resp = client.get("/admin")
         assert resp.status_code == 200
 
     def test_admin_page_has_all_assist_provider_labels(self, client: TestClient) -> None:
         """GET /admin contains all 9 provider labels in the assistant section."""
-        with patch("q_ai.server.routes.get_credential", return_value=None):
+        with patch("q_ai.server.routes.admin.get_credential", return_value=None):
             resp = client.get("/admin")
         body = resp.text
         for label in [
@@ -54,7 +54,7 @@ class TestAdminPage:
         finally:
             conn.close()
 
-        with patch("q_ai.server.routes.get_credential", return_value=None):
+        with patch("q_ai.server.routes.admin.get_credential", return_value=None):
             resp = client.get("/admin")
         body = resp.text
         assert "assist-display" in body
@@ -80,7 +80,7 @@ class TestProvidersTableRendering:
         finally:
             conn.close()
 
-        with patch("q_ai.server.routes.get_credential", return_value=None):
+        with patch("q_ai.server.routes.admin.get_credential", return_value=None):
             resp = client.get("/admin")
         body = resp.text
         assert 'id="row-ollama"' in body
@@ -88,7 +88,7 @@ class TestProvidersTableRendering:
 
     def test_admin_page_has_inline_edit_and_status_check(self, client: TestClient) -> None:
         """Admin page JS includes inline edit and auto-status-check functions."""
-        with patch("q_ai.server.routes.get_credential", return_value=None):
+        with patch("q_ai.server.routes.admin.get_credential", return_value=None):
             resp = client.get("/admin")
         body = resp.text
         assert "editProviderInline" in body
@@ -96,7 +96,7 @@ class TestProvidersTableRendering:
 
     def test_add_provider_divider_text(self, client: TestClient) -> None:
         """Bottom form divider says 'Add Provider' not 'Add / Edit Provider'."""
-        with patch("q_ai.server.routes.get_credential", return_value=None):
+        with patch("q_ai.server.routes.admin.get_credential", return_value=None):
             resp = client.get("/admin")
         assert "Add Provider" in resp.text
         assert "Add / Edit Provider" not in resp.text
@@ -107,7 +107,7 @@ class TestAddProvider:
 
     def test_add_provider_writes_keyring(self, client: TestClient) -> None:
         """POST provider with api_key -> set_credential called correctly."""
-        with patch("q_ai.server.routes.set_credential") as mock_set:
+        with patch("q_ai.server.routes.admin.set_credential") as mock_set:
             resp = client.post(
                 "/api/admin/providers",
                 json={"provider": "openai", "api_key": "sk-test"},
@@ -121,7 +121,7 @@ class TestDeleteProvider:
 
     def test_delete_provider_clears_keyring(self, client: TestClient) -> None:
         """DELETE provider -> delete_credential called."""
-        with patch("q_ai.server.routes.delete_credential") as mock_del:
+        with patch("q_ai.server.routes.admin.delete_credential") as mock_del:
             resp = client.delete("/api/admin/providers/openai")
         assert resp.status_code == 200
         mock_del.assert_called_once_with("openai")
@@ -136,7 +136,7 @@ class TestListProviders:
         def _mock_cred(provider: str) -> str | None:
             return "key" if provider == "openai" else None
 
-        with patch("q_ai.server.routes.get_credential", side_effect=_mock_cred):
+        with patch("q_ai.server.routes.admin.get_credential", side_effect=_mock_cred):
             resp = client.get("/api/admin/providers")
 
         assert resp.status_code == 200
@@ -186,7 +186,7 @@ class TestProvidersInsecureKeyring:
     def test_providers_status_insecure_keyring(self, client: TestClient) -> None:
         """GET /api/admin/providers returns 200 even when keyring raises."""
         with patch(
-            "q_ai.server.routes.get_credential", side_effect=RuntimeError("insecure backend")
+            "q_ai.server.routes.admin.get_credential", side_effect=RuntimeError("insecure backend")
         ):
             resp = client.get("/api/admin/providers")
 
@@ -204,7 +204,7 @@ class TestAssistCredential:
 
     def test_save_assist_credential(self, client: TestClient) -> None:
         """POST assist credential stores under namespaced keyring key."""
-        with patch("q_ai.server.routes.set_credential") as mock_set:
+        with patch("q_ai.server.routes.admin.set_credential") as mock_set:
             resp = client.post(
                 "/api/admin/assist/credential",
                 json={"provider": "anthropic", "api_key": "sk-assist-test"},
@@ -231,7 +231,7 @@ class TestAssistCredential:
     def test_save_assist_credential_keyring_unavailable(self, client: TestClient) -> None:
         """POST assist credential with broken keyring returns 422."""
         with patch(
-            "q_ai.server.routes.set_credential",
+            "q_ai.server.routes.admin.set_credential",
             side_effect=RuntimeError("insecure backend"),
         ):
             resp = client.post(
@@ -255,7 +255,7 @@ class TestProviderConnectivity:
         mock_http.__aexit__ = AsyncMock(return_value=False)
 
         with (
-            patch("q_ai.server.routes.get_credential", return_value="sk-test"),
+            patch("q_ai.server.routes.admin.get_credential", return_value="sk-test"),
             patch("httpx.AsyncClient", return_value=mock_http),
         ):
             resp = client.get("/api/admin/providers/openai/test")
@@ -276,7 +276,7 @@ class TestProviderConnectivity:
         mock_http.__aexit__ = AsyncMock(return_value=False)
 
         with (
-            patch("q_ai.server.routes.get_credential", return_value="sk-bad"),
+            patch("q_ai.server.routes.admin.get_credential", return_value="sk-bad"),
             patch("httpx.AsyncClient", return_value=mock_http),
         ):
             resp = client.get("/api/admin/providers/openai/test")
@@ -288,14 +288,14 @@ class TestProviderConnectivity:
 
     def test_cloud_provider_no_credential(self, client: TestClient) -> None:
         """Cloud test without credential returns 404."""
-        with patch("q_ai.server.routes.get_credential", return_value=None):
+        with patch("q_ai.server.routes.admin.get_credential", return_value=None):
             resp = client.get("/api/admin/providers/openai/test")
 
         assert resp.status_code == 404
 
     def test_cloud_provider_no_models_endpoint_falls_back(self, client: TestClient) -> None:
         """Providers without models_endpoint fall back to credential check."""
-        with patch("q_ai.server.routes.get_credential", return_value="sk-test"):
+        with patch("q_ai.server.routes.admin.get_credential", return_value="sk-test"):
             resp = client.get("/api/admin/providers/groq/test")
 
         assert resp.status_code == 200

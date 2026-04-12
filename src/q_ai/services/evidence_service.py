@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
+import json
 import sqlite3
+from typing import Any
 
 from q_ai.core.db import list_evidence as _db_list_evidence
 from q_ai.core.models import Evidence
@@ -44,3 +47,29 @@ def get_evidence(
     if row is None:
         return None
     return Evidence.from_row(dict(row))
+
+
+def load_evidence_json(
+    conn: sqlite3.Connection,
+    run_id: str,
+    evidence_type: str,
+) -> dict[str, Any] | None:
+    """Load and parse a single JSON evidence record by type.
+
+    Args:
+        conn: Active database connection.
+        run_id: Run ID to query evidence for.
+        evidence_type: Evidence type string to filter by.
+
+    Returns:
+        Parsed dict or None if not found or malformed.
+    """
+    row = conn.execute(
+        "SELECT content FROM evidence WHERE run_id = ? AND type = ? LIMIT 1",
+        (run_id, evidence_type),
+    ).fetchone()
+    if not row or not row["content"]:
+        return None
+    with contextlib.suppress(ValueError, TypeError):
+        return json.loads(row["content"])  # type: ignore[no-any-return]
+    return None
