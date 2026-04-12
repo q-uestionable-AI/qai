@@ -46,7 +46,6 @@ uv.lock
 
 # Claude Code
 .claude/
-CLAUDE.md
 
 # Superpowers brainstorm artifacts
 .superpowers/
