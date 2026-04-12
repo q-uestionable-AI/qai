@@ -1,4 +1,35 @@
 <div class="space-y-4">
+    {% if stranded_runs %}
+    <div id="stranded-banner" class="alert alert-warning shadow-sm">
+        <div class="flex-1">
+            <div class="font-semibold">
+                &#9888; {{ stranded_runs|length }} interrupted run{{ '' if stranded_runs|length == 1 else 's' }} from a previous server restart
+            </div>
+            <div class="text-sm opacity-90">
+                These runs were waiting for user input when the server stopped. They cannot be resumed and must be concluded (cancelled) or re-run from scratch.
+            </div>
+            <ul class="mt-2 space-y-1">
+                {% for sr in stranded_runs %}
+                <li class="stranded-row flex items-center justify-between gap-3 py-1">
+                    <div class="text-sm">
+                        <a href="/runs?run_id={{ sr.run_id }}" class="link link-hover font-mono">{{ sr.run_id[:8] }}</a>
+                        &mdash; {{ sr.display_name }}
+                        {% if sr.started_at %}<span class="opacity-60 ml-2">started {{ sr.started_at }}</span>{% endif %}
+                    </div>
+                    <button class="btn btn-xs btn-outline btn-warning"
+                            hx-post="/api/runs/{{ sr.run_id }}/conclude-stranded"
+                            hx-target="closest .stranded-row"
+                            hx-swap="outerHTML swap:0.2s"
+                            hx-on::after-request="if(event.detail.successful && !document.querySelector('.stranded-row')){var b=document.getElementById('stranded-banner'); if(b) b.remove();}">
+                        Conclude as cancelled
+                    </button>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold">Run History</h2>
         <button class="btn btn-sm btn-outline btn-secondary"
