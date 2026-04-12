@@ -11,9 +11,6 @@ import contextlib
 import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
-
-from litellm import acompletion  # type: ignore[import-untyped]
 
 from q_ai.assist.knowledge import (
     CHARS_PER_TOKEN,
@@ -27,6 +24,7 @@ from q_ai.assist.prompt import (
 )
 from q_ai.core.config import get_credential, resolve
 from q_ai.core.llm import parse_model_string
+from q_ai.core.llm_litellm import complete_text, stream_text
 from q_ai.core.providers import get_litellm_prefix, get_provider, registry_key_from_prefix
 
 logger = logging.getLogger(__name__)
@@ -252,7 +250,7 @@ def _prepare_messages(
         source: Interaction surface hint (e.g. "web_ui").
 
     Returns:
-        Message list ready for litellm acompletion.
+        Message list ready for assistant completion.
     """
     chunk_count = _retrieval_chunk_count(model_string, scan_context, history)
     results = kb.retrieve(query, max_chunks=chunk_count)
@@ -293,22 +291,12 @@ async def chat(
     kb.ensure_indexed()
 
     messages = _prepare_messages(query, model_string, kb, scan_context, history, source=source)
-
-    call_kwargs: dict[str, Any] = {
-        "model": model_string,
-        "messages": messages,
-        "timeout": 120.0,
-    }
-    base_url = _resolve_base_url()
-    if base_url:
-        call_kwargs["api_base"] = base_url
-    if credential:
-        call_kwargs["api_key"] = credential
-
-    response = await acompletion(**call_kwargs)  # type: ignore[no-untyped-call]
-
-    choice = response.choices[0]  # type: ignore[union-attr]
-    return choice.message.content or ""  # type: ignore[union-attr]
+    return await complete_text(
+        model_string,
+        messages,
+        api_base=_resolve_base_url(),
+        api_key=credential,
+    )
 
 
 async def chat_stream(
@@ -338,23 +326,10 @@ async def chat_stream(
     kb.ensure_indexed()
 
     messages = _prepare_messages(query, model_string, kb, scan_context, history, source=source)
-
-    call_kwargs: dict[str, Any] = {
-        "model": model_string,
-        "messages": messages,
-        "stream": True,
-        "timeout": 120.0,
-    }
-    base_url = _resolve_base_url()
-    if base_url:
-        call_kwargs["api_base"] = base_url
-    if credential:
-        call_kwargs["api_key"] = credential
-
-    response: Any = await acompletion(**call_kwargs)  # type: ignore[no-untyped-call]
-
-    async for chunk in response:
-        delta = chunk.choices[0].delta  # type: ignore[union-attr]
-        content = delta.content  # type: ignore[union-attr]
-        if content:
-            yield content
+    async for token in stream_text(
+        model_string,
+        messages,
+        api_base=_resolve_base_url(),
+        api_key=credential,
+    ):
+        yield token

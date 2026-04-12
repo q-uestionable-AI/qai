@@ -143,9 +143,17 @@ class TestAdaptiveContextBudgeting:
         budget_with_history = compute_retrieval_budget("ollama/llama3.1", 800, 0, 2000)
         assert budget_with_history < budget_no_history
 
+    def test_context_window_uses_internal_boundary(self) -> None:
+        """Model info lookup should go through the LiteLLM boundary helper."""
+        with patch("q_ai.assist.prompt.get_litellm_context_window", return_value=16384):
+            window = get_context_window("unknown/model")
+        assert window == 16384
+
     def test_fallback_context_window(self) -> None:
         """Unknown models should fall back to conservative 4K."""
-        with patch("litellm.get_model_info", side_effect=Exception("unknown")):
+        with patch(
+            "q_ai.assist.prompt.get_litellm_context_window", side_effect=Exception("unknown")
+        ):
             window = get_context_window("unknown/model")
         assert window == _FALLBACK_CONTEXT_WINDOW
 

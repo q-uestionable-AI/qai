@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import AsyncIterator
 from typing import Any
 
-from litellm import acompletion  # type: ignore[import-untyped]
+from litellm import acompletion, get_model_info  # type: ignore[import-untyped]
 
 from q_ai.core.llm import (
     NormalizedResponse,
@@ -22,6 +23,9 @@ from q_ai.core.llm import (
 )
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_PROVIDER_TIMEOUT_S = 60.0
+_ASSISTANT_TIMEOUT_S = 120.0
 
 # litellm error messages indicating no tool support
 _NO_TOOL_SUPPORT_SIGNALS = [
@@ -49,6 +53,150 @@ def _tool_spec_to_openai_format(tool: ToolSpec) -> dict[str, Any]:
             "parameters": tool.parameters,
         },
     }
+
+
+def _build_completion_kwargs(
+    model: str,
+    messages: list[dict[str, Any]],
+    timeout: float,
+    api_base: str | None,
+    api_key: str | None,
+    stream: bool = False,
+) -> dict[str, Any]:
+    """Build shared keyword arguments for LiteLLM completion calls."""
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "timeout": timeout,
+    }
+    if stream:
+        kwargs["stream"] = True
+    if api_base:
+        kwargs["api_base"] = api_base
+    if api_key:
+        kwargs["api_key"] = api_key
+    return kwargs
+
+
+def _get_first_choice(response: Any, model: str, response_kind: str) -> Any | None:
+    """Return the first choice from a LiteLLM payload when present."""
+    choices = getattr(response, "choices", None)
+    if not choices:
+        logger.debug("LiteLLM %s payload missing choices for %s", response_kind, model)
+        return None
+
+    try:
+        return choices[0]
+    except (IndexError, KeyError, TypeError):
+        logger.debug("LiteLLM %s payload had unusable choices for %s", response_kind, model)
+        return None
+
+
+async def complete_text(
+    model: str,
+    messages: list[dict[str, Any]],
+    *,
+    api_base: str | None = None,
+    api_key: str | None = None,
+    timeout: float = _ASSISTANT_TIMEOUT_S,
+) -> str:
+    """Complete a plain-text chat response through the LiteLLM boundary.
+
+    Args:
+        model: LiteLLM model string.
+        messages: Chat messages to send.
+        api_base: Optional base URL override.
+        api_key: Optional provider credential.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        Response text content, or an empty string when absent.
+    """
+    response = await acompletion(
+        **_build_completion_kwargs(model, messages, timeout, api_base, api_key)
+    )
+    choice = _get_first_choice(response, model, "completion")
+    if choice is None:
+        return ""
+
+    message = getattr(choice, "message", None)
+    if message is None:
+        logger.debug("LiteLLM completion payload missing message for %s", model)
+        return ""
+
+    content = getattr(message, "content", None)
+    if content is None:
+        logger.debug("LiteLLM completion payload missing content for %s", model)
+        return ""
+    if isinstance(content, str):
+        return content
+
+    logger.debug("LiteLLM completion payload had non-string content for %s", model)
+    return ""
+
+
+async def stream_text(
+    model: str,
+    messages: list[dict[str, Any]],
+    *,
+    api_base: str | None = None,
+    api_key: str | None = None,
+    timeout: float = _ASSISTANT_TIMEOUT_S,
+) -> AsyncIterator[str]:
+    """Stream a plain-text chat response through the LiteLLM boundary.
+
+    Args:
+        model: LiteLLM model string.
+        messages: Chat messages to send.
+        api_base: Optional base URL override.
+        api_key: Optional provider credential.
+        timeout: Request timeout in seconds.
+
+    Yields:
+        Non-empty response text chunks as they arrive.
+    """
+    response: Any = await acompletion(
+        **_build_completion_kwargs(model, messages, timeout, api_base, api_key, stream=True)
+    )
+    async for chunk in response:
+        choice = _get_first_choice(chunk, model, "stream chunk")
+        if choice is None:
+            continue
+
+        delta = getattr(choice, "delta", None)
+        if delta is None:
+            logger.debug("LiteLLM stream chunk missing delta for %s", model)
+            continue
+
+        content = getattr(delta, "content", None)
+        if isinstance(content, str) and content:
+            yield content
+        elif content is not None:
+            logger.debug("LiteLLM stream chunk had non-string content for %s", model)
+
+
+def get_litellm_context_window(model: str) -> int | None:
+    """Return the model context window reported by LiteLLM.
+
+    Args:
+        model: LiteLLM model string.
+
+    Returns:
+        Context window size in tokens, or ``None`` when unavailable.
+    """
+    info = get_model_info(model=model)
+    if not isinstance(info, dict):
+        return None
+
+    max_input = info.get("max_input_tokens")
+    if isinstance(max_input, int) and max_input > 0:
+        return max_input
+
+    max_tokens = info.get("max_tokens")
+    if isinstance(max_tokens, int) and max_tokens > 0:
+        return max_tokens
+
+    return None
 
 
 class LiteLLMClient:
@@ -91,7 +239,7 @@ class LiteLLMClient:
                 messages=messages,
                 tools=openai_tools,
                 max_tokens=max_tokens,
-                timeout=60.0,
+                timeout=_DEFAULT_PROVIDER_TIMEOUT_S,
             )
         except Exception as exc:
             error_msg = str(exc).lower()

@@ -13,6 +13,7 @@ from q_ai.assist.knowledge import (
     CHARS_PER_TOKEN,
     RetrievalResult,
 )
+from q_ai.core.llm_litellm import get_litellm_context_window
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ _UNTRUSTED_FOOTER = "\n--- END UNTRUSTED SCAN OUTPUT ---"
 
 
 def get_context_window(model: str) -> int:
-    """Query the model's context window size via litellm.
+    """Query the model's context window size through the LiteLLM boundary.
 
     Args:
         model: litellm model string (e.g. "ollama/llama3.1").
@@ -63,16 +64,9 @@ def get_context_window(model: str) -> int:
         Context window size in tokens.
     """
     try:
-        from litellm import get_model_info  # type: ignore[import-untyped]
-
-        info = get_model_info(model=model)
-        if isinstance(info, dict):
-            max_input = info.get("max_input_tokens")
-            if max_input and isinstance(max_input, int) and max_input > 0:
-                return int(max_input)
-            max_tokens = info.get("max_tokens")
-            if max_tokens and isinstance(max_tokens, int) and max_tokens > 0:
-                return int(max_tokens)
+        context_window = get_litellm_context_window(model)
+        if context_window is not None:
+            return context_window
     except Exception as exc:
         logger.debug("Could not get model info for %s: %s", model, exc)
 

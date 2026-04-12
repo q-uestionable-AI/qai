@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -12,6 +12,8 @@ from q_ai.assist.service import (
     _resolve_embedding_model,
     _resolve_knowledge_dir,
     _resolve_model_string,
+    chat,
+    chat_stream,
 )
 
 
@@ -197,3 +199,74 @@ class TestResolveBaseUrl:
     def test_no_provider_returns_none(self, _mock: object) -> None:
         result = _resolve_base_url()
         assert result is None
+
+
+class TestAssistantBoundaryCalls:
+    """Assistant service boundary usage."""
+
+    async def test_chat_uses_core_litellm_boundary(self) -> None:
+        """chat() should delegate completion through the internal LiteLLM boundary."""
+        kb = MagicMock()
+        messages = [{"role": "user", "content": "hello"}]
+
+        with (
+            patch("q_ai.assist.service._resolve_model_string", return_value="ollama/llama3.1"),
+            patch("q_ai.assist.service._resolve_credential", return_value="secret"),
+            patch("q_ai.assist.service._get_knowledge_base", return_value=kb),
+            patch("q_ai.assist.service._prepare_messages", return_value=messages),
+            patch("q_ai.assist.service._resolve_base_url", return_value="http://localhost:11434"),
+            patch("q_ai.assist.service.complete_text", new_callable=AsyncMock) as mock_complete,
+        ):
+            mock_complete.return_value = "assistant reply"
+            result = await chat("hello", scan_context="{}", history=[], source="web_ui")
+
+        assert result == "assistant reply"
+        kb.ensure_indexed.assert_called_once_with()
+        mock_complete.assert_awaited_once_with(
+            "ollama/llama3.1",
+            messages,
+            api_base="http://localhost:11434",
+            api_key="secret",
+        )
+
+    async def test_chat_stream_uses_core_litellm_boundary(self) -> None:
+        """chat_stream() should delegate streaming through the internal LiteLLM boundary."""
+        kb = MagicMock()
+        messages = [{"role": "user", "content": "hello"}]
+        call_args: dict[str, object] = {}
+
+        async def fake_stream(
+            model: str,
+            streamed_messages: list[dict[str, str]],
+            *,
+            api_base: str | None = None,
+            api_key: str | None = None,
+            timeout: float = 120.0,
+        ) -> object:
+            call_args["model"] = model
+            call_args["messages"] = streamed_messages
+            call_args["api_base"] = api_base
+            call_args["api_key"] = api_key
+            call_args["timeout"] = timeout
+            yield "assistant"
+            yield " stream"
+
+        with (
+            patch("q_ai.assist.service._resolve_model_string", return_value="openai/gpt-4o"),
+            patch("q_ai.assist.service._resolve_credential", return_value="secret"),
+            patch("q_ai.assist.service._get_knowledge_base", return_value=kb),
+            patch("q_ai.assist.service._prepare_messages", return_value=messages),
+            patch("q_ai.assist.service._resolve_base_url", return_value="https://api.example.com"),
+            patch("q_ai.assist.service.stream_text", new=fake_stream),
+        ):
+            result = [token async for token in chat_stream("hello")]
+
+        assert result == ["assistant", " stream"]
+        kb.ensure_indexed.assert_called_once_with()
+        assert call_args == {
+            "model": "openai/gpt-4o",
+            "messages": messages,
+            "api_base": "https://api.example.com",
+            "api_key": "secret",
+            "timeout": 120.0,
+        }

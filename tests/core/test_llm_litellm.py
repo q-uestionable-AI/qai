@@ -13,7 +13,13 @@ from q_ai.core.llm import (
     ToolSpec,
     UnsupportedCapabilityError,
 )
-from q_ai.core.llm_litellm import LiteLLMClient, _tool_spec_to_openai_format
+from q_ai.core.llm_litellm import (
+    LiteLLMClient,
+    _tool_spec_to_openai_format,
+    complete_text,
+    get_litellm_context_window,
+    stream_text,
+)
 
 
 class TestToolSpecToOpenaiFormat:
@@ -181,3 +187,148 @@ class TestLiteLLMClient:
                     messages=[{"role": "user", "content": "test"}],
                     tools=[ToolSpec(name="get_data", description="d", parameters={})],
                 )
+
+
+class TestBoundaryHelpers:
+    """Tests for assistant-facing LiteLLM boundary helpers."""
+
+    async def test_complete_text_forwards_optional_kwargs(self) -> None:
+        """complete_text() should route completion through LiteLLM with auth overrides."""
+        mock_message = MagicMock()
+        mock_message.content = "assistant reply"
+
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+            mock_acomp.return_value = mock_response
+            result = await complete_text(
+                model="ollama/llama3.1",
+                messages=[{"role": "user", "content": "test"}],
+                api_base="http://localhost:11434",
+                api_key="secret",
+            )
+
+        assert result == "assistant reply"
+        mock_acomp.assert_awaited_once_with(
+            model="ollama/llama3.1",
+            messages=[{"role": "user", "content": "test"}],
+            timeout=120.0,
+            api_base="http://localhost:11434",
+            api_key="secret",
+        )
+
+    async def test_complete_text_returns_empty_string_for_empty_choices(self) -> None:
+        """complete_text() should return empty text for empty choice lists."""
+        mock_response = MagicMock()
+        mock_response.choices = []
+
+        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+            mock_acomp.return_value = mock_response
+            result = await complete_text("openai/gpt-4o", [])
+
+        assert result == ""
+
+    async def test_complete_text_returns_empty_string_when_message_missing(self) -> None:
+        """complete_text() should return empty text when the message is missing."""
+        mock_choice = MagicMock()
+        mock_choice.message = None
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+            mock_acomp.return_value = mock_response
+            result = await complete_text("openai/gpt-4o", [])
+
+        assert result == ""
+
+    async def test_complete_text_returns_empty_string_when_content_missing(self) -> None:
+        """complete_text() should return empty text when the content is missing."""
+        mock_message = MagicMock()
+        mock_message.content = None
+
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+            mock_acomp.return_value = mock_response
+            result = await complete_text("openai/gpt-4o", [])
+
+        assert result == ""
+
+    async def test_stream_text_yields_non_empty_chunks(self) -> None:
+        """stream_text() should yield only chunks with content."""
+
+        async def fake_stream() -> object:
+            for content in ("hello", "", None, " world"):
+                chunk = MagicMock()
+                delta = MagicMock()
+                delta.content = content
+                choice = MagicMock()
+                choice.delta = delta
+                chunk.choices = [choice]
+                yield chunk
+
+        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+            mock_acomp.return_value = fake_stream()
+            result = [token async for token in stream_text("openai/gpt-4o", [])]
+
+        assert result == ["hello", " world"]
+        mock_acomp.assert_awaited_once_with(
+            model="openai/gpt-4o",
+            messages=[],
+            timeout=120.0,
+            stream=True,
+        )
+
+    async def test_stream_text_skips_malformed_chunks(self) -> None:
+        """stream_text() should skip chunks with missing choices or delta."""
+
+        async def fake_stream() -> object:
+            empty_choice_chunk = MagicMock()
+            empty_choice_chunk.choices = []
+            yield empty_choice_chunk
+
+            missing_delta_choice = MagicMock()
+            missing_delta_choice.delta = None
+            missing_delta_chunk = MagicMock()
+            missing_delta_chunk.choices = [missing_delta_choice]
+            yield missing_delta_chunk
+
+            valid_delta = MagicMock()
+            valid_delta.content = "token"
+            valid_choice = MagicMock()
+            valid_choice.delta = valid_delta
+            valid_chunk = MagicMock()
+            valid_chunk.choices = [valid_choice]
+            yield valid_chunk
+
+        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+            mock_acomp.return_value = fake_stream()
+            result = [token async for token in stream_text("openai/gpt-4o", [])]
+
+        assert result == ["token"]
+
+    def test_get_litellm_context_window_prefers_max_input_tokens(self) -> None:
+        """get_litellm_context_window() should prefer max_input_tokens."""
+        with patch(
+            "q_ai.core.llm_litellm.get_model_info",
+            return_value={"max_input_tokens": 8192, "max_tokens": 4096},
+        ):
+            result = get_litellm_context_window("anthropic/claude-sonnet-4-20250514")
+
+        assert result == 8192
+
+    def test_get_litellm_context_window_falls_back_to_max_tokens(self) -> None:
+        """get_litellm_context_window() should use max_tokens when needed."""
+        with patch("q_ai.core.llm_litellm.get_model_info", return_value={"max_tokens": 4096}):
+            result = get_litellm_context_window("unknown/model")
+
+        assert result == 4096
