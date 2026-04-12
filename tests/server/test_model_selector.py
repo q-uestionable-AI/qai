@@ -15,7 +15,7 @@ class TestProviderModelsEndpoint:
     """GET /api/providers/{name}/models returns model area HTML partial."""
 
     def test_cloud_provider_returns_curated_models(self, client: TestClient) -> None:
-        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+        with patch("q_ai.server.routes.admin.get_credential", return_value="test-key"):
             resp = client.get("/api/providers/anthropic/models?selector_id=test")
         assert resp.status_code == 200
         assert "Claude Sonnet 4" in resp.text
@@ -26,13 +26,13 @@ class TestProviderModelsEndpoint:
         assert resp.status_code == 404
 
     def test_unconfigured_cloud_provider_returns_message(self, client: TestClient) -> None:
-        with patch("q_ai.server.routes.get_credential", return_value=None):
+        with patch("q_ai.server.routes.admin.get_credential", return_value=None):
             resp = client.get("/api/providers/anthropic/models?selector_id=test")
         assert resp.status_code == 200
         assert "API key" in resp.text
 
     def test_unconfigured_local_provider_returns_400(self, client: TestClient) -> None:
-        with patch("q_ai.server.routes.get_credential", return_value=None):
+        with patch("q_ai.server.routes.admin.get_credential", return_value=None):
             resp = client.get("/api/providers/ollama/models?selector_id=test")
         assert resp.status_code == 400
         assert "Settings" in resp.text
@@ -57,7 +57,7 @@ class TestProviderModelsEndpoint:
             supports_custom=True,
         )
         with patch(
-            "q_ai.server.routes.fetch_models",
+            "q_ai.server.routes.admin.fetch_models",
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
@@ -84,7 +84,7 @@ class TestProviderModelsEndpoint:
             message="No models loaded in Ollama. Pull a model and refresh.",
         )
         with patch(
-            "q_ai.server.routes.fetch_models",
+            "q_ai.server.routes.admin.fetch_models",
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
@@ -110,7 +110,7 @@ class TestProviderModelsEndpoint:
             error="Could not connect to Ollama at http://localhost:11434",
         )
         with patch(
-            "q_ai.server.routes.fetch_models",
+            "q_ai.server.routes.admin.fetch_models",
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
@@ -120,7 +120,7 @@ class TestProviderModelsEndpoint:
         assert "Retry" in resp.text
 
     def test_default_model_preselected(self, client: TestClient) -> None:
-        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+        with patch("q_ai.server.routes.admin.get_credential", return_value="test-key"):
             resp = client.get(
                 "/api/providers/anthropic/models?selector_id=test"
                 "&default=anthropic/claude-sonnet-4-20250514"
@@ -150,7 +150,7 @@ class TestLaunchProviderValidation:
             "provider": "fakeprovider",
             "model": "fakeprovider/some-model",
         }
-        with patch("q_ai.server.routes.get_workflow") as mock_wf:
+        with patch("q_ai.server.routes.workflows.get_workflow") as mock_wf:
             mock_wf.return_value = _mock_workflow_entry("assess")
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
@@ -166,8 +166,8 @@ class TestLaunchProviderValidation:
             "model": "anthropic/claude-sonnet-4-20250514",
         }
         with (
-            patch("q_ai.server.routes.get_credential", return_value=None),
-            patch("q_ai.server.routes.get_workflow") as mock_wf,
+            patch("q_ai.server.routes.workflows.get_credential", return_value=None),
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_wf,
         ):
             mock_wf.return_value = _mock_workflow_entry("assess")
             resp = client.post("/api/workflows/launch", json=body)
@@ -184,8 +184,8 @@ class TestLaunchProviderValidation:
             "model": "",
         }
         with (
-            patch("q_ai.server.routes.get_credential", return_value="test-key"),
-            patch("q_ai.server.routes.get_workflow") as mock_wf,
+            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_wf,
         ):
             mock_wf.return_value = _mock_workflow_entry("assess")
             resp = client.post("/api/workflows/launch", json=body)
@@ -202,9 +202,9 @@ class TestLaunchProviderValidation:
             "model": "openai/gpt-4o",
         }
         with (
-            patch("q_ai.server.routes.get_credential", return_value="test-key"),
-            patch("q_ai.server.routes.get_workflow") as mock_wf,
-            patch("q_ai.server.routes._run_workflow", new_callable=AsyncMock),
+            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_wf,
+            patch("q_ai.server.routes.workflows._run_workflow", new_callable=AsyncMock),
         ):
             mock_wf.return_value = _mock_workflow_entry("assess")
             resp = client.post("/api/workflows/launch", json=body)

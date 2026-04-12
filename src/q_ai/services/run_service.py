@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 import sqlite3
 
 from q_ai.core.db import get_run as _db_get_run
 from q_ai.core.db import list_runs as _db_list_runs
 from q_ai.core.models import Run, RunStatus
+
+_TERMINAL_STATUSES = {
+    RunStatus.COMPLETED,
+    RunStatus.FAILED,
+    RunStatus.CANCELLED,
+    RunStatus.PARTIAL,
+}
 
 
 def get_run(
@@ -132,3 +140,74 @@ def get_child_run_ids(
     """
     rows = conn.execute("SELECT id FROM runs WHERE parent_run_id = ?", (parent_run_id,)).fetchall()
     return [r["id"] for r in rows]
+
+
+def conclude_run(
+    conn: sqlite3.Connection,
+    run_id: str,
+) -> str:
+    """Conclude a campaign run by transitioning it to COMPLETED.
+
+    Performs an atomic conditional update: only transitions rows whose
+    status is not already terminal. Children of the run that are still in
+    WAITING_FOR_USER are swept to COMPLETED in the same unit of work.
+
+    Args:
+        conn: Active database connection.
+        run_id: The parent run ID to conclude.
+
+    Returns:
+        ``"not_found"`` if the run does not exist, ``"already_terminal"``
+        if it is already in a terminal status, or ``"concluded"`` on a
+        successful transition.
+    """
+    terminal_ints = tuple(int(s) for s in _TERMINAL_STATUSES)
+    now = _dt.datetime.now(_dt.UTC).isoformat()
+
+    run = _db_get_run(conn, run_id)
+    if run is None:
+        return "not_found"
+    if run.status in _TERMINAL_STATUSES:
+        return "already_terminal"
+
+    non_terminal_ph = ", ".join("?" for _ in terminal_ints)
+    conn.execute(
+        f"UPDATE runs SET status = ?, finished_at = ? "  # noqa: S608
+        f"WHERE id = ? AND status NOT IN ({non_terminal_ph})",
+        (int(RunStatus.COMPLETED), now, run_id, *terminal_ints),
+    )
+    conn.execute(
+        "UPDATE runs SET status = ?, finished_at = ? WHERE parent_run_id = ? AND status = ?",
+        (int(RunStatus.COMPLETED), now, run_id, int(RunStatus.WAITING_FOR_USER)),
+    )
+    return "concluded"
+
+
+def conclude_stranded(
+    conn: sqlite3.Connection,
+    run_id: str,
+) -> str:
+    """Transition a stranded ``WAITING_FOR_USER`` run to ``CANCELLED``.
+
+    Args:
+        conn: Active database connection.
+        run_id: The run ID to conclude.
+
+    Returns:
+        ``"not_found"`` if the run does not exist, ``"not_stranded"`` if
+        its current status is not ``WAITING_FOR_USER``, or ``"cancelled"``
+        on a successful transition.
+    """
+    now = _dt.datetime.now(_dt.UTC).isoformat()
+    run = _db_get_run(conn, run_id)
+    if run is None:
+        return "not_found"
+    if run.status != RunStatus.WAITING_FOR_USER:
+        return "not_stranded"
+    cur = conn.execute(
+        "UPDATE runs SET status = ?, finished_at = ? WHERE id = ? AND status = ?",
+        (int(RunStatus.CANCELLED), now, run_id, int(RunStatus.WAITING_FOR_USER)),
+    )
+    if cur.rowcount == 0:
+        return "not_stranded"
+    return "cancelled"

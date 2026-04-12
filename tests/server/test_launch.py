@@ -32,9 +32,9 @@ class TestLaunchCreatesTarget:
     def test_launch_creates_target(self, client: TestClient, tmp_db: Path) -> None:
         """POST valid config -> target created in DB."""
         with (
-            patch("q_ai.server.routes.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
             patch(
-                "q_ai.server.routes.get_workflow",
+                "q_ai.server.routes.workflows.get_workflow",
             ) as mock_get_wf,
         ):
             executor = _noop_executor()
@@ -61,8 +61,8 @@ class TestLaunchCreatesWorkflowRun:
     def test_launch_creates_workflow_run(self, client: TestClient, tmp_db: Path) -> None:
         """POST valid config -> run with module='workflow' exists in DB."""
         with (
-            patch("q_ai.server.routes.get_credential", return_value="test-key"),
-            patch("q_ai.server.routes.get_workflow") as mock_get_wf,
+            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
         ):
             executor = _noop_executor()
             mock_get_wf.return_value.executor = executor
@@ -87,8 +87,8 @@ class TestLaunchReturnsRunId:
     def test_launch_returns_run_id(self, client: TestClient) -> None:
         """Response JSON contains run_id and redirect keys."""
         with (
-            patch("q_ai.server.routes.get_credential", return_value="test-key"),
-            patch("q_ai.server.routes.get_workflow") as mock_get_wf,
+            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
         ):
             executor = _noop_executor()
             mock_get_wf.return_value.executor = executor
@@ -110,7 +110,7 @@ class TestLaunchValidation:
         """POST without transport -> 422."""
         body = _valid_body()
         body["transport"] = ""
-        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+        with patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"):
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
 
@@ -118,14 +118,14 @@ class TestLaunchValidation:
         """POST without model -> 422."""
         body = _valid_body()
         body["model"] = ""
-        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+        with patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"):
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
         assert "model" in resp.json()["detail"].lower()
 
     def test_launch_validation_missing_credential(self, client: TestClient) -> None:
         """POST with valid model but no credential -> 422."""
-        with patch("q_ai.server.routes.get_credential", return_value=None):
+        with patch("q_ai.server.routes.workflows.get_credential", return_value=None):
             resp = client.post("/api/workflows/launch", json=_valid_body())
         assert resp.status_code == 422
 
@@ -133,7 +133,7 @@ class TestLaunchValidation:
         """POST without target_name -> 422."""
         body = _valid_body()
         body["target_name"] = ""
-        with patch("q_ai.server.routes.get_credential", return_value="test-key"):
+        with patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"):
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
 
@@ -170,7 +170,7 @@ class TestLaunchTestDocs:
             "payload_style": "obvious",
             "payload_type": "callback",
         }
-        with patch("q_ai.server.routes.get_workflow") as mock_get_wf:
+        with patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf:
             mock_get_wf.return_value = _mock_workflow_entry("test_docs", requires_provider=False)
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 201
@@ -182,7 +182,7 @@ class TestLaunchTestDocs:
             "target_name": "doc-target",
             "format": "pdf",
         }
-        with patch("q_ai.server.routes.get_workflow") as mock_get_wf:
+        with patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf:
             mock_get_wf.return_value = _mock_workflow_entry("test_docs", requires_provider=False)
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
@@ -204,7 +204,7 @@ class TestLaunchTestAssistant:
             "target_name": "assistant-target",
             "format_id": "python",
         }
-        with patch("q_ai.server.routes.get_workflow") as mock_get_wf:
+        with patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf:
             mock_get_wf.return_value = _mock_workflow_entry(
                 "test_assistant", requires_provider=False
             )
@@ -217,7 +217,7 @@ class TestLaunchTestAssistant:
             "workflow_id": "test_assistant",
             "target_name": "assistant-target",
         }
-        with patch("q_ai.server.routes.get_workflow") as mock_get_wf:
+        with patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf:
             mock_get_wf.return_value = _mock_workflow_entry(
                 "test_assistant", requires_provider=False
             )
@@ -260,8 +260,8 @@ class TestLaunchTracePath:
             "model": "openai/gpt-4",
         }
         with (
-            patch("q_ai.server.routes.get_credential", return_value="test-key"),
-            patch("q_ai.server.routes.get_workflow") as mock_get_wf,
+            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
             patch("q_ai.chain.loader.discover_chains", mock_discover),
             patch("q_ai.chain.loader.load_chain", mock_load),
         ):
@@ -282,8 +282,8 @@ class TestLaunchTracePath:
             "model": "openai/gpt-4",
         }
         with (
-            patch("q_ai.server.routes.get_credential", return_value="test-key"),
-            patch("q_ai.server.routes.get_workflow") as mock_get_wf,
+            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
             patch("q_ai.chain.loader.discover_chains", mock_discover),
             patch("q_ai.chain.loader.load_chain", mock_load),
         ):
@@ -303,8 +303,8 @@ class TestLaunchTracePath:
             "model": "openai/gpt-4",
         }
         with (
-            patch("q_ai.server.routes.get_credential", return_value="test-key"),
-            patch("q_ai.server.routes.get_workflow") as mock_get_wf,
+            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
         ):
             mock_get_wf.return_value = _mock_workflow_entry("trace_path")
             resp = client.post("/api/workflows/launch", json=body)
@@ -356,7 +356,7 @@ class TestLaunchBlastRadius:
             "workflow_id": "blast_radius",
             "chain_execution_id": exec_id,
         }
-        with patch("q_ai.server.routes.get_workflow") as mock_get_wf:
+        with patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf:
             mock_get_wf.return_value = _mock_workflow_entry("blast_radius", requires_provider=False)
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 201
@@ -364,7 +364,7 @@ class TestLaunchBlastRadius:
     def test_missing_execution_id_returns_422(self, client: TestClient) -> None:
         """Missing chain_execution_id -> 422."""
         body = {"workflow_id": "blast_radius"}
-        with patch("q_ai.server.routes.get_workflow") as mock_get_wf:
+        with patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf:
             mock_get_wf.return_value = _mock_workflow_entry("blast_radius", requires_provider=False)
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
@@ -376,7 +376,7 @@ class TestLaunchBlastRadius:
             "workflow_id": "blast_radius",
             "chain_execution_id": "does-not-exist",
         }
-        with patch("q_ai.server.routes.get_workflow") as mock_get_wf:
+        with patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf:
             mock_get_wf.return_value = _mock_workflow_entry("blast_radius", requires_provider=False)
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
@@ -415,8 +415,8 @@ class TestProviderGate:
             "format_id": "python",
         }
         with (
-            patch("q_ai.server.routes.get_credential") as mock_cred,
-            patch("q_ai.server.routes.get_workflow") as mock_get_wf,
+            patch("q_ai.server.routes.workflows.get_credential") as mock_cred,
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
         ):
             mock_get_wf.return_value = _mock_workflow_entry(
                 "test_assistant", requires_provider=False

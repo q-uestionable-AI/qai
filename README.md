@@ -17,7 +17,7 @@
 - Poison coding assistant context files
 - Measure RAG retrieval rank
 
-Local web UI orchestrates multi-module workflows.  
+Local web UI orchestrates multi-module workflows.
 All findings stored in a SQLite database.
 
 > Research program by [Richard Spicer](https://richardspicer.io) · [{q-AI}](https://q-uestionable.ai)

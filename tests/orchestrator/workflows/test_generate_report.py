@@ -733,8 +733,8 @@ class TestOutputDirCreationFailure:
 
         with (
             TestClient(app) as test_client,
-            patch("q_ai.server.routes.get_workflow", return_value=mock_entry),
-            patch("q_ai.server.routes._prepare_output_dir", return_value=error_response),
+            patch("q_ai.server.routes.workflows.get_workflow", return_value=mock_entry),
+            patch("q_ai.server.routes.workflows._prepare_output_dir", return_value=error_response),
         ):
             resp = test_client.post("/api/workflows/launch", json=body)
 
@@ -1123,7 +1123,7 @@ class TestReportHtmlRendering:
         """_load_report_html converts markdown to sanitized HTML."""
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
-        from q_ai.server.routes import _load_report_html
+        from q_ai.server.routes.runs import _load_report_html
 
         # Create the report file structure
         report_dir = tmp_path / ".qai" / "exports" / "generate_report" / "test-run-1"
@@ -1152,7 +1152,7 @@ class TestReportHtmlRendering:
         """_load_report_html detects evidence ZIP existence."""
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
-        from q_ai.server.routes import _load_report_html
+        from q_ai.server.routes.runs import _load_report_html
 
         report_dir = tmp_path / ".qai" / "exports" / "generate_report" / "test-run-2"
         report_dir.mkdir(parents=True, exist_ok=True)
