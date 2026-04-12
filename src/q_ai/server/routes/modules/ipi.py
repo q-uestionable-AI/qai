@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
+from typing import Any
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
@@ -18,11 +22,8 @@ async def api_ipi_tab(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "partials/ipi_tab.html", {})
 
 
-@router.get("/api/ipi/campaigns")
-async def api_ipi_campaigns(request: Request) -> HTMLResponse:
-    """Return IPI campaigns summary partial."""
-    templates = _get_templates(request)
-    db_path = _get_db_path(request)
+def _load_campaigns(db_path: Path | None) -> dict[str, Any]:
+    """Load campaign summary data (blocking SQLite reads)."""
     with get_connection(db_path) as conn:
         rows = conn.execute(
             """
@@ -39,16 +40,26 @@ async def api_ipi_campaigns(request: Request) -> HTMLResponse:
         high_hits_row = conn.execute(
             "SELECT COUNT(*) FROM ipi_hits WHERE confidence = 'high'"
         ).fetchone()
-    campaigns = [dict(row) for row in rows]
-    total_hits = total_hits_row[0] if total_hits_row else 0
-    high_hits = high_hits_row[0] if high_hits_row else 0
+    return {
+        "campaigns": [dict(row) for row in rows],
+        "total_hits": total_hits_row[0] if total_hits_row else 0,
+        "high_hits": high_hits_row[0] if high_hits_row else 0,
+    }
+
+
+@router.get("/api/ipi/campaigns")
+async def api_ipi_campaigns(request: Request) -> HTMLResponse:
+    """Return IPI campaigns summary partial."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    data = await asyncio.to_thread(_load_campaigns, db_path)
     return templates.TemplateResponse(
         request,
         "partials/ipi_tab.html",
         {
-            "campaigns": campaigns,
-            "total_hits": total_hits,
-            "high_hits": high_hits,
+            "campaigns": data["campaigns"],
+            "total_hits": data["total_hits"],
+            "high_hits": data["high_hits"],
             "listener_hint": True,
         },
     )

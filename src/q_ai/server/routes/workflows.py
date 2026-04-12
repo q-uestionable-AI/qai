@@ -53,6 +53,19 @@ _QUICK_ACTION_WORKFLOW_MAP = {
 }
 
 
+def _load_launcher_db_context(db_path: Path | None) -> dict[str, Any]:
+    """Load provider list and launcher defaults (blocking DB reads)."""
+    all_providers = get_configured_providers(db_path)
+    with get_connection(db_path) as conn:
+        default_transport = get_setting(conn, "audit.default_transport") or "stdio"
+        saved_callback_url = get_setting(conn, "ipi.default_callback_url") or ""
+    return {
+        "providers": [p for p in all_providers if p["configured"]],
+        "default_transport": default_transport,
+        "saved_callback_url": saved_callback_url,
+    }
+
+
 @router.get("/launcher")
 async def launcher(request: Request) -> HTMLResponse:
     """Render the workflow launcher page."""
@@ -77,16 +90,13 @@ async def launcher(request: Request) -> HTMLResponse:
             workflows.append(entry)
 
     db_path = _get_db_path(request)
-    all_providers = get_configured_providers(db_path)
-    providers = [p for p in all_providers if p["configured"]]
-
-    with get_connection(db_path) as conn:
-        default_transport = get_setting(conn, "audit.default_transport") or "stdio"
-        saved_callback_url = get_setting(conn, "ipi.default_callback_url") or ""
-        defaults = {
-            "ipi_callback_url": saved_callback_url or f"http://{_detect_local_ip()}:8080/callback",
-            "audit_default_transport": default_transport,
-        }
+    db_ctx = await asyncio.to_thread(_load_launcher_db_context, db_path)
+    defaults = {
+        "ipi_callback_url": (
+            db_ctx["saved_callback_url"] or f"http://{_detect_local_ip()}:8080/callback"
+        ),
+        "audit_default_transport": db_ctx["default_transport"],
+    }
 
     return templates.TemplateResponse(
         request,
@@ -95,7 +105,7 @@ async def launcher(request: Request) -> HTMLResponse:
             "active": "launcher",
             "hero_workflow": hero_workflow,
             "workflows": workflows,
-            "providers": providers,
+            "providers": db_ctx["providers"],
             "defaults": defaults,
             "injection_techniques": [
                 {"value": t.value, "label": t.value.replace("_", " ").title()}
@@ -392,10 +402,25 @@ async def _run_workflow(
         await executor(runner, config)
     except Exception as exc:
         # Only fail if not already in terminal status
-        with get_connection(runner._db_path) as conn:
-            run = run_service.get_run(conn, runner.run_id)
+
+        def _fetch_run() -> Any:
+            with get_connection(runner._db_path) as conn:
+                return run_service.get_run(conn, runner.run_id)
+
+        run = await asyncio.to_thread(_fetch_run)
         if run and run.status in (RunStatus.RUNNING, RunStatus.PENDING):
             await runner.fail(error=str(exc))
+
+
+def _read_provider_config(provider_name: str, db_path: Path | None) -> tuple[str | None, str]:
+    """Read (credential, base_url) for a provider (blocking DB + keyring)."""
+    try:
+        cred_value = get_credential(provider_name)
+    except RuntimeError:
+        cred_value = None
+    with get_connection(db_path) as conn:
+        base_url_value = get_setting(conn, f"{provider_name}.base_url") or ""
+    return cred_value, base_url_value
 
 
 async def _validate_provider_model(
@@ -416,15 +441,13 @@ async def _validate_provider_model(
     provider_name = (body.get("provider") or "").strip()
     model = (body.get("model") or "").strip()
 
+    if not provider_name and model and "/" in model:
+        provider_name = model.split("/", 1)[0]
     if not provider_name:
-        # Backward compat: try to extract from model string
-        if model and "/" in model:
-            provider_name = model.split("/", 1)[0]
-        if not provider_name:
-            return JSONResponse(
-                status_code=422,
-                content={"detail": "provider is required"},
-            )
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "provider is required"},
+        )
 
     config = get_provider(provider_name)
     if config is None:
@@ -433,13 +456,7 @@ async def _validate_provider_model(
             content={"detail": f"Unknown provider: {provider_name}"},
         )
 
-    # Check configured
-    with get_connection(db_path) as conn:
-        try:
-            cred = get_credential(provider_name)
-        except RuntimeError:
-            cred = None
-        base_url = get_setting(conn, f"{provider_name}.base_url") or ""
+    cred, base_url = await asyncio.to_thread(_read_provider_config, provider_name, db_path)
 
     configured = cred is not None or bool(base_url)
     if not configured and config.type != ProviderType.CUSTOM:
@@ -565,6 +582,50 @@ async def api_inject_payloads(request: Request) -> JSONResponse:
     return JSONResponse(content=payload_data)
 
 
+async def _parse_launch_body(request: Request) -> dict[str, Any] | JSONResponse:
+    """Parse and validate the ``/api/workflows/launch`` request body."""
+    try:
+        body = await request.json()
+    except (ValueError, TypeError):
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON structure"})
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON structure"})
+    return body
+
+
+_NO_TARGET_NAME_WORKFLOWS = frozenset({"blast_radius", "generate_report"})
+
+
+async def _validate_launch_request(
+    body: dict[str, Any], db_path: Path | None
+) -> tuple[Any, str, str] | JSONResponse:
+    """Validate workflow + provider + target_name from the launch body.
+
+    Returns ``(entry, workflow_id, target_name)`` on success or a
+    ``JSONResponse`` with the first validation error encountered.
+    """
+    workflow_id = body.get("workflow_id", "assess").strip()
+    entry = get_workflow(workflow_id)
+    if entry is None or entry.executor is None:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"Unknown workflow: {workflow_id}"},
+        )
+    if entry.requires_provider:
+        validation_error = await _validate_provider_model(body, db_path)
+        if validation_error is not None:
+            return validation_error
+    target_name = ""
+    if workflow_id not in _NO_TARGET_NAME_WORKFLOWS:
+        target_name = body.get("target_name", "").strip()
+        if not target_name:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "target_name is required"},
+            )
+    return entry, workflow_id, target_name
+
+
 @router.post("/api/workflows/launch")
 async def launch_workflow(request: Request) -> JSONResponse:
     """Launch a workflow.
@@ -573,45 +634,32 @@ async def launch_workflow(request: Request) -> JSONResponse:
     creates a target (where applicable), and starts the workflow as a
     background task.
     """
-    body = await request.json()
+    body = await _parse_launch_body(request)
+    if isinstance(body, JSONResponse):
+        return body
     db_path = _get_db_path(request)
 
-    # --- Resolve workflow ---
-    workflow_id = body.get("workflow_id", "assess").strip()
-    entry = get_workflow(workflow_id)
-    if entry is None or entry.executor is None:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": f"Unknown workflow: {workflow_id}"},
-        )
-
-    # --- Provider/model validation (skipped for workflows that don't need one) ---
-    if entry.requires_provider:
-        validation_error = await _validate_provider_model(body, db_path)
-        if validation_error is not None:
-            return validation_error
-
-    # --- Validate target_name early (but don't create row yet) ---
-    _no_target_name_workflows = {"blast_radius", "generate_report"}
-    target_name: str = ""
-    if workflow_id not in _no_target_name_workflows:
-        target_name = body.get("target_name", "").strip()
-        if not target_name:
-            return JSONResponse(
-                status_code=422,
-                content={"detail": "target_name is required"},
-            )
+    validation = await _validate_launch_request(body, db_path)
+    if isinstance(validation, JSONResponse):
+        return validation
+    entry, workflow_id, target_name = validation
 
     # --- Build workflow config (before target creation to avoid orphan rows) ---
-    result = _build_workflow_config(workflow_id, body, db_path)
+    # _build_workflow_config performs blocking DB reads for blast_radius /
+    # generate_report; run it in a worker thread to keep the event loop free.
+    result = await asyncio.to_thread(_build_workflow_config, workflow_id, body, db_path)
     if isinstance(result, JSONResponse):
         return result
     config: dict[str, Any] = result
 
     # --- Create target (only after builder succeeds, skip for existing-target workflows) ---
-    if workflow_id not in _no_target_name_workflows:
-        with get_connection(db_path) as conn:
-            target_id = create_target(conn, type="server", name=target_name)
+    if workflow_id not in _NO_TARGET_NAME_WORKFLOWS:
+
+        def _create_target_sync() -> str:
+            with get_connection(db_path) as conn:
+                return create_target(conn, type="server", name=target_name)
+
+        target_id = await asyncio.to_thread(_create_target_sync)
         _apply_target_id(config, target_id)
 
     # --- Create runner ---
@@ -908,8 +956,12 @@ async def resume_workflow(request: Request, run_id: str) -> JSONResponse:
         return JSONResponse(status_code=500, content={"detail": "Invalid runner type"})
 
     db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        run = run_service.get_run(conn, run_id)
+
+    def _fetch_run() -> Any:
+        with get_connection(db_path) as conn:
+            return run_service.get_run(conn, run_id)
+
+    run = await asyncio.to_thread(_fetch_run)
     if run is None or run.status != RunStatus.WAITING_FOR_USER:
         return JSONResponse(
             status_code=409,

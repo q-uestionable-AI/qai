@@ -12,18 +12,50 @@ from q_ai.server.routes._shared import logger
 
 router = APIRouter()
 
+_MAX_HISTORY = 1000
+_MAX_FRAME_BYTES = 64 * 1024
+
+
+def _cap_history(history: list[dict[str, str]], cap_flag: dict[str, bool]) -> None:
+    """Trim ``history`` in place to ``_MAX_HISTORY`` messages (FIFO).
+
+    ``cap_flag`` is a single-entry dict used to track whether we've
+    already logged the cap-hit for this connection — this keeps the log
+    to one line per session rather than one per overflow.
+    """
+    if len(history) <= _MAX_HISTORY:
+        return
+    overflow = len(history) - _MAX_HISTORY
+    del history[:overflow]
+    if not cap_flag.get("logged"):
+        logger.debug(
+            "Assist WebSocket history reached cap (%d); dropping oldest messages",
+            _MAX_HISTORY,
+        )
+        cap_flag["logged"] = True
+
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """WebSocket endpoint for live workflow event updates.
 
-    Connects through the ConnectionManager for event broadcasting.
+    Connects through the ConnectionManager for event broadcasting. The
+    channel is receive-only from the client side — any inbound frame is
+    discarded. Oversize frames (>64 KB) close the connection since the
+    client should never send anything that large on this endpoint.
     """
     manager = websocket.app.state.ws_manager
     await manager.connect(websocket)
     try:
         while True:
-            await websocket.receive_text()
+            frame = await websocket.receive_text()
+            if len(frame.encode("utf-8")) > _MAX_FRAME_BYTES:
+                logger.debug(
+                    "Dropping oversize frame on /ws (%d bytes); closing connection",
+                    len(frame),
+                )
+                await websocket.close(code=1009)
+                return
     except WebSocketDisconnect:
         pass
     finally:
@@ -34,6 +66,7 @@ async def _handle_assist_query(
     websocket: WebSocket,
     data: dict[str, Any],
     history: list[dict[str, str]],
+    cap_flag: dict[str, bool],
 ) -> None:
     """Process a single assist_query message over WebSocket.
 
@@ -41,6 +74,7 @@ async def _handle_assist_query(
         websocket: Active WebSocket connection.
         data: Parsed message dict with type, message, and context fields.
         history: Mutable conversation history (updated in place).
+        cap_flag: Per-connection state for one-shot cap-hit logging.
     """
     message = str(data.get("message", "")).strip()
     if not message:
@@ -52,6 +86,7 @@ async def _handle_assist_query(
     source = str(context.get("source", ""))
 
     history.append({"role": "user", "content": message})
+    _cap_history(history, cap_flag)
 
     try:
         from q_ai.assist.service import (
@@ -70,6 +105,7 @@ async def _handle_assist_query(
             await websocket.send_json({"type": "assist_token", "token": token})
 
         history.append({"role": "assistant", "content": full_response})
+        _cap_history(history, cap_flag)
         await websocket.send_json({"type": "assist_done"})
 
     except AssistantNotConfiguredError as exc:
@@ -88,14 +124,19 @@ async def assist_websocket(websocket: WebSocket) -> None:
     """WebSocket endpoint for conversational assistant streaming.
 
     Receives assist_query messages and streams back token-by-token responses.
-    Maintains per-connection conversation history (ephemeral).
+    Maintains per-connection conversation history (ephemeral, capped at
+    ``_MAX_HISTORY`` entries).
     """
     await websocket.accept()
     history: list[dict[str, str]] = []
+    cap_flag: dict[str, bool] = {"logged": False}
 
     try:
         while True:
             raw = await websocket.receive_text()
+            if len(raw.encode("utf-8")) > _MAX_FRAME_BYTES:
+                await websocket.send_json({"type": "assist_error", "message": "Message too large"})
+                continue
             try:
                 data = _json.loads(raw)
             except (ValueError, TypeError):
@@ -109,11 +150,12 @@ async def assist_websocket(websocket: WebSocket) -> None:
 
             if msg_type == "assist_reset":
                 history.clear()
+                cap_flag["logged"] = False
                 await websocket.send_json({"type": "assist_reset_done"})
                 continue
 
             if msg_type == "assist_query":
-                await _handle_assist_query(websocket, data, history)
+                await _handle_assist_query(websocket, data, history, cap_flag)
 
     except WebSocketDisconnect:
         pass

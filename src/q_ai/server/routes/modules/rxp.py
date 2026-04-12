@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
+from typing import Any
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
@@ -18,11 +22,8 @@ async def api_rxp_tab(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "partials/rxp_tab.html", {})
 
 
-@router.get("/api/rxp/validations")
-async def api_rxp_validations(request: Request) -> HTMLResponse:
-    """Return RXP validations with stats."""
-    templates = _get_templates(request)
-    db_path = _get_db_path(request)
+def _load_validations(db_path: Path | None) -> dict[str, Any]:
+    """Load RXP validation rows and aggregate stats (blocking SQLite)."""
     with get_connection(db_path) as conn:
         rows = conn.execute(
             """
@@ -36,17 +37,22 @@ async def api_rxp_validations(request: Request) -> HTMLResponse:
         total_row = conn.execute("SELECT COUNT(*) FROM rxp_validations").fetchone()
         models_row = conn.execute("SELECT COUNT(DISTINCT model_id) FROM rxp_validations").fetchone()
         avg_row = conn.execute("SELECT AVG(retrieval_rate) FROM rxp_validations").fetchone()
-    validations = [dict(row) for row in rows]
-    total_validations = total_row[0] if total_row else 0
-    models_tested = models_row[0] if models_row else 0
-    avg_retrieval_rate = avg_row[0] if avg_row and avg_row[0] is not None else 0.0
+    return {
+        "validations": [dict(row) for row in rows],
+        "total_validations": total_row[0] if total_row else 0,
+        "models_tested": models_row[0] if models_row else 0,
+        "avg_retrieval_rate": (avg_row[0] if avg_row and avg_row[0] is not None else 0.0),
+    }
+
+
+@router.get("/api/rxp/validations")
+async def api_rxp_validations(request: Request) -> HTMLResponse:
+    """Return RXP validations with stats."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    data = await asyncio.to_thread(_load_validations, db_path)
     return templates.TemplateResponse(
         request,
         "partials/rxp_tab.html",
-        {
-            "validations": validations,
-            "total_validations": total_validations,
-            "models_tested": models_tested,
-            "avg_retrieval_rate": avg_retrieval_rate,
-        },
+        data,
     )

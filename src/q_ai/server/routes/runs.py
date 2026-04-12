@@ -181,6 +181,29 @@ def _load_module_data(
     }
 
 
+def _safe_run_guidance(raw: Any, child_id: str) -> RunGuidance | None:
+    """Parse a child run's guidance JSON into a ``RunGuidance``.
+
+    Returns ``None`` on any shape mismatch or validation failure and logs
+    at debug level — malformed guidance is a UI concern, never a crash.
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        parsed = _json.loads(raw)
+    except (ValueError, _json.JSONDecodeError):
+        logger.debug("Child run %s guidance is not valid JSON", child_id)
+        return None
+    if not isinstance(parsed, dict):
+        logger.debug("Child run %s guidance is not a JSON object", child_id)
+        return None
+    try:
+        return RunGuidance.from_dict(parsed)
+    except (TypeError, ValueError, KeyError):
+        logger.debug("Child run %s guidance failed RunGuidance validation", child_id)
+        return None
+
+
 def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
     """Load all data for the runs results view (blocking, run off event loop)."""
     with get_connection(db_path) as conn:
@@ -203,13 +226,10 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
         module_data = _load_module_data(conn, child_by_module, findings)
 
         # Deserialize RunGuidance from child runs for playbook rendering
-        child_guidance: dict[str, RunGuidance | None] = {}
-        for mod, child in child_by_module.items():
-            if child.guidance:
-                with contextlib.suppress(TypeError, ValueError):
-                    child_guidance[mod] = RunGuidance.from_dict(_json.loads(child.guidance))
-            else:
-                child_guidance[mod] = None
+        child_guidance: dict[str, RunGuidance | None] = {
+            mod: _safe_run_guidance(child.guidance, child.id)
+            for mod, child in child_by_module.items()
+        }
         module_data["child_guidance"] = child_guidance
 
         eff_target_id = workflow_run.target_id or (workflow_run.config or {}).get("target_id")
@@ -551,14 +571,20 @@ async def runs(
 
     # Assist panel context for run results mode
     if ctx.get("results_mode"):
-        with get_connection(db_path) as conn:
-            assist_provider = get_setting(conn, "assist.provider") or ""
-            assist_model = get_setting(conn, "assist.model") or ""
-            modules = list(ctx.get("child_by_module", {}).keys())
-            ctx["assist_configured"] = bool(assist_provider and assist_model)
-            ctx["assist_prompts"] = _get_suggested_prompts(
-                conn, page="run_results", modules=modules
-            )
+        modules = list(ctx.get("child_by_module", {}).keys())
+
+        def _load_assist_panel() -> dict[str, Any]:
+            with get_connection(db_path) as conn:
+                provider = get_setting(conn, "assist.provider") or ""
+                model = get_setting(conn, "assist.model") or ""
+                prompts = _get_suggested_prompts(conn, page="run_results", modules=modules)
+            return {
+                "assist_configured": bool(provider and model),
+                "assist_prompts": prompts,
+            }
+
+        panel_ctx = await asyncio.to_thread(_load_assist_panel)
+        ctx.update(panel_ctx)
 
     return templates.TemplateResponse(request, "runs.html", ctx)
 
@@ -993,6 +1019,22 @@ async def runs_compare(
     return templates.TemplateResponse(request, "runs_compare.html", ctx)
 
 
+def _list_findings_filtered(
+    db_path: Path | None,
+    module: str | None,
+    category: str | None,
+    min_severity: Severity | None,
+) -> list:
+    """Load findings with optional filters (blocking SQLite)."""
+    with get_connection(db_path) as conn:
+        return finding_service.list_findings(
+            conn,
+            module=module,
+            category=category,
+            min_severity=min_severity,
+        )
+
+
 @router.get("/api/findings")
 async def api_findings(
     request: Request,
@@ -1004,16 +1046,22 @@ async def api_findings(
     templates = _get_templates(request)
     db_path = _get_db_path(request)
     parsed_severity = _parse_severity(severity)
-    with get_connection(db_path) as conn:
-        findings = finding_service.list_findings(
-            conn,
-            module=module or None,
-            category=category or None,
-            min_severity=parsed_severity,
-        )
+    findings = await asyncio.to_thread(
+        _list_findings_filtered,
+        db_path,
+        module or None,
+        category or None,
+        parsed_severity,
+    )
     return templates.TemplateResponse(
         request, "partials/findings_table.html", {"findings": findings}
     )
+
+
+def _list_all_targets(db_path: Path | None) -> list:
+    """Load all targets (blocking SQLite)."""
+    with get_connection(db_path) as conn:
+        return list_targets(conn)
 
 
 @router.get("/api/targets")
@@ -1021,9 +1069,14 @@ async def api_targets(request: Request) -> HTMLResponse:
     """Return the targets table partial for HTMX swap."""
     templates = _get_templates(request)
     db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        targets = list_targets(conn)
+    targets = await asyncio.to_thread(_list_all_targets, db_path)
     return templates.TemplateResponse(request, "partials/targets_table.html", {"targets": targets})
+
+
+def _get_child_runs_sync(db_path: Path | None, run_id: str) -> list:
+    """Load child runs for a workflow (blocking SQLite)."""
+    with get_connection(db_path) as conn:
+        return run_service.get_child_runs(conn, run_id)
 
 
 @router.get("/api/operations/status-bar")
@@ -1034,13 +1087,18 @@ async def operations_status_bar(
     """Render child run badges for the given workflow run."""
     db_path = _get_db_path(request)
     templates = _get_templates(request)
-    with get_connection(db_path) as conn:
-        child_runs = run_service.get_child_runs(conn, run_id)
+    child_runs = await asyncio.to_thread(_get_child_runs_sync, db_path, run_id)
     return templates.TemplateResponse(
         request,
         "partials/child_run_badges.html",
         {"child_runs": child_runs},
     )
+
+
+def _get_run_sync(db_path: Path | None, run_id: str) -> Any:
+    """Load a single run row (blocking SQLite)."""
+    with get_connection(db_path) as conn:
+        return run_service.get_run(conn, run_id)
 
 
 @router.get("/api/operations/workflow-status-bar")
@@ -1051,8 +1109,7 @@ async def operations_workflow_status_bar(
     """Render the full workflow status bar partial (badge, elapsed, report link)."""
     db_path = _get_db_path(request)
     templates = _get_templates(request)
-    with get_connection(db_path) as conn:
-        workflow_run = run_service.get_run(conn, run_id)
+    workflow_run = await asyncio.to_thread(_get_run_sync, db_path, run_id)
     wf = get_workflow(workflow_run.name) if workflow_run and workflow_run.name else None
     display_name = wf.name if wf else (workflow_run.name if workflow_run else "Workflow")
     return templates.TemplateResponse(
@@ -1060,6 +1117,12 @@ async def operations_workflow_status_bar(
         "partials/status_bar.html",
         {"workflow_run": workflow_run, "workflow_display_name": display_name},
     )
+
+
+def _get_findings_for_run_sync(db_path: Path | None, run_id: str) -> list:
+    """Load findings for a run (blocking SQLite)."""
+    with get_connection(db_path) as conn:
+        return finding_service.get_findings_for_run(conn, run_id)
 
 
 @router.get("/api/operations/findings-sidebar")
@@ -1070,8 +1133,7 @@ async def operations_findings_sidebar(
     """Render the findings sidebar for the given workflow run."""
     db_path = _get_db_path(request)
     templates = _get_templates(request)
-    with get_connection(db_path) as conn:
-        findings = finding_service.get_findings_for_run(conn, run_id)
+    findings = await asyncio.to_thread(_get_findings_for_run_sync, db_path, run_id)
     return templates.TemplateResponse(
         request,
         "partials/findings_sidebar.html",
@@ -1388,8 +1450,13 @@ def _read_proxy_messages(
         raw = _json.loads(session_path.read_text(encoding="utf-8"))
     except (ValueError, OSError):
         raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
 
-    all_msgs: list[dict[str, Any]] = raw.get("messages", [])
+    raw_msgs = raw.get("messages", [])
+    if not isinstance(raw_msgs, list):
+        return [], 0
+    all_msgs: list[dict[str, Any]] = [m for m in raw_msgs if isinstance(m, dict)]
     if direction:
         all_msgs = [m for m in all_msgs if m.get("direction") == direction]
 

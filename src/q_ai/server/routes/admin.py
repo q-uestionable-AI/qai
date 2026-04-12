@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from pathlib import Path
 from typing import Any
 
+import keyring.errors
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -75,7 +75,11 @@ def _get_providers_status(request: Request) -> list[dict[str, Any]]:
             keyring_unavailable = False
             try:
                 cred = get_credential(name)
-            except RuntimeError:
+            except (RuntimeError, keyring.errors.KeyringLocked):
+                cred = None
+                keyring_unavailable = True
+            except keyring.errors.KeyringError:
+                logger.exception("Keyring error reading credential for %s", name)
                 cred = None
                 keyring_unavailable = True
             base_url = get_setting(conn, f"{name}.base_url") or ""
@@ -93,13 +97,9 @@ def _get_providers_status(request: Request) -> list[dict[str, Any]]:
     return result
 
 
-@router.get("/admin")
-async def admin_page(request: Request) -> HTMLResponse:
-    """Render the admin page."""
-    templates = _get_templates(request)
+def _load_admin_page_context(db_path: Path | None, request: Request) -> dict[str, Any]:
+    """Load admin page context (blocking DB + keyring reads)."""
     providers_status = _get_providers_status(request)
-    db_path = _get_db_path(request)
-
     with get_connection(db_path) as conn:
         defaults = {
             "audit.default_transport": (get_setting(conn, "audit.default_transport") or "stdio"),
@@ -109,7 +109,25 @@ async def admin_page(request: Request) -> HTMLResponse:
         assist_provider = get_setting(conn, "assist.provider") or ""
         assist_model = get_setting(conn, "assist.model") or ""
         targets = list_targets(conn)
+    return {
+        "providers_status": providers_status,
+        "defaults": defaults,
+        "assist_base_url": assist_base_url,
+        "assist_provider": assist_provider,
+        "assist_model": assist_model,
+        "targets": targets,
+    }
 
+
+@router.get("/admin")
+async def admin_page(request: Request) -> HTMLResponse:
+    """Render the admin page."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+
+    ctx = await asyncio.to_thread(_load_admin_page_context, db_path, request)
+
+    assist_provider = ctx["assist_provider"]
     assist_provider_label = ""
     if assist_provider and assist_provider in PROVIDERS:
         assist_provider_label = PROVIDERS[assist_provider].label
@@ -119,14 +137,14 @@ async def admin_page(request: Request) -> HTMLResponse:
         "admin.html",
         {
             "active": "admin",
-            "providers_status": providers_status,
+            "providers_status": ctx["providers_status"],
             "assist_providers": _get_assist_provider_choices(),
-            "defaults": defaults,
-            "assist_base_url": assist_base_url,
+            "defaults": ctx["defaults"],
+            "assist_base_url": ctx["assist_base_url"],
             "assist_provider": assist_provider,
-            "assist_model": assist_model,
+            "assist_model": ctx["assist_model"],
             "assist_provider_label": assist_provider_label,
-            "targets": targets,
+            "targets": ctx["targets"],
         },
     )
 
@@ -134,53 +152,108 @@ async def admin_page(request: Request) -> HTMLResponse:
 @router.get("/api/admin/providers")
 async def api_list_providers(request: Request) -> JSONResponse:
     """List configured providers with status."""
-    return JSONResponse(content={"providers": _get_providers_status(request)})
+    providers = await asyncio.to_thread(_get_providers_status, request)
+    return JSONResponse(content={"providers": providers})
 
 
-@router.post("/api/admin/providers")
-async def api_add_provider(request: Request) -> JSONResponse:
-    """Add a provider -- key to keyring, base_url to DB settings."""
-    body = await request.json()
-    provider = body.get("provider", "").strip().lower()
-    api_key = body.get("api_key", "").strip()
-    base_url = body.get("base_url", "").strip()
+def _body_str(body: dict[str, Any], key: str) -> str:
+    """Return the stripped string value for ``key`` or ``""``.
 
+    Coerces non-string values to empty string so callers can treat the
+    result uniformly without isinstance noise at every call site.
+    """
+    value = body.get(key, "")
+    if not isinstance(value, str):
+        return ""
+    return value.strip()
+
+
+async def _parse_json_body(request: Request) -> dict[str, Any] | JSONResponse:
+    """Parse the request body as a JSON object, or return a 400 response."""
+    try:
+        body = await request.json()
+    except (ValueError, TypeError):
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON structure"})
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON structure"})
+    return body
+
+
+def _keyring_write_error(op: str, name: str, exc: Exception) -> JSONResponse:
+    """Map a keyring write exception to the appropriate HTTP error.
+
+    Covers the keyring exception triad used by every keyring writer in
+    this module: ``RuntimeError`` (insecure backend → 422),
+    ``KeyringLocked`` (user-resolvable → 503), and any other
+    ``KeyringError`` (logged → 500).
+    """
+    if isinstance(exc, RuntimeError):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": (
+                    "Keyring unavailable — set credentials via environment variable instead."
+                ),
+            },
+        )
+    if isinstance(exc, keyring.errors.KeyringLocked):
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Keyring is locked — unlock and retry."},
+        )
+    logger.exception("Failed to %s credential for %s", op, name, exc_info=exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Failed to {op} credential"},
+    )
+
+
+_CLOUD_PROVIDERS = frozenset({"anthropic", "google", "openai", "groq", "openrouter", "xai"})
+
+
+def _validate_add_provider_fields(provider: str, api_key: str) -> JSONResponse | None:
+    """Validate the ``provider`` and ``api_key`` fields for add-provider."""
     if not provider:
         return JSONResponse(
             status_code=422,
             content={"detail": "Provider name required"},
         )
-
-    cloud_providers = {"anthropic", "google", "openai", "groq", "openrouter", "xai"}
-    if provider in cloud_providers and not api_key:
+    if provider in _CLOUD_PROVIDERS and not api_key:
         return JSONResponse(
             status_code=422,
             content={"detail": "API key required for cloud providers"},
         )
+    return None
+
+
+@router.post("/api/admin/providers")
+async def api_add_provider(request: Request) -> JSONResponse:
+    """Add a provider -- key to keyring, base_url to DB settings."""
+    body = await _parse_json_body(request)
+    if isinstance(body, JSONResponse):
+        return body
+    provider = _body_str(body, "provider").lower()
+    api_key = _body_str(body, "api_key")
+    base_url = _body_str(body, "base_url")
+
+    validation_error = _validate_add_provider_fields(provider, api_key)
+    if validation_error is not None:
+        return validation_error
 
     if api_key:
         try:
             set_credential(provider, api_key)
-        except RuntimeError:
-            return JSONResponse(
-                status_code=422,
-                content={
-                    "detail": (
-                        "Keyring unavailable — set credentials via environment variable instead."
-                    ),
-                },
-            )
-        except Exception:
-            logger.exception("Failed to store credential for %s", provider)
-            return JSONResponse(
-                status_code=500,
-                content={"detail": "Failed to store credential"},
-            )
+        except (RuntimeError, keyring.errors.KeyringError) as exc:
+            return _keyring_write_error("store", provider, exc)
 
     if base_url:
         db_path = _get_db_path(request)
-        with get_connection(db_path) as conn:
-            set_setting(conn, f"{provider}.base_url", base_url)
+
+        def _save_base_url() -> None:
+            with get_connection(db_path) as conn:
+                set_setting(conn, f"{provider}.base_url", base_url)
+
+        await asyncio.to_thread(_save_base_url)
 
     return JSONResponse(
         status_code=201,
@@ -190,16 +263,32 @@ async def api_add_provider(request: Request) -> JSONResponse:
 
 @router.delete("/api/admin/providers/{provider}")
 async def api_delete_provider(request: Request, provider: str) -> JSONResponse:
-    """Delete a provider -- remove from keyring and DB."""
+    """Delete a provider -- remove from keyring and DB.
+
+    Returns 503 if the keyring is locked, 500 for other keyring errors,
+    422 if the keyring backend is insecure, and 200 on a successful delete.
+    """
     provider = provider.strip().lower()
-    with contextlib.suppress(Exception):
+    try:
         delete_credential(provider)
+    except (RuntimeError, keyring.errors.KeyringError) as exc:
+        return _keyring_write_error("delete", provider, exc)
 
     db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        set_setting(conn, f"{provider}.base_url", "")
+
+    def _clear_base_url() -> None:
+        with get_connection(db_path) as conn:
+            set_setting(conn, f"{provider}.base_url", "")
+
+    await asyncio.to_thread(_clear_base_url)
 
     return JSONResponse(content={"status": "deleted"})
+
+
+def _get_provider_base_url(db_path: Path | None, provider: str) -> str | None:
+    """Look up a provider's base URL from the DB (blocking SQLite)."""
+    with get_connection(db_path) as conn:
+        return get_setting(conn, f"{provider}.base_url")
 
 
 async def _test_local_provider(db_path: Path | None, provider: str) -> JSONResponse:
@@ -212,8 +301,7 @@ async def _test_local_provider(db_path: Path | None, provider: str) -> JSONRespo
     Returns:
         JSONResponse with connectivity status or error details.
     """
-    with get_connection(db_path) as conn:
-        base_url = get_setting(conn, f"{provider}.base_url")
+    base_url = await asyncio.to_thread(_get_provider_base_url, db_path, provider)
 
     default_urls = {
         "ollama": "http://localhost:11434",
@@ -299,15 +387,8 @@ async def _test_cloud_provider(provider: str) -> JSONResponse:
     """
     try:
         credential = get_credential(provider)
-    except RuntimeError:
-        return JSONResponse(
-            status_code=422,
-            content={
-                "detail": (
-                    "Keyring unavailable — set credentials via environment variable instead."
-                ),
-            },
-        )
+    except (RuntimeError, keyring.errors.KeyringError) as exc:
+        return _keyring_write_error("read", provider, exc)
     if credential is None:
         return JSONResponse(
             status_code=404,
@@ -335,47 +416,70 @@ async def api_test_provider(request: Request, provider: str) -> JSONResponse:
     return await _test_cloud_provider(provider)
 
 
-@router.get("/api/admin/defaults")
-async def api_get_defaults(request: Request) -> JSONResponse:
-    """Get default settings."""
-    db_path = _get_db_path(request)
+_DEFAULT_SETTING_KEYS = (
+    "audit.default_transport",
+    "ipi.default_callback_url",
+    "assist.provider",
+    "assist.model",
+    "assist.base_url",
+)
+
+
+def _load_defaults(db_path: Path | None) -> dict[str, str]:
+    """Read the default-settings map from the DB (blocking SQLite)."""
     with get_connection(db_path) as conn:
-        defaults = {
+        return {
             "audit.default_transport": (get_setting(conn, "audit.default_transport") or "stdio"),
             "ipi.default_callback_url": (get_setting(conn, "ipi.default_callback_url") or ""),
             "assist.provider": (get_setting(conn, "assist.provider") or ""),
             "assist.model": (get_setting(conn, "assist.model") or ""),
             "assist.base_url": (get_setting(conn, "assist.base_url") or ""),
         }
+
+
+def _save_defaults(db_path: Path | None, values: dict[str, str]) -> None:
+    """Persist the provided default-settings map (blocking SQLite)."""
+    with get_connection(db_path) as conn:
+        for key, value in values.items():
+            set_setting(conn, key, value)
+
+
+@router.get("/api/admin/defaults")
+async def api_get_defaults(request: Request) -> JSONResponse:
+    """Get default settings."""
+    db_path = _get_db_path(request)
+    defaults = await asyncio.to_thread(_load_defaults, db_path)
     return JSONResponse(content=defaults)
 
 
 @router.post("/api/admin/defaults")
 async def api_save_defaults(request: Request) -> JSONResponse:
     """Save default settings to DB."""
-    body = await request.json()
+    try:
+        body = await request.json()
+    except (ValueError, TypeError):
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON structure"})
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON structure"})
     db_path = _get_db_path(request)
-    allowed_keys = (
-        "audit.default_transport",
-        "ipi.default_callback_url",
-        "assist.provider",
-        "assist.model",
-        "assist.base_url",
-    )
-    with get_connection(db_path) as conn:
-        for key in allowed_keys:
-            value = body.get(key)
-            if value is not None:
-                set_setting(conn, key, str(value))
+    values: dict[str, str] = {}
+    for key in _DEFAULT_SETTING_KEYS:
+        value = body.get(key)
+        if value is not None:
+            values[key] = str(value)
+    if values:
+        await asyncio.to_thread(_save_defaults, db_path, values)
     return JSONResponse(content={"status": "saved"})
 
 
 @router.post("/api/admin/assist/credential")
 async def api_save_assist_credential(request: Request) -> JSONResponse:
     """Save an API key for the assistant's provider (namespaced keyring)."""
-    body = await request.json()
-    provider = body.get("provider", "").strip().lower()
-    api_key = body.get("api_key", "").strip()
+    body = await _parse_json_body(request)
+    if isinstance(body, JSONResponse):
+        return body
+    provider = _body_str(body, "provider").lower()
+    api_key = _body_str(body, "api_key")
 
     if not provider:
         return JSONResponse(
@@ -391,21 +495,8 @@ async def api_save_assist_credential(request: Request) -> JSONResponse:
     keyring_key = f"assist.{provider}"
     try:
         set_credential(keyring_key, api_key)
-    except RuntimeError:
-        return JSONResponse(
-            status_code=422,
-            content={
-                "detail": (
-                    "Keyring unavailable — set credentials via environment variable instead."
-                ),
-            },
-        )
-    except Exception:
-        logger.exception("Failed to store assist credential for %s", provider)
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Failed to store credential"},
-        )
+    except (RuntimeError, keyring.errors.KeyringError) as exc:
+        return _keyring_write_error("store assist", keyring_key, exc)
 
     return JSONResponse(content={"status": "saved"})
 
@@ -427,15 +518,21 @@ async def api_provider_models(request: Request, name: str) -> Response:
     inline_base_url = request.query_params.get("base_url")
 
     db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        if inline_api_key is None:
-            try:
-                cred = get_credential(name)
-            except RuntimeError:
-                cred = None
-        else:
-            cred = inline_api_key
-        base_url = inline_base_url or get_setting(conn, f"{name}.base_url") or ""
+    if inline_api_key is None:
+        try:
+            cred = get_credential(name)
+        except (RuntimeError, keyring.errors.KeyringLocked):
+            cred = None
+        except keyring.errors.KeyringError:
+            logger.exception("Keyring error reading credential for %s", name)
+            cred = None
+    else:
+        cred = inline_api_key
+    if inline_base_url:
+        base_url = inline_base_url
+    else:
+        stored_base_url = await asyncio.to_thread(_get_provider_base_url, db_path, name)
+        base_url = stored_base_url or ""
 
     configured = cred is not None or bool(base_url)
     if not configured and config.type not in {ProviderType.CUSTOM, ProviderType.CLOUD}:
@@ -469,15 +566,21 @@ async def api_provider_models(request: Request, name: str) -> Response:
     )
 
 
-@router.get("/api/targets/list")
-async def api_targets_list(request: Request) -> JSONResponse:
-    """Return registered targets for the launcher dropdown."""
-    db_path = _get_db_path(request)
+def _list_target_summaries(db_path: Path | None) -> list[dict[str, Any]]:
+    """Load the targets summary list (blocking SQLite)."""
     with get_connection(db_path) as conn:
         rows = conn.execute(
             "SELECT id, name, type, uri FROM targets ORDER BY created_at DESC"
         ).fetchall()
-    return JSONResponse(content={"targets": [dict(r) for r in rows]})
+    return [dict(r) for r in rows]
+
+
+@router.get("/api/targets/list")
+async def api_targets_list(request: Request) -> JSONResponse:
+    """Return registered targets for the launcher dropdown."""
+    db_path = _get_db_path(request)
+    targets = await asyncio.to_thread(_list_target_summaries, db_path)
+    return JSONResponse(content={"targets": targets})
 
 
 def _check_target_name_exists(db_path: Path | None, name: str) -> bool:

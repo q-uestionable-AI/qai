@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
+import logging
 import sqlite3
 from typing import Any
 
 from q_ai.core.db import list_evidence as _db_list_evidence
 from q_ai.core.models import Evidence
+
+logger = logging.getLogger(__name__)
 
 
 def list_evidence(
@@ -70,6 +72,20 @@ def load_evidence_json(
     ).fetchone()
     if not row or not row["content"]:
         return None
-    with contextlib.suppress(ValueError, TypeError):
-        return json.loads(row["content"])  # type: ignore[no-any-return]
-    return None
+    try:
+        parsed = json.loads(row["content"])
+    except (ValueError, TypeError, json.JSONDecodeError):
+        logger.warning(
+            "Malformed JSON in evidence record for run %s (type %s); ignoring",
+            run_id,
+            evidence_type,
+        )
+        return None
+    if not isinstance(parsed, dict):
+        logger.warning(
+            "Evidence JSON for run %s (type %s) is not an object; ignoring",
+            run_id,
+            evidence_type,
+        )
+        return None
+    return parsed

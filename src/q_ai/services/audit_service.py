@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import contextlib
+import logging
 import sqlite3
 from typing import Any
 
 from q_ai.core.mitigation import MitigationGuidance
 from q_ai.core.models import Evidence
+
+logger = logging.getLogger(__name__)
 
 
 def get_audit_run_detail(
@@ -42,8 +44,14 @@ def get_audit_run_detail(
         audit_evidence_map[af.id] = []
         af.mitigation_guidance = None
         if af.mitigation:
-            with contextlib.suppress(TypeError, ValueError):
+            try:
                 af.mitigation_guidance = MitigationGuidance.from_dict(af.mitigation)
+            except (TypeError, ValueError) as exc:
+                logger.warning(
+                    "Failed to parse mitigation guidance for finding %s: %s",
+                    af.id,
+                    exc,
+                )
 
     if audit_findings:
         finding_ids = [af.id for af in audit_findings]

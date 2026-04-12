@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -25,14 +28,19 @@ async def api_audit_scan(request: Request) -> HTMLResponse:
     )
 
 
+def _get_run_status(db_path: Path | None, run_id: str) -> str:
+    """Return the named status of a run, or ``UNKNOWN``."""
+    with get_connection(db_path) as conn:
+        run = run_service.get_run(conn, run_id)
+    return run.status.name if run is not None else "UNKNOWN"
+
+
 @router.get("/api/audit/scan/{run_id}/status")
 async def api_audit_scan_status(request: Request, run_id: str) -> HTMLResponse:
     """Return scan progress partial."""
     templates = _get_templates(request)
     db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        run = run_service.get_run(conn, run_id)
-    status = run.status.name if run is not None else "UNKNOWN"
+    status = await asyncio.to_thread(_get_run_status, db_path, run_id)
     return templates.TemplateResponse(request, "partials/audit_tab.html", {"scan_status": status})
 
 
@@ -89,13 +97,18 @@ async def api_audit_enumerate(request: Request) -> JSONResponse:
         )
 
 
+def _list_findings(db_path: Path | None, run_id: str) -> list:
+    """Load findings for a run (blocking SQLite)."""
+    with get_connection(db_path) as conn:
+        return finding_service.list_findings(conn, run_id=run_id)
+
+
 @router.get("/api/audit/findings/{run_id}")
 async def api_audit_findings(request: Request, run_id: str) -> HTMLResponse:
     """Return findings partial for a specific scan run."""
     templates = _get_templates(request)
     db_path = _get_db_path(request)
-    with get_connection(db_path) as conn:
-        findings = finding_service.list_findings(conn, run_id=run_id)
+    findings = await asyncio.to_thread(_list_findings, db_path, run_id)
     return templates.TemplateResponse(
         request, "partials/audit_findings.html", {"findings": findings}
     )
