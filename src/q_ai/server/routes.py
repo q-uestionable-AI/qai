@@ -612,19 +612,21 @@ def _collect_stranded_runs(request: Request) -> list[dict[str, Any]]:
         request.app.state, "stranded_runs", {}
     )
     active: dict[str, object] = getattr(request.app.state, "active_workflows", {})
+    entries: list[tuple[str, str | None, _dt.datetime | None]] = [
+        (rid, name, started_at) for rid, (name, started_at) in stranded.items() if rid not in active
+    ]
+    entries.sort(
+        key=lambda e: e[2] or _dt.datetime.min.replace(tzinfo=_dt.UTC),
+        reverse=True,
+    )
     rows: list[dict[str, Any]] = []
-    for rid, (name, started_at) in stranded.items():
-        if rid in active:
-            continue
+    for rid, name, started_at in entries:
         wf = get_workflow(name) if name else None
         display_name = (
             wf.name if wf else _QUICK_ACTION_DISPLAY_NAMES.get(name or "", name or "Workflow")
         )
-        rows.append({"run_id": rid, "display_name": display_name, "started_at": started_at})
-    rows.sort(
-        key=lambda r: r["started_at"] or _dt.datetime.min.replace(tzinfo=_dt.UTC),
-        reverse=True,
-    )
+        started_str = started_at.strftime("%Y-%m-%d %H:%M") if started_at else None
+        rows.append({"run_id": rid, "display_name": display_name, "started_at": started_str})
     return rows
 
 
