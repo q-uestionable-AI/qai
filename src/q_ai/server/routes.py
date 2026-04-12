@@ -593,6 +593,43 @@ class _HistoryRow:
         self.source = source
 
 
+def _collect_stranded_runs(request: Request) -> list[dict[str, Any]]:
+    """Return stranded-run display rows for the run-history banner.
+
+    Reads ``app.state.stranded_runs`` (captured at server startup) and
+    filters out any run that has an active ``WorkflowRunner`` in
+    ``app.state.active_workflows``. Such a run is legitimately waiting,
+    not stranded.
+
+    Args:
+        request: The incoming FastAPI request carrying app state.
+
+    Returns:
+        A list of dicts with ``run_id``, ``display_name``, and
+        ``started_at`` keys, sorted by ``started_at`` descending.
+    """
+    stranded: dict[str, tuple[str | None, _dt.datetime | None]] = getattr(
+        request.app.state, "stranded_runs", {}
+    )
+    active: dict[str, object] = getattr(request.app.state, "active_workflows", {})
+    entries: list[tuple[str, str | None, _dt.datetime | None]] = [
+        (rid, name, started_at) for rid, (name, started_at) in stranded.items() if rid not in active
+    ]
+    entries.sort(
+        key=lambda e: e[2] or _dt.datetime.min.replace(tzinfo=_dt.UTC),
+        reverse=True,
+    )
+    rows: list[dict[str, Any]] = []
+    for rid, name, started_at in entries:
+        wf = get_workflow(name) if name else None
+        display_name = (
+            wf.name if wf else _QUICK_ACTION_DISPLAY_NAMES.get(name or "", name or "Workflow")
+        )
+        started_str = started_at.strftime("%Y-%m-%d %H:%M") if started_at else None
+        rows.append({"run_id": rid, "display_name": display_name, "started_at": started_str})
+    return rows
+
+
 def _build_history_context(
     db_path: Path | None,
     workflow_filter: str | None,
@@ -788,6 +825,7 @@ async def runs(
             _build_history_context, db_path, workflow, target_id, status, do_group
         )
         ctx.update(history_ctx)
+        ctx["stranded_runs"] = _collect_stranded_runs(request)
 
     # Assist panel context for run results mode
     if ctx.get("results_mode"):
@@ -3798,6 +3836,75 @@ async def conclude_campaign(request: Request, run_id: str) -> JSONResponse:
         active_workflows.pop(run_id, None)
 
     return JSONResponse(content={"status": "concluded"})
+
+
+# ---------------------------------------------------------------------------
+# Stranded run conclusion
+# ---------------------------------------------------------------------------
+
+
+def _sync_conclude_stranded(db_path: Path | None, run_id: str) -> str:
+    """Transition a ``WAITING_FOR_USER`` run to ``CANCELLED`` atomically.
+
+    Returns:
+        ``"not_found"`` if the run does not exist, ``"not_stranded"`` if
+        its current status is not ``WAITING_FOR_USER``, or ``"cancelled"``
+        on successful transition.
+    """
+    now = _dt.datetime.now(_dt.UTC).isoformat()
+    with get_connection(db_path) as conn:
+        run = run_service.get_run(conn, run_id)
+        if run is None:
+            return "not_found"
+        if run.status != RunStatus.WAITING_FOR_USER:
+            return "not_stranded"
+        cur = conn.execute(
+            "UPDATE runs SET status = ?, finished_at = ? WHERE id = ? AND status = ?",
+            (int(RunStatus.CANCELLED), now, run_id, int(RunStatus.WAITING_FOR_USER)),
+        )
+        if cur.rowcount == 0:
+            return "not_stranded"
+    return "cancelled"
+
+
+@router.post("/api/runs/{run_id}/conclude-stranded")
+async def api_conclude_stranded_run(request: Request, run_id: str) -> Response:
+    """Conclude a stranded ``WAITING_FOR_USER`` run as ``CANCELLED``.
+
+    Only operates on runs that (a) are in ``WAITING_FOR_USER`` status and
+    (b) do not have an active ``WorkflowRunner`` in ``app.state``. The
+    second check is defensive: a run with a live runner is not stranded,
+    it is actively waiting, and the operator should resume or conclude it
+    via the normal paths.
+
+    On success the run is removed from ``app.state.stranded_runs`` and an
+    empty ``HTMLResponse`` is returned so the HTMX-driven banner row can
+    swap itself out.
+    """
+    active_workflows: dict[str, object] = request.app.state.active_workflows
+    if run_id in active_workflows:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "Run has an active runner; not stranded"},
+        )
+
+    db_path = _get_db_path(request)
+    result = await asyncio.to_thread(_sync_conclude_stranded, db_path, run_id)
+
+    if result == "not_found":
+        return JSONResponse(status_code=404, content={"detail": "Run not found"})
+    if result == "not_stranded":
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "Run is not in WAITING_FOR_USER status"},
+        )
+
+    stranded: dict[str, tuple[str | None, _dt.datetime | None]] = getattr(
+        request.app.state, "stranded_runs", {}
+    )
+    stranded.pop(run_id, None)
+
+    return HTMLResponse("")
 
 
 # ---------------------------------------------------------------------------
