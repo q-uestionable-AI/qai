@@ -221,6 +221,48 @@ class TestBoundaryHelpers:
             api_key="secret",
         )
 
+    async def test_complete_text_returns_empty_string_for_empty_choices(self) -> None:
+        """complete_text() should return empty text for empty choice lists."""
+        mock_response = MagicMock()
+        mock_response.choices = []
+
+        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+            mock_acomp.return_value = mock_response
+            result = await complete_text("openai/gpt-4o", [])
+
+        assert result == ""
+
+    async def test_complete_text_returns_empty_string_when_message_missing(self) -> None:
+        """complete_text() should return empty text when the message is missing."""
+        mock_choice = MagicMock()
+        mock_choice.message = None
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+            mock_acomp.return_value = mock_response
+            result = await complete_text("openai/gpt-4o", [])
+
+        assert result == ""
+
+    async def test_complete_text_returns_empty_string_when_content_missing(self) -> None:
+        """complete_text() should return empty text when the content is missing."""
+        mock_message = MagicMock()
+        mock_message.content = None
+
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+            mock_acomp.return_value = mock_response
+            result = await complete_text("openai/gpt-4o", [])
+
+        assert result == ""
+
     async def test_stream_text_yields_non_empty_chunks(self) -> None:
         """stream_text() should yield only chunks with content."""
 
@@ -245,6 +287,34 @@ class TestBoundaryHelpers:
             timeout=120.0,
             stream=True,
         )
+
+    async def test_stream_text_skips_malformed_chunks(self) -> None:
+        """stream_text() should skip chunks with missing choices or delta."""
+
+        async def fake_stream() -> object:
+            empty_choice_chunk = MagicMock()
+            empty_choice_chunk.choices = []
+            yield empty_choice_chunk
+
+            missing_delta_choice = MagicMock()
+            missing_delta_choice.delta = None
+            missing_delta_chunk = MagicMock()
+            missing_delta_chunk.choices = [missing_delta_choice]
+            yield missing_delta_chunk
+
+            valid_delta = MagicMock()
+            valid_delta.content = "token"
+            valid_choice = MagicMock()
+            valid_choice.delta = valid_delta
+            valid_chunk = MagicMock()
+            valid_chunk.choices = [valid_choice]
+            yield valid_chunk
+
+        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+            mock_acomp.return_value = fake_stream()
+            result = [token async for token in stream_text("openai/gpt-4o", [])]
+
+        assert result == ["token"]
 
     def test_get_litellm_context_window_prefers_max_input_tokens(self) -> None:
         """get_litellm_context_window() should prefer max_input_tokens."""

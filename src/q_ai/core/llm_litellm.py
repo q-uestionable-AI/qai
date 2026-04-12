@@ -78,6 +78,20 @@ def _build_completion_kwargs(
     return kwargs
 
 
+def _get_first_choice(response: Any, model: str, response_kind: str) -> Any | None:
+    """Return the first choice from a LiteLLM payload when present."""
+    choices = getattr(response, "choices", None)
+    if not choices:
+        logger.debug("LiteLLM %s payload missing choices for %s", response_kind, model)
+        return None
+
+    try:
+        return choices[0]
+    except (IndexError, KeyError, TypeError):
+        logger.debug("LiteLLM %s payload had unusable choices for %s", response_kind, model)
+        return None
+
+
 async def complete_text(
     model: str,
     messages: list[dict[str, Any]],
@@ -101,8 +115,24 @@ async def complete_text(
     response = await acompletion(
         **_build_completion_kwargs(model, messages, timeout, api_base, api_key)
     )
-    choice = response.choices[0]  # type: ignore[union-attr]
-    return choice.message.content or ""  # type: ignore[union-attr]
+    choice = _get_first_choice(response, model, "completion")
+    if choice is None:
+        return ""
+
+    message = getattr(choice, "message", None)
+    if message is None:
+        logger.debug("LiteLLM completion payload missing message for %s", model)
+        return ""
+
+    content = getattr(message, "content", None)
+    if content is None:
+        logger.debug("LiteLLM completion payload missing content for %s", model)
+        return ""
+    if isinstance(content, str):
+        return content
+
+    logger.debug("LiteLLM completion payload had non-string content for %s", model)
+    return ""
 
 
 async def stream_text(
@@ -129,10 +159,20 @@ async def stream_text(
         **_build_completion_kwargs(model, messages, timeout, api_base, api_key, stream=True)
     )
     async for chunk in response:
-        delta = chunk.choices[0].delta  # type: ignore[union-attr]
-        content = delta.content  # type: ignore[union-attr]
-        if content:
+        choice = _get_first_choice(chunk, model, "stream chunk")
+        if choice is None:
+            continue
+
+        delta = getattr(choice, "delta", None)
+        if delta is None:
+            logger.debug("LiteLLM stream chunk missing delta for %s", model)
+            continue
+
+        content = getattr(delta, "content", None)
+        if isinstance(content, str) and content:
             yield content
+        elif content is not None:
+            logger.debug("LiteLLM stream chunk had non-string content for %s", model)
 
 
 def get_litellm_context_window(model: str) -> int | None:
