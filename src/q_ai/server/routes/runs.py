@@ -136,7 +136,10 @@ def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
             return {"previously_seen": set()}
 
     workflow = get_workflow(detail.workflow_run.name) if detail.workflow_run.name else None
-    wf_name = _resolve_workflow_display_name(detail.workflow_run.name)
+    if detail.workflow_run.module == "import":
+        wf_name = _resolve_import_display_name(detail.workflow_run.source)
+    else:
+        wf_name = _resolve_workflow_display_name(detail.workflow_run.name)
     wf_modules = list(workflow.modules) if workflow else []
 
     module_data = dict(detail.module_data)

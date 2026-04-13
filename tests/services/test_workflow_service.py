@@ -69,7 +69,7 @@ class TestValidateTransportAndCommand:
             svc.validate_transport_and_command({"transport": "weird"})
 
     def test_rejects_non_string_field(self) -> None:
-        with pytest.raises(TypeError):
+        with pytest.raises(WorkflowValidationError, match="must be a string"):
             svc.validate_transport_and_command({"transport": ["stdio"]})
 
 

@@ -65,6 +65,25 @@ def _validation_error_response(exc: WorkflowValidationError) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": exc.detail})
 
 
+async def _call_provider_validator(
+    body: dict[str, Any], db_path: Path | None
+) -> JSONResponse | None:
+    """Run :func:`validate_provider_model` and convert failures to 422.
+
+    Returns ``None`` on success or a 422 ``JSONResponse`` on validation
+    failure. Catches ``AttributeError`` and ``TypeError`` raised when
+    the provider/model fields hold non-string types so a malformed body
+    surfaces as 422 rather than escaping as 500.
+    """
+    try:
+        await validate_provider_model(body, db_path)
+    except WorkflowValidationError as exc:
+        return _validation_error_response(exc)
+    except (AttributeError, TypeError):
+        return JSONResponse(status_code=422, content={"detail": "Invalid provider or model"})
+    return None
+
+
 def _load_launcher_db_context(db_path: Path | None) -> dict[str, Any]:
     """Load provider list and launcher defaults (blocking DB reads)."""
     all_providers = get_configured_providers(db_path)
@@ -260,10 +279,9 @@ async def _validate_launch_request(
             content={"detail": f"Unknown workflow: {workflow_id}"},
         )
     if entry.requires_provider:
-        try:
-            await validate_provider_model(body, db_path)
-        except WorkflowValidationError as exc:
-            return _validation_error_response(exc)
+        provider_error = await _call_provider_validator(body, db_path)
+        if provider_error is not None:
+            return provider_error
     target_name = ""
     if workflow_id not in _NO_TARGET_NAME_WORKFLOWS:
         target_name = body.get("target_name", "").strip()
@@ -366,10 +384,9 @@ async def _validate_quick_action(
         )
 
     if action in _QUICK_ACTION_PROVIDER_REQUIRED:
-        try:
-            await validate_provider_model(body, db_path)
-        except WorkflowValidationError as exc:
-            return _validation_error_response(exc)
+        provider_error = await _call_provider_validator(body, db_path)
+        if provider_error is not None:
+            return provider_error
 
     target_name = _str_field(body, "target_name")
     if not target_name:
@@ -463,9 +480,8 @@ async def launch_quick_action(request: Request) -> JSONResponse:
 
     try:
         config = build_quick_action_config(action, body, target_id)
-    except TypeError:
-        logger.warning("Invalid action configuration in quick action", exc_info=True)
-        return JSONResponse(status_code=422, content={"detail": "Invalid action configuration"})
+    except WorkflowValidationError as exc:
+        return _validation_error_response(exc)
 
     runner = WorkflowRunner(
         workflow_id=_QUICK_ACTION_WORKFLOW_MAP[action],

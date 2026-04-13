@@ -50,13 +50,13 @@ def _str_field(body: dict[str, Any], key: str, default: str = "") -> str:
         The stripped string value.
 
     Raises:
-        TypeError: If the value is present but not a string.
+        WorkflowValidationError: If the value is present but not a string.
     """
     val = body.get(key, default)
     if val is None:
         return default
     if not isinstance(val, str):
-        raise TypeError(f"'{key}' must be a string")
+        raise WorkflowValidationError(f"'{key}' must be a string")
     return val.strip()
 
 
@@ -67,23 +67,24 @@ def validate_transport_and_model(body: dict[str, Any]) -> None:
         body: The parsed request body dict.
 
     Raises:
-        WorkflowValidationError: If any transport/model field is invalid.
+        WorkflowValidationError: If any transport/model field is invalid
+            or has a non-string value.
     """
-    transport = body.get("transport", "").strip()
+    transport = _str_field(body, "transport")
     if transport not in _VALID_TRANSPORTS:
         raise WorkflowValidationError(
             f"Invalid transport. Must be one of: {', '.join(sorted(_VALID_TRANSPORTS))}"
         )
 
-    command = body.get("command", "").strip() or None
-    url = body.get("url", "").strip() or None
+    command = _str_field(body, "command") or None
+    url = _str_field(body, "url") or None
 
     if transport == "stdio" and not command:
         raise WorkflowValidationError("command is required for stdio transport")
     if transport in ("sse", "streamable-http") and not url:
         raise WorkflowValidationError("url is required for sse/streamable-http transport")
 
-    model = body.get("model", "").strip()
+    model = _str_field(body, "model")
     if not model or "/" not in model:
         raise WorkflowValidationError("model must be non-empty and in provider/model format")
 
@@ -95,8 +96,8 @@ def validate_transport_and_command(body: dict[str, Any]) -> None:
         body: The parsed request body dict.
 
     Raises:
-        WorkflowValidationError: If transport or command/url is invalid.
-        TypeError: If any field has a non-string value.
+        WorkflowValidationError: If transport or command/url is invalid
+            or has a non-string value.
     """
     transport = _str_field(body, "transport")
     if transport not in _VALID_TRANSPORTS:
@@ -118,8 +119,8 @@ def validate_campaign_fields(body: dict[str, Any]) -> None:
         body: The parsed request body dict.
 
     Raises:
-        WorkflowValidationError: If model or rounds is invalid.
-        TypeError: If the model field has a non-string value.
+        WorkflowValidationError: If model or rounds is invalid or model
+            has a non-string value.
     """
     model = _str_field(body, "model")
     if not model or "/" not in model:
