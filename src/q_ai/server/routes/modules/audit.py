@@ -59,7 +59,10 @@ async def api_audit_enumerate(request: Request) -> JSONResponse:
         JSONResponse with server_info, tools, resources, prompts on success,
         or 422 on validation error, or 500 on connection failure.
     """
-    from q_ai.server.routes.workflows import _validate_transport_and_command
+    from q_ai.services.workflow_service import (
+        WorkflowValidationError,
+        validate_transport_and_command,
+    )
 
     try:
         body = await request.json()
@@ -70,9 +73,12 @@ async def api_audit_enumerate(request: Request) -> JSONResponse:
             status_code=422, content={"detail": "Request body must be a JSON object"}
         )
 
-    transport_error = _validate_transport_and_command(body)
-    if transport_error is not None:
-        return transport_error
+    try:
+        validate_transport_and_command(body)
+    except WorkflowValidationError as exc:
+        return JSONResponse(status_code=422, content={"detail": exc.detail})
+    except TypeError:
+        return JSONResponse(status_code=422, content={"detail": "Invalid request parameters"})
 
     from q_ai.audit.adapter import _build_connection
     from q_ai.mcp.discovery import enumerate_server

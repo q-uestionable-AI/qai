@@ -32,7 +32,7 @@ class TestLaunchCreatesTarget:
     def test_launch_creates_target(self, client: TestClient, tmp_db: Path) -> None:
         """POST valid config -> target created in DB."""
         with (
-            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
             patch(
                 "q_ai.server.routes.workflows.get_workflow",
             ) as mock_get_wf,
@@ -61,7 +61,7 @@ class TestLaunchCreatesWorkflowRun:
     def test_launch_creates_workflow_run(self, client: TestClient, tmp_db: Path) -> None:
         """POST valid config -> run with module='workflow' exists in DB."""
         with (
-            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
             patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
         ):
             executor = _noop_executor()
@@ -87,7 +87,7 @@ class TestLaunchReturnsRunId:
     def test_launch_returns_run_id(self, client: TestClient) -> None:
         """Response JSON contains run_id and redirect keys."""
         with (
-            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
             patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
         ):
             executor = _noop_executor()
@@ -110,7 +110,7 @@ class TestLaunchValidation:
         """POST without transport -> 422."""
         body = _valid_body()
         body["transport"] = ""
-        with patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"):
+        with patch("q_ai.services.workflow_service.get_credential", return_value="test-key"):
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
 
@@ -118,14 +118,14 @@ class TestLaunchValidation:
         """POST without model -> 422."""
         body = _valid_body()
         body["model"] = ""
-        with patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"):
+        with patch("q_ai.services.workflow_service.get_credential", return_value="test-key"):
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
         assert "model" in resp.json()["detail"].lower()
 
     def test_launch_validation_missing_credential(self, client: TestClient) -> None:
         """POST with valid model but no credential -> 422."""
-        with patch("q_ai.server.routes.workflows.get_credential", return_value=None):
+        with patch("q_ai.services.workflow_service.get_credential", return_value=None):
             resp = client.post("/api/workflows/launch", json=_valid_body())
         assert resp.status_code == 422
 
@@ -133,7 +133,7 @@ class TestLaunchValidation:
         """POST without target_name -> 422."""
         body = _valid_body()
         body["target_name"] = ""
-        with patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"):
+        with patch("q_ai.services.workflow_service.get_credential", return_value="test-key"):
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
 
@@ -260,7 +260,7 @@ class TestLaunchTracePath:
             "model": "openai/gpt-4",
         }
         with (
-            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
             patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
             patch("q_ai.chain.loader.discover_chains", mock_discover),
             patch("q_ai.chain.loader.load_chain", mock_load),
@@ -282,7 +282,7 @@ class TestLaunchTracePath:
             "model": "openai/gpt-4",
         }
         with (
-            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
             patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
             patch("q_ai.chain.loader.discover_chains", mock_discover),
             patch("q_ai.chain.loader.load_chain", mock_load),
@@ -303,7 +303,7 @@ class TestLaunchTracePath:
             "model": "openai/gpt-4",
         }
         with (
-            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
             patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
         ):
             mock_get_wf.return_value = _mock_workflow_entry("trace_path")
@@ -415,7 +415,7 @@ class TestProviderGate:
             "format_id": "python",
         }
         with (
-            patch("q_ai.server.routes.workflows.get_credential") as mock_cred,
+            patch("q_ai.services.workflow_service.get_credential") as mock_cred,
             patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
         ):
             mock_get_wf.return_value = _mock_workflow_entry(

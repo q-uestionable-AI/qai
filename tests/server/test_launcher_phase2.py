@@ -75,7 +75,7 @@ class TestModelOptions:
     def test_configured_provider_in_dropdown(self, client: TestClient) -> None:
         """Configured provider appears in provider dropdown."""
         with (
-            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
             patch("q_ai.core.providers.get_credential", return_value="test-key"),
         ):
             resp = client.get("/launcher")
@@ -254,7 +254,7 @@ class TestQuickActionLaunch:
 
     def test_campaign_requires_model(self, client: TestClient) -> None:
         """Campaign action without model returns 422."""
-        with patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"):
+        with patch("q_ai.services.workflow_service.get_credential", return_value="test-key"):
             resp = client.post(
                 "/api/quick-actions/launch",
                 json={
@@ -270,7 +270,7 @@ class TestQuickActionLaunch:
 
     def test_campaign_rejects_invalid_rounds(self, client: TestClient) -> None:
         """Campaign with non-integer rounds returns 422."""
-        with patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"):
+        with patch("q_ai.services.workflow_service.get_credential", return_value="test-key"):
             resp = client.post(
                 "/api/quick-actions/launch",
                 json={
@@ -288,7 +288,7 @@ class TestQuickActionLaunch:
 
     def test_campaign_rejects_out_of_range_rounds(self, client: TestClient) -> None:
         """Campaign with rounds > 10 returns 422."""
-        with patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"):
+        with patch("q_ai.services.workflow_service.get_credential", return_value="test-key"):
             resp = client.post(
                 "/api/quick-actions/launch",
                 json={
@@ -306,7 +306,7 @@ class TestQuickActionLaunch:
 
     def test_campaign_requires_provider_credential(self, client: TestClient) -> None:
         """Campaign action checks for provider credentials."""
-        with patch("q_ai.server.routes.workflows.get_credential", return_value=None):
+        with patch("q_ai.services.workflow_service.get_credential", return_value=None):
             resp = client.post(
                 "/api/quick-actions/launch",
                 json={
@@ -340,7 +340,7 @@ class TestQuickActionLaunch:
     def test_campaign_launch_with_valid_credential(self, client: TestClient, tmp_db: Path) -> None:
         """Campaign with valid credential creates a run."""
         with (
-            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
             patch("q_ai.server.routes.workflows._run_workflow", new_callable=AsyncMock),
         ):
             resp = client.post(

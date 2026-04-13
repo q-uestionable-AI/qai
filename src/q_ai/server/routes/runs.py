@@ -18,8 +18,6 @@ from q_ai.core.db import (
     delete_run_cascade,
     export_run_bundle,
     get_connection,
-    get_previously_seen_finding_keys,
-    get_prior_run_counts_by_target,
     get_setting,
     get_target,
     list_targets,
@@ -35,7 +33,7 @@ from q_ai.server.routes._shared import (
     _get_templates,
     logger,
 )
-from q_ai.services import audit_service, evidence_service, finding_service, run_service
+from q_ai.services import finding_service, run_service
 
 router = APIRouter()
 
@@ -46,21 +44,6 @@ _SEV_MAP = {4: "Critical", 3: "High", 2: "Medium", 1: "Low", 0: "Info"}
 _ARTIFACTS_BASE = Path.home() / ".qai" / "artifacts"
 
 _MAX_BULK_RUNS = 50
-
-
-def _compute_duration(run: Any) -> str:
-    """Compute human-readable duration from a run's timestamps."""
-    if not run.started_at:
-        return ""
-    end = run.finished_at or _dt.datetime.now(_dt.UTC)
-    total_s = int((end - run.started_at).total_seconds())
-    mins, secs = divmod(total_s, 60)
-    hours, mins = divmod(mins, 60)
-    if hours > 0:
-        return f"{hours}h {mins}m {secs}s"
-    if mins > 0:
-        return f"{mins}m {secs}s"
-    return f"{secs}s"
 
 
 def _count_findings_by_severity(findings: list[Any]) -> dict[str, int]:
@@ -85,100 +68,36 @@ def _mitigation_section_label(section: Any) -> str:
     return "Considerations for your environment"
 
 
-def _load_module_data(
-    conn: Any,
-    child_by_module: dict[str, Any],
-    findings: list[Any],
-) -> dict[str, Any]:
-    """Load module-specific data for audit, inject, and proxy child runs.
+def _payload_template_map(inject_results_data: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Build the payload-template lookup used by inject result drill-down.
 
-    Returns:
-        Dict with keys: audit_scan, audit_findings, audit_evidence_map,
-        inject_results_data, payload_template_map, proxy_session.
+    Loads templates from disk on demand — purely a presentation concern,
+    so it stays in the route layer rather than the run service.
     """
-    audit_scan, audit_findings, audit_evidence_map = audit_service.get_audit_run_detail(
-        conn, child_by_module.get("audit"), findings
-    )
-    inject_results_data: list[dict[str, Any]] = []
-    coverage_report: dict[str, Any] | None = None
-    proxy_session: dict[str, Any] | None = None
-
-    inject_child = child_by_module.get("inject")
-    if inject_child:
-        rows = conn.execute(
-            """SELECT id, payload_name, technique, outcome,
-                      target_agent, evidence, created_at
-               FROM inject_results WHERE run_id = ?
-               ORDER BY created_at""",
-            (inject_child.id,),
-        ).fetchall()
-        inject_results_data = [dict(r) for r in rows]
-
-        coverage_report = evidence_service.load_evidence_json(
-            conn, inject_child.id, "coverage_report"
-        )
-
-    # Build payload template lookup for inject results drill-down
-    payload_template_map: dict[str, dict[str, Any]] = {}
-    if inject_results_data:
-        from q_ai.inject.payloads.loader import load_all_templates as _load_inject_templates
-
-        for tmpl in _load_inject_templates():
-            payload_template_map[tmpl.name] = {
-                "tool_description": tmpl.tool_description,
-                "test_query": tmpl.test_query or f"Use the {tmpl.tool_name} tool.",
-            }
-
-    proxy_child = child_by_module.get("proxy")
-    if proxy_child:
-        row = conn.execute(
-            "SELECT * FROM proxy_sessions WHERE run_id = ? LIMIT 1",
-            (proxy_child.id,),
-        ).fetchone()
-        proxy_session = dict(row) if row else None
-
-    # IPI data: campaigns, hits, and retrieval gate for the IPI child run
-    ipi_campaigns: list[dict[str, Any]] = []
-    ipi_hits: list[dict[str, Any]] = []
-    retrieval_gate: dict[str, Any] | None = None
-    ipi_child = child_by_module.get("ipi")
-    if ipi_child:
-        camp_rows = conn.execute(
-            """SELECT id, uuid, token, filename, format, technique,
-                      callback_url, payload_style, payload_type, created_at
-               FROM ipi_payloads WHERE run_id = ?
-               ORDER BY created_at""",
-            (ipi_child.id,),
-        ).fetchall()
-        ipi_campaigns = [dict(r) for r in camp_rows]
-
-        if ipi_campaigns:
-            camp_uuids = [c["uuid"] for c in ipi_campaigns]
-            ph = ", ".join("?" for _ in camp_uuids)
-            hit_rows = conn.execute(
-                f"SELECT id, uuid, source_ip, user_agent, confidence,"  # noqa: S608
-                f" token_valid, timestamp, body"
-                f" FROM ipi_hits WHERE uuid IN ({ph})"
-                " ORDER BY timestamp DESC",
-                camp_uuids,
-            ).fetchall()
-            ipi_hits = [dict(r) for r in hit_rows]
-
-        retrieval_gate = evidence_service.load_evidence_json(conn, ipi_child.id, "retrieval_gate")
+    if not inject_results_data:
+        return {}
+    from q_ai.inject.payloads.loader import load_all_templates as _load_inject_templates
 
     return {
-        "audit_scan": audit_scan,
-        "audit_findings": audit_findings,
-        "audit_evidence_map": audit_evidence_map,
-        "inject_results_data": inject_results_data,
-        "coverage_report": coverage_report,
-        "payload_template_map": payload_template_map,
-        "proxy_session": proxy_session,
-        "mitigation_section_label": _mitigation_section_label,
-        "ipi_campaigns": ipi_campaigns,
-        "ipi_hits": ipi_hits,
-        "retrieval_gate": retrieval_gate,
+        tmpl.name: {
+            "tool_description": tmpl.tool_description,
+            "test_query": tmpl.test_query or f"Use the {tmpl.tool_name} tool.",
+        }
+        for tmpl in _load_inject_templates()
     }
+
+
+def _resolve_workflow_display_name(name: str | None) -> str:
+    """Resolve a workflow run name to its user-facing display name."""
+    wf = get_workflow(name) if name else None
+    if wf is not None:
+        return wf.name
+    return _QUICK_ACTION_DISPLAY_NAMES.get(name or "", name or "Workflow")
+
+
+def _resolve_import_display_name(source: str | None) -> str:
+    """Resolve an import run's source field to its user-facing display name."""
+    return f"Import ({(source or 'Unknown').title()})"
 
 
 def _safe_run_guidance(raw: Any, child_id: str) -> RunGuidance | None:
@@ -205,132 +124,64 @@ def _safe_run_guidance(raw: Any, child_id: str) -> RunGuidance | None:
 
 
 def _build_runs_context(db_path: Path | None, run_id: str) -> dict[str, Any]:
-    """Load all data for the runs results view (blocking, run off event loop)."""
+    """Build the template context for the single-run results view.
+
+    Delegates DB queries to :func:`run_service.query_run_detail` and adds
+    presentation-only data: workflow display name, payload template map,
+    mitigation section labels, child-run guidance, and report HTML.
+    """
     with get_connection(db_path) as conn:
-        workflow_run, child_runs = run_service.get_run_with_children(conn, run_id)
-        if not workflow_run:
+        detail = run_service.query_run_detail(conn, run_id)
+        if detail is None:
             return {"previously_seen": set()}
-        findings = finding_service.get_findings_for_run(conn, run_id)
-        child_by_module = {c.module: c for c in child_runs}
 
-        workflow = get_workflow(workflow_run.name) if workflow_run.name else None
-        wf_name = (
-            workflow.name
-            if workflow
-            else _QUICK_ACTION_DISPLAY_NAMES.get(
-                workflow_run.name or "", workflow_run.name or "Workflow"
-            )
-        )
-        wf_modules = list(workflow.modules) if workflow else []
+    workflow = get_workflow(detail.workflow_run.name) if detail.workflow_run.name else None
+    if detail.workflow_run.module == "import":
+        wf_name = _resolve_import_display_name(detail.workflow_run.source)
+    else:
+        wf_name = _resolve_workflow_display_name(detail.workflow_run.name)
+    wf_modules = list(workflow.modules) if workflow else []
 
-        module_data = _load_module_data(conn, child_by_module, findings)
-
-        # Deserialize RunGuidance from child runs for playbook rendering
-        child_guidance: dict[str, RunGuidance | None] = {
-            mod: _safe_run_guidance(child.guidance, child.id)
-            for mod, child in child_by_module.items()
-        }
-        module_data["child_guidance"] = child_guidance
-
-        eff_target_id = workflow_run.target_id or (workflow_run.config or {}).get("target_id")
-        target = None
-        if eff_target_id:
-            target = get_target(conn, eff_target_id)
-
-        previously_seen: set[tuple[str, str]] = set()
-        if eff_target_id and workflow_run.started_at:
-            previously_seen = get_previously_seen_finding_keys(
-                conn,
-                eff_target_id,
-                workflow_run.started_at.isoformat(),
-                run_id,
-            )
-
-        # Look for existing generate_report run for this target
-        report_run_id = None
-        if eff_target_id:
-            report_row = conn.execute(
-                """SELECT id FROM runs
-                   WHERE name = 'generate_report' AND target_id = ?
-                   AND status IN (?, ?)
-                   ORDER BY finished_at DESC LIMIT 1""",
-                (eff_target_id, int(RunStatus.COMPLETED), int(RunStatus.PARTIAL)),
-            ).fetchone()
-            if report_row:
-                report_run_id = report_row["id"]
-
-        # For generate_report runs: render report markdown as HTML
-        report_html = ""
-        is_report_run = workflow_run.name == "generate_report"
-        has_evidence_zip = False
-        if is_report_run:
-            report_html, has_evidence_zip = _load_report_html(run_id)
-            # For report runs, the run itself is the report_run_id
-            report_run_id = run_id
-
-        result: dict[str, Any] = {
-            "workflow_run": workflow_run,
-            "child_runs": child_runs,
-            "findings": findings,
-            "results_mode": True,
-            "is_terminal": workflow_run.status in _TERMINAL_STATUSES,
-            "workflow_display_name": wf_name,
-            "duration_display": _compute_duration(workflow_run),
-            "finding_counts": _count_findings_by_severity(findings),
-            "workflow_modules": wf_modules,
-            "child_by_module": child_by_module,
-            "target": target,
-            "report_run_id": report_run_id,
-            "report_html": report_html,
-            "is_report_run": is_report_run,
-            "has_evidence_zip": has_evidence_zip,
-            "previously_seen": previously_seen,
-        }
-        result.update(module_data)
-        result["has_audit_findings"] = bool(module_data.get("audit_findings"))
-        return result
-
-
-class _HistoryRow:
-    """Enriched run data for the history table template."""
-
-    __slots__ = (
-        "display_name",
-        "duration",
-        "finding_count",
-        "id",
-        "report_run_id",
-        "source",
-        "started_at",
-        "status",
-        "target_id",
-        "target_name",
+    module_data = dict(detail.module_data)
+    module_data["payload_template_map"] = _payload_template_map(
+        module_data.get("inject_results_data", [])
     )
+    module_data["mitigation_section_label"] = _mitigation_section_label
+    module_data["child_guidance"] = {
+        mod: _safe_run_guidance(child.guidance, child.id)
+        for mod, child in detail.child_by_module.items()
+    }
 
-    def __init__(
-        self,
-        *,
-        run_id: str,
-        display_name: str,
-        target_name: str | None,
-        target_id: str | None,
-        status: RunStatus,
-        finding_count: int,
-        duration: str,
-        started_at: _dt.datetime | None,
-        report_run_id: str | None = None,
-        source: str | None = None,
-    ) -> None:
-        self.id = run_id
-        self.display_name = display_name
-        self.target_name = target_name
-        self.target_id = target_id
-        self.status = status
-        self.finding_count = finding_count
-        self.duration = duration
-        self.started_at = started_at
-        self.report_run_id = report_run_id
-        self.source = source
+    is_report_run = detail.workflow_run.name == "generate_report"
+    report_html = ""
+    has_evidence_zip = False
+    report_run_id = detail.report_run_id
+    if is_report_run:
+        report_html, has_evidence_zip = _load_report_html(run_id)
+        # For report runs, the run itself is the report_run_id
+        report_run_id = run_id
+
+    result: dict[str, Any] = {
+        "workflow_run": detail.workflow_run,
+        "child_runs": detail.child_runs,
+        "findings": detail.findings,
+        "results_mode": True,
+        "is_terminal": detail.workflow_run.status in _TERMINAL_STATUSES,
+        "workflow_display_name": wf_name,
+        "duration_display": run_service.compute_duration(detail.workflow_run),
+        "finding_counts": _count_findings_by_severity(detail.findings),
+        "workflow_modules": wf_modules,
+        "child_by_module": detail.child_by_module,
+        "target": detail.target,
+        "report_run_id": report_run_id,
+        "report_html": report_html,
+        "is_report_run": is_report_run,
+        "has_evidence_zip": has_evidence_zip,
+        "previously_seen": detail.previously_seen,
+    }
+    result.update(module_data)
+    result["has_audit_findings"] = bool(module_data.get("audit_findings"))
+    return result
 
 
 def _collect_stranded_runs(request: Request) -> list[dict[str, Any]]:
@@ -377,141 +228,33 @@ def _build_history_context(
     status_filter: str | None,
     group_by_target: bool = False,
 ) -> dict[str, Any]:
-    """Load context for the run history view (blocking, run off event loop)."""
+    """Build the template context for the run-history view.
+
+    Delegates DB queries and history-row assembly to
+    :func:`run_service.query_history_runs` and adds the presentation-only
+    keys (workflow filter list, status names, current filter selections).
+    """
     parsed_status = _parse_status(status_filter)
     with get_connection(db_path) as conn:
-        parent_runs = run_service.list_runs(
+        result = run_service.query_history_runs(
             conn,
-            module="workflow",
-            name=workflow_filter or None,
+            workflow_filter=workflow_filter or None,
+            target_filter=target_filter or None,
             status=parsed_status,
-            target_id=target_filter or None,
-        )
-
-        # Include import runs alongside workflow runs
-        import_runs = run_service.list_runs(
-            conn,
-            module="import",
-            status=parsed_status,
-            target_id=target_filter or None,
-        )
-
-        targets = list_targets(conn)
-        target_map = {t.id: t for t in targets}
-
-        # Batch finding counts and report runs to fix N+1 queries (O(1) instead of O(N))
-        run_ids = [r.id for r in parent_runs] + [r.id for r in import_runs]
-        finding_counts = {}
-        if run_ids:
-            ph = ", ".join("?" for _ in run_ids)
-            rows = conn.execute(
-                f"SELECT COALESCE(r.parent_run_id, r.id) as pid, COUNT(f.id) as cnt "  # noqa: S608
-                f"FROM findings f JOIN runs r ON f.run_id = r.id "
-                f"WHERE COALESCE(r.parent_run_id, r.id) IN ({ph}) GROUP BY pid",
-                run_ids,
-            ).fetchall()
-            finding_counts = {r["pid"]: r["cnt"] for r in rows}
-
-        target_ids = list(
-            {
-                r.target_id or (r.config or {}).get("target_id")
-                for r in parent_runs
-                if r.target_id or (r.config or {}).get("target_id")
-            }
-        )
-        report_runs = {}
-        if target_ids:
-            ph = ", ".join("?" for _ in target_ids)
-            rows = conn.execute(
-                f"SELECT target_id, id FROM runs "  # noqa: S608
-                f"WHERE name = 'generate_report' AND target_id IN ({ph}) "
-                f"AND status IN (?, ?) ORDER BY finished_at DESC",
-                (*target_ids, int(RunStatus.COMPLETED), int(RunStatus.PARTIAL)),
-            ).fetchall()
-            for r in rows:
-                if r["target_id"] not in report_runs:
-                    report_runs[r["target_id"]] = r["id"]
-
-        history_runs: list[_HistoryRow] = []
-        for run in parent_runs:
-            finding_count = finding_counts.get(run.id, 0)
-
-            wf = get_workflow(run.name) if run.name else None
-            display_name = (
-                wf.name
-                if wf
-                else _QUICK_ACTION_DISPLAY_NAMES.get(run.name or "", run.name or "Workflow")
-            )
-
-            eff_target_id = run.target_id or (run.config or {}).get("target_id")
-            target = target_map.get(eff_target_id) if eff_target_id else None
-            target_name = target.name if target else None
-
-            duration = _compute_duration(run)
-
-            # Get pre-computed latest report run
-            report_run_id = report_runs.get(eff_target_id)
-
-            history_runs.append(
-                _HistoryRow(
-                    run_id=run.id,
-                    display_name=display_name,
-                    target_name=target_name,
-                    target_id=eff_target_id,
-                    status=run.status,
-                    finding_count=finding_count,
-                    duration=duration,
-                    started_at=run.started_at,
-                    report_run_id=report_run_id,
-                )
-            )
-
-        for run in import_runs:
-            if workflow_filter:
-                continue  # Import runs don't match workflow filters
-            source_name = run.source or "Unknown"
-            display_name = f"Import ({source_name.title()})"
-            finding_count = finding_counts.get(run.id, 0)
-
-            eff_target_id = run.target_id
-            target = target_map.get(eff_target_id) if eff_target_id else None
-            target_name = target.name if target else None
-
-            history_runs.append(
-                _HistoryRow(
-                    run_id=run.id,
-                    display_name=display_name,
-                    target_name=target_name,
-                    target_id=eff_target_id,
-                    status=run.status,
-                    finding_count=finding_count,
-                    duration=_compute_duration(run),
-                    started_at=run.started_at,
-                    source=source_name,
-                )
-            )
-
-        # Re-sort by started_at descending after merging
-        history_runs.sort(
-            key=lambda r: r.started_at or _dt.datetime.min.replace(tzinfo=_dt.UTC),
-            reverse=True,
-        )
-
-        target_ids_on_page = [r.target_id for r in history_runs if r.target_id]
-        prior_run_counts = (
-            get_prior_run_counts_by_target(conn, target_ids_on_page) if target_ids_on_page else {}
+            resolve_workflow_display_name=_resolve_workflow_display_name,
+            resolve_import_display_name=_resolve_import_display_name,
         )
 
     return {
-        "history_runs": history_runs,
+        "history_runs": result.history_runs,
         "workflows": list_workflows(),
-        "targets": targets,
+        "targets": result.targets,
         "statuses": _STATUS_NAMES,
         "current_workflow": workflow_filter or "",
         "current_target": target_filter or "",
         "current_status": status_filter or "",
         "group_by_target": group_by_target,
-        "prior_run_counts": prior_run_counts,
+        "prior_run_counts": result.prior_run_counts,
     }
 
 
@@ -991,8 +734,8 @@ def _build_compare_context(
         "right_display": right_wf.name if right_wf else (right_run.name or "Workflow"),
         "left_target": left_target,
         "right_target": right_target,
-        "left_duration": _compute_duration(left_run),
-        "right_duration": _compute_duration(right_run),
+        "left_duration": run_service.compute_duration(left_run),
+        "right_duration": run_service.compute_duration(right_run),
         "left_only": left_only,
         "right_only": right_only,
         "common": common,
