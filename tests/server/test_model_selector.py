@@ -166,7 +166,7 @@ class TestLaunchProviderValidation:
             "model": "anthropic/claude-sonnet-4-20250514",
         }
         with (
-            patch("q_ai.server.routes.workflows.get_credential", return_value=None),
+            patch("q_ai.services.workflow_service.get_credential", return_value=None),
             patch("q_ai.server.routes.workflows.get_workflow") as mock_wf,
         ):
             mock_wf.return_value = _mock_workflow_entry("assess")
@@ -184,7 +184,7 @@ class TestLaunchProviderValidation:
             "model": "",
         }
         with (
-            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
             patch("q_ai.server.routes.workflows.get_workflow") as mock_wf,
         ):
             mock_wf.return_value = _mock_workflow_entry("assess")
@@ -202,7 +202,7 @@ class TestLaunchProviderValidation:
             "model": "openai/gpt-4o",
         }
         with (
-            patch("q_ai.server.routes.workflows.get_credential", return_value="test-key"),
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
             patch("q_ai.server.routes.workflows.get_workflow") as mock_wf,
             patch("q_ai.server.routes.workflows._run_workflow", new_callable=AsyncMock),
         ):
