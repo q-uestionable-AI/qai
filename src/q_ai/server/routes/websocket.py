@@ -49,10 +49,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         while True:
             frame = await websocket.receive_text()
-            if len(frame.encode("utf-8")) > _MAX_FRAME_BYTES:
+            frame_bytes = len(frame.encode("utf-8"))
+            if frame_bytes > _MAX_FRAME_BYTES:
                 logger.debug(
                     "Dropping oversize frame on /ws (%d bytes); closing connection",
-                    len(frame),
+                    frame_bytes,
                 )
                 await websocket.close(code=1009)
                 return

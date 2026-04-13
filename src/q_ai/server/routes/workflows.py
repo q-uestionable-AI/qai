@@ -8,6 +8,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+import keyring.errors
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -413,10 +414,16 @@ async def _run_workflow(
 
 
 def _read_provider_config(provider_name: str, db_path: Path | None) -> tuple[str | None, str]:
-    """Read (credential, base_url) for a provider (blocking DB + keyring)."""
+    """Read (credential, base_url) for a provider (blocking DB + keyring).
+
+    Treats any keyring failure (insecure backend, locked keyring, other
+    keyring errors) as an unconfigured credential so a flaky keyring
+    surfaces the same 'not configured' 422 as a missing key, rather than
+    a 500 from an uncaught exception.
+    """
     try:
         cred_value = get_credential(provider_name)
-    except RuntimeError:
+    except (RuntimeError, keyring.errors.KeyringError):
         cred_value = None
     with get_connection(db_path) as conn:
         base_url_value = get_setting(conn, f"{provider_name}.base_url") or ""
