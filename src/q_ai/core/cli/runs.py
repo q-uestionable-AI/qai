@@ -84,14 +84,22 @@ def delete_cmd(
             console.print(f"[red]Error: {exc}[/red]")
             raise typer.Exit(code=1) from None
 
-        # Preview counts for the confirmation prompt
+        # Preview counts for the confirmation prompt — include child runs,
+        # which delete_run_cascade also removes.
         findings_count: int = conn.execute(
-            "SELECT COUNT(*) FROM findings WHERE run_id = ?", (full_id,)
+            "SELECT COUNT(*) FROM findings "
+            "WHERE run_id = ? OR run_id IN (SELECT id FROM runs WHERE parent_run_id = ?)",
+            (full_id, full_id),
         ).fetchone()[0]
         evidence_count: int = conn.execute(
-            "SELECT COUNT(*) FROM evidence WHERE run_id = ? "
-            "OR finding_id IN (SELECT id FROM findings WHERE run_id = ?)",
-            (full_id, full_id),
+            "SELECT COUNT(*) FROM evidence "
+            "WHERE run_id = ? "
+            "   OR run_id IN (SELECT id FROM runs WHERE parent_run_id = ?) "
+            "   OR finding_id IN ("
+            "      SELECT id FROM findings "
+            "      WHERE run_id = ? OR run_id IN (SELECT id FROM runs WHERE parent_run_id = ?)"
+            "   )",
+            (full_id, full_id, full_id, full_id),
         ).fetchone()[0]
 
         if not yes:
@@ -105,7 +113,11 @@ def delete_cmd(
                 abort=True,
             )
 
-        files_to_delete = delete_run_cascade(conn, full_id)
+        try:
+            files_to_delete = delete_run_cascade(conn, full_id)
+        except ValueError as exc:
+            console.print(f"[red]Error: {exc}[/red]")
+            raise typer.Exit(code=1) from None
 
     _cleanup_files(files_to_delete)
 

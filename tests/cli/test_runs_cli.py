@@ -60,6 +60,39 @@ class TestRunsDelete:
             assert conn.execute("SELECT COUNT(*) FROM findings").fetchone()[0] == 0
             assert conn.execute("SELECT COUNT(*) FROM evidence").fetchone()[0] == 0
 
+    def test_runs_delete_counts_include_child_runs(self, tmp_path: Path) -> None:
+        """Output counts reflect findings/evidence of the full cascade (parent + children)."""
+        db_path = tmp_path / "qai.db"
+        with get_connection(db_path) as conn:
+            parent_rid = create_run(conn, module="chain")
+            child_rid = create_run(conn, module="audit", parent_run_id=parent_rid)
+            parent_fid = create_finding(
+                conn,
+                run_id=parent_rid,
+                module="chain",
+                category="test",
+                severity=Severity.LOW,
+                title="parent",
+            )
+            child_fid = create_finding(
+                conn,
+                run_id=child_rid,
+                module="audit",
+                category="test",
+                severity=Severity.LOW,
+                title="child",
+            )
+            create_evidence(conn, type="log", finding_id=parent_fid, content="p")
+            create_evidence(conn, type="log", finding_id=child_fid, content="c")
+            create_evidence(conn, type="log", run_id=child_rid, content="c2")
+
+        result = runner.invoke(
+            app, ["runs", "delete", parent_rid, "--yes", "--db-path", str(db_path)]
+        )
+        assert result.exit_code == 0
+        assert "2 findings" in result.output
+        assert "3 evidence" in result.output
+
     def test_runs_delete_cascades_module_data(self, tmp_path: Path) -> None:
         """qai runs delete removes module-backed rows (e.g. audit_scans)."""
         db_path = tmp_path / "qai.db"
