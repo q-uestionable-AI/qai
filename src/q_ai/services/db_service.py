@@ -133,60 +133,6 @@ def delete_target(
     return orphaned
 
 
-def delete_run(
-    conn: sqlite3.Connection,
-    run_id: str,
-) -> dict[str, int]:
-    """Delete a run and all its findings and evidence.
-
-    Uses a transaction — all or nothing.
-
-    Args:
-        conn: Active database connection.
-        run_id: Full UUID of the run to delete.
-
-    Returns:
-        Dict with ``findings_deleted`` and ``evidence_deleted`` counts.
-
-    Raises:
-        ValueError: If the run does not exist.
-    """
-    row = conn.execute("SELECT id FROM runs WHERE id = ?", (run_id,)).fetchone()
-    if row is None:
-        raise ValueError(f"Run {run_id!r} not found")
-
-    # Count before deleting
-    evidence_count: int = conn.execute(
-        "SELECT COUNT(*) FROM evidence WHERE run_id = ? "
-        "OR finding_id IN (SELECT id FROM findings WHERE run_id = ?)",
-        (run_id, run_id),
-    ).fetchone()[0]
-
-    findings_count: int = conn.execute(
-        "SELECT COUNT(*) FROM findings WHERE run_id = ?",
-        (run_id,),
-    ).fetchone()[0]
-
-    # Delete in FK-safe order
-    # First, recursively delete child runs to avoid FK violation on parent_run_id
-    child_ids = [
-        r[0]
-        for r in conn.execute("SELECT id FROM runs WHERE parent_run_id = ?", (run_id,)).fetchall()
-    ]
-    for child_id in child_ids:
-        delete_run(conn, child_id)
-
-    conn.execute(
-        "DELETE FROM evidence WHERE finding_id IN (SELECT id FROM findings WHERE run_id = ?)",
-        (run_id,),
-    )
-    conn.execute("DELETE FROM evidence WHERE run_id = ?", (run_id,))
-    conn.execute("DELETE FROM findings WHERE run_id = ?", (run_id,))
-    conn.execute("DELETE FROM runs WHERE id = ?", (run_id,))
-
-    return {"findings_deleted": findings_count, "evidence_deleted": evidence_count}
-
-
 def resolve_partial_id(
     conn: sqlite3.Connection,
     table: str,

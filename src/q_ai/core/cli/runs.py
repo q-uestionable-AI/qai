@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -10,9 +11,11 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from q_ai.core.db import get_connection, list_runs
+from q_ai.core.db import delete_run_cascade, get_connection, list_runs
 from q_ai.core.models import RunStatus
-from q_ai.services.db_service import delete_run, resolve_partial_id
+from q_ai.services.db_service import resolve_partial_id
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer(name="runs", help="Manage scan runs.", no_args_is_help=True)
 console = Console()
@@ -102,10 +105,21 @@ def delete_cmd(
                 abort=True,
             )
 
-        result = delete_run(conn, full_id)
+        files_to_delete = delete_run_cascade(conn, full_id)
+
+    _cleanup_files(files_to_delete)
 
     console.print(
         f"Deleted run '{full_id[:8]}' with "
-        f"{result['findings_deleted']} findings and "
-        f"{result['evidence_deleted']} evidence records."
+        f"{findings_count} findings and "
+        f"{evidence_count} evidence records."
     )
+
+
+def _cleanup_files(files: list[str]) -> None:
+    """Delete files returned by delete_run_cascade, logging failures."""
+    for file_path in files:
+        try:
+            Path(file_path).unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Failed to delete file: %s", file_path)

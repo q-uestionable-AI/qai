@@ -7,11 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from q_ai.core.db import create_evidence, create_finding, create_run, create_target
+from q_ai.core.db import create_finding, create_run, create_target
 from q_ai.core.models import Severity
 from q_ai.services.db_service import (
     backup_database,
-    delete_run,
     delete_target,
     reset_database,
 )
@@ -119,40 +118,3 @@ class TestDeleteTarget:
         """Deleting a nonexistent target raises ValueError."""
         with pytest.raises(ValueError, match="not found"):
             delete_target(db, "nonexistent_id")
-
-
-class TestDeleteRun:
-    """Tests for delete_run service function."""
-
-    def test_delete_run_cascades(self, db: sqlite3.Connection) -> None:
-        """Deleting a run removes its findings and evidence."""
-        run_id = create_run(db, module="audit")
-        fid = create_finding(
-            db,
-            run_id=run_id,
-            module="audit",
-            category="test",
-            severity=Severity.LOW,
-            title="f1",
-        )
-        create_evidence(db, type="request", finding_id=fid, content="payload")
-        create_evidence(db, type="log", run_id=run_id, content="log data")
-        db.commit()
-
-        result = delete_run(db, run_id)
-
-        assert result == {"findings_deleted": 1, "evidence_deleted": 2}
-        assert db.execute("SELECT COUNT(*) FROM runs WHERE id = ?", (run_id,)).fetchone()[0] == 0
-        assert (
-            db.execute("SELECT COUNT(*) FROM findings WHERE run_id = ?", (run_id,)).fetchone()[0]
-            == 0
-        )
-        assert (
-            db.execute("SELECT COUNT(*) FROM evidence WHERE run_id = ?", (run_id,)).fetchone()[0]
-            == 0
-        )
-
-    def test_delete_run_not_found(self, db: sqlite3.Connection) -> None:
-        """Deleting a nonexistent run raises ValueError."""
-        with pytest.raises(ValueError, match="not found"):
-            delete_run(db, "nonexistent_id")
