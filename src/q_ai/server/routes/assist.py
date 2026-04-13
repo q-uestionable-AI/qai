@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -77,29 +79,50 @@ def _get_suggested_prompts(
     return list(_PROMPTS_ACTIVE_USER) if has_runs else list(_PROMPTS_NEW_USER)
 
 
+def _load_assist_page_context(db_path: Path | None) -> dict[str, Any]:
+    """Load assist page DB context (blocking SQLite)."""
+    with get_connection(db_path) as conn:
+        assist_provider = get_setting(conn, "assist.provider") or ""
+        assist_model = get_setting(conn, "assist.model") or ""
+        prompts = _get_suggested_prompts(conn, page="chat")
+    return {
+        "assist_provider": assist_provider,
+        "assist_model": assist_model,
+        "assist_configured": bool(assist_provider and assist_model),
+        "suggested_prompts": prompts,
+    }
+
+
+def _load_assist_page_full(db_path: Path | None, request: Request) -> dict[str, Any]:
+    """Load full assist page context including providers_status.
+
+    Runs in a worker thread; ``_get_providers_status`` also performs
+    blocking SQLite and keyring reads, so we call it here rather than
+    from the async handler.
+    """
+    providers_status = _get_providers_status(request)
+    ctx = _load_assist_page_context(db_path)
+    ctx["providers_status"] = providers_status
+    return ctx
+
+
 @router.get("/")
 async def assist_page(request: Request) -> HTMLResponse:
     """Render the assistant chat page (default landing page)."""
     templates = _get_templates(request)
     db_path = _get_db_path(request)
-    providers_status = _get_providers_status(request)
-
-    with get_connection(db_path) as conn:
-        assist_provider = get_setting(conn, "assist.provider") or ""
-        assist_model = get_setting(conn, "assist.model") or ""
-        assist_configured = bool(assist_provider and assist_model)
-        prompts = _get_suggested_prompts(conn, page="chat")
+    ctx = await asyncio.to_thread(_load_assist_page_full, db_path, request)
 
     return templates.TemplateResponse(
         request,
         "assist.html",
         {
             "active": "assist",
-            "assist_configured": assist_configured,
-            "assist_provider": assist_provider,
-            "assist_model": assist_model,
-            "providers_status": providers_status,
+            "assist_configured": ctx["assist_configured"],
+            "assist_provider": ctx["assist_provider"],
+            "assist_model": ctx["assist_model"],
+            "providers_status": ctx["providers_status"],
             "assist_providers": _get_assist_provider_choices(),
-            "suggested_prompts": prompts,
+            "suggested_prompts": ctx["suggested_prompts"],
         },
     )

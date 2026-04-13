@@ -171,11 +171,15 @@ def conclude_run(
         return "already_terminal"
 
     non_terminal_ph = ", ".join("?" for _ in terminal_ints)
-    conn.execute(
+    cur = conn.execute(
         f"UPDATE runs SET status = ?, finished_at = ? "  # noqa: S608
         f"WHERE id = ? AND status NOT IN ({non_terminal_ph})",
         (int(RunStatus.COMPLETED), now, run_id, *terminal_ints),
     )
+    if cur.rowcount == 0:
+        # Race: the run was deleted or transitioned between the pre-check
+        # above and this UPDATE. Surface as not_found so callers return 404.
+        return "not_found"
     conn.execute(
         "UPDATE runs SET status = ?, finished_at = ? WHERE parent_run_id = ? AND status = ?",
         (int(RunStatus.COMPLETED), now, run_id, int(RunStatus.WAITING_FOR_USER)),

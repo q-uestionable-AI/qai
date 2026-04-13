@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json as _json
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -26,11 +28,8 @@ async def api_chain_tab(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "partials/chain_tab.html", {})
 
 
-@router.get("/api/chain/executions")
-async def api_chain_executions(request: Request) -> HTMLResponse:
-    """Return chain executions list partial."""
-    templates = _get_templates(request)
-    db_path = _get_db_path(request)
+def _load_executions(db_path: Path | None) -> list[dict[str, Any]]:
+    """Load recent chain executions (blocking SQLite)."""
     with get_connection(db_path) as conn:
         rows = conn.execute(
             """
@@ -41,22 +40,70 @@ async def api_chain_executions(request: Request) -> HTMLResponse:
             LIMIT 50
             """
         ).fetchall()
-    executions = [dict(row) for row in rows]
+    return [dict(row) for row in rows]
+
+
+@router.get("/api/chain/executions")
+async def api_chain_executions(request: Request) -> HTMLResponse:
+    """Return chain executions list partial."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    executions = await asyncio.to_thread(_load_executions, db_path)
     return templates.TemplateResponse(
         request, "partials/chain_tab.html", {"executions": executions}
     )
 
 
-@router.get("/api/chain/executions/{run_id}")
-async def api_chain_execution_detail(request: Request, run_id: str) -> HTMLResponse:
-    """Return chain execution detail partial with step outputs."""
-    templates = _get_templates(request)
-    db_path = _get_db_path(request)
+def _safe_json_dict(raw: Any, context: str) -> dict[str, Any] | None:
+    """Parse ``raw`` as a JSON object, returning None (and logging) on failure."""
+    if not isinstance(raw, str):
+        if raw is not None:
+            logger.debug("%s: expected JSON string, got %s", context, type(raw).__name__)
+        return None
+    try:
+        parsed = _json.loads(raw)
+    except (ValueError, _json.JSONDecodeError):
+        logger.debug("%s: JSON parse failed", context)
+        return None
+    if not isinstance(parsed, dict):
+        logger.debug("%s: parsed JSON is not an object", context)
+        return None
+    return parsed
+
+
+def _load_guidance_dict(raw_artifacts: Any) -> dict[str, Any] | None:
+    """Extract and parse the ``guidance`` JSON string from a step's artifacts.
+
+    Returns ``None`` whenever the data shape is unexpected — failures are
+    logged at debug level rather than propagated.
+    """
+    if not raw_artifacts:
+        return None
+    parsed = _safe_json_dict(raw_artifacts, "Chain step artifacts")
+    if parsed is None:
+        return None
+    return _safe_json_dict(parsed.get("guidance"), "Chain step guidance")
+
+
+def _parse_step_guidance(raw_artifacts: Any) -> RunGuidance | None:
+    """Safely parse guidance from a step's artifacts column."""
+    guidance_dict = _load_guidance_dict(raw_artifacts)
+    if guidance_dict is None:
+        return None
+    try:
+        return RunGuidance.from_dict(guidance_dict)
+    except (ValueError, TypeError, KeyError):
+        logger.debug("Chain step guidance failed RunGuidance validation")
+        return None
+
+
+def _load_execution_detail(db_path: Path | None, run_id: str) -> dict[str, Any]:
+    """Load a chain execution row and its step outputs (blocking SQLite)."""
     with get_connection(db_path) as conn:
         exec_row = conn.execute(
             "SELECT * FROM chain_executions WHERE run_id = ?", (run_id,)
         ).fetchone()
-        step_rows = []
+        step_rows: list[Any] = []
         if exec_row:
             step_rows = conn.execute(
                 """
@@ -71,21 +118,21 @@ async def api_chain_execution_detail(request: Request, run_id: str) -> HTMLRespo
     step_outputs: list[dict[str, Any]] = []
     for row in step_rows:
         step = dict(row)
-        # Deserialize guidance from artifacts if present
-        raw_artifacts = step.get("artifacts")
-        step["guidance"] = None
-        if raw_artifacts:
-            try:
-                parsed = _json.loads(raw_artifacts) if isinstance(raw_artifacts, str) else {}
-                if isinstance(parsed, dict) and "guidance" in parsed:
-                    step["guidance"] = RunGuidance.from_dict(_json.loads(parsed["guidance"]))
-            except (ValueError, TypeError):
-                pass
+        step["guidance"] = _parse_step_guidance(step.get("artifacts"))
         step_outputs.append(step)
+    return {"execution_detail": execution_detail, "step_outputs": step_outputs}
+
+
+@router.get("/api/chain/executions/{run_id}")
+async def api_chain_execution_detail(request: Request, run_id: str) -> HTMLResponse:
+    """Return chain execution detail partial with step outputs."""
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+    ctx = await asyncio.to_thread(_load_execution_detail, db_path, run_id)
     return templates.TemplateResponse(
         request,
         "partials/chain_tab.html",
-        {"execution_detail": execution_detail, "step_outputs": step_outputs},
+        ctx,
     )
 
 
@@ -106,10 +153,8 @@ async def api_chain_templates(request: Request) -> JSONResponse:
     return JSONResponse(content={"templates": templates})
 
 
-@router.get("/api/chain/executions/recent")
-async def api_chain_executions_recent(request: Request) -> JSONResponse:
-    """Return recent successful chain executions for the blast-radius selector."""
-    db_path = _get_db_path(request)
+def _load_recent_executions(db_path: Path | None) -> list[dict[str, Any]]:
+    """Load recent successful chain executions (blocking SQLite)."""
     with get_connection(db_path) as conn:
         rows = conn.execute(
             """
@@ -120,4 +165,12 @@ async def api_chain_executions_recent(request: Request) -> JSONResponse:
             LIMIT 20
             """
         ).fetchall()
-    return JSONResponse(content={"executions": [dict(r) for r in rows]})
+    return [dict(r) for r in rows]
+
+
+@router.get("/api/chain/executions/recent")
+async def api_chain_executions_recent(request: Request) -> JSONResponse:
+    """Return recent successful chain executions for the blast-radius selector."""
+    db_path = _get_db_path(request)
+    executions = await asyncio.to_thread(_load_recent_executions, db_path)
+    return JSONResponse(content={"executions": executions})
