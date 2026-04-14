@@ -11,6 +11,7 @@ import pytest
 
 from q_ai.core.db import get_connection, list_findings
 from q_ai.core.models import Severity
+from q_ai.ipi import probe_service
 from q_ai.ipi.probe_service import (
     CategoryStats,
     Probe,
@@ -18,8 +19,10 @@ from q_ai.ipi.probe_service import (
     ProbeRunResult,
     export_scored_prompts,
     generate_canary,
+    get_unique_path,
     load_probes,
     persist_probe_run,
+    resolve_export_path,
     run_probes,
     score_response,
     severity_from_compliance_rate,
@@ -539,3 +542,82 @@ class TestExportScoredPrompts:
         export_scored_prompts(run_result, "test-model", "http://test/v1", output)
 
         assert output.exists()
+
+    def test_export_returns_written_path(self, tmp_path: Path) -> None:
+        """Export returns the path actually written."""
+        output = tmp_path / "results.json"
+        run_result = _make_run_result()
+
+        written = export_scored_prompts(run_result, "test-model", "http://test/v1", output)
+
+        assert written == output
+
+    def test_export_does_not_overwrite(self, tmp_path: Path) -> None:
+        """Second export to same path writes an incremented variant."""
+        output = tmp_path / "results.json"
+        run_result = _make_run_result()
+
+        first = export_scored_prompts(run_result, "test-model", "http://test/v1", output)
+        second = export_scored_prompts(run_result, "test-model", "http://test/v1", output)
+
+        assert first == output
+        assert second == tmp_path / "results-1.json"
+        assert first.exists()
+        assert second.exists()
+
+    def test_export_relative_path_uses_exports_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Relative paths resolve under IPI_EXPORTS_DIR."""
+        monkeypatch.setattr(probe_service, "IPI_EXPORTS_DIR", tmp_path)
+        run_result = _make_run_result()
+
+        written = export_scored_prompts(
+            run_result, "test-model", "http://test/v1", Path("results.json")
+        )
+
+        assert written == tmp_path / "results.json"
+        assert written.exists()
+
+
+# ---------------------------------------------------------------------------
+# Path helpers
+# ---------------------------------------------------------------------------
+
+
+class TestResolveExportPath:
+    """Tests for :func:`resolve_export_path`."""
+
+    def test_absolute_path_returned_as_is(self, tmp_path: Path) -> None:
+        """Absolute paths are honored verbatim."""
+        absolute = tmp_path / "results.json"
+        assert resolve_export_path(absolute) == absolute
+
+    def test_relative_path_resolved_under_exports_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Relative paths resolve under IPI_EXPORTS_DIR."""
+        monkeypatch.setattr(probe_service, "IPI_EXPORTS_DIR", tmp_path)
+        assert resolve_export_path(Path("results.json")) == tmp_path / "results.json"
+
+
+class TestGetUniquePath:
+    """Tests for :func:`get_unique_path`."""
+
+    def test_returns_original_when_free(self, tmp_path: Path) -> None:
+        """Returns the input path unchanged if no file exists there."""
+        target = tmp_path / "results.json"
+        assert get_unique_path(target) == target
+
+    def test_appends_suffix_on_collision(self, tmp_path: Path) -> None:
+        """Appends ``-1`` before the extension when the file already exists."""
+        target = tmp_path / "results.json"
+        target.write_text("{}", encoding="utf-8")
+        assert get_unique_path(target) == tmp_path / "results-1.json"
+
+    def test_increments_suffix_until_free(self, tmp_path: Path) -> None:
+        """Keeps incrementing until a non-colliding path is found."""
+        (tmp_path / "results.json").write_text("{}", encoding="utf-8")
+        (tmp_path / "results-1.json").write_text("{}", encoding="utf-8")
+        (tmp_path / "results-2.json").write_text("{}", encoding="utf-8")
+        assert get_unique_path(tmp_path / "results.json") == tmp_path / "results-3.json"
