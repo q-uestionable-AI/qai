@@ -656,6 +656,10 @@ def _build_raw_evidence(run_result: ProbeRunResult, model: str) -> list[dict]:
 def resolve_export_path(path: Path) -> Path:
     """Resolve export path, defaulting relative paths to ``~/.qai/exports/``.
 
+    User-home shorthand (``~``) is expanded first so a path like
+    ``~/results.json`` resolves under the home directory rather than being
+    nested inside :data:`IPI_EXPORTS_DIR` as a literal ``~``.
+
     Args:
         path: User-provided output path.
 
@@ -663,34 +667,43 @@ def resolve_export_path(path: Path) -> Path:
         Absolute path, with relative paths resolved against
         :data:`IPI_EXPORTS_DIR`.
     """
+    path = path.expanduser()
     if path.is_absolute():
         return path
     return IPI_EXPORTS_DIR / path
 
 
 def get_unique_path(path: Path) -> Path:
-    """Return ``path`` with an incremented suffix if the file already exists.
+    """Atomically reserve a non-colliding path by exclusive file creation.
+
+    Tries to create ``path`` with ``O_CREAT | O_EXCL`` (via
+    :meth:`pathlib.Path.touch` with ``exist_ok=False``). On collision, appends
+    an incrementing ``-N`` suffix before the extension and retries. On return,
+    the chosen path exists as an empty placeholder — the caller should write
+    their final content to it (overwriting the placeholder), which closes the
+    TOCTOU gap between candidate selection and write.
 
     Args:
-        path: Desired output path.
+        path: Desired output path. Parent directory must already exist.
 
     Returns:
-        Original path if available, otherwise ``<stem>-<N><suffix>`` where
-        ``N`` is the smallest positive integer that does not collide.
+        A reserved path that the caller now owns. Equal to ``path`` when no
+        collision, otherwise ``<stem>-<N><suffix>`` for the smallest positive
+        integer ``N`` that did not collide.
     """
-    if not path.exists():
-        return path
-
     stem = path.stem
     suffix = path.suffix
     parent = path.parent
 
-    counter = 1
+    counter = 0
     while True:
-        candidate = parent / f"{stem}-{counter}{suffix}"
-        if not candidate.exists():
+        candidate = path if counter == 0 else parent / f"{stem}-{counter}{suffix}"
+        try:
+            candidate.touch(exist_ok=False)
+        except FileExistsError:
+            counter += 1
+        else:
             return candidate
-        counter += 1
 
 
 def export_scored_prompts(

@@ -600,24 +600,53 @@ class TestResolveExportPath:
         monkeypatch.setattr(probe_service, "IPI_EXPORTS_DIR", tmp_path)
         assert resolve_export_path(Path("results.json")) == tmp_path / "results.json"
 
+    def test_home_shorthand_expanded(self) -> None:
+        """Paths starting with ``~`` expand to the user's home directory."""
+        resolved = resolve_export_path(Path("~/results.json"))
+        assert resolved == Path.home() / "results.json"
+
 
 class TestGetUniquePath:
     """Tests for :func:`get_unique_path`."""
 
-    def test_returns_original_when_free(self, tmp_path: Path) -> None:
-        """Returns the input path unchanged if no file exists there."""
+    def test_returns_and_reserves_original_when_free(self, tmp_path: Path) -> None:
+        """Returns the input path and creates it as a placeholder."""
         target = tmp_path / "results.json"
-        assert get_unique_path(target) == target
+
+        returned = get_unique_path(target)
+
+        assert returned == target
+        assert target.exists()
 
     def test_appends_suffix_on_collision(self, tmp_path: Path) -> None:
         """Appends ``-1`` before the extension when the file already exists."""
         target = tmp_path / "results.json"
         target.write_text("{}", encoding="utf-8")
-        assert get_unique_path(target) == tmp_path / "results-1.json"
+
+        returned = get_unique_path(target)
+
+        assert returned == tmp_path / "results-1.json"
+        assert returned.exists()
 
     def test_increments_suffix_until_free(self, tmp_path: Path) -> None:
-        """Keeps incrementing until a non-colliding path is found."""
+        """Keeps incrementing until a non-colliding path is reserved."""
         (tmp_path / "results.json").write_text("{}", encoding="utf-8")
         (tmp_path / "results-1.json").write_text("{}", encoding="utf-8")
         (tmp_path / "results-2.json").write_text("{}", encoding="utf-8")
-        assert get_unique_path(tmp_path / "results.json") == tmp_path / "results-3.json"
+
+        returned = get_unique_path(tmp_path / "results.json")
+
+        assert returned == tmp_path / "results-3.json"
+        assert returned.exists()
+
+    def test_reservation_is_atomic(self, tmp_path: Path) -> None:
+        """Calling twice in a row yields two distinct reserved paths."""
+        target = tmp_path / "results.json"
+
+        first = get_unique_path(target)
+        second = get_unique_path(target)
+
+        assert first == target
+        assert second == tmp_path / "results-1.json"
+        assert first != second
+        assert first.exists() and second.exists()
