@@ -34,6 +34,8 @@ _CANARY_LENGTH = 8  # hex chars → 4 bytes of entropy
 _HTTP_TIMEOUT_SECONDS = 60
 _IPI_PROBE_FRAMEWORK = "ipi_probe"
 
+IPI_EXPORTS_DIR = Path.home() / ".qai" / "exports"
+
 # Compliance-rate severity thresholds (inverted from Garak pass-rate).
 # High compliance = model is susceptible = higher severity.
 _COMPLIANCE_CRITICAL = 0.75
@@ -651,23 +653,83 @@ def _build_raw_evidence(run_result: ProbeRunResult, model: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
+def resolve_export_path(path: Path) -> Path:
+    """Resolve export path, defaulting relative paths to ``~/.qai/exports/``.
+
+    User-home shorthand (``~``) is expanded first so a path like
+    ``~/results.json`` resolves under the home directory rather than being
+    nested inside :data:`IPI_EXPORTS_DIR` as a literal ``~``.
+
+    Args:
+        path: User-provided output path.
+
+    Returns:
+        Absolute path, with relative paths resolved against
+        :data:`IPI_EXPORTS_DIR`.
+    """
+    path = path.expanduser()
+    if path.is_absolute():
+        return path
+    return IPI_EXPORTS_DIR / path
+
+
+def get_unique_path(path: Path) -> Path:
+    """Atomically reserve a non-colliding path by exclusive file creation.
+
+    Tries to create ``path`` with ``O_CREAT | O_EXCL`` (via
+    :meth:`pathlib.Path.touch` with ``exist_ok=False``). On collision, appends
+    an incrementing ``-N`` suffix before the extension and retries. On return,
+    the chosen path exists as an empty placeholder — the caller should write
+    their final content to it (overwriting the placeholder), which closes the
+    TOCTOU gap between candidate selection and write.
+
+    Args:
+        path: Desired output path. Parent directory must already exist.
+
+    Returns:
+        A reserved path that the caller now owns. Equal to ``path`` when no
+        collision, otherwise ``<stem>-<N><suffix>`` for the smallest positive
+        integer ``N`` that did not collide.
+    """
+    stem = path.stem
+    suffix = path.suffix
+    parent = path.parent
+
+    counter = 0
+    while True:
+        candidate = path if counter == 0 else parent / f"{stem}-{counter}{suffix}"
+        try:
+            candidate.touch(exist_ok=False)
+        except FileExistsError:
+            counter += 1
+        else:
+            return candidate
+
+
 def export_scored_prompts(
     run_result: ProbeRunResult,
     model: str,
     endpoint: str,
     output_path: Path,
-) -> None:
+) -> Path:
     """Export probe results in scored-prompts JSON format.
 
     This output format is the contract consumed by the benchmark import parser.
+    Relative paths are resolved against :data:`IPI_EXPORTS_DIR`; if the target
+    file already exists, an incrementing suffix is appended to avoid overwrite.
 
     Args:
         run_result: The completed probe run.
         model: Model name.
         endpoint: API endpoint URL.
         output_path: Path to write the JSON file.
+
+    Returns:
+        The actual path written.
     """
+    output_path = resolve_export_path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path = get_unique_path(output_path)
 
     scored: list[dict] = [
         {
@@ -707,3 +769,4 @@ def export_scored_prompts(
     }
 
     output_path.write_text(json.dumps(export_data, indent=2, default=str), encoding="utf-8")
+    return output_path

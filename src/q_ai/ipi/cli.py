@@ -690,8 +690,8 @@ def probe(
 
     # Export if requested
     if export:
-        export_scored_prompts(run_result, resolved_model, resolved_endpoint, export)
-        console.print(f"[green]Exported results to {export}[/green]")
+        actual_path = export_scored_prompts(run_result, resolved_model, resolved_endpoint, export)
+        console.print(f"[green]Exported results to {actual_path}[/green]")
 
     # Display results
     _display_probe_results(run_result, run_id)
@@ -1074,7 +1074,11 @@ def export(
     Exports all campaign and hit data to a JSON file for external
     analysis, reporting, or backup purposes.
     """
+    from q_ai.ipi.probe_service import get_unique_path, resolve_export_path
+
+    output = resolve_export_path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
+    output = get_unique_path(output)
     campaigns = db.get_all_campaigns()
     all_hits = db.get_hits()
 
