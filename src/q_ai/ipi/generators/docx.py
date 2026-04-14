@@ -289,6 +289,7 @@ def create_docx(
     payload_type: PayloadType = PayloadType.CALLBACK,
     seed: int | None = None,
     sequence: int = 0,
+    encoding: str = "none",
 ) -> Campaign:
     """Generate a DOCX file with hidden prompt injection payload.
 
@@ -324,7 +325,14 @@ def create_docx(
         raise ValueError(f"Unsupported DOCX technique: {technique.value}")
 
     canary_uuid, token = create_campaign_ids(seed, sequence)
-    payload = generate_payload(callback_url, canary_uuid, payload_style, payload_type, token=token)
+    payload = generate_payload(
+        callback_url,
+        canary_uuid,
+        payload_style,
+        payload_type,
+        token=token,
+        encoding=encoding,
+    )
 
     # Create document with decoy content
     doc = _create_decoy_document()
@@ -373,6 +381,7 @@ def create_all_docx_variants(
     payload_type: PayloadType = PayloadType.CALLBACK,
     techniques: list[Technique] | None = None,
     seed: int | None = None,
+    encoding: str = "none",
 ) -> list[Campaign]:
     """Generate DOCX files using multiple techniques.
 
@@ -415,6 +424,7 @@ def create_all_docx_variants(
             payload_type,
             seed=seed,
             sequence=i,
+            encoding=encoding,
         )
         campaigns.append(campaign)
 

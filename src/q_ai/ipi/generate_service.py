@@ -181,6 +181,7 @@ def generate_documents(
     payload_type: PayloadType = PayloadType.CALLBACK,
     base_name: str = "report",
     seed: int | None = None,
+    encoding: str = "none",
 ) -> GenerateResult:
     """Generate payload documents and persist campaigns to the database.
 
@@ -201,6 +202,8 @@ def generate_documents(
         payload_type: Attack objective type.
         base_name: Base filename prefix for generated documents.
         seed: Optional integer seed for deterministic generation.
+        encoding: Optional URL obfuscation applied to the callback URL before
+            injection. One of ``"none"``, ``"base16"``, ``"hex"``.
 
     Returns:
         GenerateResult with campaigns, skip count, and any errors.
@@ -233,6 +236,7 @@ def generate_documents(
             payload_type,
             techniques,
             seed=seed,
+            encoding=encoding,
         )
 
         for campaign in campaigns:
@@ -255,6 +259,7 @@ def generate_documents(
             payload_style,
             payload_type,
             seed=seed,
+            encoding=encoding,
         )
         campaign.output_path = str(file_path)
 

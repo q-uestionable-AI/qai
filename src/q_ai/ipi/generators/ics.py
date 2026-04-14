@@ -210,6 +210,7 @@ def create_ics(
     payload_type: PayloadType = PayloadType.CALLBACK,
     seed: int | None = None,
     sequence: int = 0,
+    encoding: str = "none",
 ) -> Campaign:
     """Generate an ICS file with hidden prompt injection payload.
 
@@ -245,7 +246,14 @@ def create_ics(
         raise ValueError(f"Unsupported ICS technique: {technique.value}")
 
     canary_uuid, token = create_campaign_ids(seed, sequence)
-    payload = generate_payload(callback_url, canary_uuid, payload_style, payload_type, token=token)
+    payload = generate_payload(
+        callback_url,
+        canary_uuid,
+        payload_style,
+        payload_type,
+        token=token,
+        encoding=encoding,
+    )
 
     # Create calendar with decoy content
     cal, event = _create_decoy_calendar()
@@ -294,6 +302,7 @@ def create_all_ics_variants(
     payload_type: PayloadType = PayloadType.CALLBACK,
     techniques: list[Technique] | None = None,
     seed: int | None = None,
+    encoding: str = "none",
 ) -> list[Campaign]:
     """Generate ICS files using multiple techniques.
 
@@ -336,6 +345,7 @@ def create_all_ics_variants(
             payload_type,
             seed=seed,
             sequence=i,
+            encoding=encoding,
         )
         campaigns.append(campaign)
 

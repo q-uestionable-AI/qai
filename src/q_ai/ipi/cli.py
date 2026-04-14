@@ -39,7 +39,7 @@ from rich.table import Table
 from q_ai.core.cli.prompt import build_teaching_tip, is_tty, prompt_or_fail
 from q_ai.ipi import db
 from q_ai.ipi.generate_service import GenerateResult, generate_documents
-from q_ai.ipi.generators import get_techniques_for_format
+from q_ai.ipi.generators import ENCODING_CHOICES, get_techniques_for_format
 from q_ai.ipi.generators.docx import DOCX_TECHNIQUES as DOCX_TECHNIQUE_LIST
 from q_ai.ipi.generators.eml import EML_TECHNIQUES as EML_TECHNIQUE_LIST
 from q_ai.ipi.generators.html import HTML_TECHNIQUES as HTML_TECHNIQUE_LIST
@@ -313,6 +313,25 @@ def _parse_payload_type(payload_type: str) -> PayloadType:
         raise typer.Exit(1) from None
 
 
+def _parse_encoding(encoding: str) -> str:
+    """Validate a payload URL encoding choice.
+
+    Args:
+        encoding: Raw encoding name from CLI input.
+
+    Returns:
+        The validated encoding string (one of ``ENCODING_CHOICES``).
+
+    Raises:
+        typer.Exit: If the encoding is not recognized.
+    """
+    if encoding not in ENCODING_CHOICES:
+        console.print(f"[red]X Invalid encoding: {encoding}[/red]")
+        console.print(f"  Valid options: {', '.join(ENCODING_CHOICES)}")
+        raise typer.Exit(1)
+    return encoding
+
+
 def _enforce_dangerous_gate(payload_type_enum: PayloadType, dangerous: bool) -> None:
     """Enforce the --dangerous safety gate for non-callback payload types.
 
@@ -496,6 +515,13 @@ def generate(
             help="Seed for deterministic UUID/token generation (reproducible corpus).",
         ),
     ] = None,
+    encoding: Annotated[
+        str,
+        typer.Option(
+            "--encoding",
+            help="Encode payload text (none=plaintext, base16/hex=obfuscated)",
+        ),
+    ] = "none",
 ) -> None:
     """Generate document(s) with hidden prompt injection payload.
 
@@ -540,6 +566,7 @@ def generate(
     format_name = validate_format(format_name)
     style = _parse_payload_style(payload_style)
     payload_type_enum = _parse_payload_type(payload_type)
+    encoding = _parse_encoding(encoding)
     _enforce_dangerous_gate(payload_type_enum, dangerous)
     techniques = _resolve_techniques(technique, format_name)
 
@@ -553,6 +580,7 @@ def generate(
         payload_type=payload_type_enum,
         base_name=name,
         seed=seed,
+        encoding=encoding,
     )
 
     # Persist to core DB via mapper

@@ -245,6 +245,7 @@ def create_image(
     image_size: tuple[int, int] = (800, 600),
     seed: int | None = None,
     sequence: int = 0,
+    encoding: str = "none",
 ) -> Campaign:
     """Generate an image with hidden prompt injection payload.
 
@@ -282,7 +283,14 @@ def create_image(
         raise ValueError(f"Unsupported image technique: {technique.value}")
 
     canary_uuid, token = create_campaign_ids(seed, sequence)
-    payload = generate_payload(callback_url, canary_uuid, payload_style, payload_type, token=token)
+    payload = generate_payload(
+        callback_url,
+        canary_uuid,
+        payload_style,
+        payload_type,
+        token=token,
+        encoding=encoding,
+    )
 
     # Create base image with decoy content
     img = _create_base_image(image_size, decoy_title)
@@ -330,6 +338,7 @@ def create_all_image_variants(
     payload_type: PayloadType = PayloadType.CALLBACK,
     techniques: list[Technique] | None = None,
     seed: int | None = None,
+    encoding: str = "none",
 ) -> list[Campaign]:
     """Generate images using multiple techniques.
 
@@ -374,6 +383,7 @@ def create_all_image_variants(
             payload_type,
             seed=seed,
             sequence=i,
+            encoding=encoding,
         )
         campaigns.append(campaign)
 
