@@ -275,14 +275,16 @@ def create_eml(
     # Create email with decoy content
     msg = _create_base_message()
 
-    if top_instruction or context_template:
-        framing = ""
-        if top_instruction:
-            framing += top_instruction + "\n\n"
-        if context_template:
-            framing += context_template.replace("{payload}", payload) + "\n\n"
-        existing_body = msg.get_content() if msg.get_content_type() == "text/plain" else ""
-        msg.set_content(framing + existing_body)
+    # EML template framing is deferred to Phase 4.3b: every technique
+    # helper below (_inject_x_header / _inject_html_hidden /
+    # _inject_attachment) currently calls msg.set_content(DECOY_PLAIN),
+    # which would overwrite any framing written here. Additionally,
+    # EmailMessage.get_content() raises AttributeError on a no-body
+    # message, so reading existing content before framing is unsafe.
+    # Accept the parameters for signature uniformity and integrate
+    # template content when the EML technique helpers are restructured
+    # in Phase 4.3b.
+    del top_instruction, context_template
 
     # Inject payload using selected technique
     if technique == Technique.EML_X_HEADER:

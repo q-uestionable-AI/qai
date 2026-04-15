@@ -125,7 +125,13 @@ class TestServiceValidation:
 
 class TestCLIIntegration:
     def test_help_lists_template_option(self) -> None:
-        result = runner.invoke(app, ["ipi", "generate", "--help"])
+        # Force a wide terminal so Typer/Rich does not wrap "--template"
+        # across narrow help-panel cells (CI default is 80 cols).
+        result = runner.invoke(
+            app,
+            ["ipi", "generate", "--help"],
+            env={"COLUMNS": "200"},
+        )
         assert result.exit_code == 0
         assert "--template" in result.output
 
@@ -145,3 +151,60 @@ class TestCLIIntegration:
         assert result.exit_code == 0, result.output
         kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
         assert kwargs["template"] == DocumentTemplate.WHOIS
+
+
+class TestDeferredGeneratorIntegration:
+    """Phase 4.2 deferrals: EML + ICS accept template params without crashing.
+
+    EML and image generators silently discard framing (documented in-code
+    as Phase 4.3b work); ICS is unreachable via CLI because no template
+    registers ICS as a compatible format. These tests pin that current
+    behavior so Phase 4.3 work knows exactly what it is replacing.
+    """
+
+    def test_eml_generator_accepts_template_params_without_crash(self, tmp_path: Path) -> None:
+        """EMAIL template + EML format must not crash (previously raised
+        AttributeError because EmailMessage.get_content() returns None
+        on a no-body message)."""
+        from q_ai.ipi.generators.eml import create_eml
+        from q_ai.ipi.models import Technique
+
+        out = tmp_path / "msg.eml"
+        campaign = create_eml(
+            out,
+            technique=Technique.EML_X_HEADER,
+            callback_url="http://localhost:8080",
+            top_instruction="stub top",
+            context_template="stub ctx {payload}",
+        )
+        assert out.exists()
+        assert campaign.format == Format.EML
+
+    def test_ics_generator_accepts_template_params_without_crash(self, tmp_path: Path) -> None:
+        """ICS framing path is currently unreachable via CLI (no template
+        lists ICS), but direct library callers must not crash."""
+        from q_ai.ipi.generators.ics import create_ics
+        from q_ai.ipi.models import Technique
+
+        out = tmp_path / "meeting.ics"
+        campaign = create_ics(
+            out,
+            technique=Technique.ICS_DESCRIPTION,
+            callback_url="http://localhost:8080",
+            top_instruction="stub top",
+            context_template="stub ctx {payload}",
+        )
+        assert out.exists()
+        assert campaign.format == Format.ICS
+
+    def test_no_template_lists_ics_format(self) -> None:
+        """Guardrail: if Phase 4.3 adds an ICS-backed template, the
+        framing block in create_ics must be restored (and _inject_description
+        restructured). Failing this test is a reminder."""
+        for tmpl, spec in TEMPLATE_REGISTRY.items():
+            if tmpl == DocumentTemplate.GENERIC:
+                continue
+            assert Format.ICS not in spec.formats, (
+                f"{tmpl.name} now targets ICS — restore template framing "
+                f"integration in src/q_ai/ipi/generators/ics.py"
+            )

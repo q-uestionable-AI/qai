@@ -12,6 +12,25 @@ source-aligned content. Phase 4.2 stubs are clearly marked with
 ``[STUB: ...]`` and the ``{payload}`` injection marker so that Phase 4.3
 knows exactly what to replace.
 
+Generator-side integration status for Phase 4.2:
+
+- ``pdf``, ``docx``, ``markdown``, ``html`` generators render
+  ``top_instruction`` / ``context_template`` into visible document
+  structure when provided.
+- ``image`` generator accepts the parameters for signature uniformity
+  but produces no visual rendering (no template currently targets
+  ``Format.IMAGE``).
+- ``eml`` generator accepts the parameters but **defers integration to
+  Phase 4.3b**: every EML technique helper overwrites the message body,
+  so any framing set by ``create_eml`` would be silently discarded.
+  Phase 4.3b will restructure the ``_inject_*`` helpers to preserve
+  framing.
+- ``ics`` generator accepts the parameters but **defers integration**:
+  no template registers ``Format.ICS`` in its ``formats`` tuple, so the
+  CLI entry point rejects ICS+template combinations. Phase 4.3 must
+  restructure ``_inject_description`` before adding an ICS-backed
+  template.
+
 Source commits come from ``Research/Alignment-Spec-Document.md``:
 
 - Garak: ``2c891e8a608d6c52d4d493888df5466d6be42d7a``

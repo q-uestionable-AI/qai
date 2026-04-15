@@ -260,14 +260,13 @@ def create_ics(
     # Create calendar with decoy content
     cal, event = _create_decoy_calendar()
 
-    if top_instruction or context_template:
-        framing = ""
-        if top_instruction:
-            framing += top_instruction + "\n"
-        if context_template:
-            framing += context_template.replace("{payload}", payload) + "\n"
-        existing = str(event.get("description", ""))
-        event["description"] = framing + existing
+    # ICS is not currently listed in any DocumentTemplate.formats tuple
+    # in template_registry.py, so generate_documents() rejects the
+    # combination before reaching this function. The framing parameters
+    # are accepted for signature uniformity; Phase 4.3 may introduce an
+    # ICS-backed template and will need to restructure _inject_description
+    # (which wipes event["description"]) to preserve framing.
+    del top_instruction, context_template
 
     # Inject payload using selected technique
     if technique == Technique.ICS_DESCRIPTION:
