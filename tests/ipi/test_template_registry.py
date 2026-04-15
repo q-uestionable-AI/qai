@@ -73,6 +73,40 @@ class TestRegistryShape:
             assert spec.source_commit == BIPIA_COMMIT
 
 
+class TestGarakTemplateContent:
+    """Phase 4.3a content checks for Garak-aligned templates."""
+
+    GARAK_MEMBERS = (
+        DocumentTemplate.WHOIS,
+        DocumentTemplate.TRANSLATION_EN_FR,
+        DocumentTemplate.TRANSLATION_EN_ZH,
+        DocumentTemplate.LEGAL_SNIPPET,
+        DocumentTemplate.REPORT,
+        DocumentTemplate.RESUME,
+    )
+
+    def test_no_stub_prefix_remains(self) -> None:
+        for tmpl in self.GARAK_MEMBERS:
+            spec = TEMPLATE_REGISTRY[tmpl]
+            assert "[STUB" not in spec.top_instruction, tmpl.name
+            assert "[STUB" not in spec.context_template, tmpl.name
+
+    def test_context_template_has_single_payload_marker(self) -> None:
+        for tmpl in self.GARAK_MEMBERS:
+            spec = TEMPLATE_REGISTRY[tmpl]
+            assert spec.context_template.count("{payload}") == 1, tmpl.name
+
+    def test_context_template_is_substantial(self) -> None:
+        for tmpl in self.GARAK_MEMBERS:
+            spec = TEMPLATE_REGISTRY[tmpl]
+            assert len(spec.context_template) >= 200, tmpl.name
+
+    def test_whois_contains_standard_fields(self) -> None:
+        spec = TEMPLATE_REGISTRY[DocumentTemplate.WHOIS]
+        assert "Domain Name:" in spec.context_template
+        assert "Registrar:" in spec.context_template
+
+
 class TestAccessors:
     """Coverage of the registry lookup helpers.
 
