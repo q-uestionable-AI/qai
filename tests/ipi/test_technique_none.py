@@ -58,15 +58,23 @@ class TestTechniqueNoneEnum:
 
 
 class TestGetTechniquesForFormat:
-    """``get_techniques_for_format`` must include NONE for every format."""
+    """``get_techniques_for_format`` must expose NONE only when opted in."""
 
     @pytest.mark.parametrize("fmt", list(Format))
-    def test_every_format_includes_none(self, fmt: Format) -> None:
-        assert Technique.NONE in get_techniques_for_format(fmt)
+    def test_none_excluded_by_default(self, fmt: Format) -> None:
+        # Default (hiding-only) protects batch callers from silently
+        # including the visible-payload control in "all techniques" sweeps.
+        assert Technique.NONE not in get_techniques_for_format(fmt)
 
-    def test_pdf_has_eleven_techniques(self) -> None:
-        # 10 PDF hiding techniques + NONE.
-        assert len(get_techniques_for_format(Format.PDF)) == 11
+    @pytest.mark.parametrize("fmt", list(Format))
+    def test_every_format_includes_none_when_opted_in(self, fmt: Format) -> None:
+        assert Technique.NONE in get_techniques_for_format(fmt, include_none=True)
+
+    def test_pdf_matches_source_lists(self) -> None:
+        hiding = get_techniques_for_format(Format.PDF)
+        with_control = get_techniques_for_format(Format.PDF, include_none=True)
+        assert set(hiding) == set(PDF_ALL_TECHNIQUES)
+        assert set(with_control) == set(PDF_ALL_TECHNIQUES) | {Technique.NONE}
 
 
 class TestCliPresetExclusion:

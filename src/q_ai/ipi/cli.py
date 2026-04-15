@@ -387,7 +387,7 @@ def _resolve_techniques(technique: str, format_name: Format) -> list[Technique]:
         console.print(f"  Valid techniques: {', '.join(t.value for t in Technique)}")
         raise typer.Exit(1) from None
 
-    format_techniques = get_techniques_for_format(format_name)
+    format_techniques = get_techniques_for_format(format_name, include_none=True)
     valid_techniques = [t for t in techniques if t in format_techniques]
 
     if not valid_techniques:
@@ -855,7 +855,7 @@ def formats() -> None:
     for fmt in Format:
         if fmt in IMPLEMENTED_FORMATS:
             status = "[green]available[/green]"
-            fmt_techniques = get_techniques_for_format(fmt)
+            fmt_techniques = get_techniques_for_format(fmt, include_none=True)
             tech_count = f"{len(fmt_techniques)} techniques"
         else:
             status = "[dim]planned[/dim]"

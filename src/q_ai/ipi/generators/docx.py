@@ -374,7 +374,10 @@ def create_docx(
     if context_template:
         doc.add_paragraph(context_template.replace("{payload}", payload))
 
-    _DOCX_INJECTORS[technique](doc, payload)
+    injector = _DOCX_INJECTORS.get(technique)
+    if injector is None:
+        raise ValueError(f"Unsupported DOCX technique: {technique.value}")
+    injector(doc, payload)
 
     # Save document
     output_path.parent.mkdir(parents=True, exist_ok=True)
