@@ -290,6 +290,8 @@ def create_docx(
     seed: int | None = None,
     sequence: int = 0,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> Campaign:
     """Generate a DOCX file with hidden prompt injection payload.
 
@@ -337,6 +339,11 @@ def create_docx(
     # Create document with decoy content
     doc = _create_decoy_document()
 
+    if top_instruction:
+        doc.add_paragraph(top_instruction)
+    if context_template:
+        doc.add_paragraph(context_template.replace("{payload}", payload))
+
     # Inject payload using selected technique
     if technique == Technique.DOCX_HIDDEN_TEXT:
         _inject_hidden_text(doc, payload)
@@ -382,6 +389,8 @@ def create_all_docx_variants(
     techniques: list[Technique] | None = None,
     seed: int | None = None,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> list[Campaign]:
     """Generate DOCX files using multiple techniques.
 
@@ -425,6 +434,8 @@ def create_all_docx_variants(
             seed=seed,
             sequence=i,
             encoding=encoding,
+            top_instruction=top_instruction,
+            context_template=context_template,
         )
         campaigns.append(campaign)
 

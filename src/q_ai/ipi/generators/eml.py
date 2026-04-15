@@ -226,6 +226,8 @@ def create_eml(
     seed: int | None = None,
     sequence: int = 0,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> Campaign:
     """Generate an EML file with hidden prompt injection payload.
 
@@ -273,6 +275,17 @@ def create_eml(
     # Create email with decoy content
     msg = _create_base_message()
 
+    # EML template framing is deferred to Phase 4.3b: every technique
+    # helper below (_inject_x_header / _inject_html_hidden /
+    # _inject_attachment) currently calls msg.set_content(DECOY_PLAIN),
+    # which would overwrite any framing written here. Additionally,
+    # EmailMessage.get_content() raises AttributeError on a no-body
+    # message, so reading existing content before framing is unsafe.
+    # Accept the parameters for signature uniformity and integrate
+    # template content when the EML technique helpers are restructured
+    # in Phase 4.3b.
+    del top_instruction, context_template
+
     # Inject payload using selected technique
     if technique == Technique.EML_X_HEADER:
         _inject_x_header(msg, payload)
@@ -313,6 +326,8 @@ def create_all_eml_variants(
     techniques: list[Technique] | None = None,
     seed: int | None = None,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> list[Campaign]:
     """Generate EML files using multiple techniques.
 
@@ -356,6 +371,8 @@ def create_all_eml_variants(
             seed=seed,
             sequence=i,
             encoding=encoding,
+            top_instruction=top_instruction,
+            context_template=context_template,
         )
         campaigns.append(campaign)
 

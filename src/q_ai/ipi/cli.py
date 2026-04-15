@@ -49,6 +49,7 @@ from q_ai.ipi.generators.markdown import MARKDOWN_TECHNIQUES as MARKDOWN_TECHNIQ
 from q_ai.ipi.generators.pdf import PDF_PHASE1_TECHNIQUES, PDF_PHASE2_TECHNIQUES
 from q_ai.ipi.models import (
     Campaign,
+    DocumentTemplate,
     Format,
     Hit,
     HitConfidence,
@@ -522,6 +523,14 @@ def generate(
             help="Encode payload text (none=plaintext, base16/hex=obfuscated)",
         ),
     ] = "none",
+    template: Annotated[
+        DocumentTemplate,
+        typer.Option(
+            "--template",
+            help="Document context template for payload framing (default: generic).",
+            case_sensitive=False,
+        ),
+    ] = DocumentTemplate.GENERIC,
 ) -> None:
     """Generate document(s) with hidden prompt injection payload.
 
@@ -581,6 +590,7 @@ def generate(
         base_name=name,
         seed=seed,
         encoding=encoding,
+        template=template,
     )
 
     # Persist to core DB via mapper

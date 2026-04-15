@@ -24,6 +24,7 @@ Usage:
 """
 
 import uuid
+from html import escape as _html_escape
 from pathlib import Path
 
 from q_ai.ipi.models import Campaign, Format, PayloadStyle, PayloadType, Technique
@@ -200,6 +201,8 @@ def create_html(
     seed: int | None = None,
     sequence: int = 0,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> Campaign:
     """Generate an HTML file with hidden prompt injection payload.
 
@@ -249,6 +252,18 @@ def create_html(
     # Create base content
     content = _create_decoy_content(decoy_title)
 
+    if top_instruction or context_template:
+        # Escape framing text: stubs are safe today but payload strings and
+        # future Phase 4.3 template content may contain <, &, or closing tags
+        # that would otherwise corrupt the surrounding HTML structure.
+        framing_html = ""
+        if top_instruction:
+            framing_html += f"<p>{_html_escape(top_instruction)}</p>\n"
+        if context_template:
+            rendered = context_template.replace("{payload}", payload)
+            framing_html += f"<pre>{_html_escape(rendered)}</pre>\n"
+        content = content.replace("<body>", f"<body>\n{framing_html}", 1)
+
     # Inject payload using selected technique
     if technique == Technique.SCRIPT_COMMENT:
         content = _inject_script_comment(content, payload)
@@ -290,6 +305,8 @@ def create_all_html_variants(
     techniques: list[Technique] | None = None,
     seed: int | None = None,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> list[Campaign]:
     """Generate HTML files using multiple techniques.
 
@@ -334,6 +351,8 @@ def create_all_html_variants(
             seed=seed,
             sequence=i,
             encoding=encoding,
+            top_instruction=top_instruction,
+            context_template=context_template,
         )
         campaigns.append(campaign)
 

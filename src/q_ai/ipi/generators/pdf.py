@@ -47,6 +47,30 @@ PDF_ALL_TECHNIQUES = PDF_PHASE1_TECHNIQUES + PDF_PHASE2_TECHNIQUES
 
 
 # =============================================================================
+# Layout Constants
+# =============================================================================
+
+_PAGE_LEFT_MARGIN = 72
+"""Left margin (points) for all text drawing."""
+
+_PAGE_BOTTOM_MARGIN = 72
+"""Bottom margin (points); framing stops drawing below this y-coordinate."""
+
+_INJECTION_Y_OFFSET = 200
+"""Y-offset from page top used by single-line injection techniques
+(``_inject_white_ink``, ``_inject_tiny_text``, ``_inject_white_rect``).
+Framing must not overlap the band around this offset."""
+
+_FRAMING_TOP_Y_OFFSET = 280
+"""Y-offset from page top where template framing starts — positioned
+below the injection band so multi-line framing cannot collide with
+injection output (most importantly the WHITE_RECT cover rectangle)."""
+
+_FRAMING_LINE_HEIGHT = 16
+"""Vertical spacing (points) between framing lines."""
+
+
+# =============================================================================
 # Phase 1 Techniques
 # =============================================================================
 
@@ -298,6 +322,8 @@ def create_pdf(
     seed: int | None = None,
     sequence: int = 0,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> Campaign:
     """Generate a PDF with hidden prompt injection payload.
 
@@ -311,6 +337,14 @@ def create_pdf(
         decoy_content: Visible body text.
         seed: Optional seed for deterministic UUID/token generation.
         sequence: Sequence number for batch deterministic generation.
+        encoding: URL obfuscation applied to the callback URL before injection.
+        top_instruction: Optional document-context task framing text rendered
+            as an extra visible paragraph above the body. Empty string
+            preserves legacy behavior.
+        context_template: Optional body template containing a ``{payload}``
+            marker. When non-empty, the rendered template is appended to
+            the visible decoy content with ``{payload}`` replaced by the
+            payload string.
 
     Returns:
         Campaign object with UUID and metadata.
@@ -342,6 +376,23 @@ def create_pdf(
     c.setFont("Helvetica", 12)
     c.drawString(72, height - 100, decoy_content)
     c.drawString(72, height - 120, "Please summarize the key findings below.")
+
+    # Template framing renders below the injection band so multi-line
+    # stubs cannot overlap _inject_* output (see _INJECTION_Y_OFFSET /
+    # _FRAMING_TOP_Y_OFFSET). Lines beyond the bottom margin are dropped
+    # rather than wrapped; Phase 4.3 may introduce proper text wrapping
+    # when aligned content replaces the stubs.
+    y = height - _FRAMING_TOP_Y_OFFSET
+    if top_instruction:
+        c.drawString(_PAGE_LEFT_MARGIN, y, top_instruction)
+        y -= _FRAMING_LINE_HEIGHT
+    if context_template:
+        rendered = context_template.replace("{payload}", payload)
+        for line in rendered.splitlines():
+            if y < _PAGE_BOTTOM_MARGIN:
+                break
+            c.drawString(_PAGE_LEFT_MARGIN, y, line)
+            y -= _FRAMING_LINE_HEIGHT
 
     # Post-save techniques: save canvas first, then modify the file
     post_save_fn = _POST_SAVE_DISPATCH.get(technique)
@@ -379,6 +430,8 @@ def create_all_variants(
     techniques: list[Technique] | None = None,
     seed: int | None = None,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> list[Campaign]:
     """Generate PDFs using multiple techniques.
 
@@ -412,6 +465,8 @@ def create_all_variants(
             seed=seed,
             sequence=i,
             encoding=encoding,
+            top_instruction=top_instruction,
+            context_template=context_template,
         )
         campaigns.append(campaign)
 

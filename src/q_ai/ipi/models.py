@@ -189,6 +189,53 @@ class PayloadStyle(StrEnum):
     DATASOURCE = "datasource"
 
 
+class DocumentTemplate(StrEnum):
+    """Document context templates aligning payload framing to source probes.
+
+    Each template (except GENERIC) frames the injection within a realistic
+    document context borrowed from published probe suites (Garak, BIPIA).
+    GENERIC preserves legacy behavior with no document-context framing.
+
+    Garak-aligned members:
+        WHOIS: WHOIS domain record assessment (LatentWhois).
+        TRANSLATION_EN_FR: English→French translation task.
+        TRANSLATION_EN_ZH: English→Chinese translation task.
+        LEGAL_SNIPPET: Legal text summarization.
+        REPORT: Business/financial report summarization.
+        RESUME: Resume/CV candidate assessment.
+
+    BIPIA-aligned members:
+        EMAIL: Email QA task.
+        WEB: Web article QA task.
+        TABLE: Markdown table QA task.
+        CODE: Code error QA task.
+        NEWS: News article summarization.
+
+    Special:
+        GENERIC: No document-context framing (default).
+
+    Example:
+        >>> from q_ai.ipi.models import DocumentTemplate
+        >>> DocumentTemplate.WHOIS.value
+        'whois'
+    """
+
+    GENERIC = "generic"
+
+    WHOIS = "whois"
+    TRANSLATION_EN_FR = "translation_en_fr"
+    TRANSLATION_EN_ZH = "translation_en_zh"
+    LEGAL_SNIPPET = "legal_snippet"
+    REPORT = "report"
+    RESUME = "resume"
+
+    EMAIL = "email"
+    WEB = "web"
+    TABLE = "table"
+    CODE = "code"
+    NEWS = "news"
+
+
 class PayloadType(StrEnum):
     """Payload objectives defining the attack goal.
 
@@ -240,6 +287,44 @@ class HitConfidence(StrEnum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
+
+
+@dataclass(frozen=True)
+class TemplateSpec:
+    """Metadata and content structure for a document context template.
+
+    A ``TemplateSpec`` pairs a ``DocumentTemplate`` enum value with the
+    source provenance and the text skeleton used when rendering a payload
+    document. Phase 4.2 populates specs with stub content that Phase 4.3
+    replaces with fully source-aligned text.
+
+    Attributes:
+        id: The ``DocumentTemplate`` this spec describes.
+        name: Human-readable template name (e.g., "WHOIS Record Assessment").
+        description: Short CLI help description.
+        source_tool: Originating project — "garak", "bipia", or "generic".
+        source_reference: Probe class or dataset identifier
+            (e.g., "LatentWhois").
+        source_commit: Git commit hash of the source repo pinned for
+            alignment verification. Empty string for GENERIC.
+        top_instruction: Task framing text placed before the document body
+            (may be empty string).
+        context_template: Document body template containing a ``{payload}``
+            marker at the injection point.
+        formats: ``Format`` values compatible with this template.
+        default_style: Suggested ``PayloadStyle`` for this template.
+    """
+
+    id: DocumentTemplate
+    name: str
+    description: str
+    source_tool: str
+    source_reference: str
+    source_commit: str
+    top_instruction: str
+    context_template: str
+    formats: tuple[Format, ...]
+    default_style: PayloadStyle
 
 
 @dataclass
@@ -400,10 +485,12 @@ class Hit:
 
 __all__ = [
     "Campaign",
+    "DocumentTemplate",
     "Format",
     "Hit",
     "HitConfidence",
     "PayloadStyle",
     "PayloadType",
     "Technique",
+    "TemplateSpec",
 ]

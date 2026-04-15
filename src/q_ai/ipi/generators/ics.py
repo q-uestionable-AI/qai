@@ -211,6 +211,8 @@ def create_ics(
     seed: int | None = None,
     sequence: int = 0,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> Campaign:
     """Generate an ICS file with hidden prompt injection payload.
 
@@ -258,6 +260,14 @@ def create_ics(
     # Create calendar with decoy content
     cal, event = _create_decoy_calendar()
 
+    # ICS is not currently listed in any DocumentTemplate.formats tuple
+    # in template_registry.py, so generate_documents() rejects the
+    # combination before reaching this function. The framing parameters
+    # are accepted for signature uniformity; Phase 4.3 may introduce an
+    # ICS-backed template and will need to restructure _inject_description
+    # (which wipes event["description"]) to preserve framing.
+    del top_instruction, context_template
+
     # Inject payload using selected technique
     if technique == Technique.ICS_DESCRIPTION:
         _inject_description(event, payload)
@@ -303,6 +313,8 @@ def create_all_ics_variants(
     techniques: list[Technique] | None = None,
     seed: int | None = None,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> list[Campaign]:
     """Generate ICS files using multiple techniques.
 
@@ -346,6 +358,8 @@ def create_all_ics_variants(
             seed=seed,
             sequence=i,
             encoding=encoding,
+            top_instruction=top_instruction,
+            context_template=context_template,
         )
         campaigns.append(campaign)
 
