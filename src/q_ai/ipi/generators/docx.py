@@ -27,6 +27,7 @@ Usage:
 """
 
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -246,6 +247,20 @@ def _inject_metadata(doc: "DocumentType", payload: str) -> None:
     core_props.comments = payload
 
 
+def _inject_none(doc: "DocumentType", payload: str) -> None:
+    """Render payload as a normal visible paragraph (control condition).
+
+    No hiding is applied: the payload is appended as an ordinary
+    paragraph with default styling. Used as a baseline for measuring
+    hiding technique uplift.
+
+    Args:
+        doc: Document to modify.
+        payload: Payload string to render.
+    """
+    doc.add_paragraph(payload)
+
+
 def _inject_header_footer(doc: "DocumentType", payload: str) -> None:
     """Inject payload into document header and footer.
 
@@ -274,6 +289,21 @@ def _inject_header_footer(doc: "DocumentType", payload: str) -> None:
     # Make it subtle - small and light gray
     footer_run.font.size = Pt(6)
     footer_run.font.color.rgb = RGBColor(200, 200, 200)
+
+
+# =============================================================================
+# Technique Dispatch
+# =============================================================================
+
+_DOCX_INJECTORS: "dict[Technique, Callable[[DocumentType, str], None]]" = {
+    Technique.DOCX_HIDDEN_TEXT: _inject_hidden_text,
+    Technique.DOCX_TINY_TEXT: _inject_tiny_text,
+    Technique.DOCX_WHITE_TEXT: _inject_white_text,
+    Technique.DOCX_COMMENT: _inject_comment,
+    Technique.DOCX_METADATA: _inject_metadata,
+    Technique.DOCX_HEADER_FOOTER: _inject_header_footer,
+    Technique.NONE: _inject_none,
+}
 
 
 # =============================================================================
@@ -323,7 +353,7 @@ def create_docx(
         ...     "http://localhost:8080"
         ... )
     """
-    if technique not in DOCX_TECHNIQUES:
+    if technique not in DOCX_TECHNIQUES and technique is not Technique.NONE:
         raise ValueError(f"Unsupported DOCX technique: {technique.value}")
 
     canary_uuid, token = create_campaign_ids(seed, sequence)
@@ -344,19 +374,7 @@ def create_docx(
     if context_template:
         doc.add_paragraph(context_template.replace("{payload}", payload))
 
-    # Inject payload using selected technique
-    if technique == Technique.DOCX_HIDDEN_TEXT:
-        _inject_hidden_text(doc, payload)
-    elif technique == Technique.DOCX_TINY_TEXT:
-        _inject_tiny_text(doc, payload)
-    elif technique == Technique.DOCX_WHITE_TEXT:
-        _inject_white_text(doc, payload)
-    elif technique == Technique.DOCX_COMMENT:
-        _inject_comment(doc, payload)
-    elif technique == Technique.DOCX_METADATA:
-        _inject_metadata(doc, payload)
-    elif technique == Technique.DOCX_HEADER_FOOTER:
-        _inject_header_footer(doc, payload)
+    _DOCX_INJECTORS[technique](doc, payload)
 
     # Save document
     output_path.parent.mkdir(parents=True, exist_ok=True)

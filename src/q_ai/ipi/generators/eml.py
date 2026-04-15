@@ -176,6 +176,20 @@ def _inject_html_hidden(msg: EmailMessage, payload: str) -> None:
     msg.add_alternative(html_with_payload, subtype="html")
 
 
+def _inject_none(msg: EmailMessage, payload: str) -> None:
+    """Render payload as visible text in the plain email body (control).
+
+    No hiding is applied: the payload is appended to the decoy plain-text
+    body as ordinary readable text. Used as a baseline for measuring
+    hiding technique uplift.
+
+    Args:
+        msg: EmailMessage to modify.
+        payload: Payload string to render.
+    """
+    msg.set_content(f"{DECOY_PLAIN}\n{payload}\n")
+
+
 def _inject_attachment(msg: EmailMessage, payload: str) -> None:
     """Inject payload into text file attachment.
 
@@ -259,7 +273,7 @@ def create_eml(
         ...     "http://localhost:8080"
         ... )
     """
-    if technique not in EML_TECHNIQUES:
+    if technique not in EML_TECHNIQUES and technique is not Technique.NONE:
         raise ValueError(f"Unsupported EML technique: {technique.value}")
 
     canary_uuid, token = create_campaign_ids(seed, sequence)
@@ -293,6 +307,8 @@ def create_eml(
         _inject_html_hidden(msg, payload)
     elif technique == Technique.EML_ATTACHMENT:
         _inject_attachment(msg, payload)
+    elif technique == Technique.NONE:
+        _inject_none(msg, payload)
 
     # Save EML file
     output_path.parent.mkdir(parents=True, exist_ok=True)

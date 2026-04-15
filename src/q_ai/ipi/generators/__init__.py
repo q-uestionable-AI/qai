@@ -100,16 +100,18 @@ def get_techniques_for_format(fmt: Format) -> list[Technique]:
         fmt: The format to filter by.
 
     Returns:
-        List of Technique enums supported by the format.
+        List of Technique enums supported by the format. ``Technique.NONE``
+        is always appended as the control condition (visible payload) and
+        is therefore included for every format.
 
     Example:
         >>> from q_ai.ipi.models import Format
         >>> from q_ai.ipi.generators import get_techniques_for_format
         >>> pdf_techniques = get_techniques_for_format(Format.PDF)
         >>> len(pdf_techniques)
-        10
+        11
     """
-    return [t for t, f in TECHNIQUE_FORMATS.items() if f == fmt]
+    return [t for t, f in TECHNIQUE_FORMATS.items() if f == fmt] + [Technique.NONE]
 
 
 def get_format_for_technique(technique: Technique) -> Format:

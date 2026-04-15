@@ -224,7 +224,10 @@ def parse_techniques(technique_str: str) -> list[Technique]:
 
     # Handle presets
     if technique_str == "all":
-        return list(Technique)
+        # Technique.NONE is a control condition (visible payload), not a
+        # hiding technique. Exclude it from batch presets; callers who want
+        # the control must request it explicitly with --technique none.
+        return [t for t in Technique if t is not Technique.NONE]
     if technique_str == "phase1":
         return [Technique(t) for t in PHASE1_TECHNIQUES]
     if technique_str == "phase2":
