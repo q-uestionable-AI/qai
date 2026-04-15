@@ -21,12 +21,17 @@ Technique Registry:
     Use get_techniques_for_format() to filter techniques by format.
 """
 
+import base64
 import random
 import secrets
 import string
 import uuid as uuid_mod
+from collections.abc import Callable
 
 from q_ai.ipi.models import Format, PayloadStyle, PayloadType, Technique
+
+ENCODING_CHOICES: tuple[str, ...] = ("none", "base16", "hex")
+"""Supported encoding values for payload URL obfuscation."""
 
 # Characters that LLMs frequently confuse when reproducing tokens from visual context.
 # Removing these from generated tokens prevents misread-callback failures.
@@ -129,6 +134,63 @@ def get_format_for_technique(technique: Technique) -> Format:
 
 
 # =============================================================================
+# Payload Encoding
+# =============================================================================
+
+
+def _encode_base16(payload: str) -> str:
+    """Return the Base16 (hex with standard alphabet) encoding of payload."""
+    return base64.b16encode(payload.encode("utf-8")).decode("ascii")
+
+
+def _encode_hex(payload: str) -> str:
+    """Return the uppercase hex encoding of payload."""
+    return payload.encode("utf-8").hex().upper()
+
+
+# "base16" and "hex" are intentional aliases — both produce uppercase hex
+# output. Both names are exposed because users reach for different terms
+# depending on background (crypto/RFC 4648 vs. general programming).
+_ENCODERS: dict[str, Callable[[str], str]] = {
+    "base16": _encode_base16,
+    "hex": _encode_hex,
+}
+
+
+def encode_payload(payload: str, encoding: str) -> str:
+    """Encode the callback URL portion of a payload for obfuscation.
+
+    This is used to bypass naive payload-scanning defenses: the target LLM can
+    still decode the URL, but simple pattern matchers looking for
+    ``http://`` / ``https://`` strings will miss encoded variants. The caller
+    is responsible for passing only the URL (not the surrounding framing text).
+
+    Args:
+        payload: The URL (or other substring) to encode.
+        encoding: Encoding name. Must be one of ``ENCODING_CHOICES``.
+            ``"none"`` returns the payload unchanged.
+
+    Returns:
+        The encoded string, or ``payload`` unchanged when ``encoding == "none"``.
+
+    Raises:
+        ValueError: If ``encoding`` is not in ``ENCODING_CHOICES``.
+
+    Example:
+        >>> encode_payload("http://x/y", "hex")
+        '687474703A2F2F782F79'
+        >>> encode_payload("http://x/y", "none")
+        'http://x/y'
+    """
+    if encoding == "none":
+        return payload
+    encoder = _ENCODERS.get(encoding)
+    if encoder is None:
+        raise ValueError(f"Unsupported encoding: {encoding!r}. Must be one of {ENCODING_CHOICES}.")
+    return encoder(payload)
+
+
+# =============================================================================
 # Shared Payload Generation
 # =============================================================================
 
@@ -139,6 +201,7 @@ def generate_payload(
     style: PayloadStyle = PayloadStyle.OBVIOUS,
     payload_type: PayloadType = PayloadType.CALLBACK,
     token: str | None = None,
+    encoding: str = "none",
 ) -> str:
     """Generate the injection payload string using the specified style and type.
 
@@ -159,6 +222,10 @@ def generate_payload(
         payload_type: Attack objective type.
         token: Optional per-campaign authentication token. When provided, the callback
             URL becomes /c/{uuid}/{token} instead of /c/{uuid}.
+        encoding: Optional URL obfuscation. One of ``ENCODING_CHOICES``. When not
+            ``"none"``, the full callback URL (including path and token) is encoded
+            via :func:`encode_payload` before being substituted into the template.
+            Framing text remains plaintext so the LLM can still follow it.
 
     Returns:
         The formatted payload string ready for injection.
@@ -199,6 +266,8 @@ def generate_payload(
     target_url = f"{callback_url}c/{canary_uuid}"
     if token:
         target_url = f"{target_url}/{token}"
+
+    target_url = encode_payload(target_url, encoding)
 
     builders = {
         PayloadType.CALLBACK: _build_callback_templates,
@@ -649,8 +718,10 @@ def create_campaign_ids(seed: int | None = None, sequence: int = 0) -> tuple[str
 # =============================================================================
 
 __all__ = [
+    "ENCODING_CHOICES",
     "TECHNIQUE_FORMATS",
     "create_campaign_ids",
+    "encode_payload",
     "generate_payload",
     "get_format_for_technique",
     "get_techniques_for_format",

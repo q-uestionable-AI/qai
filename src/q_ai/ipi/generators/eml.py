@@ -225,6 +225,7 @@ def create_eml(
     payload_type: PayloadType = PayloadType.CALLBACK,
     seed: int | None = None,
     sequence: int = 0,
+    encoding: str = "none",
 ) -> Campaign:
     """Generate an EML file with hidden prompt injection payload.
 
@@ -260,7 +261,14 @@ def create_eml(
         raise ValueError(f"Unsupported EML technique: {technique.value}")
 
     canary_uuid, token = create_campaign_ids(seed, sequence)
-    payload = generate_payload(callback_url, canary_uuid, payload_style, payload_type, token=token)
+    payload = generate_payload(
+        callback_url,
+        canary_uuid,
+        payload_style,
+        payload_type,
+        token=token,
+        encoding=encoding,
+    )
 
     # Create email with decoy content
     msg = _create_base_message()
@@ -304,6 +312,7 @@ def create_all_eml_variants(
     payload_type: PayloadType = PayloadType.CALLBACK,
     techniques: list[Technique] | None = None,
     seed: int | None = None,
+    encoding: str = "none",
 ) -> list[Campaign]:
     """Generate EML files using multiple techniques.
 
@@ -346,6 +355,7 @@ def create_all_eml_variants(
             payload_type,
             seed=seed,
             sequence=i,
+            encoding=encoding,
         )
         campaigns.append(campaign)
 

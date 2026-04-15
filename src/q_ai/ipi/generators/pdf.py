@@ -25,7 +25,7 @@ from reportlab.pdfgen import canvas
 
 from q_ai.ipi.models import Campaign, Format, PayloadStyle, PayloadType, Technique
 
-from . import create_campaign_ids, generate_payload
+from . import create_campaign_ids, encode_payload, generate_payload
 
 # PDF techniques organized by phase
 PDF_PHASE1_TECHNIQUES = [Technique.WHITE_INK, Technique.OFF_CANVAS, Technique.METADATA]
@@ -297,6 +297,7 @@ def create_pdf(
     decoy_content: str = "This document contains confidential business information.",
     seed: int | None = None,
     sequence: int = 0,
+    encoding: str = "none",
 ) -> Campaign:
     """Generate a PDF with hidden prompt injection payload.
 
@@ -318,10 +319,17 @@ def create_pdf(
         ValueError: If technique is not a PDF technique.
     """
     canary_uuid, token = create_campaign_ids(seed, sequence)
-    payload = generate_payload(callback_url, canary_uuid, payload_style, payload_type, token=token)
+    payload = generate_payload(
+        callback_url,
+        canary_uuid,
+        payload_style,
+        payload_type,
+        token=token,
+        encoding=encoding,
+    )
 
     base_url = callback_url if callback_url.endswith("/") else callback_url + "/"
-    target_url = f"{base_url}c/{canary_uuid}/{token}"
+    target_url = encode_payload(f"{base_url}c/{canary_uuid}/{token}", encoding)
 
     c = canvas.Canvas(str(output_path), pagesize=letter)
     _width, height = letter
@@ -370,6 +378,7 @@ def create_all_variants(
     payload_type: PayloadType = PayloadType.CALLBACK,
     techniques: list[Technique] | None = None,
     seed: int | None = None,
+    encoding: str = "none",
 ) -> list[Campaign]:
     """Generate PDFs using multiple techniques.
 
@@ -402,6 +411,7 @@ def create_all_variants(
             payload_type,
             seed=seed,
             sequence=i,
+            encoding=encoding,
         )
         campaigns.append(campaign)
 

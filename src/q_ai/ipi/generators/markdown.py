@@ -239,6 +239,7 @@ def create_markdown(
     decoy_title: str = "Project Documentation",
     seed: int | None = None,
     sequence: int = 0,
+    encoding: str = "none",
 ) -> Campaign:
     """Generate a Markdown file with hidden prompt injection payload.
 
@@ -255,6 +256,7 @@ def create_markdown(
 
         seed: Optional seed for deterministic UUID/token generation.
         sequence: Sequence number for batch deterministic generation.
+        encoding: Callback URL encoding ("none", "base16", "hex").
 
     Returns:
         Campaign object with UUID and metadata.
@@ -275,7 +277,14 @@ def create_markdown(
         raise ValueError(f"Unsupported markdown technique: {technique.value}")
 
     canary_uuid, token = create_campaign_ids(seed, sequence)
-    payload = generate_payload(callback_url, canary_uuid, payload_style, payload_type, token=token)
+    payload = generate_payload(
+        callback_url,
+        canary_uuid,
+        payload_style,
+        payload_type,
+        token=token,
+        encoding=encoding,
+    )
 
     # Create base content
     content = _create_decoy_content(decoy_title)
@@ -320,6 +329,7 @@ def create_all_markdown_variants(
     payload_type: PayloadType = PayloadType.CALLBACK,
     techniques: list[Technique] | None = None,
     seed: int | None = None,
+    encoding: str = "none",
 ) -> list[Campaign]:
     """Generate markdown files using multiple techniques.
 
@@ -332,6 +342,7 @@ def create_all_markdown_variants(
         techniques: List of techniques to use (default: all markdown techniques).
 
         seed: Optional seed for deterministic UUID/token generation.
+        encoding: Callback URL encoding ("none", "base16", "hex").
 
     Returns:
         List of Campaign objects.
@@ -362,6 +373,7 @@ def create_all_markdown_variants(
             payload_type,
             seed=seed,
             sequence=i,
+            encoding=encoding,
         )
         campaigns.append(campaign)
 
