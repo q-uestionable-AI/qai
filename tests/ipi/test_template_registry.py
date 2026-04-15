@@ -74,6 +74,13 @@ class TestRegistryShape:
 
 
 class TestAccessors:
+    """Coverage of the registry lookup helpers.
+
+    All assertions are pure in-process registry reads — no network, no
+    filesystem, no external services. Accessor behavior must stay stable
+    because service-layer validation depends on it.
+    """
+
     def test_get_template_spec_returns_spec(self) -> None:
         spec = get_template_spec(DocumentTemplate.WHOIS)
         assert isinstance(spec, TemplateSpec)
@@ -125,6 +132,14 @@ class TestServiceValidation:
 
 
 class TestCLIIntegration:
+    """CLI wiring for the ``--template`` flag.
+
+    Uses Typer's ``CliRunner`` and direct Click command introspection.
+    ``generate_documents`` is mocked (via ``unittest.mock.patch``) so no
+    filesystem writes or network calls occur; the tests verify only that
+    the CLI layer registers and forwards the ``--template`` option.
+    """
+
     def test_generate_command_registers_template_param(self) -> None:
         """Verify --template is wired into the generate command.
 

@@ -24,6 +24,7 @@ Usage:
 """
 
 import uuid
+from html import escape as _html_escape
 from pathlib import Path
 
 from q_ai.ipi.models import Campaign, Format, PayloadStyle, PayloadType, Technique
@@ -252,12 +253,15 @@ def create_html(
     content = _create_decoy_content(decoy_title)
 
     if top_instruction or context_template:
+        # Escape framing text: stubs are safe today but payload strings and
+        # future Phase 4.3 template content may contain <, &, or closing tags
+        # that would otherwise corrupt the surrounding HTML structure.
         framing_html = ""
         if top_instruction:
-            framing_html += f"<p>{top_instruction}</p>\n"
+            framing_html += f"<p>{_html_escape(top_instruction)}</p>\n"
         if context_template:
             rendered = context_template.replace("{payload}", payload)
-            framing_html += f"<pre>{rendered}</pre>\n"
+            framing_html += f"<pre>{_html_escape(rendered)}</pre>\n"
         content = content.replace("<body>", f"<body>\n{framing_html}", 1)
 
     # Inject payload using selected technique

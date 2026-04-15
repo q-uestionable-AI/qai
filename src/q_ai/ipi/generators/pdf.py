@@ -47,6 +47,30 @@ PDF_ALL_TECHNIQUES = PDF_PHASE1_TECHNIQUES + PDF_PHASE2_TECHNIQUES
 
 
 # =============================================================================
+# Layout Constants
+# =============================================================================
+
+_PAGE_LEFT_MARGIN = 72
+"""Left margin (points) for all text drawing."""
+
+_PAGE_BOTTOM_MARGIN = 72
+"""Bottom margin (points); framing stops drawing below this y-coordinate."""
+
+_INJECTION_Y_OFFSET = 200
+"""Y-offset from page top used by single-line injection techniques
+(``_inject_white_ink``, ``_inject_tiny_text``, ``_inject_white_rect``).
+Framing must not overlap the band around this offset."""
+
+_FRAMING_TOP_Y_OFFSET = 280
+"""Y-offset from page top where template framing starts — positioned
+below the injection band so multi-line framing cannot collide with
+injection output (most importantly the WHITE_RECT cover rectangle)."""
+
+_FRAMING_LINE_HEIGHT = 16
+"""Vertical spacing (points) between framing lines."""
+
+
+# =============================================================================
 # Phase 1 Techniques
 # =============================================================================
 
@@ -353,16 +377,22 @@ def create_pdf(
     c.drawString(72, height - 100, decoy_content)
     c.drawString(72, height - 120, "Please summarize the key findings below.")
 
+    # Template framing renders below the injection band so multi-line
+    # stubs cannot overlap _inject_* output (see _INJECTION_Y_OFFSET /
+    # _FRAMING_TOP_Y_OFFSET). Lines beyond the bottom margin are dropped
+    # rather than wrapped; Phase 4.3 may introduce proper text wrapping
+    # when aligned content replaces the stubs.
+    y = height - _FRAMING_TOP_Y_OFFSET
     if top_instruction:
-        c.drawString(72, height - 150, top_instruction[:200])
+        c.drawString(_PAGE_LEFT_MARGIN, y, top_instruction)
+        y -= _FRAMING_LINE_HEIGHT
     if context_template:
         rendered = context_template.replace("{payload}", payload)
-        y = height - 180
         for line in rendered.splitlines():
-            if y < 72:
+            if y < _PAGE_BOTTOM_MARGIN:
                 break
-            c.drawString(72, y, line[:200])
-            y -= 16
+            c.drawString(_PAGE_LEFT_MARGIN, y, line)
+            y -= _FRAMING_LINE_HEIGHT
 
     # Post-save techniques: save canvas first, then modify the file
     post_save_fn = _POST_SAVE_DISPATCH.get(technique)
