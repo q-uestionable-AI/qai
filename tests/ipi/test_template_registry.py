@@ -22,6 +22,27 @@ from q_ai.ipi.template_registry import (
 
 runner = CliRunner()
 
+GARAK_TEMPLATES: frozenset[DocumentTemplate] = frozenset(
+    {
+        DocumentTemplate.WHOIS,
+        DocumentTemplate.TRANSLATION_EN_FR,
+        DocumentTemplate.TRANSLATION_EN_ZH,
+        DocumentTemplate.LEGAL_SNIPPET,
+        DocumentTemplate.REPORT,
+        DocumentTemplate.RESUME,
+    }
+)
+
+BIPIA_TEMPLATES: frozenset[DocumentTemplate] = frozenset(
+    {
+        DocumentTemplate.EMAIL,
+        DocumentTemplate.WEB,
+        DocumentTemplate.TABLE,
+        DocumentTemplate.CODE,
+        DocumentTemplate.NEWS,
+    }
+)
+
 
 class TestRegistryShape:
     """Coverage of every enum member and basic spec shape."""
@@ -46,28 +67,13 @@ class TestRegistryShape:
         assert set(spec.formats) == set(Format)
 
     def test_garak_specs_use_pinned_commit(self) -> None:
-        garak_members = {
-            DocumentTemplate.WHOIS,
-            DocumentTemplate.TRANSLATION_EN_FR,
-            DocumentTemplate.TRANSLATION_EN_ZH,
-            DocumentTemplate.LEGAL_SNIPPET,
-            DocumentTemplate.REPORT,
-            DocumentTemplate.RESUME,
-        }
-        for tmpl in garak_members:
+        for tmpl in GARAK_TEMPLATES:
             spec = TEMPLATE_REGISTRY[tmpl]
             assert spec.source_tool == "garak"
             assert spec.source_commit == GARAK_COMMIT
 
     def test_bipia_specs_use_pinned_commit(self) -> None:
-        bipia_members = {
-            DocumentTemplate.EMAIL,
-            DocumentTemplate.WEB,
-            DocumentTemplate.TABLE,
-            DocumentTemplate.CODE,
-            DocumentTemplate.NEWS,
-        }
-        for tmpl in bipia_members:
+        for tmpl in BIPIA_TEMPLATES:
             spec = TEMPLATE_REGISTRY[tmpl]
             assert spec.source_tool == "bipia"
             assert spec.source_commit == BIPIA_COMMIT
@@ -76,28 +82,19 @@ class TestRegistryShape:
 class TestGarakTemplateContent:
     """Phase 4.3a content checks for Garak-aligned templates."""
 
-    GARAK_MEMBERS = (
-        DocumentTemplate.WHOIS,
-        DocumentTemplate.TRANSLATION_EN_FR,
-        DocumentTemplate.TRANSLATION_EN_ZH,
-        DocumentTemplate.LEGAL_SNIPPET,
-        DocumentTemplate.REPORT,
-        DocumentTemplate.RESUME,
-    )
-
     def test_no_stub_prefix_remains(self) -> None:
-        for tmpl in self.GARAK_MEMBERS:
+        for tmpl in GARAK_TEMPLATES:
             spec = TEMPLATE_REGISTRY[tmpl]
             assert "[STUB" not in spec.top_instruction, tmpl.name
             assert "[STUB" not in spec.context_template, tmpl.name
 
     def test_context_template_has_single_payload_marker(self) -> None:
-        for tmpl in self.GARAK_MEMBERS:
+        for tmpl in GARAK_TEMPLATES:
             spec = TEMPLATE_REGISTRY[tmpl]
             assert spec.context_template.count("{payload}") == 1, tmpl.name
 
     def test_context_template_is_substantial(self) -> None:
-        for tmpl in self.GARAK_MEMBERS:
+        for tmpl in GARAK_TEMPLATES:
             spec = TEMPLATE_REGISTRY[tmpl]
             assert len(spec.context_template) >= 200, tmpl.name
 
