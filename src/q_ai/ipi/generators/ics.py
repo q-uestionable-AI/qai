@@ -211,6 +211,8 @@ def create_ics(
     seed: int | None = None,
     sequence: int = 0,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> Campaign:
     """Generate an ICS file with hidden prompt injection payload.
 
@@ -258,6 +260,15 @@ def create_ics(
     # Create calendar with decoy content
     cal, event = _create_decoy_calendar()
 
+    if top_instruction or context_template:
+        framing = ""
+        if top_instruction:
+            framing += top_instruction + "\n"
+        if context_template:
+            framing += context_template.replace("{payload}", payload) + "\n"
+        existing = str(event.get("description", ""))
+        event["description"] = framing + existing
+
     # Inject payload using selected technique
     if technique == Technique.ICS_DESCRIPTION:
         _inject_description(event, payload)
@@ -303,6 +314,8 @@ def create_all_ics_variants(
     techniques: list[Technique] | None = None,
     seed: int | None = None,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> list[Campaign]:
     """Generate ICS files using multiple techniques.
 
@@ -346,6 +359,8 @@ def create_all_ics_variants(
             seed=seed,
             sequence=i,
             encoding=encoding,
+            top_instruction=top_instruction,
+            context_template=context_template,
         )
         campaigns.append(campaign)
 

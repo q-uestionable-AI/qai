@@ -246,6 +246,8 @@ def create_image(
     seed: int | None = None,
     sequence: int = 0,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> Campaign:
     """Generate an image with hidden prompt injection payload.
 
@@ -281,6 +283,11 @@ def create_image(
     """
     if technique not in IMAGE_TECHNIQUES:
         raise ValueError(f"Unsupported image technique: {technique.value}")
+
+    # Image format is not covered by any non-GENERIC document template,
+    # so template framing parameters are accepted for signature uniformity
+    # but currently have no visual representation.
+    del top_instruction, context_template
 
     canary_uuid, token = create_campaign_ids(seed, sequence)
     payload = generate_payload(
@@ -339,6 +346,8 @@ def create_all_image_variants(
     techniques: list[Technique] | None = None,
     seed: int | None = None,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> list[Campaign]:
     """Generate images using multiple techniques.
 
@@ -384,6 +393,8 @@ def create_all_image_variants(
             seed=seed,
             sequence=i,
             encoding=encoding,
+            top_instruction=top_instruction,
+            context_template=context_template,
         )
         campaigns.append(campaign)
 

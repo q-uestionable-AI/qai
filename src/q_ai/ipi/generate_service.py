@@ -30,7 +30,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from q_ai.ipi import db
-from q_ai.ipi.models import Campaign, Format, PayloadStyle, PayloadType, Technique
+from q_ai.ipi.models import (
+    Campaign,
+    DocumentTemplate,
+    Format,
+    PayloadStyle,
+    PayloadType,
+    Technique,
+)
+from q_ai.ipi.template_registry import get_template_spec
 
 from .generators.docx import create_all_docx_variants, create_docx
 from .generators.eml import create_all_eml_variants, create_eml
@@ -182,6 +190,7 @@ def generate_documents(
     base_name: str = "report",
     seed: int | None = None,
     encoding: str = "none",
+    template: DocumentTemplate = DocumentTemplate.GENERIC,
 ) -> GenerateResult:
     """Generate payload documents and persist campaigns to the database.
 
@@ -204,12 +213,17 @@ def generate_documents(
         seed: Optional integer seed for deterministic generation.
         encoding: Optional URL obfuscation applied to the callback URL before
             injection. One of ``"none"``, ``"base16"``, ``"hex"``.
+        template: Document context template framing the payload. ``GENERIC``
+            (default) preserves legacy behavior. Non-GENERIC values must
+            list ``format_name`` in their compatible formats; otherwise a
+            ``ValueError`` is raised.
 
     Returns:
         GenerateResult with campaigns, skip count, and any errors.
 
     Raises:
-        ValueError: If format_name has no registered dispatch entry.
+        ValueError: If format_name has no registered dispatch entry, or if
+            ``template`` is not compatible with ``format_name``.
     """
     # Sanitize base_name to prevent path traversal
     base_name = Path(base_name).name
@@ -220,6 +234,17 @@ def generate_documents(
 
     if format_name not in _FORMAT_DISPATCH:
         raise ValueError(f"No generator registered for format: {format_name.value}")
+
+    template_spec = get_template_spec(template)
+    if template != DocumentTemplate.GENERIC and format_name not in template_spec.formats:
+        compatible = ", ".join(f.value for f in template_spec.formats)
+        raise ValueError(
+            f"Template '{template.value}' is not compatible with format "
+            f"'{format_name.value}'. Compatible formats: {compatible}"
+        )
+
+    top_instruction = template_spec.top_instruction
+    context_template = template_spec.context_template
 
     single_fn, batch_fn = _FORMAT_DISPATCH[format_name]
 
@@ -237,6 +262,8 @@ def generate_documents(
             techniques,
             seed=seed,
             encoding=encoding,
+            top_instruction=top_instruction,
+            context_template=context_template,
         )
 
         for campaign in campaigns:
@@ -260,6 +287,8 @@ def generate_documents(
             payload_type,
             seed=seed,
             encoding=encoding,
+            top_instruction=top_instruction,
+            context_template=context_template,
         )
         campaign.output_path = str(file_path)
 

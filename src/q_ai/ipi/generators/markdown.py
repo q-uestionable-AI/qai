@@ -240,6 +240,8 @@ def create_markdown(
     seed: int | None = None,
     sequence: int = 0,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> Campaign:
     """Generate a Markdown file with hidden prompt injection payload.
 
@@ -289,6 +291,14 @@ def create_markdown(
     # Create base content
     content = _create_decoy_content(decoy_title)
 
+    if top_instruction or context_template:
+        framing = ""
+        if top_instruction:
+            framing += top_instruction + "\n\n"
+        if context_template:
+            framing += context_template.replace("{payload}", payload) + "\n\n"
+        content = framing + content
+
     # Inject payload using selected technique
     if technique == Technique.HTML_COMMENT:
         content = _inject_html_comment(content, payload)
@@ -330,6 +340,8 @@ def create_all_markdown_variants(
     techniques: list[Technique] | None = None,
     seed: int | None = None,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> list[Campaign]:
     """Generate markdown files using multiple techniques.
 
@@ -374,6 +386,8 @@ def create_all_markdown_variants(
             seed=seed,
             sequence=i,
             encoding=encoding,
+            top_instruction=top_instruction,
+            context_template=context_template,
         )
         campaigns.append(campaign)
 

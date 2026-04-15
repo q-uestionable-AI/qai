@@ -298,6 +298,8 @@ def create_pdf(
     seed: int | None = None,
     sequence: int = 0,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> Campaign:
     """Generate a PDF with hidden prompt injection payload.
 
@@ -311,6 +313,14 @@ def create_pdf(
         decoy_content: Visible body text.
         seed: Optional seed for deterministic UUID/token generation.
         sequence: Sequence number for batch deterministic generation.
+        encoding: URL obfuscation applied to the callback URL before injection.
+        top_instruction: Optional document-context task framing text rendered
+            as an extra visible paragraph above the body. Empty string
+            preserves legacy behavior.
+        context_template: Optional body template containing a ``{payload}``
+            marker. When non-empty, the rendered template is appended to
+            the visible decoy content with ``{payload}`` replaced by the
+            payload string.
 
     Returns:
         Campaign object with UUID and metadata.
@@ -342,6 +352,17 @@ def create_pdf(
     c.setFont("Helvetica", 12)
     c.drawString(72, height - 100, decoy_content)
     c.drawString(72, height - 120, "Please summarize the key findings below.")
+
+    if top_instruction:
+        c.drawString(72, height - 150, top_instruction[:200])
+    if context_template:
+        rendered = context_template.replace("{payload}", payload)
+        y = height - 180
+        for line in rendered.splitlines():
+            if y < 72:
+                break
+            c.drawString(72, y, line[:200])
+            y -= 16
 
     # Post-save techniques: save canvas first, then modify the file
     post_save_fn = _POST_SAVE_DISPATCH.get(technique)
@@ -379,6 +400,8 @@ def create_all_variants(
     techniques: list[Technique] | None = None,
     seed: int | None = None,
     encoding: str = "none",
+    top_instruction: str = "",
+    context_template: str = "",
 ) -> list[Campaign]:
     """Generate PDFs using multiple techniques.
 
@@ -412,6 +435,8 @@ def create_all_variants(
             seed=seed,
             sequence=i,
             encoding=encoding,
+            top_instruction=top_instruction,
+            context_template=context_template,
         )
         campaigns.append(campaign)
 
