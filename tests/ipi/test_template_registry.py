@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import click
 import pytest
 from typer.testing import CliRunner
 
@@ -124,16 +125,25 @@ class TestServiceValidation:
 
 
 class TestCLIIntegration:
-    def test_help_lists_template_option(self) -> None:
-        # Force a wide terminal so Typer/Rich does not wrap "--template"
-        # across narrow help-panel cells (CI default is 80 cols).
-        result = runner.invoke(
-            app,
-            ["ipi", "generate", "--help"],
-            env={"COLUMNS": "200"},
-        )
-        assert result.exit_code == 0
-        assert "--template" in result.output
+    def test_generate_command_registers_template_param(self) -> None:
+        """Verify --template is wired into the generate command.
+
+        Inspect the Click parameter list directly instead of parsing help
+        output — Typer/Rich rendering of --help varies across platforms
+        (terminal width, ANSI styling), which made an earlier output-string
+        assertion flake on macOS CI.
+        """
+        import typer
+
+        click_app = typer.main.get_command(app)
+        with click.Context(click_app) as ctx:
+            ipi = click_app.get_command(ctx, "ipi")
+        assert ipi is not None
+        with click.Context(ipi) as ipi_ctx:
+            generate = ipi.get_command(ipi_ctx, "generate")
+        assert generate is not None
+        param_names = [p.name for p in generate.params]
+        assert "template" in param_names
 
     @patch("q_ai.ipi.cli.generate_documents")
     def test_template_flag_threads_to_service(self, mock_gen: object) -> None:
