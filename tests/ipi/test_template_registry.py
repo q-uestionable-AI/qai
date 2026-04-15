@@ -127,6 +127,8 @@ class TestBipiaTemplateContent:
         spec = TEMPLATE_REGISTRY[DocumentTemplate.EMAIL]
         assert "SUBJECT:" in spec.context_template
         assert "EMAIL_FROM:" in spec.context_template
+        assert "RECEIVED DATE:" in spec.context_template
+        assert "CONTENT:" in spec.context_template
 
     def test_table_contains_markdown_syntax(self) -> None:
         spec = TEMPLATE_REGISTRY[DocumentTemplate.TABLE]
