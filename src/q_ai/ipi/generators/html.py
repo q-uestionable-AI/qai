@@ -167,6 +167,24 @@ def _inject_data_attribute(content: str, payload: str) -> str:
     return content.replace("<body>", f'<body data-config="{payload}">')
 
 
+def _inject_none(content: str, payload: str) -> str:
+    """Render payload as a normal visible paragraph (control condition).
+
+    No hiding is applied: the payload is inserted as an ordinary ``<p>``
+    element. Used as a baseline for measuring hiding technique uplift.
+    Payload text is HTML-escaped to preserve document structure.
+
+    Args:
+        content: Base HTML content.
+        payload: Payload string to render.
+
+    Returns:
+        HTML with payload as a visible paragraph before ``</body>``.
+    """
+    paragraph = f"    <p>{_html_escape(payload)}</p>"
+    return content.replace("</body>", f"{paragraph}\n</body>")
+
+
 def _inject_meta_tag(content: str, payload: str) -> str:
     """Inject payload in HTML meta tag.
 
@@ -236,7 +254,7 @@ def create_html(
         ...     "http://localhost:8080"
         ... )
     """
-    if technique not in HTML_TECHNIQUES:
+    if technique not in HTML_TECHNIQUES and technique is not Technique.NONE:
         raise ValueError(f"Unsupported HTML technique: {technique.value}")
 
     canary_uuid, token = create_campaign_ids(seed, sequence)
@@ -273,6 +291,8 @@ def create_html(
         content = _inject_data_attribute(content, payload)
     elif technique == Technique.META_TAG:
         content = _inject_meta_tag(content, payload)
+    elif technique == Technique.NONE:
+        content = _inject_none(content, payload)
 
     # Write file
     output_path.parent.mkdir(parents=True, exist_ok=True)

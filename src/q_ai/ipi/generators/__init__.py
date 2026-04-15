@@ -93,11 +93,21 @@ TECHNIQUE_FORMATS: dict[Technique, Format] = {
 """Maps each technique to its supported format."""
 
 
-def get_techniques_for_format(fmt: Format) -> list[Technique]:
-    """Get all techniques available for a specific format.
+def get_techniques_for_format(fmt: Format, *, include_none: bool = False) -> list[Technique]:
+    """Get all hiding techniques available for a specific format.
+
+    ``Technique.NONE`` is the visible-payload control condition. It is
+    intentionally excluded from the default result so that callers that
+    treat this function as "all hiding techniques for a format" — batch
+    sweeps in the chain executor, orchestrator adapter, and web API
+    ``technique=="all"`` resolution — produce hiding-only campaigns. UI
+    surfaces that let a user pick any technique (CLI validation, format
+    listing counts, web UI dropdowns) should opt in with ``include_none``.
 
     Args:
         fmt: The format to filter by.
+        include_none: When True, append ``Technique.NONE`` to the
+            returned list. Defaults to False (hiding-only).
 
     Returns:
         List of Technique enums supported by the format.
@@ -105,11 +115,15 @@ def get_techniques_for_format(fmt: Format) -> list[Technique]:
     Example:
         >>> from q_ai.ipi.models import Format
         >>> from q_ai.ipi.generators import get_techniques_for_format
-        >>> pdf_techniques = get_techniques_for_format(Format.PDF)
-        >>> len(pdf_techniques)
+        >>> len(get_techniques_for_format(Format.PDF))
         10
+        >>> len(get_techniques_for_format(Format.PDF, include_none=True))
+        11
     """
-    return [t for t, f in TECHNIQUE_FORMATS.items() if f == fmt]
+    techniques = [t for t, f in TECHNIQUE_FORMATS.items() if f == fmt]
+    if include_none:
+        techniques.append(Technique.NONE)
+    return techniques
 
 
 def get_format_for_technique(technique: Technique) -> Format:

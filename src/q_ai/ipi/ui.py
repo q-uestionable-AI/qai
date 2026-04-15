@@ -119,7 +119,7 @@ async def generate_page(request: Request) -> HTMLResponse:
         Rendered generate HTML page.
     """
     default_format = Format.PDF
-    techs = get_techniques_for_format(default_format)
+    techs = get_techniques_for_format(default_format, include_none=True)
     technique_names = [t.value for t in techs]
 
     return templates.TemplateResponse(

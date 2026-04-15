@@ -180,6 +180,23 @@ def _inject_valarm(event: Event, payload: str) -> None:
     event.add_component(alarm)
 
 
+def _inject_none(event: Event, payload: str) -> None:
+    """Render payload as visible DESCRIPTION text (control condition).
+
+    No hiding is applied: the payload replaces the event DESCRIPTION
+    with readable text. Distinct from ``ICS_DESCRIPTION`` in intent —
+    NONE is the baseline "visible payload" control used to measure
+    hiding technique uplift, not a hiding technique itself.
+
+    Args:
+        event: Event to modify.
+        payload: Payload string to render.
+    """
+    if "description" in event:
+        del event["description"]
+    event.add("description", payload)
+
+
 def _inject_x_property(event: Event, payload: str) -> None:
     """Inject payload into custom X- extension property.
 
@@ -244,7 +261,7 @@ def create_ics(
         ...     "http://localhost:8080"
         ... )
     """
-    if technique not in ICS_TECHNIQUES:
+    if technique not in ICS_TECHNIQUES and technique is not Technique.NONE:
         raise ValueError(f"Unsupported ICS technique: {technique.value}")
 
     canary_uuid, token = create_campaign_ids(seed, sequence)
@@ -277,6 +294,8 @@ def create_ics(
         _inject_valarm(event, payload)
     elif technique == Technique.ICS_X_PROPERTY:
         _inject_x_property(event, payload)
+    elif technique == Technique.NONE:
+        _inject_none(event, payload)
 
     # Add event to calendar
     cal.add_component(event)

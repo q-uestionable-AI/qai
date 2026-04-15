@@ -49,6 +49,11 @@ class Format(StrEnum):
 class Technique(StrEnum):
     """Payload hiding techniques organized by format and phase.
 
+    Control Condition:
+        NONE: Payload rendered as normal visible text. Used as a control
+            condition for measuring hiding technique uplift. Applies to
+            every format.
+
     PDF Techniques (Phase 1 - Basic):
         WHITE_INK: White text on white background - invisible but extractable.
         OFF_CANVAS: Text positioned outside visible page boundaries.
@@ -105,6 +110,9 @@ class Technique(StrEnum):
         >>> technique.value
         'white_ink'
     """
+
+    # Control condition (no hiding)
+    NONE = "none"
 
     # PDF Phase 1 techniques
     WHITE_INK = "white_ink"

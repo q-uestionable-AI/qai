@@ -190,6 +190,21 @@ def _inject_subtle_text(img: Image.Image, payload: str) -> None:
     draw.text((x, y), text, fill=subtle_color, font=font)
 
 
+def _inject_none(img: Image.Image, payload: str) -> None:
+    """Render payload as normal visible black text (control condition).
+
+    No hiding is applied: the payload is drawn at the bottom of the
+    image in standard black text with a white background. Delegates to
+    :func:`_inject_visible_text` — visible-with-background placement is
+    already the "no hiding" rendering for the image format.
+
+    Args:
+        img: PIL Image to modify in place.
+        payload: Payload string to render.
+    """
+    _inject_visible_text(img, payload)
+
+
 def _inject_exif_metadata(output_path: Path, payload: str) -> None:
     """Inject payload into EXIF metadata fields.
 
@@ -281,7 +296,7 @@ def create_image(
         ...     "http://localhost:8080"
         ... )
     """
-    if technique not in IMAGE_TECHNIQUES:
+    if technique not in IMAGE_TECHNIQUES and technique is not Technique.NONE:
         raise ValueError(f"Unsupported image technique: {technique.value}")
 
     # Image format is not covered by any non-GENERIC document template,
@@ -305,6 +320,10 @@ def create_image(
     # Inject payload using selected technique
     if technique == Technique.VISIBLE_TEXT:
         _inject_visible_text(img, payload)
+        img.save(output_path)
+
+    elif technique == Technique.NONE:
+        _inject_none(img, payload)
         img.save(output_path)
 
     elif technique == Technique.SUBTLE_TEXT:

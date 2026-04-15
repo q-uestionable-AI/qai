@@ -207,6 +207,22 @@ def _inject_zero_width(content: str, payload: str) -> str:
     return "\n\n".join(lines)
 
 
+def _inject_none(content: str, payload: str) -> str:
+    """Render payload as normal visible markdown text (control condition).
+
+    No hiding is applied: the payload is appended as an ordinary paragraph.
+    Used as a baseline for measuring hiding technique uplift.
+
+    Args:
+        content: Base markdown content.
+        payload: Payload string to render.
+
+    Returns:
+        Markdown with payload as a visible paragraph.
+    """
+    return f"{content}\n\n{payload}\n"
+
+
 def _inject_hidden_block(content: str, payload: str) -> str:
     """Inject payload in hidden HTML block.
 
@@ -275,7 +291,7 @@ def create_markdown(
         ...     "http://localhost:8080"
         ... )
     """
-    if technique not in MARKDOWN_TECHNIQUES:
+    if technique not in MARKDOWN_TECHNIQUES and technique is not Technique.NONE:
         raise ValueError(f"Unsupported markdown technique: {technique.value}")
 
     canary_uuid, token = create_campaign_ids(seed, sequence)
@@ -308,6 +324,8 @@ def create_markdown(
         content = _inject_zero_width(content, payload)
     elif technique == Technique.HIDDEN_BLOCK:
         content = _inject_hidden_block(content, payload)
+    elif technique == Technique.NONE:
+        content = _inject_none(content, payload)
 
     # Write file
     output_path.parent.mkdir(parents=True, exist_ok=True)

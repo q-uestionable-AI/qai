@@ -43,7 +43,8 @@ PDF_PHASE2_TECHNIQUES = [
 """Phase 2 PDF techniques (advanced hiding methods)."""
 
 PDF_ALL_TECHNIQUES = PDF_PHASE1_TECHNIQUES + PDF_PHASE2_TECHNIQUES
-"""All PDF techniques."""
+"""All PDF hiding techniques (Technique.NONE is a control condition,
+not a hiding technique, and is intentionally excluded)."""
 
 
 # =============================================================================
@@ -110,6 +111,23 @@ def _inject_metadata(c: canvas.Canvas, payload: str) -> None:
     c.setAuthor(payload)
     c.setSubject(payload)
     c.setKeywords(payload)
+
+
+def _inject_none(c: canvas.Canvas, payload: str, page_height: float) -> None:
+    """Render payload as normal visible black text (control condition).
+
+    No hiding is applied: the payload appears as ordinary readable text
+    at the standard injection position. Used to measure the uplift of
+    hiding techniques against a visible-payload baseline.
+
+    Args:
+        c: ReportLab canvas object.
+        payload: Payload string to render.
+        page_height: Page height for positioning.
+    """
+    c.setFillColor(black)
+    c.setFont("Helvetica", 10)
+    c.drawString(_PAGE_LEFT_MARGIN, page_height - _INJECTION_Y_OFFSET, payload)
 
 
 # =============================================================================
@@ -294,6 +312,7 @@ def _apply_canvas_technique(
         Technique.WHITE_RECT: (_inject_white_rect, (c, payload, height)),
         Technique.FORM_FIELD: (_inject_form_field, (c, payload, height)),
         Technique.ANNOTATION: (_inject_annotation, (c, payload, height, target_url)),
+        Technique.NONE: (_inject_none, (c, payload, height)),
     }
     entry = canvas_dispatch.get(technique)
     if entry is None:

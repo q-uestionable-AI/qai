@@ -133,7 +133,7 @@ async def get_technique_options(request: Request, format: str = "pdf") -> HTMLRe
     """
     try:
         fmt = Format(format)
-        techs = get_techniques_for_format(fmt)
+        techs = get_techniques_for_format(fmt, include_none=True)
         technique_names = [t.value for t in techs]
     except ValueError:
         technique_names = []
@@ -189,13 +189,15 @@ async def generate_payloads(
         ptype = PayloadType(payload_type)
         seed_val = int(seed) if seed.strip() else None
 
-        # Resolve techniques
-        available = get_techniques_for_format(fmt)
+        # Resolve techniques. Validation must accept NONE when the user
+        # explicitly selects it, but the "all" preset must stay hiding-only
+        # to match CLI semantics (see parse_techniques in ipi/cli.py).
+        selectable = get_techniques_for_format(fmt, include_none=True)
         if technique == "all":
-            techs = available
+            techs: list[Technique] = [t for t in selectable if t is not Technique.NONE]
         else:
             tech_enum = Technique(technique)
-            if tech_enum not in available:
+            if tech_enum not in selectable:
                 return templates.TemplateResponse(
                     request,
                     "partials/gen_result.html",
