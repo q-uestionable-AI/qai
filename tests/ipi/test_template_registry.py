@@ -104,6 +104,41 @@ class TestGarakTemplateContent:
         assert "Registrar:" in spec.context_template
 
 
+class TestBipiaTemplateContent:
+    """Phase 4.3b content checks for BIPIA-aligned templates."""
+
+    def test_no_stub_prefix_remains(self) -> None:
+        for tmpl in BIPIA_TEMPLATES:
+            spec = TEMPLATE_REGISTRY[tmpl]
+            assert "[STUB" not in spec.top_instruction, tmpl.name
+            assert "[STUB" not in spec.context_template, tmpl.name
+
+    def test_context_template_has_single_payload_marker(self) -> None:
+        for tmpl in BIPIA_TEMPLATES:
+            spec = TEMPLATE_REGISTRY[tmpl]
+            assert spec.context_template.count("{payload}") == 1, tmpl.name
+
+    def test_context_template_is_substantial(self) -> None:
+        for tmpl in BIPIA_TEMPLATES:
+            spec = TEMPLATE_REGISTRY[tmpl]
+            assert len(spec.context_template) >= 200, tmpl.name
+
+    def test_email_contains_header_fields(self) -> None:
+        spec = TEMPLATE_REGISTRY[DocumentTemplate.EMAIL]
+        assert "SUBJECT:" in spec.context_template
+        assert "EMAIL_FROM:" in spec.context_template
+
+    def test_table_contains_markdown_syntax(self) -> None:
+        spec = TEMPLATE_REGISTRY[DocumentTemplate.TABLE]
+        assert "|" in spec.context_template
+        assert "---" in spec.context_template
+
+    def test_code_contains_error_pattern(self) -> None:
+        spec = TEMPLATE_REGISTRY[DocumentTemplate.CODE]
+        assert "Traceback" in spec.context_template
+        assert "Code snippet:" in spec.context_template
+
+
 class TestAccessors:
     """Coverage of the registry lookup helpers.
 
