@@ -55,6 +55,56 @@ _logger = logging.getLogger(__name__)
 _bridge_notify_url: str | None = None
 _bridge_token: str | None = None
 
+# Module-level tunnel-mode state, set by start_server() when --tunnel is active.
+# Drives forwarded-header trust in _resolve_source_ip() and governs whether
+# public-exposure hardening middleware is installed.
+_tunnel_mode_provider: str | None = None
+
+_CF_CONNECTING_IP_HEADER = "cf-connecting-ip"
+"""Cloudflare-originated client-IP header. Only trusted in tunnel mode."""
+
+_UNKNOWN_IP = "unknown"
+"""Fallback value when no client IP can be resolved."""
+
+
+def _set_tunnel_mode(provider: str | None) -> None:
+    """Set the module-level tunnel-mode flag.
+
+    Exposed for test setup/teardown; production code sets this via
+    :func:`start_server`.
+
+    Args:
+        provider: Tunnel provider name (e.g. ``"cloudflare"``) or
+            ``None`` for local-only mode.
+    """
+    global _tunnel_mode_provider  # noqa: PLW0603
+    _tunnel_mode_provider = provider
+
+
+def _resolve_source_ip(request: Request) -> str:
+    """Resolve the client IP for a request.
+
+    When tunnel mode is active and the provider is Cloudflare, the
+    trusted ``CF-Connecting-IP`` header is preferred so hits record the
+    real remote caller rather than the local cloudflared daemon.
+    Forwarded headers are never trusted when the listener is running
+    locally (prevents IP spoofing via forged headers on an exposed
+    local listener).
+
+    Args:
+        request: The incoming FastAPI request.
+
+    Returns:
+        The resolved client IP, or ``"unknown"`` if nothing is available.
+    """
+    if _tunnel_mode_provider == "cloudflare":
+        forwarded = request.headers.get(_CF_CONNECTING_IP_HEADER)
+        if forwarded:
+            return str(forwarded)
+    if request.client is not None:
+        return str(request.client.host)
+    return _UNKNOWN_IP
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -196,7 +246,7 @@ async def callback_authenticated(
     hit = Hit(
         id=uuid.uuid4().hex,
         uuid=canary_uuid,
-        source_ip=request.client.host if request.client else "unknown",
+        source_ip=_resolve_source_ip(request),
         user_agent=user_agent,
         headers=json.dumps(dict(request.headers)),
         body=query_string,
@@ -245,7 +295,7 @@ async def callback_authenticated_post(
     hit = Hit(
         id=uuid.uuid4().hex,
         uuid=canary_uuid,
-        source_ip=request.client.host if request.client else "unknown",
+        source_ip=_resolve_source_ip(request),
         user_agent=user_agent,
         headers=json.dumps(dict(request.headers)),
         body=body_text,
@@ -296,7 +346,7 @@ async def callback(
     hit = Hit(
         id=uuid.uuid4().hex,
         uuid=canary_uuid,
-        source_ip=request.client.host if request.client else "unknown",
+        source_ip=_resolve_source_ip(request),
         user_agent=user_agent,
         headers=json.dumps(dict(request.headers)),
         body=query_string,
@@ -340,7 +390,7 @@ async def callback_post(
     hit = Hit(
         id=uuid.uuid4().hex,
         uuid=canary_uuid,
-        source_ip=request.client.host if request.client else "unknown",
+        source_ip=_resolve_source_ip(request),
         user_agent=user_agent,
         headers=json.dumps(dict(request.headers)),
         body=body_text,
@@ -374,6 +424,7 @@ def start_server(
     host: str = "127.0.0.1",
     port: int = 8080,
     notify_url: str = "http://127.0.0.1:8899",
+    tunnel_provider: str | None = None,
 ) -> None:
     """Start the callback listener server.
 
@@ -381,15 +432,26 @@ def start_server(
     and port. The server runs in the foreground until interrupted
     with Ctrl+C.
 
+    When ``tunnel_provider`` is set, the listener records forwarded
+    client IPs from the provider's trusted header (e.g.
+    ``CF-Connecting-IP`` for Cloudflare) rather than the local TCP peer.
+    Forwarded headers are ignored in local-only mode to prevent IP
+    spoofing.
+
     Args:
         host: Network interface to bind (default ``"127.0.0.1"``).
         port: TCP port to listen on (default ``8080``).
         notify_url: URL of the main qai server for bridge notifications
             (default ``"http://localhost:8899"``).
+        tunnel_provider: If not ``None``, indicates the listener is
+            running behind a reverse tunnel of the named provider
+            (currently ``"cloudflare"``). Enables forwarded-header
+            trust. ``None`` means local-only.
     """
     global _bridge_notify_url, _bridge_token  # noqa: PLW0603
     _bridge_notify_url = notify_url.rstrip("/")
     _bridge_token = ensure_bridge_token()
+    _set_tunnel_mode(tunnel_provider)
 
     console.print(f"[bold green]Starting q-ai IPI listener on {host}:{port}[/bold green]")
     console.print(f"   Callback URL: [blue]http://<your-ip>:{port}/c/<uuid>/<token>[/blue]")
@@ -397,9 +459,12 @@ def start_server(
     console.print(f"   Bridge:       [blue]{_bridge_notify_url}[/blue]")
     console.print("   Press [bold]Ctrl+C[/bold] to stop\n")
 
-    uvicorn.run(
-        app,
-        host=host,
-        port=port,
-        log_level="warning",
-    )
+    try:
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            log_level="warning",
+        )
+    finally:
+        _set_tunnel_mode(None)
