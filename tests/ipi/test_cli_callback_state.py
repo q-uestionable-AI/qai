@@ -144,19 +144,27 @@ class TestGenerateAutoDiscovery:
 
     @patch("q_ai.ipi.cli.generate_documents")
     @patch("q_ai.ipi.cli.persist_generate", create=True)
-    def test_stale_state_prints_warning_and_falls_through(
+    def test_positional_callback_skips_state_lookup_entirely(
         self,
         _mock_persist: object,
         mock_gen: object,
     ) -> None:
+        """Explicit positional callback must bypass state-file consultation.
+
+        This pins three invariants:
+          1. ``read_valid_state`` is not called when a callback is given
+             positionally (avoids needless filesystem I/O on every invocation).
+          2. The positional value wins — the service receives it unchanged.
+          3. Any stale-state warning that would fire in the no-callback
+             branch must not leak into output when a callback is provided.
+        """
         mock_gen.return_value = GenerateResult(campaigns=[], errors=[])  # type: ignore[attr-defined]
         stale_warning = "Active-callback state references dead PID 999999; ignoring."
 
         with patch(
             "q_ai.ipi.cli.read_valid_state",
             return_value=(None, stale_warning),
-        ):
-            # Provide callback positionally so the prompt doesn't block in non-TTY.
+        ) as mock_read_state:
             result = runner.invoke(
                 app,
                 [
@@ -171,8 +179,10 @@ class TestGenerateAutoDiscovery:
             )
 
         assert result.exit_code == 0, result.output
-        # The warning is only displayed when the state file is consulted —
-        # i.e., when no positional/--callback is given.
+        mock_read_state.assert_not_called()
+        assert stale_warning not in result.output
+        kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
+        assert kwargs["callback_url"] == "http://fallback:8080"
 
     @patch("q_ai.ipi.cli.generate_documents")
     @patch("q_ai.ipi.cli.persist_generate", create=True)
@@ -181,14 +191,19 @@ class TestGenerateAutoDiscovery:
         _mock_persist: object,
         mock_gen: object,
     ) -> None:
-        """When no callback is given, stale warning is surfaced to the user."""
+        """Complement of the positional-wins case.
+
+        When no callback is given and ``read_valid_state`` reports stale
+        state, the full warning must surface to the user so they know
+        why their state file was ignored.
+        """
         mock_gen.return_value = GenerateResult(campaigns=[], errors=[])  # type: ignore[attr-defined]
         stale_warning = "Active-callback state references dead PID 999999; ignoring."
 
         with patch(
             "q_ai.ipi.cli.read_valid_state",
             return_value=(None, stale_warning),
-        ):
+        ) as mock_read_state:
             # No callback, no TTY → prompt_or_fail exits. We expect exit code 1
             # but the warning must appear in output beforehand.
             result = runner.invoke(
@@ -203,7 +218,8 @@ class TestGenerateAutoDiscovery:
                 ],
             )
 
-        assert "dead PID" in result.output
+        mock_read_state.assert_called_once()
+        assert stale_warning in result.output
         # Without a callback in non-TTY, prompt_or_fail exits 1.
         assert result.exit_code == 1
 

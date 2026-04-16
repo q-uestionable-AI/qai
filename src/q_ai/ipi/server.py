@@ -203,21 +203,31 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
 def install_hardening_middleware(app: FastAPI) -> None:
-    """Register body-size and rate-limit middleware on ``app``.
+    """Register body-size and rate-limit middleware on ``app``, idempotently.
 
     Factored out so tests can exercise the middleware against an
     isolated :class:`FastAPI` instance without relying on the global
     listener ``app`` singleton (which would leak state between tests).
 
+    Calling this multiple times on the same ``app`` is a no-op after
+    the first call: each middleware class is only added if it is not
+    already present in ``app.user_middleware``. This matters because
+    the production listener registers middleware on the module-level
+    ``app`` singleton; repeated ``start_server(tunnel_provider=...)``
+    calls in the same process would otherwise stack duplicate middleware.
+
     Args:
         app: The FastAPI application to decorate.
     """
-    app.add_middleware(BodySizeLimitMiddleware, max_bytes=_MAX_BODY_BYTES)
-    app.add_middleware(
-        RateLimitMiddleware,
-        window_secs=_RATE_LIMIT_WINDOW_SECS,
-        max_requests=_RATE_LIMIT_MAX_REQUESTS,
-    )
+    installed_classes = {mw.cls for mw in app.user_middleware}
+    if BodySizeLimitMiddleware not in installed_classes:
+        app.add_middleware(BodySizeLimitMiddleware, max_bytes=_MAX_BODY_BYTES)
+    if RateLimitMiddleware not in installed_classes:
+        app.add_middleware(
+            RateLimitMiddleware,
+            window_secs=_RATE_LIMIT_WINDOW_SECS,
+            max_requests=_RATE_LIMIT_MAX_REQUESTS,
+        )
 
 
 @asynccontextmanager

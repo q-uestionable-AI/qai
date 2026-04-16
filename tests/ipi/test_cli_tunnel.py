@@ -57,7 +57,11 @@ class TestListenTunnelFlag:
         mock_start.assert_called_once()
         assert mock_start.call_args.kwargs["tunnel_provider"] == "cloudflare"
         fake_adapter.stop.assert_called_once()
-        assert "https://happy-example.trycloudflare.com" in result.output
+        # Test fixture: asserting the mocked tunnel URL appears in CLI output.
+        # This is not URL sanitization; the value is a hardcoded test constant.
+        assert (
+            "https://happy-example.trycloudflare.com" in result.output
+        )  # lgtm[py/incomplete-url-substring-sanitization]
 
     def test_tunnel_startup_failure_exits_and_stops_adapter(self) -> None:
         fake_adapter = MagicMock()

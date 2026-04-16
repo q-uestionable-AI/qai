@@ -976,15 +976,19 @@ def _run_listen_with_tunnel(
     console.print(f"[bold green]Tunnel active:[/bold green] [blue]{public_url}[/blue]")
     console.print(f"   Callback URL: [blue]{public_url}/c/<uuid>/<token>[/blue]")
 
-    state = build_state(
-        public_url=public_url,
-        provider=tunnel_provider,
-        local_host=host,
-        local_port=port,
-    )
-    write_state(state)
-
+    # State-file write is inside the try so an exception here still
+    # triggers the finally block that stops the tunnel subprocess.
+    # Otherwise a write_state() failure would leak a live cloudflared
+    # process with a public tunnel URL.
     try:
+        state = build_state(
+            public_url=public_url,
+            provider=tunnel_provider,
+            local_host=host,
+            local_port=port,
+        )
+        write_state(state)
+
         start_server(
             host=host,
             port=port,

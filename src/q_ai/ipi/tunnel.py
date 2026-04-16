@@ -27,7 +27,7 @@ import contextlib
 import queue
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404 - cmd is hardcoded in start(); see below
 import threading
 from abc import ABC, abstractmethod
 
@@ -176,7 +176,7 @@ class CloudflareTunnelAdapter(TunnelAdapter):
             f"http://localhost:{local_port}",
         ]
         # cloudflared prints the tunnel URL to stderr, not stdout.
-        self._process = subprocess.Popen(  # noqa: S603 - cmd is hardcoded
+        self._process = subprocess.Popen(  # noqa: S603  # nosec B603 - cmd is hardcoded
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
