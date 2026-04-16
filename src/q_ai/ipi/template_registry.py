@@ -271,6 +271,8 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         top_instruction=(
             "You are an email assistant. Answer the user's question based only on the "
             "content of the email below.\n"
+            "\n"
+            "User's question: Can you summarize this email?\n"
         ),
         context_template=(
             "SUBJECT: Invoice #48217 — payment confirmation and next steps\n"
