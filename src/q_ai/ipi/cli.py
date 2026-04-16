@@ -38,6 +38,12 @@ from rich.table import Table
 
 from q_ai.core.cli.prompt import build_teaching_tip, is_tty, prompt_or_fail
 from q_ai.ipi import db
+from q_ai.ipi.callback_state import (
+    build_state,
+    delete_state,
+    read_valid_state,
+    write_state,
+)
 from q_ai.ipi.generate_service import GenerateResult, generate_documents
 from q_ai.ipi.generators import ENCODING_CHOICES, get_techniques_for_format
 from q_ai.ipi.generators.docx import DOCX_TECHNIQUES as DOCX_TECHNIQUE_LIST
@@ -570,9 +576,21 @@ def generate(
       embedded_file  - Hidden file attachment (Phase 2)
       incremental    - PDF incremental update section (Phase 2)
     """
-    # Resolve callback: positional > --callback > prompt
+    # Resolve callback:
+    #   positional > --callback > active-callback state file > interactive prompt
     provided_directly = callback is not None or callback_option is not None
     raw_callback = callback or callback_option or None
+
+    if raw_callback is None:
+        state, warning = read_valid_state()
+        if warning is not None:
+            console.print(f"[yellow]! {warning}[/yellow]")
+        if state is not None:
+            console.print(
+                f"[dim]Using active callback: {state.public_url} ({state.provider} tunnel)[/dim]"
+            )
+            raw_callback = state.public_url
+
     callback_url = prompt_or_fail("CALLBACK", raw_callback, "Callback server URL")
 
     if not provided_directly and is_tty():
@@ -958,6 +976,14 @@ def _run_listen_with_tunnel(
     console.print(f"[bold green]Tunnel active:[/bold green] [blue]{public_url}[/blue]")
     console.print(f"   Callback URL: [blue]{public_url}/c/<uuid>/<token>[/blue]")
 
+    state = build_state(
+        public_url=public_url,
+        provider=tunnel_provider,
+        local_host=host,
+        local_port=port,
+    )
+    write_state(state)
+
     try:
         start_server(
             host=host,
@@ -966,6 +992,7 @@ def _run_listen_with_tunnel(
             tunnel_provider=tunnel_provider,
         )
     finally:
+        delete_state()
         adapter.stop()
 
 
