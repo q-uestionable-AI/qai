@@ -38,6 +38,12 @@ from rich.table import Table
 
 from q_ai.core.cli.prompt import build_teaching_tip, is_tty, prompt_or_fail
 from q_ai.ipi import db
+from q_ai.ipi.callback_state import (
+    build_state,
+    delete_state,
+    read_valid_state,
+    write_state,
+)
 from q_ai.ipi.generate_service import GenerateResult, generate_documents
 from q_ai.ipi.generators import ENCODING_CHOICES, get_techniques_for_format
 from q_ai.ipi.generators.docx import DOCX_TECHNIQUES as DOCX_TECHNIQUE_LIST
@@ -58,6 +64,10 @@ from q_ai.ipi.models import (
     Technique,
 )
 from q_ai.ipi.server import start_server
+from q_ai.ipi.tunnel import TunnelError, get_tunnel_adapter
+
+SUPPORTED_TUNNEL_PROVIDERS = ("cloudflare",)
+"""Tunnel providers accepted by the ``--tunnel`` flag on ``listen``."""
 
 app = typer.Typer(
     help="Indirect Prompt Injection — Generate payloads and detect AI agent execution",
@@ -566,9 +576,21 @@ def generate(
       embedded_file  - Hidden file attachment (Phase 2)
       incremental    - PDF incremental update section (Phase 2)
     """
-    # Resolve callback: positional > --callback > prompt
+    # Resolve callback:
+    #   positional > --callback > active-callback state file > interactive prompt
     provided_directly = callback is not None or callback_option is not None
     raw_callback = callback or callback_option or None
+
+    if raw_callback is None:
+        state, warning = read_valid_state()
+        if warning is not None:
+            console.print(f"[yellow]! {warning}[/yellow]")
+        if state is not None:
+            console.print(
+                f"[dim]Using active callback: {state.public_url} ({state.provider} tunnel)[/dim]"
+            )
+            raw_callback = state.public_url
+
     callback_url = prompt_or_fail("CALLBACK", raw_callback, "Callback server URL")
 
     if not provided_directly and is_tty():
@@ -873,13 +895,109 @@ def listen(
         str,
         typer.Option("--notify-url", help="Main qai server URL for hit notifications"),
     ] = "http://127.0.0.1:8899",
+    tunnel: Annotated[
+        str | None,
+        typer.Option(
+            "--tunnel",
+            help=(
+                "Expose the listener via a public tunnel. Supported providers: "
+                + ", ".join(SUPPORTED_TUNNEL_PROVIDERS)
+                + ". Requires the provider's CLI binary on PATH."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Start the callback listener server.
 
     Launches the FastAPI server that receives and logs callback
     requests from AI agents that execute the hidden payloads.
+
+    With ``--tunnel cloudflare``, a Cloudflare Quick Tunnel is started
+    alongside the listener, the public HTTPS URL is printed, and the
+    listener records forwarded client IPs via the ``CF-Connecting-IP``
+    header.
     """
-    start_server(host=host, port=port, notify_url=notify_url)
+    if tunnel is None:
+        start_server(host=host, port=port, notify_url=notify_url)
+        return
+
+    _run_listen_with_tunnel(
+        host=host,
+        port=port,
+        notify_url=notify_url,
+        tunnel_provider=tunnel,
+    )
+
+
+def _run_listen_with_tunnel(
+    *,
+    host: str,
+    port: int,
+    notify_url: str,
+    tunnel_provider: str,
+) -> None:
+    """Start the listener behind a named tunnel provider.
+
+    Args:
+        host: Listener bind interface.
+        port: Listener bind port.
+        notify_url: Main qai bridge URL.
+        tunnel_provider: Tunnel provider name (e.g. ``"cloudflare"``).
+
+    Raises:
+        typer.Exit: On unknown provider, missing binary, or startup
+            failure.
+    """
+    if tunnel_provider not in SUPPORTED_TUNNEL_PROVIDERS:
+        supported = ", ".join(SUPPORTED_TUNNEL_PROVIDERS)
+        console.print(f"[red]X Unknown tunnel provider: {tunnel_provider}[/red]")
+        console.print(f"  Supported: {supported}")
+        raise typer.Exit(1)
+
+    adapter = get_tunnel_adapter(tunnel_provider)
+
+    if not adapter.is_available():
+        console.print(f"[red]X Tunnel provider '{tunnel_provider}' is not available[/red]")
+        console.print()
+        console.print(adapter.install_instructions())
+        raise typer.Exit(1)
+
+    console.print(
+        f"[bold]Starting {tunnel_provider} tunnel to localhost:{port}... "
+        "(this may take a few seconds)[/bold]"
+    )
+    try:
+        public_url = adapter.start(local_port=port)
+    except TunnelError as err:
+        console.print(f"[red]X Failed to start {tunnel_provider} tunnel: {err}[/red]")
+        adapter.stop()
+        raise typer.Exit(1) from err
+
+    console.print(f"[bold green]Tunnel active:[/bold green] [blue]{public_url}[/blue]")
+    console.print(f"   Callback URL: [blue]{public_url}/c/<uuid>/<token>[/blue]")
+
+    # State-file write is inside the try so an exception here still
+    # triggers the finally block that stops the tunnel subprocess.
+    # Otherwise a write_state() failure would leak a live cloudflared
+    # process with a public tunnel URL.
+    try:
+        state = build_state(
+            public_url=public_url,
+            provider=tunnel_provider,
+            local_host=host,
+            local_port=port,
+        )
+        write_state(state)
+
+        start_server(
+            host=host,
+            port=port,
+            notify_url=notify_url,
+            tunnel_provider=tunnel_provider,
+        )
+    finally:
+        delete_state()
+        adapter.stop()
 
 
 def _display_single_campaign(campaign: Campaign, hits: list[Hit]) -> None:
