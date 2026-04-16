@@ -124,6 +124,12 @@ workflow orchestration, persistence, or module composition.
   and delimits it accordingly instead of treating it as instructions.
 - IPI bridge communication uses a dedicated token file for internal
   server-to-server authentication.
+- The IPI callback listener optionally exposes itself via a tunnel adapter
+  (`--tunnel cloudflare`) for testing remote/cloud AI targets. When tunneled,
+  the listener trusts only the `CF-Connecting-IP` header for source-IP
+  resolution and ignores `X-Forwarded-For` to prevent spoofing. Public-exposure
+  hardening (body-size limits, per-IP rate limiting, conservative timeouts) is
+  applied only in tunnel mode; local-only listener behavior is unchanged.
 
 ## What This Document Intentionally Omits
 
