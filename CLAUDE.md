@@ -10,6 +10,11 @@
   <rule>Verify before claiming. Do not describe repo behavior or implementation state from memory.</rule>
 </critical_context>
 
+<model_notes>
+  <rule>Under Opus 4.7, interpret instructions literally. Do not generalize a constraint from one file to another; do not silently infer requests the developer didn't make. If scope is ambiguous, ask.</rule>
+  <rule>Under Opus 4.7, tool use is reduced by default. When a task requires reading multiple files, running tests, or verifying assumptions, do so explicitly rather than reasoning from context alone.</rule>
+</model_notes>
+
 <guardrails>
   <plan_approval>
     <rule>Before writing any code, state your implementation plan clearly and wait for explicit approval. Do not proceed until the developer confirms. This applies to every task, regardless of how straightforward it appears.</rule>
@@ -28,6 +33,7 @@
 
   <verification_scope>
     <rule>Run this exact command on new/changed files before committing: `uv run ruff check . && uv run ruff format --check . && uv run mypy src/q_ai/ && uv run pre-commit run --all-files`</rule>
+    <rule>The command above IS the verification loop. Do not claim a task is done until it passes. If you cannot run it (missing dependency, environment issue), report and stop — do not work around it silently.</rule>
     <rule>Test scope is specified in the task brief. Follow it exactly.</rule>
     <rule>If no brief is present, default to scoped (run only tests for new/changed code).</rule>
     <rule>Smoke test the CLI after changes (`qai --help`).</rule>
@@ -117,10 +123,9 @@
   <rule>Doc and config-only changes may be pushed directly to main.</rule>
   <rule>Before writing any code, check the current branch with `git branch --show-current`. If on main, create and switch to a feature branch.</rule>
   <rule>End of Session: Commit to branch, `git stash -m "description"`, or `git restore .` — never leave uncommitted changes.</rule>
-  <shell_quoting_critical>
-    CMD corrupts `git commit -m "message with spaces"`. Always use:
-    `echo "feat: description here" > .commitmsg && git commit -F .commitmsg && del .commitmsg`
-  </shell_quoting_critical>
+  <shell_quoting>
+    If the shell in use is Git Bash or any POSIX shell, use `git commit -m "..."` directly — multi-line messages with spaces, commas, and parentheses work without special handling. If the shell is Windows CMD or PowerShell, use `git commit -F <file>` with a heredoc or temp file, because `-m` with quoted multi-line strings is unreliable under those shells. To check the current shell: it is Git Bash if `uname` returns a result and `echo $OSTYPE` contains "msys" or "cygwin". On Windows, Claude Code uses Git Bash by default (required for Windows installation), so the POSIX path applies.
+  </shell_quoting>
 </git_workflow>
 
 <environment>
