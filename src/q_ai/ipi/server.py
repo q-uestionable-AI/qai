@@ -26,8 +26,11 @@ Usage:
 
 import json
 import logging
+import threading
+import time
 import uuid
-from collections.abc import AsyncGenerator
+from collections import defaultdict, deque
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,10 +38,12 @@ from pathlib import Path
 import httpx
 import uvicorn
 from fastapi import BackgroundTasks, FastAPI, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from rich.console import Console
 from rich.markup import escape
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp
 
 from q_ai.core.bridge_token import ensure_bridge_token
 from q_ai.ipi import db
@@ -104,6 +109,115 @@ def _resolve_source_ip(request: Request) -> str:
     if request.client is not None:
         return str(request.client.host)
     return _UNKNOWN_IP
+
+
+# ---------------------------------------------------------------------------
+# Public-exposure hardening (installed only when ``tunnel_provider`` is set).
+# ---------------------------------------------------------------------------
+
+_MAX_BODY_BYTES = 1 * 1024 * 1024
+"""Maximum accepted request body in bytes (1 MiB) when tunnel mode is active."""
+
+_RATE_LIMIT_WINDOW_SECS = 60.0
+"""Sliding-window duration in seconds for the per-IP rate limiter."""
+
+_RATE_LIMIT_MAX_REQUESTS = 120
+"""Max requests per IP within ``_RATE_LIMIT_WINDOW_SECS`` before 429."""
+
+_UVICORN_KEEPALIVE_SECS = 5
+"""Conservative keep-alive timeout for tunneled listeners."""
+
+_UVICORN_GRACEFUL_SHUTDOWN_SECS = 10
+"""Conservative graceful-shutdown timeout for tunneled listeners."""
+
+_Dispatch = Callable[[Request], Awaitable[Response]]
+
+
+class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    """Reject requests whose ``Content-Length`` exceeds a configured cap.
+
+    The listener's purpose is proof-of-execution callbacks, not bulk
+    transfers. When exposed publicly via a tunnel we cap body size at
+    1 MiB. Requests without ``Content-Length`` pass through; chunked
+    bodies exceeding the cap are rejected downstream by uvicorn's
+    default request limits.
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
+        super().__init__(app)
+        self._max_bytes = max_bytes
+
+    async def dispatch(self, request: Request, call_next: _Dispatch) -> Response:
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                declared = int(content_length)
+            except ValueError:
+                declared = 0
+            if declared > self._max_bytes:
+                return PlainTextResponse(
+                    "Request body too large",
+                    status_code=413,
+                )
+        return await call_next(request)
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Per-IP sliding-window rate limiter.
+
+    Uses the resolved client IP (forwarded header when tunneled, TCP
+    peer otherwise) so abuse from a single real caller is throttled
+    even though every request arrives from the local tunnel daemon.
+
+    In-memory and process-local: no external state (Redis etc.) is
+    needed for the callback listener's traffic profile.
+    """
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        window_secs: float,
+        max_requests: int,
+    ) -> None:
+        super().__init__(app)
+        self._window = window_secs
+        self._max = max_requests
+        self._buckets: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    async def dispatch(self, request: Request, call_next: _Dispatch) -> Response:
+        client_ip = _resolve_source_ip(request)
+        now = time.monotonic()
+        cutoff = now - self._window
+        with self._lock:
+            bucket = self._buckets[client_ip]
+            while bucket and bucket[0] < cutoff:
+                bucket.popleft()
+            if len(bucket) >= self._max:
+                return PlainTextResponse(
+                    "Rate limit exceeded",
+                    status_code=429,
+                )
+            bucket.append(now)
+        return await call_next(request)
+
+
+def install_hardening_middleware(app: FastAPI) -> None:
+    """Register body-size and rate-limit middleware on ``app``.
+
+    Factored out so tests can exercise the middleware against an
+    isolated :class:`FastAPI` instance without relying on the global
+    listener ``app`` singleton (which would leak state between tests).
+
+    Args:
+        app: The FastAPI application to decorate.
+    """
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=_MAX_BODY_BYTES)
+    app.add_middleware(
+        RateLimitMiddleware,
+        window_secs=_RATE_LIMIT_WINDOW_SECS,
+        max_requests=_RATE_LIMIT_MAX_REQUESTS,
+    )
 
 
 @asynccontextmanager
@@ -459,12 +573,23 @@ def start_server(
     console.print(f"   Bridge:       [blue]{_bridge_notify_url}[/blue]")
     console.print("   Press [bold]Ctrl+C[/bold] to stop\n")
 
-    try:
-        uvicorn.run(
-            app,
-            host=host,
-            port=port,
-            log_level="warning",
+    uvicorn_kwargs: dict[str, object] = {
+        "host": host,
+        "port": port,
+        "log_level": "warning",
+    }
+    if tunnel_provider is not None:
+        install_hardening_middleware(app)
+        console.print(
+            "[bold yellow]"
+            "WARNING: Listener is publicly reachable. "
+            "Do not share tunnel URLs beyond your test scope."
+            "[/bold yellow]\n"
         )
+        uvicorn_kwargs["timeout_keep_alive"] = _UVICORN_KEEPALIVE_SECS
+        uvicorn_kwargs["timeout_graceful_shutdown"] = _UVICORN_GRACEFUL_SHUTDOWN_SECS
+
+    try:
+        uvicorn.run(app, **uvicorn_kwargs)  # type: ignore[arg-type]
     finally:
         _set_tunnel_mode(None)
