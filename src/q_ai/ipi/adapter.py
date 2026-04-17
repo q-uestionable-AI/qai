@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -18,10 +19,12 @@ from q_ai.ipi.generate_service import GenerateResult, generate_documents
 from q_ai.ipi.generators import get_techniques_for_format
 from q_ai.ipi.guidance_builder import build_ipi_guidance
 from q_ai.ipi.mapper import persist_generate
-from q_ai.ipi.models import Format, PayloadStyle, PayloadType, Technique
+from q_ai.ipi.models import DocumentTemplate, Format, PayloadStyle, PayloadType, Technique
 
 if TYPE_CHECKING:
     from q_ai.orchestrator.runner import WorkflowRunner
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -106,7 +109,9 @@ class IPIAdapter:
 
     async def _resolve_config(
         self, child_id: str
-    ) -> tuple[Format, list[Technique], PayloadStyle, PayloadType, str, str, Path]:
+    ) -> tuple[
+        Format, list[Technique], PayloadStyle, PayloadType, str, str, Path, DocumentTemplate
+    ]:
         """Resolve and validate configuration enums for a run.
 
         Args:
@@ -114,7 +119,7 @@ class IPIAdapter:
 
         Returns:
             Tuple of (format_name, techniques, payload_style, payload_type,
-            base_name, callback_url, output_dir).
+            base_name, callback_url, output_dir, template).
 
         Raises:
             ValueError: If any configuration value is invalid.
@@ -146,6 +151,17 @@ class IPIAdapter:
         except ValueError as exc:
             await self._fail_run(child_id, f"Invalid IPI payload_style or payload_type: {exc}")
 
+        template_str = self._config.get("template_id", DocumentTemplate.GENERIC.value)
+        try:
+            template = DocumentTemplate(template_str)
+        except ValueError:
+            # Defense in depth — config builder validates this upstream.
+            logger.warning(
+                "Unknown IPI template_id %r in adapter config; falling back to GENERIC",
+                template_str,
+            )
+            template = DocumentTemplate.GENERIC
+
         base_name = self._config.get("base_name", "report")
         callback_url = self._config["callback_url"]
         output_dir = Path(self._config["output_dir"])
@@ -158,6 +174,7 @@ class IPIAdapter:
             base_name,
             callback_url,
             output_dir,
+            template,
         )
 
     async def run(self) -> IPIAdapterResult:
@@ -216,6 +233,7 @@ class IPIAdapter:
                 base_name,
                 callback_url,
                 output_dir,
+                template,
             ) = await self._resolve_config(child_id)
 
             generate_result = await asyncio.to_thread(
@@ -227,6 +245,7 @@ class IPIAdapter:
                 payload_style=payload_style,
                 payload_type=payload_type,
                 base_name=base_name,
+                template=template,
             )
 
             persist_generate(

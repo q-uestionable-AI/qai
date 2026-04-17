@@ -148,6 +148,43 @@ class TestBuildTestDocsConfig:
         with pytest.raises(WorkflowValidationError, match="callback_url is required"):
             svc.build_test_docs_config({}, "tgt")
 
+    def test_missing_template_defaults_to_generic(self) -> None:
+        """No ``template_id`` in body -> cfg carries the GENERIC string."""
+        cfg = svc.build_test_docs_config({"callback_url": "http://cb/", "format": "pdf"}, "tgt")
+        assert cfg["template_id"] == "generic"
+
+    def test_valid_named_template(self) -> None:
+        """A known ``template_id`` is preserved in the returned config."""
+        cfg = svc.build_test_docs_config(
+            {"callback_url": "http://cb/", "format": "pdf", "template_id": "whois"},
+            "tgt",
+        )
+        assert cfg["template_id"] == "whois"
+
+    def test_unknown_template_raises(self) -> None:
+        """Unknown template_id -> WorkflowValidationError with the value."""
+        with pytest.raises(WorkflowValidationError, match="not-real"):
+            svc.build_test_docs_config(
+                {"callback_url": "http://cb/", "format": "pdf", "template_id": "not-real"},
+                "tgt",
+            )
+
+    def test_incompatible_format_template_raises(self) -> None:
+        """Incompatible format+template -> WorkflowValidationError naming both."""
+        with pytest.raises(WorkflowValidationError, match="whois"):
+            svc.build_test_docs_config(
+                {"callback_url": "http://cb/", "format": "html", "template_id": "whois"},
+                "tgt",
+            )
+
+    def test_unknown_format_raises(self) -> None:
+        """Unknown format value -> WorkflowValidationError with the value."""
+        with pytest.raises(WorkflowValidationError, match="xyz"):
+            svc.build_test_docs_config(
+                {"callback_url": "http://cb/", "format": "xyz"},
+                "tgt",
+            )
+
 
 class TestBuildTestAssistantConfig:
     def test_happy_path(self) -> None:

@@ -298,6 +298,17 @@
                     </div>
 
                     <div class="form-control">
+                        <label class="label"><span class="label-text">Template</span></label>
+                        <select name="template_id" class="select select-bordered select-sm w-full">
+                            <option value="generic">Loading templates…</option>
+                        </select>
+                        <label class="label">
+                            <span class="label-text-alt text-base-content/40 ipi-template-desc"
+                                  id="ipi-template-desc-{{ wf.id }}"></span>
+                        </label>
+                    </div>
+
+                    <div class="form-control">
                         <label class="label"><span class="label-text">Format</span></label>
                         <select name="format" class="select select-bordered select-sm w-full">
                             <option value="pdf">pdf</option>
@@ -668,6 +679,13 @@
     display: block; font-size: 0.65rem; opacity: 0.35;
     margin-top: 0.25rem; font-style: italic;
 }
+@keyframes ipi-field-flash-kf {
+    0% { background-color: rgba(167, 139, 250, 0.35); }
+    100% { background-color: transparent; }
+}
+.ipi-field-flash { animation: ipi-field-flash-kf 1s ease-out; }
+.ipi-template-desc { display: inline-flex; align-items: center; gap: 0.375rem; }
+.ipi-template-desc .badge { text-transform: uppercase; letter-spacing: 0.04em; }
 </style>
 
 <script>
@@ -691,6 +709,7 @@ function toggleAccordion(wfId) {
     if (row && row.classList.contains('expanded')) {
         if (wfId === 'trace_path') loadChainTemplates(wfId);
         if (wfId === 'blast_radius') loadChainExecutions(wfId);
+        if (wfId === 'test_docs') loadIpiTemplates(wfId);
     }
 }
 
@@ -755,6 +774,209 @@ async function loadChainTemplates(wfId) {
             sel.appendChild(opt);
         });
     } catch (err) { /* silently fail */ }
+}
+
+/**
+ * Hydrates the IPI template <select> on the test_docs launcher card.
+ * Fetches /api/ipi/templates once per form, caches the list on the
+ * form element, wires the bidirectional format<->template filter,
+ * and leaves GENERIC selected by default.
+ * @param {string} wfId - The workflow id (expected 'test_docs')
+ */
+async function loadIpiTemplates(wfId) {
+    var form = document.getElementById('form-' + wfId);
+    if (!form) return;
+    var sel = form.querySelector('select[name="template_id"]');
+    if (!sel) return;
+    if (form._ipiTemplatesLoaded) return;
+    form._ipiTemplatesLoaded = true;
+    try {
+        var resp = await fetch('/api/ipi/templates');
+        var data = await resp.json();
+        var templates = data.templates || [];
+        form._ipiTemplates = templates;
+        sel.innerHTML = '';
+        templates.forEach(function(t) {
+            var opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.name + ' [' + t.source_tool + ']';
+            sel.appendChild(opt);
+        });
+        sel.value = 'generic';
+        _wireIpiFilters(wfId);
+        _updateIpiTemplateDescription(wfId);
+    } catch (err) {
+        /* silent fail — retain placeholder so the form remains submittable with generic */
+        form._ipiTemplatesLoaded = false;
+    }
+}
+
+/**
+ * Returns the list of format values currently present in the form's
+ * Format <select> (i.e. exposed to the user, not necessarily all known
+ * formats in the backend).
+ * @param {HTMLFormElement} form - The form element
+ * @returns {string[]} Format values
+ */
+function _ipiExposedFormats(form) {
+    var fmtSel = form.querySelector('select[name="format"]');
+    if (!fmtSel) return [];
+    return Array.from(fmtSel.options).map(function(o) { return o.value; });
+}
+
+/**
+ * Briefly adds the ipi-field-flash class to an element so the user sees
+ * the reset. Class auto-clears after the animation completes.
+ * @param {HTMLElement} el - The element to flash
+ */
+function _flashIpiField(el) {
+    if (!el) return;
+    el.classList.remove('ipi-field-flash');
+    /* force reflow so the animation re-runs on repeated resets */
+    void el.offsetWidth;
+    el.classList.add('ipi-field-flash');
+    setTimeout(function() { el.classList.remove('ipi-field-flash'); }, 1100);
+}
+
+/**
+ * Returns the TemplateSpec-like JSON object for the currently selected
+ * template in the form, or null if unknown.
+ * @param {HTMLFormElement} form - The form element
+ * @returns {Object|null}
+ */
+function _ipiCurrentTemplate(form) {
+    var templates = form._ipiTemplates || [];
+    var sel = form.querySelector('select[name="template_id"]');
+    if (!sel) return null;
+    var val = sel.value;
+    for (var i = 0; i < templates.length; i++) {
+        if (templates[i].id === val) return templates[i];
+    }
+    return null;
+}
+
+/**
+ * Updates the description helper line and source-tool badge under the
+ * template select for the current selection.
+ * @param {string} wfId - The workflow id
+ */
+function _updateIpiTemplateDescription(wfId) {
+    var form = document.getElementById('form-' + wfId);
+    var descEl = document.getElementById('ipi-template-desc-' + wfId);
+    if (!form || !descEl) return;
+    var tpl = _ipiCurrentTemplate(form);
+    descEl.textContent = '';
+    if (!tpl) return;
+    var badge = document.createElement('span');
+    badge.className = 'badge badge-xs badge-outline';
+    badge.textContent = tpl.source_tool;
+    descEl.appendChild(badge);
+    descEl.appendChild(document.createTextNode(tpl.description));
+}
+
+/**
+ * Applies the bidirectional disabled-state filter between template and
+ * format selects based on the currently selected template.
+ * @param {HTMLFormElement} form - The form element
+ */
+function _ipiApplyFormatOptionState(form) {
+    var tpl = _ipiCurrentTemplate(form);
+    var fmtSel = form.querySelector('select[name="format"]');
+    if (!tpl || !fmtSel) return;
+    var allowed = new Set(tpl.formats || []);
+    Array.from(fmtSel.options).forEach(function(opt) {
+        opt.disabled = !allowed.has(opt.value);
+    });
+}
+
+/**
+ * Applies the bidirectional disabled-state filter on template options
+ * based on the currently selected format.
+ * @param {HTMLFormElement} form - The form element
+ */
+function _ipiApplyTemplateOptionState(form) {
+    var templates = form._ipiTemplates || [];
+    var fmtSel = form.querySelector('select[name="format"]');
+    var tplSel = form.querySelector('select[name="template_id"]');
+    if (!fmtSel || !tplSel || templates.length === 0) return;
+    var currentFmt = fmtSel.value;
+    var allowedIds = new Set(
+        templates
+            .filter(function(t) { return (t.formats || []).indexOf(currentFmt) !== -1; })
+            .map(function(t) { return t.id; })
+    );
+    Array.from(tplSel.options).forEach(function(opt) {
+        opt.disabled = !allowedIds.has(opt.value);
+    });
+}
+
+/**
+ * Handles Template select changes: refreshes the format disabled state,
+ * resets format if the current selection is incompatible, and updates
+ * the description helper line.
+ * @param {string} wfId - The workflow id
+ */
+function _onIpiTemplateChange(wfId) {
+    var form = document.getElementById('form-' + wfId);
+    if (!form) return;
+    _updateIpiTemplateDescription(wfId);
+    _ipiApplyFormatOptionState(form);
+    var tpl = _ipiCurrentTemplate(form);
+    var fmtSel = form.querySelector('select[name="format"]');
+    if (!tpl || !fmtSel) return;
+    var exposed = _ipiExposedFormats(form);
+    var allowed = (tpl.formats || []).filter(function(f) { return exposed.indexOf(f) !== -1; });
+    if (allowed.indexOf(fmtSel.value) === -1 && allowed.length > 0) {
+        fmtSel.value = allowed[0];
+        _flashIpiField(fmtSel);
+    }
+    /* Also refresh template-side disabled state to reflect the new format. */
+    _ipiApplyTemplateOptionState(form);
+}
+
+/**
+ * Handles Format select changes: refreshes the template disabled state
+ * and resets template to GENERIC if the current selection is now invalid.
+ * @param {string} wfId - The workflow id
+ */
+function _onIpiFormatChange(wfId) {
+    var form = document.getElementById('form-' + wfId);
+    if (!form) return;
+    _ipiApplyTemplateOptionState(form);
+    var templates = form._ipiTemplates || [];
+    var fmtSel = form.querySelector('select[name="format"]');
+    var tplSel = form.querySelector('select[name="template_id"]');
+    if (!fmtSel || !tplSel || templates.length === 0) return;
+    var tpl = _ipiCurrentTemplate(form);
+    var compatible = tpl && (tpl.formats || []).indexOf(fmtSel.value) !== -1;
+    if (!compatible) {
+        tplSel.value = 'generic';
+        _flashIpiField(tplSel);
+        _updateIpiTemplateDescription(wfId);
+        _ipiApplyFormatOptionState(form);
+    }
+}
+
+/**
+ * Binds change listeners to the template and format selects on a
+ * test_docs form. Safe to call once per form after the templates are
+ * hydrated.
+ * @param {string} wfId - The workflow id
+ */
+function _wireIpiFilters(wfId) {
+    var form = document.getElementById('form-' + wfId);
+    if (!form || form._ipiFiltersWired) return;
+    form._ipiFiltersWired = true;
+    var tplSel = form.querySelector('select[name="template_id"]');
+    var fmtSel = form.querySelector('select[name="format"]');
+    if (tplSel) {
+        tplSel.addEventListener('change', function() { _onIpiTemplateChange(wfId); });
+    }
+    if (fmtSel) {
+        fmtSel.addEventListener('change', function() { _onIpiFormatChange(wfId); });
+    }
+    _ipiApplyFormatOptionState(form);
+    _ipiApplyTemplateOptionState(form);
 }
 
 async function loadChainExecutions(wfId) {

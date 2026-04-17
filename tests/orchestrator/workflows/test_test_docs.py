@@ -39,6 +39,7 @@ def _base_config(tmp_path: Path) -> dict:
         "callback_url": "http://localhost:8765/callback",
         "output_dir": str(tmp_path / "ipi-out"),
         "format": "pdf",
+        "template_id": "generic",
         "payload_style": "obvious",
         "payload_type": "callback",
         "base_name": "report",
@@ -107,6 +108,32 @@ class TestTestDocsWorkflow:
             await _test_document_ingestion(runner, config)
 
         runner.complete.assert_awaited_once_with(RunStatus.PARTIAL)
+
+    async def test_ipi_receives_template_id(self, tmp_path: Path) -> None:
+        """Selected template_id is forwarded into the IPIAdapter config."""
+        runner = _make_runner()
+        config = _base_config(tmp_path)
+        config["template_id"] = "whois"
+
+        with patch(_IPI_PATCH) as MockIPI:
+            MockIPI.return_value.run = AsyncMock()
+            await _test_document_ingestion(runner, config)
+
+        ipi_config = MockIPI.call_args[0][1]
+        assert ipi_config["template_id"] == "whois"
+
+    async def test_ipi_template_id_defaults_to_generic(self, tmp_path: Path) -> None:
+        """Missing template_id in the workflow config -> IPIAdapter sees 'generic'."""
+        runner = _make_runner()
+        config = _base_config(tmp_path)
+        config.pop("template_id", None)
+
+        with patch(_IPI_PATCH) as MockIPI:
+            MockIPI.return_value.run = AsyncMock()
+            await _test_document_ingestion(runner, config)
+
+        ipi_config = MockIPI.call_args[0][1]
+        assert ipi_config["template_id"] == "generic"
 
     async def test_rxp_not_called_when_disabled(self, tmp_path: Path) -> None:
         """RXPAdapter never instantiated when rxp_enabled=False."""

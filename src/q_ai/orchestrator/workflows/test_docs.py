@@ -199,6 +199,7 @@ async def test_document_ingestion(runner: WorkflowRunner, config: dict[str, Any]
         "callback_url": effective_callback_url,
         "output_dir": config["output_dir"],
         "format": config["format"],
+        "template_id": config.get("template_id", "generic"),
         "payload_style": config.get("payload_style", "obvious"),
         "payload_type": config.get("payload_type", "callback"),
         "base_name": config.get("base_name", "report"),
