@@ -1,0 +1,20 @@
+{# Inline badge shown on the IPI launcher card after a managed tunneled
+   listener is started. Renders the public URL and a Stop control. #}
+<div id="ipi-tunnel-badge" class="flex items-center gap-2 p-2 rounded bg-success/10 border border-success/30"
+     data-listener-id="{{ handle.listener_id }}"
+     data-testid="ipi-tunnel-badge">
+    <span class="badge badge-success badge-sm">Tunnel active</span>
+    <a href="{{ handle.public_url }}" target="_blank" rel="noopener"
+       class="text-sm link link-primary truncate max-w-xs">
+        {{ handle.public_url }}
+    </a>
+    <button type="button"
+            class="btn btn-xs btn-ghost"
+            hx-post="/api/ipi/managed-listener/stop"
+            hx-vals='{"listener_id": "{{ handle.listener_id }}"}'
+            hx-target="#ipi-tunnel-badge"
+            hx-swap="outerHTML"
+            data-testid="ipi-tunnel-stop">
+        Stop
+    </button>
+</div>
