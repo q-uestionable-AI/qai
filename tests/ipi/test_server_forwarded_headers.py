@@ -1,6 +1,6 @@
 """Tests for q_ai.ipi.server forwarded-header trust model.
 
-Verifies that ``_resolve_source_ip`` honors ``CF-Connecting-IP`` only
+Verifies that ``_resolve_source_info`` honors ``CF-Connecting-IP`` only
 when tunnel mode is active, and ignores forwarded headers in local-only
 mode (prevents IP spoofing).
 """

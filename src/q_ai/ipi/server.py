@@ -61,7 +61,7 @@ _bridge_notify_url: str | None = None
 _bridge_token: str | None = None
 
 # Module-level tunnel-mode state, set by start_server() when --tunnel is active.
-# Drives forwarded-header trust in _resolve_source_ip() and governs whether
+# Drives forwarded-header trust in _resolve_source_info() and governs whether
 # public-exposure hardening middleware is installed.
 _tunnel_mode_provider: str | None = None
 
@@ -86,29 +86,33 @@ def _set_tunnel_mode(provider: str | None) -> None:
     _tunnel_mode_provider = provider
 
 
-def _resolve_source_ip(request: Request) -> str:
-    """Resolve the client IP for a request.
+def _resolve_source_info(request: Request) -> tuple[str, bool]:
+    """Resolve the client IP and tunnel-source flag for a request.
 
     When tunnel mode is active and the provider is Cloudflare, the
     trusted ``CF-Connecting-IP`` header is preferred so hits record the
-    real remote caller rather than the local cloudflared daemon.
-    Forwarded headers are never trusted when the listener is running
-    locally (prevents IP spoofing via forged headers on an exposed
-    local listener).
+    real remote caller rather than the local cloudflared daemon, and
+    the returned ``via_tunnel`` flag is True. Forwarded headers are
+    never trusted when the listener is running locally (prevents IP
+    spoofing via forged headers on an exposed local listener), and the
+    flag is False in that case.
 
     Args:
         request: The incoming FastAPI request.
 
     Returns:
-        The resolved client IP, or ``"unknown"`` if nothing is available.
+        ``(source_ip, via_tunnel)``. ``source_ip`` is the resolved
+        client IP or ``"unknown"`` if nothing is available.
+        ``via_tunnel`` is True iff the IP came from a trusted
+        forwarded header.
     """
     if _tunnel_mode_provider == "cloudflare":
         forwarded = request.headers.get(_CF_CONNECTING_IP_HEADER)
         if forwarded:
-            return str(forwarded)
+            return str(forwarded), True
     if request.client is not None:
-        return str(request.client.host)
-    return _UNKNOWN_IP
+        return str(request.client.host), False
+    return _UNKNOWN_IP, False
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +190,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._lock = threading.Lock()
 
     async def dispatch(self, request: Request, call_next: _Dispatch) -> Response:
-        client_ip = _resolve_source_ip(request)
+        # Rate limiting only needs the IP bucket key; the via_tunnel flag is
+        # discarded here and consumed by the Hit construction sites below.
+        client_ip, _ = _resolve_source_info(request)
         now = time.monotonic()
         cutoff = now - self._window
         with self._lock:
@@ -366,15 +372,17 @@ async def callback_authenticated(
     campaign = db.get_campaign_by_token(canary_uuid, token)
     token_valid = campaign is not None
     confidence = score_confidence(token_valid, user_agent)
+    source_ip, via_tunnel = _resolve_source_info(request)
 
     hit = Hit(
         id=uuid.uuid4().hex,
         uuid=canary_uuid,
-        source_ip=_resolve_source_ip(request),
+        source_ip=source_ip,
         user_agent=user_agent,
         headers=json.dumps(dict(request.headers)),
         body=query_string,
         token_valid=token_valid,
+        via_tunnel=via_tunnel,
         confidence=confidence,
         timestamp=datetime.now(UTC),
     )
@@ -415,15 +423,17 @@ async def callback_authenticated_post(
     campaign = db.get_campaign_by_token(canary_uuid, token)
     token_valid = campaign is not None
     confidence = score_confidence(token_valid, user_agent)
+    source_ip, via_tunnel = _resolve_source_info(request)
 
     hit = Hit(
         id=uuid.uuid4().hex,
         uuid=canary_uuid,
-        source_ip=_resolve_source_ip(request),
+        source_ip=source_ip,
         user_agent=user_agent,
         headers=json.dumps(dict(request.headers)),
         body=body_text,
         token_valid=token_valid,
+        via_tunnel=via_tunnel,
         confidence=confidence,
         timestamp=datetime.now(UTC),
     )
@@ -466,15 +476,17 @@ async def callback(
     query_string = str(request.query_params) if request.query_params else None
     user_agent = request.headers.get("user-agent", "unknown")
     confidence = score_confidence(False, user_agent)
+    source_ip, via_tunnel = _resolve_source_info(request)
 
     hit = Hit(
         id=uuid.uuid4().hex,
         uuid=canary_uuid,
-        source_ip=_resolve_source_ip(request),
+        source_ip=source_ip,
         user_agent=user_agent,
         headers=json.dumps(dict(request.headers)),
         body=query_string,
         token_valid=False,
+        via_tunnel=via_tunnel,
         confidence=confidence,
         timestamp=datetime.now(UTC),
     )
@@ -510,15 +522,17 @@ async def callback_post(
     body_text = body_bytes.decode("utf-8", errors="replace") if body_bytes else None
     user_agent = request.headers.get("user-agent", "unknown")
     confidence = score_confidence(False, user_agent)
+    source_ip, via_tunnel = _resolve_source_info(request)
 
     hit = Hit(
         id=uuid.uuid4().hex,
         uuid=canary_uuid,
-        source_ip=_resolve_source_ip(request),
+        source_ip=source_ip,
         user_agent=user_agent,
         headers=json.dumps(dict(request.headers)),
         body=body_text,
         token_valid=False,
+        via_tunnel=via_tunnel,
         confidence=confidence,
         timestamp=datetime.now(UTC),
     )

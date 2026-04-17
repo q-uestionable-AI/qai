@@ -315,10 +315,19 @@
         tdConf.appendChild(confBadge);
         tr.appendChild(tdConf);
 
-        // Source IP cell
+        // Source IP cell — IP text followed by a small tunnel/direct qualifier
+        // badge. Matches the server-rendered partial (ipi_tab.html): outline
+        // style for tunnel (noteworthy), ghost style for direct (default).
         var tdIp = document.createElement('td');
         tdIp.className = 'text-xs';
         tdIp.textContent = event.source_ip || '';
+        tdIp.appendChild(document.createTextNode(' '));
+        var tunnelBadge = document.createElement('span');
+        tunnelBadge.className = event.via_tunnel
+            ? 'badge badge-xs badge-outline'
+            : 'badge badge-xs badge-ghost';
+        tunnelBadge.textContent = event.via_tunnel ? 'tunnel' : 'direct';
+        tdIp.appendChild(tunnelBadge);
         tr.appendChild(tdIp);
 
         // Token validity badge cell
