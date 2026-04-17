@@ -17,14 +17,14 @@ from q_ai.core.schema import (
 
 
 class TestSchemaV13:
-    """Schema V13 adds a nullable template_id column to ipi_payloads."""
+    """Schema V13 adds a nullable template_id column to ipi_payloads.
 
-    def test_current_version_is_latest(self) -> None:
-        """CURRENT_VERSION tracks the latest migration — bumped in lockstep
-        when a new ``_migrate_v<N>`` lands. Fails loudly if the constant
-        advances without a matching test file (this file was originally
-        the v13 canary; the literal follows the ladder)."""
-        assert CURRENT_VERSION == 14
+    The "latest version" canary that originally lived here has moved —
+    each new migration now owns its own canary in
+    ``test_schema_migration_v<N>.py`` (plus the one in
+    ``test_schema_v2.py::TestSchemaV2::test_current_version``), so a
+    v13-named file no longer needs to track the ladder tail.
+    """
 
     def test_fresh_db_has_template_id_column(self, tmp_path: Path) -> None:
         """A freshly migrated database exposes template_id on ipi_payloads."""

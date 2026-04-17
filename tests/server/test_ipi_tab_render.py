@@ -13,7 +13,7 @@ the same row or to other rows.
 
 from __future__ import annotations
 
-import re
+from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -22,13 +22,11 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "src" / "q_ai" / "server" / "templates"
 
-# The Template column is 4th in the row (Time, UUID, Confidence, IP, Token),
-# but we're asserting on the source-IP cell specifically — that's the 4th
-# <td> in each tbody row.
+# Columns in each tbody row, in declared order: Timestamp, Campaign (UUID),
+# Confidence, Source IP, Token. The Source-IP cell is the 4th <td>
+# (0-based index 3). Kept as a module constant so a future column reshuffle
+# updates here once rather than in every test.
 _SOURCE_IP_COL_IDX = 3
-
-_TR_BODY_RE = re.compile(r"<tr[^>]*data-hit-id=\"([^\"]+)\"[^>]*>(.*?)</tr>", re.DOTALL)
-_TD_RE = re.compile(r"<td[^>]*>(.*?)</td>", re.DOTALL)
 
 
 def _render_ipi_tab(hits: list[dict[str, Any]]) -> str:
@@ -51,19 +49,97 @@ def _render_ipi_tab(hits: list[dict[str, Any]]) -> str:
     )
 
 
+class _SourceIpCellExtractor(HTMLParser):
+    """Pull the inner HTML of the source-IP ``<td>`` for a specific row.
+
+    Walking the rendered HTML with :class:`html.parser.HTMLParser` keeps
+    the assertion stable against benign template reflows — attribute
+    reordering, single- vs double-quoted values, or whitespace tweaks
+    that would silently break a regex-based scan. The parser tracks
+    entry into the target ``<tr>`` (matched by ``data-hit-id``), counts
+    top-level ``<td>``s within that row, and once it hits the
+    ``_SOURCE_IP_COL_IDX``-th one, reserializes everything between the
+    opening and matching closing ``<td>`` into an inner-HTML string.
+    Reserialization preserves the substrings the tests assert on —
+    class tokens, data text, and the ``">tunnel<"``/`">direct<"`
+    marker between the badge span's tags.
+    """
+
+    def __init__(self, target_hit_id: str, cell_index: int) -> None:
+        super().__init__(convert_charrefs=False)
+        self._target = target_hit_id
+        self._cell_index = cell_index
+        self._in_target_row = False
+        self._td_counter = 0
+        self._in_target_cell = False
+        self._nest_depth = 0
+        self._captured_parts: list[str] = []
+        self.result: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "tr":
+            self._in_target_row = dict(attrs).get("data-hit-id") == self._target
+            if self._in_target_row:
+                self._td_counter = 0
+            return
+        if not self._in_target_row:
+            return
+        if self._in_target_cell:
+            self._captured_parts.append(self._format_starttag(tag, attrs))
+            self._nest_depth += 1
+            return
+        if tag == "td":
+            if self._td_counter == self._cell_index:
+                self._in_target_cell = True
+                self._nest_depth = 0
+                self._captured_parts = []
+            self._td_counter += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self._in_target_row:
+            return
+        if self._in_target_cell:
+            if tag == "td" and self._nest_depth == 0:
+                self.result = "".join(self._captured_parts)
+                self._in_target_cell = False
+                return
+            self._captured_parts.append(f"</{tag}>")
+            self._nest_depth -= 1
+            return
+        if tag == "tr":
+            self._in_target_row = False
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        # Self-closing shape (``<br/>`` etc.) — unlikely inside a table cell
+        # but handled for completeness so a template tweak can't silently
+        # drop content from the captured snapshot.
+        if self._in_target_cell:
+            self._captured_parts.append(self._format_starttag(tag, attrs))
+
+    def handle_data(self, data: str) -> None:
+        if self._in_target_cell:
+            self._captured_parts.append(data)
+
+    @staticmethod
+    def _format_starttag(tag: str, attrs: list[tuple[str, str | None]]) -> str:
+        """Reserialize a start tag in a stable shape for substring asserts."""
+        parts = [tag]
+        for name, value in attrs:
+            if value is None:
+                parts.append(name)
+            else:
+                parts.append(f'{name}="{value}"')
+        return "<" + " ".join(parts) + ">"
+
+
 def _source_ip_td_for_hit(html: str, hit_id: str) -> str:
     """Return the inner HTML of the source-IP ``<td>`` for a given hit row."""
-    for found_id, body in _TR_BODY_RE.findall(html):
-        if found_id != hit_id:
-            continue
-        cells = _TD_RE.findall(body)
-        if len(cells) <= _SOURCE_IP_COL_IDX:
-            raise AssertionError(
-                f"row for hit {hit_id!r} has {len(cells)} <td>s; "
-                f"expected at least {_SOURCE_IP_COL_IDX + 1}"
-            )
-        return cells[_SOURCE_IP_COL_IDX]
-    raise AssertionError(f"no <tr data-hit-id={hit_id!r}> found in rendered HTML")
+    extractor = _SourceIpCellExtractor(hit_id, _SOURCE_IP_COL_IDX)
+    extractor.feed(html)
+    extractor.close()
+    if extractor.result is None:
+        raise AssertionError(f"no source-IP <td> found for row with data-hit-id={hit_id!r}")
+    return extractor.result
 
 
 def _hit_dict(
@@ -76,8 +152,20 @@ def _hit_dict(
     via_tunnel: int = 0,
     timestamp: str = "2026-04-17T12:00:00+00:00",
 ) -> dict[str, Any]:
-    """Shape matching what ``run_service._load_run_results`` passes into
-    the ``ipi_hits`` template context — sqlite3.Row coerced to dict."""
+    """Shape matching what the template actually receives at render time.
+
+    Both render paths into ``partials/ipi_tab.html`` — the server-render
+    via ``run_service._load_run_results`` and the WebSocket broadcast via
+    ``internal._read_hit`` — expose the ``ipi_hits.via_tunnel`` column as
+    a raw ``dict(sqlite3.Row)`` value. SQLite INTEGER columns surface as
+    Python ``int`` through that conversion, NOT ``bool`` — the bool shape
+    only appears after ``Hit.from_row`` hydration, which isn't on this
+    render path. Modeling ``via_tunnel`` as ``int`` here matches the
+    production shape exactly. Jinja truthiness treats 0/1 and False/True
+    identically, so the template works either way; the int model is what
+    catches a regression in the data-shape contract between DB and
+    renderer.
+    """
     return {
         "id": hit_id,
         "uuid": uuid_val,
