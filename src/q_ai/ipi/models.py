@@ -321,6 +321,12 @@ class TemplateSpec:
             marker at the injection point.
         formats: ``Format`` values compatible with this template.
         default_style: Suggested ``PayloadStyle`` for this template.
+        callback_role: Noun phrase identifying the role this URL plays
+            within the template's document context (e.g., 'the registrar
+            enrichment feed' for a WHOIS record). Used as the ``{source}``
+            substitution in style-based CALLBACK payloads. Empty string
+            disables template-aware rationale (falls through to style text
+            as written).
     """
 
     id: DocumentTemplate
@@ -333,6 +339,7 @@ class TemplateSpec:
     context_template: str
     formats: tuple[Format, ...]
     default_style: PayloadStyle
+    callback_role: str = ""
 
 
 @dataclass

@@ -23,7 +23,7 @@ from reportlab.lib.colors import black, white
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-from q_ai.ipi.models import Campaign, Format, PayloadStyle, PayloadType, Technique
+from q_ai.ipi.models import Campaign, DocumentTemplate, Format, PayloadStyle, PayloadType, Technique
 
 from . import create_campaign_ids, encode_payload, generate_payload
 
@@ -343,6 +343,7 @@ def create_pdf(
     encoding: str = "none",
     top_instruction: str = "",
     context_template: str = "",
+    template: DocumentTemplate = DocumentTemplate.GENERIC,
 ) -> Campaign:
     """Generate a PDF with hidden prompt injection payload.
 
@@ -364,6 +365,10 @@ def create_pdf(
             marker. When non-empty, the rendered template is appended to
             the visible decoy content with ``{payload}`` replaced by the
             payload string.
+        template: Document context template forwarded to
+            :func:`generate_payload` so CALLBACK style bodies can
+            interpolate the template's ``callback_role``. ``GENERIC``
+            (default) preserves legacy behavior.
 
     Returns:
         Campaign object with UUID and metadata.
@@ -379,6 +384,7 @@ def create_pdf(
         payload_type,
         token=token,
         encoding=encoding,
+        template=template,
     )
 
     base_url = callback_url if callback_url.endswith("/") else callback_url + "/"
@@ -451,6 +457,7 @@ def create_all_variants(
     encoding: str = "none",
     top_instruction: str = "",
     context_template: str = "",
+    template: DocumentTemplate = DocumentTemplate.GENERIC,
 ) -> list[Campaign]:
     """Generate PDFs using multiple techniques.
 
@@ -462,6 +469,14 @@ def create_all_variants(
         payload_type: Objective of the payload.
         techniques: List of techniques to use (default: all PDF techniques).
         seed: Optional seed for deterministic UUID/token generation.
+        encoding: URL obfuscation passed through to each ``create_pdf`` call.
+        top_instruction: Optional document-context task framing text passed
+            through to each ``create_pdf`` call.
+        context_template: Optional body template passed through to each
+            ``create_pdf`` call.
+        template: Document context template forwarded to each
+            ``create_pdf`` call so CALLBACK style bodies can interpolate
+            the template's ``callback_role``.
 
     Returns:
         List of Campaign objects.
@@ -486,6 +501,7 @@ def create_all_variants(
             encoding=encoding,
             top_instruction=top_instruction,
             context_template=context_template,
+            template=template,
         )
         campaigns.append(campaign)
 

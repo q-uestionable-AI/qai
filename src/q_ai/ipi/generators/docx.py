@@ -38,7 +38,7 @@ from docx.shared import Pt, RGBColor
 if TYPE_CHECKING:
     from docx.document import Document as DocumentType
 
-from q_ai.ipi.models import Campaign, Format, PayloadStyle, PayloadType, Technique
+from q_ai.ipi.models import Campaign, DocumentTemplate, Format, PayloadStyle, PayloadType, Technique
 
 from . import create_campaign_ids, generate_payload
 
@@ -322,6 +322,7 @@ def create_docx(
     encoding: str = "none",
     top_instruction: str = "",
     context_template: str = "",
+    template: DocumentTemplate = DocumentTemplate.GENERIC,
 ) -> Campaign:
     """Generate a DOCX file with hidden prompt injection payload.
 
@@ -337,6 +338,10 @@ def create_docx(
 
         seed: Optional seed for deterministic UUID/token generation.
         sequence: Sequence number for batch deterministic generation.
+        template: Document context template forwarded to
+            :func:`generate_payload` so CALLBACK style bodies can
+            interpolate the template's ``callback_role``. ``GENERIC``
+            (default) preserves legacy behavior.
 
     Returns:
         Campaign object with UUID and metadata.
@@ -364,6 +369,7 @@ def create_docx(
         payload_type,
         token=token,
         encoding=encoding,
+        template=template,
     )
 
     # Create document with decoy content
@@ -412,6 +418,7 @@ def create_all_docx_variants(
     encoding: str = "none",
     top_instruction: str = "",
     context_template: str = "",
+    template: DocumentTemplate = DocumentTemplate.GENERIC,
 ) -> list[Campaign]:
     """Generate DOCX files using multiple techniques.
 
@@ -424,6 +431,9 @@ def create_all_docx_variants(
         techniques: List of techniques to use (default: all DOCX techniques).
 
         seed: Optional seed for deterministic UUID/token generation.
+        template: Document context template forwarded to each
+            ``create_docx`` call so CALLBACK style bodies can interpolate
+            the template's ``callback_role``.
 
     Returns:
         List of Campaign objects.
@@ -457,6 +467,7 @@ def create_all_docx_variants(
             encoding=encoding,
             top_instruction=top_instruction,
             context_template=context_template,
+            template=template,
         )
         campaigns.append(campaign)
 

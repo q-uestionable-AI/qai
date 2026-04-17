@@ -30,7 +30,7 @@ from email.message import EmailMessage
 from email.utils import format_datetime
 from pathlib import Path
 
-from q_ai.ipi.models import Campaign, Format, PayloadStyle, PayloadType, Technique
+from q_ai.ipi.models import Campaign, DocumentTemplate, Format, PayloadStyle, PayloadType, Technique
 
 from . import create_campaign_ids, generate_payload
 
@@ -242,6 +242,7 @@ def create_eml(
     encoding: str = "none",
     top_instruction: str = "",
     context_template: str = "",
+    template: DocumentTemplate = DocumentTemplate.GENERIC,
 ) -> Campaign:
     """Generate an EML file with hidden prompt injection payload.
 
@@ -257,6 +258,10 @@ def create_eml(
 
         seed: Optional seed for deterministic UUID/token generation.
         sequence: Sequence number for batch deterministic generation.
+        template: Document context template forwarded to
+            :func:`generate_payload` so CALLBACK style bodies can
+            interpolate the template's ``callback_role``. ``GENERIC``
+            (default) preserves legacy behavior.
 
     Returns:
         Campaign object with UUID and metadata.
@@ -284,6 +289,7 @@ def create_eml(
         payload_type,
         token=token,
         encoding=encoding,
+        template=template,
     )
 
     # Create email with decoy content
@@ -344,6 +350,7 @@ def create_all_eml_variants(
     encoding: str = "none",
     top_instruction: str = "",
     context_template: str = "",
+    template: DocumentTemplate = DocumentTemplate.GENERIC,
 ) -> list[Campaign]:
     """Generate EML files using multiple techniques.
 
@@ -356,6 +363,9 @@ def create_all_eml_variants(
         techniques: List of techniques to use (default: all EML techniques).
 
         seed: Optional seed for deterministic UUID/token generation.
+        template: Document context template forwarded to each
+            ``create_eml`` call so CALLBACK style bodies can interpolate
+            the template's ``callback_role``.
 
     Returns:
         List of Campaign objects.
@@ -389,6 +399,7 @@ def create_all_eml_variants(
             encoding=encoding,
             top_instruction=top_instruction,
             context_template=context_template,
+            template=template,
         )
         campaigns.append(campaign)
 

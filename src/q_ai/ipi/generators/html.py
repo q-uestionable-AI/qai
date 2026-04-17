@@ -27,7 +27,7 @@ import uuid
 from html import escape as _html_escape
 from pathlib import Path
 
-from q_ai.ipi.models import Campaign, Format, PayloadStyle, PayloadType, Technique
+from q_ai.ipi.models import Campaign, DocumentTemplate, Format, PayloadStyle, PayloadType, Technique
 
 from . import create_campaign_ids, generate_payload
 
@@ -221,6 +221,7 @@ def create_html(
     encoding: str = "none",
     top_instruction: str = "",
     context_template: str = "",
+    template: DocumentTemplate = DocumentTemplate.GENERIC,
 ) -> Campaign:
     """Generate an HTML file with hidden prompt injection payload.
 
@@ -238,6 +239,10 @@ def create_html(
         seed: Optional seed for deterministic UUID/token generation.
         sequence: Sequence number for batch deterministic generation.
         encoding: Callback URL encoding ("none", "base16", "hex").
+        template: Document context template forwarded to
+            :func:`generate_payload` so CALLBACK style bodies can
+            interpolate the template's ``callback_role``. ``GENERIC``
+            (default) preserves legacy behavior.
 
     Returns:
         Campaign object with UUID and metadata.
@@ -265,6 +270,7 @@ def create_html(
         payload_type,
         token=token,
         encoding=encoding,
+        template=template,
     )
 
     # Create base content
@@ -327,6 +333,7 @@ def create_all_html_variants(
     encoding: str = "none",
     top_instruction: str = "",
     context_template: str = "",
+    template: DocumentTemplate = DocumentTemplate.GENERIC,
 ) -> list[Campaign]:
     """Generate HTML files using multiple techniques.
 
@@ -340,6 +347,9 @@ def create_all_html_variants(
 
         seed: Optional seed for deterministic UUID/token generation.
         encoding: Callback URL encoding ("none", "base16", "hex").
+        template: Document context template forwarded to each
+            ``create_html`` call so CALLBACK style bodies can interpolate
+            the template's ``callback_role``.
 
     Returns:
         List of Campaign objects.
@@ -373,6 +383,7 @@ def create_all_html_variants(
             encoding=encoding,
             top_instruction=top_instruction,
             context_template=context_template,
+            template=template,
         )
         campaigns.append(campaign)
 

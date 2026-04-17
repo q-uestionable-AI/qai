@@ -286,6 +286,7 @@ def generate_documents(
             encoding=encoding,
             top_instruction=top_instruction,
             context_template=context_template,
+            template=template,
         )
 
         for campaign in campaigns:
@@ -311,6 +312,7 @@ def generate_documents(
             encoding=encoding,
             top_instruction=top_instruction,
             context_template=context_template,
+            template=template,
         )
         _finalize_campaign(campaign, file_path, template)
 
