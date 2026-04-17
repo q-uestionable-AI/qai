@@ -30,8 +30,10 @@ from urllib.parse import urlparse, urlunparse
 
 from q_ai.core.models import RunStatus
 from q_ai.ipi.adapter import IPIAdapter, RetrievalGate
+from q_ai.ipi.callback_state import is_pid_alive
 from q_ai.rxp.adapter import RXPAdapter, RXPAdapterResult
 from q_ai.services.managed_listener import (
+    ListenerState,
     ManagedListenerConflictError,
     ManagedListenerStartupError,
     start_managed_listener,
@@ -100,15 +102,23 @@ async def _ensure_tunnel_for_workflow(  # noqa: PLR0911 — early-return ladder 
     foreign = getattr(app_state, "foreign_listener", None)
     qai_dir = getattr(app_state, "qai_dir", None)
 
-    # Reuse an existing managed listener before considering a spawn.
+    # Reuse an existing managed listener before considering a spawn — but only
+    # if its PID is actually live. The adopted-listener poller catches dead
+    # handles within ~5s, and this per-call check closes the window between
+    # scans so a short-lived external death doesn't route callbacks to a
+    # dead tunnel.
     if registry is not None:
         for handle in registry.values():
-            if handle.state in ("running", "adopted"):
-                return str(handle.public_url)
+            if handle.state not in (ListenerState.RUNNING, ListenerState.ADOPTED):
+                continue
+            if not is_pid_alive(handle.pid):
+                continue
+            return str(handle.public_url)
 
     # Foreign listener is also acceptable — it holds the single-listener
-    # slot and already provides a public URL.
-    if foreign is not None:
+    # slot and already provides a public URL. Foreign records are never
+    # refreshed after lifespan so the liveness check matters more here.
+    if foreign is not None and is_pid_alive(foreign.pid):
         return str(foreign.public_url)
 
     if registry is None:
@@ -120,6 +130,10 @@ async def _ensure_tunnel_for_workflow(  # noqa: PLR0911 — early-return ladder 
         logger.warning(
             "Auto-start of managed listener for test_docs workflow failed: %s",
             err.detail,
+        )
+        await runner.emit_progress(
+            runner.run_id,
+            f"Tunnel auto-start failed ({err.detail}); using original callback URL",
         )
         return None
     return str(handle.public_url)

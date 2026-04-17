@@ -36,6 +36,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 
 from q_ai.ipi.callback_state import (
@@ -77,6 +78,51 @@ display. Matches the RFC failure-UX wording ("last 20 lines")."""
 
 MANAGER_WEB_UI: str = "web-ui"
 """Value written into ``CallbackState.manager`` by managed listeners."""
+
+MANAGER_CLI: str = "cli"
+"""Display label for CLI-owned (or legacy / pre-``manager``) listeners.
+Used in conflict-message formatting and foreign-listener rendering."""
+
+_ADOPTED_POLLER_INTERVAL_SECS: float = 5.0
+"""Interval between adopted-listener PID liveness scans. Adopted
+listeners have no ``_popen`` and therefore no drain thread, so a
+dedicated daemon thread runs :func:`_check_adopted_listeners` on this
+cadence to detect external-process crashes and flip the handle's state
+to :attr:`ListenerState.CRASHED`."""
+
+
+class ListenerState(StrEnum):
+    """Lifecycle state of a :class:`ManagedListenerHandle`.
+
+    ``StrEnum`` is used so the values compare equal to their string
+    form (``ListenerState.RUNNING == "running"``) — templates,
+    JSON-serializable route responses, and external consumers can keep
+    using bare strings while Python code references the enum members.
+    """
+
+    RUNNING = "running"
+    ADOPTED = "adopted"
+    STOPPING = "stopping"
+    CRASHED = "crashed"
+
+
+# ---------------------------------------------------------------------------
+# Concurrency primitives
+# ---------------------------------------------------------------------------
+
+_START_STOP_LOCK = threading.Lock()
+"""Module-level lock serializing :func:`start_managed_listener` and
+:func:`stop_managed_listener`. Closes the TOCTOU window between
+:func:`_raise_if_conflict` and the subsequent registry insert so two
+concurrent ``asyncio.to_thread(start_managed_listener, ...)`` calls
+cannot both pass the conflict check. Held for the full critical
+section (conflict check → spawn → state-file wait → registry insert
+for start; handle lookup → state transition → termination → registry
+pop for stop). The handle-level ``_lock`` is a separate, finer-grained
+primitive used by drain threads and the adopted-listener poller to
+mutate a single handle's state; it is always acquired AFTER the
+module lock when both are needed, preventing lock-order inversions."""
+
 
 # ---------------------------------------------------------------------------
 # Typed exceptions
@@ -147,10 +193,13 @@ class ManagedListenerHandle:
     """In-memory record describing a single managed listener.
 
     The handle is mutable: its ``state`` and ``exit_code`` fields advance
-    over the lifecycle. For subprocess-backed listeners (``running`` →
-    ``stopping`` / ``crashed``), ``_popen`` and ``_stderr_ring`` carry
-    private references used by the drain thread and by
-    :func:`stop_managed_listener`. Adopted listeners leave both ``None``.
+    over the lifecycle. For subprocess-backed listeners
+    (:attr:`ListenerState.RUNNING` → :attr:`ListenerState.STOPPING` /
+    :attr:`ListenerState.CRASHED`), ``_popen`` and ``_stderr_ring``
+    carry private references used by the drain thread and by
+    :func:`stop_managed_listener`. Adopted listeners leave both
+    ``None`` — their crash detection runs via the module-level adopted
+    poller.
 
     Attributes:
         listener_id: Short random identifier unique per managed listener.
@@ -162,10 +211,12 @@ class ManagedListenerHandle:
         local_port: Listener bind port.
         instance_id: Short random id from the listener's own state file.
         created_at: ISO-8601 UTC timestamp when this handle was created.
-        state: One of ``"running"``, ``"adopted"``, ``"stopping"``,
-            ``"crashed"``.
-        exit_code: Set when ``state == "crashed"``. ``None`` otherwise, or
-            for adopted listeners whose exit code cannot be observed.
+        state: Current lifecycle state. Because :class:`ListenerState`
+            subclasses :class:`str`, templates and JSON responses can
+            continue to treat the value as a plain string.
+        exit_code: Set when ``state`` is :attr:`ListenerState.CRASHED`.
+            ``None`` otherwise, or for adopted listeners whose exit code
+            cannot be observed.
     """
 
     listener_id: str
@@ -176,7 +227,7 @@ class ManagedListenerHandle:
     local_port: int
     instance_id: str
     created_at: str
-    state: str
+    state: ListenerState
     exit_code: int | None = None
 
     # ---- Internal: populated only for listeners this process spawned. ----
@@ -220,6 +271,10 @@ def start_managed_listener(
     ``[sys.executable, "-m", "q_ai", ...]`` so it works under editable,
     pipx, and site-packages installs without requiring ``qai`` on PATH.
 
+    The critical section is serialized by the module-level
+    :data:`_START_STOP_LOCK` so two concurrent callers cannot both
+    pass the conflict check before either registers.
+
     Blocks until the subprocess writes its active-callback state file
     (or the timeout fires, in which case the subprocess is terminated
     and :class:`ManagedListenerStartupError` is raised).
@@ -242,10 +297,29 @@ def start_managed_listener(
         ManagedListenerStartupError: The subprocess failed to spawn or
             did not publish its state within the timeout.
     """
-    _raise_if_conflict(registry, qai_dir)
+    with _START_STOP_LOCK:
+        _raise_if_conflict(registry, qai_dir)
 
-    listener_id = _new_listener_id()
-    cmd = [
+        listener_id = _new_listener_id()
+        cmd = _build_listener_cmd(provider, host, port)
+        proc = _spawn_or_raise(cmd)
+        stderr_ring: collections.deque[str] = collections.deque(maxlen=_STDERR_RING_LINES)
+        _start_stream_drain_threads(proc, stderr_ring, registry, listener_id)
+        state = _wait_for_publication_or_fail(proc, qai_dir=qai_dir)
+        handle = _build_running_handle(listener_id, proc, state, stderr_ring)
+        registry[listener_id] = handle
+        logger.info(
+            "Managed listener %s started (pid=%d, url=%s)",
+            listener_id,
+            proc.pid,
+            state.public_url,
+        )
+        return handle
+
+
+def _build_listener_cmd(provider: str, host: str, port: int) -> list[str]:
+    """Compose the subprocess argv for ``python -m q_ai ipi listen``."""
+    return [
         sys.executable,
         "-m",
         "q_ai",
@@ -259,8 +333,12 @@ def start_managed_listener(
         str(port),
     ]
 
+
+def _spawn_or_raise(cmd: list[str]) -> subprocess.Popen[bytes]:
+    """Start ``cmd`` as a subprocess, converting ``OSError`` spawn
+    failures into :class:`ManagedListenerStartupError`."""
     try:
-        proc = subprocess.Popen(  # noqa: S603  # nosec B603 — cmd is built from sys.executable + our own constants
+        return subprocess.Popen(  # noqa: S603  # nosec B603 — cmd is built from sys.executable + our own constants
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -268,35 +346,51 @@ def start_managed_listener(
     except OSError as err:
         raise ManagedListenerStartupError(f"Failed to spawn listener subprocess: {err}") from err
 
-    stderr_ring: collections.deque[str] = collections.deque(maxlen=_STDERR_RING_LINES)
 
-    _start_stream_drain_threads(proc, stderr_ring, registry, listener_id)
+def _wait_for_publication_or_fail(
+    proc: subprocess.Popen[bytes],
+    *,
+    qai_dir: Path | None,
+) -> CallbackState:
+    """Block until ``proc`` publishes its state file, or raise.
 
+    Distinguishes "subprocess crashed early" from "subprocess stuck
+    alive past the timeout" by sampling ``proc.poll()`` BEFORE
+    terminating on timeout — the detail string reflects which
+    scenario fired so failure-path UX stays informative.
+    """
     state = _wait_for_state_file(
         proc,
         qai_dir=qai_dir,
         timeout=_STATE_WAIT_TIMEOUT_SECS,
         interval=_STATE_POLL_INTERVAL_SECS,
     )
-    if state is None:
-        # Capture whether the subprocess was already dead before we terminate
-        # it — that distinguishes "subprocess crashed early" from
-        # "subprocess stuck alive past timeout".
-        exit_code_before_terminate = proc.poll()
-        _terminate_on_startup_failure(proc)
-        if exit_code_before_terminate is not None:
-            detail = (
-                f"Listener subprocess exited with code "
-                f"{exit_code_before_terminate} before publishing its "
-                "callback state."
-            )
-        else:
-            detail = (
-                "Listener did not publish its callback state within "
-                f"{_STATE_WAIT_TIMEOUT_SECS:.0f}s; subprocess terminated."
-            )
-        raise ManagedListenerStartupError(detail)
+    if state is not None:
+        return state
 
+    exit_code_before_terminate = proc.poll()
+    _terminate_on_startup_failure(proc)
+    if exit_code_before_terminate is not None:
+        detail = (
+            f"Listener subprocess exited with code "
+            f"{exit_code_before_terminate} before publishing its "
+            "callback state."
+        )
+    else:
+        detail = (
+            "Listener did not publish its callback state within "
+            f"{_STATE_WAIT_TIMEOUT_SECS:.0f}s; subprocess terminated."
+        )
+    raise ManagedListenerStartupError(detail)
+
+
+def _build_running_handle(
+    listener_id: str,
+    proc: subprocess.Popen[bytes],
+    state: CallbackState,
+    stderr_ring: collections.deque[str],
+) -> ManagedListenerHandle:
+    """Construct a subprocess-backed :class:`ManagedListenerHandle`."""
     handle = ManagedListenerHandle(
         listener_id=listener_id,
         pid=proc.pid,
@@ -306,17 +400,10 @@ def start_managed_listener(
         local_port=state.local_port,
         instance_id=state.instance_id,
         created_at=datetime.now(UTC).isoformat(),
-        state="running",
+        state=ListenerState.RUNNING,
     )
     handle._popen = proc
     handle._stderr_ring = stderr_ring
-    registry[listener_id] = handle
-    logger.info(
-        "Managed listener %s started (pid=%d, url=%s)",
-        listener_id,
-        proc.pid,
-        state.public_url,
-    )
     return handle
 
 
@@ -345,21 +432,22 @@ def stop_managed_listener(
             :data:`_STOP_HARD_CEILING_SECS`. The handle remains in
             ``"stopping"`` state for the user to address.
     """
-    handle = registry.get(listener_id)
-    if handle is None:
-        return
+    with _START_STOP_LOCK:
+        handle = registry.get(listener_id)
+        if handle is None:
+            return
 
-    with handle._lock:
-        handle.state = "stopping"
+        with handle._lock:
+            handle.state = ListenerState.STOPPING
 
-    if handle._popen is not None:
-        _stop_subprocess_backed(handle)
-    else:
-        _stop_adopted(handle)
+        if handle._popen is not None:
+            _stop_subprocess_backed(handle)
+        else:
+            _stop_adopted(handle)
 
-    _maybe_delete_state_file(qai_dir)
-    registry.pop(listener_id, None)
-    logger.info("Managed listener %s stopped", listener_id)
+        _maybe_delete_state_file(qai_dir)
+        registry.pop(listener_id, None)
+        logger.info("Managed listener %s stopped", listener_id)
 
 
 def detect_existing_listener(
@@ -393,7 +481,7 @@ def detect_existing_listener(
             local_port=state.local_port,
             instance_id=state.instance_id,
             created_at=datetime.now(UTC).isoformat(),
-            state="adopted",
+            state=ListenerState.ADOPTED,
         )
         return handle, None
 
@@ -416,6 +504,12 @@ def _new_listener_id() -> str:
     return secrets.token_hex(6)
 
 
+_ACTIVE_STATES: frozenset[ListenerState] = frozenset(
+    {ListenerState.RUNNING, ListenerState.ADOPTED, ListenerState.STOPPING}
+)
+"""States that hold the single-listener slot for conflict-check purposes."""
+
+
 def _raise_if_conflict(
     registry: dict[str, ManagedListenerHandle],
     qai_dir: Path | None,
@@ -423,7 +517,7 @@ def _raise_if_conflict(
     """Raise :class:`ManagedListenerConflictError` if a listener is
     already active (managed or foreign)."""
     for handle in registry.values():
-        if handle.state in ("running", "adopted", "stopping") and is_pid_alive(handle.pid):
+        if handle.state in _ACTIVE_STATES and is_pid_alive(handle.pid):
             raise ManagedListenerConflictError(
                 f"A tunneled listener is already active (PID {handle.pid}, "
                 f"started via {MANAGER_WEB_UI}). "
@@ -432,7 +526,7 @@ def _raise_if_conflict(
 
     state, _warning = read_valid_state(qai_dir=qai_dir)
     if state is not None:
-        manager_label = state.manager or "cli"
+        manager_label = state.manager or MANAGER_CLI
         raise ManagedListenerConflictError(
             f"A tunneled listener is already active (PID {state.listener_pid}, "
             f"started via {manager_label}). "
@@ -508,8 +602,8 @@ def _mark_crashed_if_dead(
     if handle is None:
         return
     with handle._lock:
-        if handle.state == "running":
-            handle.state = "crashed"
+        if handle.state == ListenerState.RUNNING:
+            handle.state = ListenerState.CRASHED
             handle.exit_code = exit_code
             logger.warning(
                 "Managed listener %s crashed (exit_code=%d)",
@@ -675,14 +769,99 @@ def _maybe_delete_state_file(qai_dir: Path | None) -> None:
         delete_state(qai_dir=qai_dir)
 
 
+# ---------------------------------------------------------------------------
+# Adopted-listener poller
+# ---------------------------------------------------------------------------
+
+
+def _check_adopted_listeners(registry: dict[str, ManagedListenerHandle]) -> None:
+    """Scan ``registry`` once and flip dead adopted handles to crashed.
+
+    Adopted handles have no ``_popen`` and therefore no drain thread to
+    notice the external process exiting. This helper inspects each
+    adopted entry with :func:`is_pid_alive` and, when the PID is dead,
+    transitions the handle to :attr:`ListenerState.CRASHED` under the
+    handle's lock. Exposed as a public-for-testing callable so tests can
+    drive a single scan deterministically without waiting for the
+    background thread.
+    """
+    # Snapshot values so a concurrent pop from stop_managed_listener doesn't
+    # raise "dictionary changed size during iteration".
+    for handle in list(registry.values()):
+        if handle.state != ListenerState.ADOPTED:
+            continue
+        if is_pid_alive(handle.pid):
+            continue
+        with handle._lock:
+            # Re-check under the lock — another thread may have transitioned
+            # it between the outer read and this acquire.
+            if handle.state != ListenerState.ADOPTED:
+                continue
+            handle.state = ListenerState.CRASHED
+            logger.warning(
+                "Adopted listener %s crashed (pid=%d, stderr unavailable)",
+                handle.listener_id,
+                handle.pid,
+            )
+
+
+def _run_adopted_poller(
+    registry: dict[str, ManagedListenerHandle],
+    stop_event: threading.Event,
+    interval: float,
+) -> None:
+    """Daemon thread body: scan ``registry`` every ``interval`` seconds
+    until ``stop_event`` is set."""
+    # Using Event.wait() rather than time.sleep() so the event can interrupt
+    # the sleep immediately on shutdown.
+    while not stop_event.wait(interval):
+        # Defensive: the poller must never die silently, so any exception
+        # a future scan raises is logged and the loop continues.
+        try:
+            _check_adopted_listeners(registry)
+        except Exception:  # pragma: no cover
+            logger.exception("Adopted-listener poller scan raised; continuing")
+
+
+def start_adopted_poller(
+    registry: dict[str, ManagedListenerHandle],
+    *,
+    interval: float = _ADOPTED_POLLER_INTERVAL_SECS,
+) -> threading.Event:
+    """Launch the adopted-listener liveness poller as a daemon thread.
+
+    Returns the :class:`threading.Event` callers use to signal shutdown
+    (e.g. after the FastAPI ``_lifespan`` ``yield`` so test teardown
+    doesn't leak threads across parametric runs).
+
+    Args:
+        registry: The ``app.state.managed_listeners`` dict. The poller
+            holds a reference to it and mutates entries in place.
+        interval: Polling interval in seconds. Defaults to
+            :data:`_ADOPTED_POLLER_INTERVAL_SECS`.
+    """
+    stop_event = threading.Event()
+    thread = threading.Thread(
+        target=_run_adopted_poller,
+        args=(registry, stop_event, interval),
+        name="managed-listener-adopted-poller",
+        daemon=True,
+    )
+    thread.start()
+    return stop_event
+
+
 __all__ = [
+    "MANAGER_CLI",
     "MANAGER_WEB_UI",
     "ForeignListenerRecord",
+    "ListenerState",
     "ManagedListenerConflictError",
     "ManagedListenerHandle",
     "ManagedListenerStartupError",
     "ManagedListenerStuckStopError",
     "detect_existing_listener",
+    "start_adopted_poller",
     "start_managed_listener",
     "stop_managed_listener",
 ]

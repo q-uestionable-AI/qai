@@ -37,7 +37,11 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from q_ai.core.db import get_connection
     from q_ai.core.models import RunStatus
     from q_ai.services import run_service
-    from q_ai.services.managed_listener import detect_existing_listener
+    from q_ai.services.managed_listener import (
+        MANAGER_CLI,
+        detect_existing_listener,
+        start_adopted_poller,
+    )
 
     stranded: dict[str, tuple[str | None, _dt.datetime | None]] = {}
     with get_connection(app.state.db_path) as conn:
@@ -69,9 +73,16 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "Detected foreign tunneled listener: pid=%d url=%s manager=%s",
             foreign.pid,
             foreign.public_url,
-            foreign.manager or "cli",
+            foreign.manager or MANAGER_CLI,
         )
-    yield
+    # Start the adopted-listener liveness poller so handles whose PIDs
+    # die externally (the server didn't spawn them, so there's no drain
+    # thread to notice) transition to CRASHED within one polling cycle.
+    app.state._adopted_poller_stop = start_adopted_poller(app.state.managed_listeners)
+    try:
+        yield
+    finally:
+        app.state._adopted_poller_stop.set()
 
 
 def create_app(db_path: Path | None = None, qai_dir: Path | None = None) -> FastAPI:

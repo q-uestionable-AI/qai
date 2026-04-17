@@ -33,10 +33,19 @@
                 <span class="badge badge-ghost badge-sm">{{ handle.state }}</span>
                 {% endif %}
 
+                {# Scheme allowlist: only render a clickable link for
+                   http(s) URLs. Cloudflared output is trusted-but-
+                   verify; a poisoned state file publishing a
+                   javascript:/data: URL would otherwise become a
+                   browser-executable link on operator click. #}
+                {% if handle.public_url.startswith(('http://', 'https://')) %}
                 <a href="{{ handle.public_url }}" target="_blank" rel="noopener"
                    class="link link-primary truncate">
                     {{ handle.public_url }}
                 </a>
+                {% else %}
+                <code class="truncate">{{ handle.public_url }}</code>
+                {% endif %}
                 <span class="text-xs text-base-content/60">{{ handle.provider }}</span>
                 <span class="text-xs text-base-content/60">pid {{ handle.pid }}</span>
                 <span class="text-xs text-base-content/60">since {{ handle.created_at }}</span>
@@ -65,7 +74,7 @@
                 <button type="button"
                         class="btn btn-xs"
                         hx-post="/api/ipi/managed-listener/stop"
-                        hx-vals='{"listener_id": "{{ handle.listener_id }}"}'
+                        hx-vals='{{ {"listener_id": handle.listener_id} | tojson }}'
                         hx-target="#ipi-managed-listener-panel"
                         hx-swap="outerHTML"
                         data-testid="ipi-managed-listener-clear">
@@ -75,7 +84,7 @@
                 <button type="button"
                         class="btn btn-xs btn-error btn-outline"
                         hx-post="/api/ipi/managed-listener/stop"
-                        hx-vals='{"listener_id": "{{ handle.listener_id }}"}'
+                        hx-vals='{{ {"listener_id": handle.listener_id} | tojson }}'
                         hx-target="#ipi-managed-listener-panel"
                         hx-swap="outerHTML"
                         data-testid="ipi-managed-listener-stop">

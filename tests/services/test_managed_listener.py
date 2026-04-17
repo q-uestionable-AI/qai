@@ -26,10 +26,13 @@ from q_ai.ipi.callback_state import (
 )
 from q_ai.services.managed_listener import (
     MANAGER_WEB_UI,
+    ListenerState,
     ManagedListenerConflictError,
     ManagedListenerHandle,
     ManagedListenerStartupError,
     ManagedListenerStuckStopError,
+    _check_adopted_listeners,
+    start_adopted_poller,
     start_managed_listener,
     stop_managed_listener,
 )
@@ -168,6 +171,9 @@ def _patch_popen(
 
 
 class TestStartManagedListener:
+    """Happy-path coverage for :func:`start_managed_listener` — successful
+    spawn, registry registration, and correct argv composition."""
+
     def test_successful_start_populates_registry_and_returns_handle(
         self,
         tmp_path: Path,
@@ -180,7 +186,7 @@ class TestStartManagedListener:
 
         assert handle.listener_id in registry
         assert registry[handle.listener_id] is handle
-        assert handle.state == "running"
+        assert handle.state == ListenerState.RUNNING
         assert handle.pid == os.getpid()
         assert handle.public_url == "https://fake-abc.trycloudflare.com"
         assert handle.provider == "cloudflare"
@@ -229,6 +235,10 @@ class TestStartManagedListener:
 
 
 class TestConflict:
+    """Single-listener invariant: conflict detection refuses to start when
+    another listener (managed in-registry or foreign via state file) is
+    already active."""
+
     def test_conflict_with_foreign_cli_state_file(
         self,
         tmp_path: Path,
@@ -291,7 +301,7 @@ class TestConflict:
                 local_port=8080,
                 instance_id="inst-1",
                 created_at="2026-04-16T12:00:00+00:00",
-                state="running",
+                state=ListenerState.RUNNING,
             ),
         }
 
@@ -317,14 +327,14 @@ class TestConflict:
                 local_port=8080,
                 instance_id="inst-old",
                 created_at="2026-04-16T12:00:00+00:00",
-                state="crashed",
+                state=ListenerState.CRASHED,
                 exit_code=1,
             ),
         }
         _patch_popen(monkeypatch, lambda: _FakePopen(qai_dir=tmp_path))
 
         handle = start_managed_listener(registry, qai_dir=tmp_path)
-        assert handle.state == "running"
+        assert handle.state == ListenerState.RUNNING
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +343,9 @@ class TestConflict:
 
 
 class TestStartupFailure:
+    """Subprocess never becomes healthy — premature exit, timeout, or OSError
+    on spawn must all surface as :class:`ManagedListenerStartupError`."""
+
     def test_subprocess_exits_before_publishing_state(
         self,
         tmp_path: Path,
@@ -400,6 +413,9 @@ class TestStartupFailure:
 
 
 class TestCrashDetection:
+    """Drain-thread-driven transitions from ``RUNNING`` to ``CRASHED`` when
+    the subprocess exits while the handle is still registered."""
+
     def test_running_listener_flips_to_crashed_when_subprocess_exits(
         self,
         tmp_path: Path,
@@ -410,7 +426,7 @@ class TestCrashDetection:
 
         registry: dict[str, ManagedListenerHandle] = {}
         handle = start_managed_listener(registry, qai_dir=tmp_path)
-        assert handle.state == "running"
+        assert handle.state == ListenerState.RUNNING
 
         # Drive the subprocess to a dead state. The background drain thread
         # eventually calls proc.poll() and flips the handle.
@@ -418,11 +434,11 @@ class TestCrashDetection:
 
         deadline = time.monotonic() + 3.0
         while time.monotonic() < deadline:
-            if handle.state == "crashed":
+            if handle.state == ListenerState.CRASHED:
                 break
             time.sleep(0.05)
 
-        assert handle.state == "crashed"
+        assert handle.state == ListenerState.CRASHED
         assert handle.exit_code == 2
 
 
@@ -432,6 +448,9 @@ class TestCrashDetection:
 
 
 class TestStop:
+    """:func:`stop_managed_listener` idempotency, SIGTERM→SIGKILL escalation,
+    stuck-stop surfacing, and the state-file cleanup rule (web-ui only)."""
+
     def test_stop_unknown_listener_id_is_noop(
         self,
         tmp_path: Path,
@@ -471,7 +490,7 @@ class TestStop:
             local_port=8080,
             instance_id="x",
             created_at="2026-04-16T12:00:00+00:00",
-            state="running",
+            state=ListenerState.RUNNING,
         )
         handle._popen = fake  # type: ignore[assignment]
         registry = {"abc": handle}
@@ -515,7 +534,7 @@ class TestStop:
             local_port=8080,
             instance_id="x",
             created_at="2026-04-16T12:00:00+00:00",
-            state="running",
+            state=ListenerState.RUNNING,
         )
         handle._popen = fake  # type: ignore[assignment]
         registry = {"esc": handle}
@@ -558,7 +577,7 @@ class TestStop:
             local_port=8080,
             instance_id="x",
             created_at="2026-04-16T12:00:00+00:00",
-            state="running",
+            state=ListenerState.RUNNING,
         )
         handle._popen = fake  # type: ignore[assignment]
         registry = {"stuck": handle}
@@ -574,7 +593,7 @@ class TestStop:
         assert "manual termination may be required" in exc.value.detail
         # Handle stays in registry so the user can see the stuck state.
         assert "stuck" in registry
-        assert handle.state == "stopping"
+        assert handle.state == ListenerState.STOPPING
 
     def test_double_stop_is_idempotent(
         self,
@@ -605,7 +624,7 @@ class TestStop:
             local_port=8080,
             instance_id="x",
             created_at="2026-04-16T12:00:00+00:00",
-            state="adopted",
+            state=ListenerState.ADOPTED,
         )
         registry = {"adopted": handle}
         calls: list[tuple[int, int]] = []
@@ -658,7 +677,7 @@ class TestStop:
             local_port=8080,
             instance_id="x",
             created_at="2026-04-16T12:00:00+00:00",
-            state="adopted",
+            state=ListenerState.ADOPTED,
         )
         registry = {"adopted": handle}
         signals_sent: list[int] = []
@@ -710,7 +729,7 @@ class TestStop:
             local_port=8080,
             instance_id="x",
             created_at="2026-04-16T12:00:00+00:00",
-            state="adopted",
+            state=ListenerState.ADOPTED,
         )
         registry = {"adopted": handle}
         os_kill_calls: list[int] = []
@@ -766,6 +785,9 @@ class TestStop:
 
 
 class TestHandleProperties:
+    """Invariants on :class:`ManagedListenerHandle` properties independent
+    of the start/stop paths (e.g. stderr availability per state)."""
+
     def test_stderr_tail_returns_none_for_adopted(self) -> None:
         handle = ManagedListenerHandle(
             listener_id="x",
@@ -776,6 +798,120 @@ class TestHandleProperties:
             local_port=8080,
             instance_id="inst",
             created_at="2026-04-16T12:00:00+00:00",
-            state="adopted",
+            state=ListenerState.ADOPTED,
         )
         assert handle.stderr_tail is None
+
+
+# ---------------------------------------------------------------------------
+# Adopted-listener poller
+# ---------------------------------------------------------------------------
+
+
+class TestAdoptedPoller:
+    """Background poller transitions adopted handles to CRASHED once their
+    external PID dies. Adopted listeners have no ``_popen`` so the drain
+    thread cannot observe their exit; the poller closes that gap.
+    """
+
+    def _make_adopted_handle(self, *, listener_id: str, pid: int) -> ManagedListenerHandle:
+        return ManagedListenerHandle(
+            listener_id=listener_id,
+            pid=pid,
+            public_url="https://poll.trycloudflare.com",
+            provider="cloudflare",
+            local_host="127.0.0.1",
+            local_port=8080,
+            instance_id="poller-inst",
+            created_at="2026-04-16T12:00:00+00:00",
+            state=ListenerState.ADOPTED,
+        )
+
+    def _spawn_dead_pid(self) -> int:
+        """Spawn a trivial subprocess, wait for exit, return its PID."""
+        proc = subprocess.Popen(
+            [sys.executable, "-c", "pass"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        proc.wait(timeout=5)
+        # Brief settle so the OS has a chance to reap the zombie on POSIX.
+        time.sleep(0.05)
+        return proc.pid
+
+    def test_dead_adopted_pid_flips_to_crashed(self) -> None:
+        dead_pid = self._spawn_dead_pid()
+        handle = self._make_adopted_handle(listener_id="dead", pid=dead_pid)
+        registry: dict[str, ManagedListenerHandle] = {"dead": handle}
+
+        _check_adopted_listeners(registry)
+
+        assert handle.state == ListenerState.CRASHED
+        # Adopted listeners carry no exit code — we can't observe one.
+        assert handle.exit_code is None
+
+    def test_live_adopted_pid_stays_adopted(self) -> None:
+        handle = self._make_adopted_handle(listener_id="alive", pid=os.getpid())
+        registry: dict[str, ManagedListenerHandle] = {"alive": handle}
+
+        _check_adopted_listeners(registry)
+
+        assert handle.state == ListenerState.ADOPTED
+
+    def test_running_and_crashed_entries_are_skipped(self) -> None:
+        """Only ADOPTED entries are scanned — the drain thread handles
+        subprocess-backed states, and stopping/crashed are terminal for
+        the poller's purposes."""
+        dead_pid = self._spawn_dead_pid()
+        running = ManagedListenerHandle(
+            listener_id="running",
+            pid=dead_pid,  # deliberately dead but state is RUNNING
+            public_url="https://running.example",
+            provider="cloudflare",
+            local_host="127.0.0.1",
+            local_port=8080,
+            instance_id="r",
+            created_at="2026-04-16T12:00:00+00:00",
+            state=ListenerState.RUNNING,
+        )
+        crashed = ManagedListenerHandle(
+            listener_id="crashed",
+            pid=dead_pid,
+            public_url="https://crashed.example",
+            provider="cloudflare",
+            local_host="127.0.0.1",
+            local_port=8080,
+            instance_id="c",
+            created_at="2026-04-16T12:00:00+00:00",
+            state=ListenerState.CRASHED,
+            exit_code=1,
+        )
+        registry: dict[str, ManagedListenerHandle] = {
+            "running": running,
+            "crashed": crashed,
+        }
+
+        _check_adopted_listeners(registry)
+
+        # Poller must not touch non-ADOPTED entries.
+        assert running.state == ListenerState.RUNNING
+        assert crashed.state == ListenerState.CRASHED
+
+    def test_start_adopted_poller_runs_and_stops_cleanly(self) -> None:
+        """The background thread scans on schedule and exits promptly
+        once the returned Event is set."""
+        dead_pid = self._spawn_dead_pid()
+        handle = self._make_adopted_handle(listener_id="bg", pid=dead_pid)
+        registry: dict[str, ManagedListenerHandle] = {"bg": handle}
+
+        # Very short interval so the test doesn't sit around waiting.
+        stop_event = start_adopted_poller(registry, interval=0.05)
+        try:
+            deadline = time.monotonic() + 2.0
+            while time.monotonic() < deadline:
+                if handle.state == ListenerState.CRASHED:
+                    break
+                time.sleep(0.02)
+            assert handle.state == ListenerState.CRASHED
+        finally:
+            stop_event.set()

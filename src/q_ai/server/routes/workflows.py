@@ -34,6 +34,7 @@ from q_ai.server.routes._shared import (
     logger,
 )
 from q_ai.services import run_service
+from q_ai.services.managed_listener import ListenerState
 from q_ai.services.workflow_service import (
     WorkflowValidationError,
     build_quick_action_config,
@@ -134,7 +135,11 @@ async def launcher(request: Request) -> HTMLResponse:
     # uses these to pick initial toggle state and render the inline badge.
     managed_listeners = request.app.state.managed_listeners
     active_managed_handle = next(
-        (h for h in managed_listeners.values() if h.state in ("running", "adopted")),
+        (
+            h
+            for h in managed_listeners.values()
+            if h.state in (ListenerState.RUNNING, ListenerState.ADOPTED)
+        ),
         None,
     )
     foreign_listener = request.app.state.foreign_listener

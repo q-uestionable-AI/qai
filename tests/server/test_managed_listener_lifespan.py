@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -19,6 +22,7 @@ from fastapi.testclient import TestClient
 from q_ai.core.schema import migrate
 from q_ai.ipi.callback_state import build_state, write_state
 from q_ai.server.app import create_app
+from q_ai.services.managed_listener import ListenerState
 
 
 @pytest.fixture
@@ -68,7 +72,7 @@ def test_live_web_ui_state_file_produces_adopted_entry(
         assert app.state.foreign_listener is None
         assert len(app.state.managed_listeners) == 1
         handle = next(iter(app.state.managed_listeners.values()))
-        assert handle.state == "adopted"
+        assert handle.state == ListenerState.ADOPTED
         assert handle.pid == os.getpid()
         assert handle.public_url == "https://adopted.trycloudflare.com"
         assert handle.provider == "cloudflare"
@@ -142,13 +146,25 @@ def test_dead_pid_in_state_file_leaves_both_registries_empty(
     tmp_db: Path,
     qai_dir: Path,
 ) -> None:
+    # Spawn a trivial subprocess and wait for it to exit — its PID is
+    # guaranteed-dead afterward regardless of kernel pid_max settings.
+    # A hardcoded PID constant (e.g. 999_999) can transiently be a real
+    # process on Linux hosts with large pid_max.
+    dead_proc = subprocess.Popen(
+        [sys.executable, "-c", "pass"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    dead_proc.wait(timeout=5)
+    time.sleep(0.05)  # OS settle for POSIX zombie reap
+
     write_state(
         build_state(
             public_url="https://dead.trycloudflare.com",
             provider="cloudflare",
             local_host="127.0.0.1",
             local_port=8080,
-            listener_pid=999_999,  # extremely unlikely to be live
+            listener_pid=dead_proc.pid,
             manager="web-ui",
         ),
         qai_dir=qai_dir,

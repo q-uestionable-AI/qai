@@ -14,6 +14,7 @@ from q_ai.ipi.callback_state import build_state, write_state
 from q_ai.server.app import create_app
 from q_ai.services.managed_listener import (
     ForeignListenerRecord,
+    ListenerState,
     ManagedListenerConflictError,
     ManagedListenerHandle,
     ManagedListenerStartupError,
@@ -46,7 +47,10 @@ def _client(tmp_db: Path, qai_dir: Path) -> TestClient:
     return TestClient(app)
 
 
-def _make_handle(listener_id: str = "abc123", state: str = "running") -> ManagedListenerHandle:
+def _make_handle(
+    listener_id: str = "abc123",
+    state: ListenerState = ListenerState.RUNNING,
+) -> ManagedListenerHandle:
     return ManagedListenerHandle(
         listener_id=listener_id,
         pid=os.getpid(),
@@ -66,6 +70,9 @@ def _make_handle(listener_id: str = "abc123", state: str = "running") -> Managed
 
 
 class TestStartEndpoint:
+    """Coverage for ``POST /api/ipi/managed-listener/start``: success
+    partial rendering, 409 conflict wording, and 502 on startup failure."""
+
     def test_success_returns_partial_with_public_url(
         self,
         tmp_db: Path,
@@ -151,6 +158,10 @@ class TestStartEndpoint:
 
 
 class TestStopEndpoint:
+    """Coverage for ``POST /api/ipi/managed-listener/stop``: JSON/form-body
+    parsing, 204 idempotency on unknown ids, 422 on bad body, and 500 on
+    stuck-stop."""
+
     def test_success_returns_204(
         self,
         tmp_db: Path,
@@ -271,6 +282,9 @@ class TestStopEndpoint:
 
 
 class TestStatusEndpoint:
+    """Coverage for ``GET /api/ipi/managed-listener``: empty-state prompt
+    plus running / adopted / crashed / foreign-card rendering variants."""
+
     def test_empty_renders_prompt(self, tmp_db: Path, qai_dir: Path) -> None:
         with _client(tmp_db, qai_dir) as client:
             resp = client.get("/api/ipi/managed-listener")
@@ -285,7 +299,7 @@ class TestStatusEndpoint:
     ) -> None:
         app = create_app(db_path=tmp_db, qai_dir=qai_dir)
         with TestClient(app) as client:
-            handle = _make_handle("abc", state="running")
+            handle = _make_handle("abc", state=ListenerState.RUNNING)
             app.state.managed_listeners[handle.listener_id] = handle
             resp = client.get("/api/ipi/managed-listener")
 
@@ -301,7 +315,7 @@ class TestStatusEndpoint:
     ) -> None:
         app = create_app(db_path=tmp_db, qai_dir=qai_dir)
         with TestClient(app) as client:
-            app.state.managed_listeners["abc"] = _make_handle("abc", state="adopted")
+            app.state.managed_listeners["abc"] = _make_handle("abc", state=ListenerState.ADOPTED)
             resp = client.get("/api/ipi/managed-listener")
 
         assert resp.status_code == 200
@@ -315,7 +329,7 @@ class TestStatusEndpoint:
     ) -> None:
         app = create_app(db_path=tmp_db, qai_dir=qai_dir)
         with TestClient(app) as client:
-            crashed = _make_handle("crashed-id", state="crashed")
+            crashed = _make_handle("crashed-id", state=ListenerState.CRASHED)
             crashed.exit_code = 7
             app.state.managed_listeners["crashed-id"] = crashed
             resp = client.get("/api/ipi/managed-listener")
