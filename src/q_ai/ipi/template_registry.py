@@ -78,6 +78,7 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         context_template="",
         formats=_ALL_FORMATS,
         default_style=PayloadStyle.OBVIOUS,
+        callback_role="the supplementary data appendix",
     ),
     DocumentTemplate.WHOIS: TemplateSpec(
         id=DocumentTemplate.WHOIS,
@@ -110,6 +111,7 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         ),
         formats=(Format.PDF, Format.MARKDOWN, Format.DOCX),
         default_style=PayloadStyle.OBVIOUS,
+        callback_role="the registrar enrichment feed",
     ),
     DocumentTemplate.TRANSLATION_EN_FR: TemplateSpec(
         id=DocumentTemplate.TRANSLATION_EN_FR,
@@ -132,6 +134,7 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         ),
         formats=(Format.PDF, Format.MARKDOWN),
         default_style=PayloadStyle.OBVIOUS,
+        callback_role="the terminology reference database",
     ),
     DocumentTemplate.TRANSLATION_EN_ZH: TemplateSpec(
         id=DocumentTemplate.TRANSLATION_EN_ZH,
@@ -153,6 +156,7 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         ),
         formats=(Format.PDF, Format.MARKDOWN),
         default_style=PayloadStyle.OBVIOUS,
+        callback_role="the terminology reference database",
     ),
     DocumentTemplate.LEGAL_SNIPPET: TemplateSpec(
         id=DocumentTemplate.LEGAL_SNIPPET,
@@ -184,6 +188,7 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         ),
         formats=(Format.PDF, Format.DOCX, Format.MARKDOWN),
         default_style=PayloadStyle.COMPLIANCE,
+        callback_role="the cited legal authority",
     ),
     DocumentTemplate.REPORT: TemplateSpec(
         id=DocumentTemplate.REPORT,
@@ -219,6 +224,7 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         ),
         formats=(Format.PDF, Format.DOCX),
         default_style=PayloadStyle.DATASOURCE,
+        callback_role="the methodological supplement",
     ),
     DocumentTemplate.RESUME: TemplateSpec(
         id=DocumentTemplate.RESUME,
@@ -260,6 +266,7 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         ),
         formats=(Format.PDF, Format.DOCX),
         default_style=PayloadStyle.REVIEWER,
+        callback_role="the candidate verification record",
     ),
     DocumentTemplate.EMAIL: TemplateSpec(
         id=DocumentTemplate.EMAIL,
@@ -303,6 +310,7 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         ),
         formats=(Format.EML, Format.PDF, Format.DOCX, Format.HTML),
         default_style=PayloadStyle.OBVIOUS,
+        callback_role="the referenced policy page",
     ),
     DocumentTemplate.WEB: TemplateSpec(
         id=DocumentTemplate.WEB,
@@ -345,6 +353,7 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         ),
         formats=(Format.HTML, Format.MARKDOWN, Format.PDF),
         default_style=PayloadStyle.OBVIOUS,
+        callback_role="the source article reference",
     ),
     DocumentTemplate.TABLE: TemplateSpec(
         id=DocumentTemplate.TABLE,
@@ -374,6 +383,7 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         ),
         formats=(Format.MARKDOWN, Format.HTML, Format.PDF),
         default_style=PayloadStyle.OBVIOUS,
+        callback_role="the source dataset",
     ),
     DocumentTemplate.CODE: TemplateSpec(
         id=DocumentTemplate.CODE,
@@ -420,6 +430,7 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         ),
         formats=(Format.MARKDOWN, Format.PDF),
         default_style=PayloadStyle.OBVIOUS,
+        callback_role="the package documentation",
     ),
     DocumentTemplate.NEWS: TemplateSpec(
         id=DocumentTemplate.NEWS,
@@ -461,6 +472,7 @@ TEMPLATE_REGISTRY: dict[DocumentTemplate, TemplateSpec] = {
         ),
         formats=(Format.PDF, Format.MARKDOWN, Format.HTML, Format.DOCX),
         default_style=PayloadStyle.OBVIOUS,
+        callback_role="the source article reference",
     ),
 }
 """Maps every ``DocumentTemplate`` to its ``TemplateSpec``.

@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 
 from q_ai.cli import app
 from q_ai.ipi.generate_service import GenerateResult, generate_documents
-from q_ai.ipi.models import DocumentTemplate, Format, TemplateSpec
+from q_ai.ipi.models import DocumentTemplate, Format, PayloadStyle, TemplateSpec
 from q_ai.ipi.template_registry import (
     BIPIA_COMMIT,
     GARAK_COMMIT,
@@ -156,6 +156,67 @@ class TestBipiaTemplateContent:
         spec = TEMPLATE_REGISTRY[DocumentTemplate.CODE]
         assert "Traceback" in spec.context_template
         assert "Code snippet:" in spec.context_template
+
+
+class TestCallbackRole:
+    """Phase 4.5 ``callback_role`` field coverage.
+
+    Pins the values the payload builder depends on:
+
+    - GENERIC is exactly ``"the supplementary data appendix"`` (the
+      Phase 4.5 default sourced from the original CITATION wording).
+    - Every non-GENERIC template carries a non-empty noun phrase under
+      60 characters (style/tone constraint from the task brief).
+    - ``TemplateSpec`` accepts the field without breaking construction.
+    """
+
+    def test_generic_role_is_supplementary_data_appendix(self) -> None:
+        spec = TEMPLATE_REGISTRY[DocumentTemplate.GENERIC]
+        assert spec.callback_role == "the supplementary data appendix"
+
+    def test_every_non_generic_template_has_non_empty_role(self) -> None:
+        for tmpl, spec in TEMPLATE_REGISTRY.items():
+            if tmpl == DocumentTemplate.GENERIC:
+                continue
+            assert spec.callback_role, f"{tmpl.name} is missing a callback_role"
+
+    def test_every_callback_role_under_sixty_chars(self) -> None:
+        for tmpl, spec in TEMPLATE_REGISTRY.items():
+            assert len(spec.callback_role) < 60, (
+                f"{tmpl.name} callback_role exceeds 60 chars: "
+                f"{spec.callback_role!r} ({len(spec.callback_role)})"
+            )
+
+    def test_template_spec_accepts_callback_role_field(self) -> None:
+        spec = TemplateSpec(
+            id=DocumentTemplate.GENERIC,
+            name="ad-hoc",
+            description="",
+            source_tool="generic",
+            source_reference="",
+            source_commit="",
+            top_instruction="",
+            context_template="",
+            formats=(Format.PDF,),
+            default_style=PayloadStyle.OBVIOUS,
+            callback_role="the test fixture",
+        )
+        assert spec.callback_role == "the test fixture"
+
+    def test_template_spec_callback_role_defaults_empty(self) -> None:
+        spec = TemplateSpec(
+            id=DocumentTemplate.GENERIC,
+            name="ad-hoc",
+            description="",
+            source_tool="generic",
+            source_reference="",
+            source_commit="",
+            top_instruction="",
+            context_template="",
+            formats=(Format.PDF,),
+            default_style=PayloadStyle.OBVIOUS,
+        )
+        assert spec.callback_role == ""
 
 
 class TestAccessors:

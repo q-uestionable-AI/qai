@@ -236,9 +236,12 @@ def generate_documents(
         encoding: Optional URL obfuscation applied to the callback URL before
             injection. One of ``"none"``, ``"base16"``, ``"hex"``.
         template: Document context template framing the payload. ``GENERIC``
-            (default) preserves legacy behavior. Non-GENERIC values must
-            list ``format_name`` in their compatible formats; otherwise a
-            ``ValueError`` is raised.
+            (default) preserves legacy behavior for OBVIOUS and
+            non-CALLBACK payloads; non-OBVIOUS CALLBACK styles interpolate
+            the template's ``callback_role`` (see
+            :func:`q_ai.ipi.generators.generate_payload`). Non-GENERIC
+            values must list ``format_name`` in their compatible formats;
+            otherwise a ``ValueError`` is raised.
 
     Returns:
         GenerateResult with campaigns, skip count, and any errors.
@@ -286,6 +289,7 @@ def generate_documents(
             encoding=encoding,
             top_instruction=top_instruction,
             context_template=context_template,
+            template=template,
         )
 
         for campaign in campaigns:
@@ -311,6 +315,7 @@ def generate_documents(
             encoding=encoding,
             top_instruction=top_instruction,
             context_template=context_template,
+            template=template,
         )
         _finalize_campaign(campaign, file_path, template)
 
