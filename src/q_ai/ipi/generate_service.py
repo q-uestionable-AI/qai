@@ -268,6 +268,7 @@ def generate_documents(
 
         for campaign in campaigns:
             campaign.output_path = str(output_dir / campaign.filename)
+            campaign.template_id = template.value
             err = _save_campaign(campaign, seed)
             if err:
                 result.skipped += 1
@@ -291,6 +292,7 @@ def generate_documents(
             context_template=context_template,
         )
         campaign.output_path = str(file_path)
+        campaign.template_id = template.value
 
         err = _save_campaign(campaign, seed)
         if err:

@@ -351,6 +351,8 @@ class Campaign:
         payload_style: Social engineering style (e.g., "obvious", "citation").
         payload_type: Attack objective type (e.g., "callback", "exfil_summary").
         run_id: FK to runs table.
+        template_id: Document context template alias (e.g., 'whois', 'generic').
+            None for legacy campaigns created before the template system.
         created_at: UTC timestamp when campaign was created.
     """
 
@@ -365,6 +367,7 @@ class Campaign:
     payload_style: str = "obvious"
     payload_type: str = "callback"
     run_id: str | None = None
+    template_id: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:

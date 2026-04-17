@@ -83,9 +83,20 @@ class TestBuildIPIGuidance:
         rows = inventory.metadata["rows"]
         assert len(rows) == len(campaigns)
 
-        expected_keys = {"filename", "technique", "callback_url", "token"}
+        expected_keys = {"filename", "technique", "callback_url", "token", "template_id"}
         for row in rows:
             assert expected_keys <= set(row.keys())
+
+    def test_inventory_rows_carry_template_id(self) -> None:
+        """Each inventory row dict includes the source Campaign's template_id."""
+        campaigns = [
+            _make_campaign(id="c1", uuid="u1", token="t1", filename="a.pdf", template_id="whois"),
+            _make_campaign(id="c2", uuid="u2", token="t2", filename="b.pdf", template_id=None),
+        ]
+        guidance = _build_default_guidance(campaigns=campaigns)
+        rows = guidance.blocks[0].metadata["rows"]
+
+        assert [row["template_id"] for row in rows] == ["whois", None]
 
     def test_trigger_prompts_block_has_all_profiles(self) -> None:
         """Trigger prompts block has anythingllm, open_webui, and generic keys."""

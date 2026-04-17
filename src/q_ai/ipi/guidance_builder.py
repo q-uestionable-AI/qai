@@ -184,6 +184,7 @@ def _build_inventory_block(result: GenerateResult) -> GuidanceBlock:
             "technique": c.technique,
             "callback_url": c.callback_url,
             "token": c.token,
+            "template_id": c.template_id,
         }
         for c in result.campaigns
     ]

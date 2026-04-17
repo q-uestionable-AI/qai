@@ -35,6 +35,7 @@ def _make_campaign(
     payload_style: str = "obvious",
     payload_type: str = "callback",
     run_id: str | None = None,
+    template_id: str | None = None,
     created_at: datetime | None = None,
 ) -> Campaign:
     """Create a Campaign instance with sensible defaults."""
@@ -50,6 +51,7 @@ def _make_campaign(
         payload_style=payload_style,
         payload_type=payload_type,
         run_id=run_id,
+        template_id=template_id,
         created_at=created_at or datetime.now(UTC),
     )
 
@@ -135,6 +137,31 @@ class TestSaveCampaignGetCampaign:
         result = get_campaign(campaign.uuid, db_path=db)
         assert result is not None
         assert result.created_at.replace(tzinfo=UTC) == ts
+
+    def test_default_campaign_has_none_template_id(self) -> None:
+        """Campaign() without template_id defaults to None for legacy call sites."""
+        campaign = _make_campaign()
+        assert campaign.template_id is None
+
+    def test_template_id_round_trips(self, tmp_path: Path) -> None:
+        """A non-null template_id round-trips through save + get_campaign."""
+        db = tmp_path / "test.db"
+        campaign = _make_campaign(template_id="whois")
+        save_campaign(campaign, db_path=db)
+
+        result = get_campaign(campaign.uuid, db_path=db)
+        assert result is not None
+        assert result.template_id == "whois"
+
+    def test_null_template_id_round_trips(self, tmp_path: Path) -> None:
+        """A NULL template_id round-trips as None (pre-migration legacy path)."""
+        db = tmp_path / "test.db"
+        campaign = _make_campaign(template_id=None)
+        save_campaign(campaign, db_path=db)
+
+        result = get_campaign(campaign.uuid, db_path=db)
+        assert result is not None
+        assert result.template_id is None
 
 
 # ---------------------------------------------------------------------------

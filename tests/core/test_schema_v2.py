@@ -10,7 +10,7 @@ from q_ai.core.schema import CURRENT_VERSION, V1_INDEXES, V1_TABLES, migrate
 
 class TestSchemaV2:
     def test_current_version(self) -> None:
-        assert CURRENT_VERSION == 12
+        assert CURRENT_VERSION == 13
 
     def test_audit_scans_table_created(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"
@@ -39,12 +39,12 @@ class TestSchemaV2:
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
         assert ver == 1
 
-        # Now run migrate() which should upgrade through V2 to V10
+        # Now run migrate() which should upgrade through all V2+ migrations.
         migrate(conn)
 
         # Verify final state (migrate goes all the way to CURRENT_VERSION)
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 12
+        assert ver == 13
 
         tables = {
             row[0]
@@ -120,7 +120,7 @@ class TestSchemaV2:
         # Run migrate() to apply V9+
         migrate(conn)
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 12
+        assert ver == 13
 
         # Verify mitigation column exists and is nullable
         col_info = {row[1]: row for row in conn.execute("PRAGMA table_info(findings)").fetchall()}

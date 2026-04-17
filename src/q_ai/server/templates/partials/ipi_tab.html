@@ -118,6 +118,7 @@
             <th>UUID</th>
             <th>Format</th>
             <th>Technique</th>
+            <th>Template</th>
             <th>Hits</th>
             <th>Created</th>
         </tr>
@@ -128,6 +129,13 @@
             <td class="font-mono text-xs">{{ c.uuid[:8] }}...</td>
             <td><span class="badge badge-sm">{{ c.format }}</span></td>
             <td><span class="badge badge-sm badge-outline">{{ c.technique }}</span></td>
+            <td>
+                {% if c.template_id %}
+                <span class="badge badge-sm badge-ghost">{{ c.template_id }}</span>
+                {% else %}
+                <span class="opacity-40">&mdash;</span>
+                {% endif %}
+            </td>
             <td>{{ c.hit_count }}</td>
             <td class="text-xs opacity-50">{{ c.created_at }}</td>
         </tr>
