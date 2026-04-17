@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from q_ai.core.db import get_connection
+from q_ai.core.schema import CURRENT_VERSION
 
 
 class TestIPISchemaV7:
@@ -26,7 +27,7 @@ class TestIPISchemaV7:
         db_path = tmp_path / "test.db"
         with get_connection(db_path) as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert version == 13
+            assert version == CURRENT_VERSION
 
     def test_ipi_payloads_columns(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"
@@ -97,7 +98,7 @@ class TestIPISchemaV7:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             # V9-V11 skip when their target tables are absent (V1 never
             # ran in this synthetic scenario). V12 and V13 always set user_version.
-            assert version == 13
+            assert version == CURRENT_VERSION
             tables = {
                 row[0]
                 for row in conn.execute(
