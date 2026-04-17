@@ -986,6 +986,7 @@ def _run_listen_with_tunnel(
             provider=tunnel_provider,
             local_host=host,
             local_port=port,
+            manager="cli",
         )
         write_state(state)
 
