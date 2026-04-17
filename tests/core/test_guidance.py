@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from q_ai.core.guidance import BlockKind, GuidanceBlock, RunGuidance
+from q_ai.core.schema import CURRENT_VERSION
 
 
 class TestBlockKind:
@@ -291,6 +292,6 @@ class TestSchemaV10Migration:
             columns = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
             assert "guidance" in columns
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert version == 13
+            assert version == CURRENT_VERSION
         finally:
             conn.close()

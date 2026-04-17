@@ -20,6 +20,7 @@ from q_ai.core.db import (
     update_run_status,
 )
 from q_ai.core.models import RunStatus, Severity
+from q_ai.core.schema import CURRENT_VERSION
 
 
 class TestConnection:
@@ -44,7 +45,7 @@ class TestConnection:
         db_path = tmp_path / "qai.db"
         with get_connection(db_path) as conn:
             ver = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert ver == 13
+            assert ver == CURRENT_VERSION
             # V9: verify mitigation column exists on findings table
             columns = {row[1] for row in conn.execute("PRAGMA table_info(findings)").fetchall()}
             assert "mitigation" in columns

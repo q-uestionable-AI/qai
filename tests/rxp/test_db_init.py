@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from q_ai.core.schema import V1_INDEXES, V1_TABLES, migrate
+from q_ai.core.schema import CURRENT_VERSION, V1_INDEXES, V1_TABLES, migrate
 
 
 class TestSchemaV8:
@@ -45,7 +45,7 @@ class TestSchemaV8:
         conn.commit()
         migrate(conn)
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 13
+        assert ver == CURRENT_VERSION
         tables = {
             row[0]
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()

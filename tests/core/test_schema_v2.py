@@ -44,7 +44,7 @@ class TestSchemaV2:
 
         # Verify final state (migrate goes all the way to CURRENT_VERSION)
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 13
+        assert ver == CURRENT_VERSION
 
         tables = {
             row[0]
@@ -120,7 +120,7 @@ class TestSchemaV2:
         # Run migrate() to apply V9+
         migrate(conn)
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 13
+        assert ver == CURRENT_VERSION
 
         # Verify mitigation column exists and is nullable
         col_info = {row[1]: row for row in conn.execute("PRAGMA table_info(findings)").fetchall()}
