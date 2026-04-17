@@ -352,6 +352,7 @@ async def launch_workflow(request: Request) -> JSONResponse:
         active_workflows=request.app.state.active_workflows,
         db_path=db_path,
         source="web",
+        app_state=request.app.state,
     )
 
     # --- Set output_dir from run_id BEFORE start() persists config ---
@@ -502,6 +503,7 @@ async def launch_quick_action(request: Request) -> JSONResponse:
         active_workflows=request.app.state.active_workflows,
         db_path=db_path,
         source="web",
+        app_state=request.app.state,
     )
     await runner.start()
 

@@ -35,7 +35,7 @@ class WorkflowRunner:
     making it suitable for CLI or test usage.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — runner wires together independent runtime refs; a config object would obscure intent
         self,
         workflow_id: str,
         config: dict[str, Any],
@@ -43,6 +43,7 @@ class WorkflowRunner:
         active_workflows: dict[str, WorkflowRunner] | None = None,
         db_path: Path | None = None,
         source: str | None = None,
+        app_state: Any = None,
     ) -> None:
         """Initialize the workflow runner.
 
@@ -56,6 +57,10 @@ class WorkflowRunner:
                 deregister. When None, registration is skipped.
             db_path: Optional database path override.
             source: Optional provenance tag (e.g. "web", "cli").
+            app_state: Optional reference to the FastAPI ``app.state``
+                namespace so workflow executors can reach cross-cutting
+                runtime state (managed-listener registry, ``~/.qai``
+                override). ``None`` for CLI / unit-test usage.
         """
         self._workflow_id = workflow_id
         self._config = config
@@ -63,9 +68,19 @@ class WorkflowRunner:
         self._active_workflows = active_workflows
         self._db_path = db_path
         self._source = source
+        self._app_state = app_state
         self._run_id = uuid.uuid4().hex
         self._wait_event = asyncio.Event()
         self._resume_data: dict[str, Any] | None = None
+
+    @property
+    def app_state(self) -> Any:
+        """FastAPI ``app.state`` reference, or ``None`` outside web usage.
+
+        Exposed so workflow executors can inspect the managed-listener
+        registry or ``qai_dir`` without importing server internals.
+        """
+        return self._app_state
 
     @property
     def run_id(self) -> str:
