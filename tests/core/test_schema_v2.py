@@ -10,7 +10,7 @@ from q_ai.core.schema import CURRENT_VERSION, V1_INDEXES, V1_TABLES, migrate
 
 class TestSchemaV2:
     def test_current_version(self) -> None:
-        assert CURRENT_VERSION == 13
+        assert CURRENT_VERSION == 14
 
     def test_audit_scans_table_created(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"

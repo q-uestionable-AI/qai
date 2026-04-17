@@ -55,7 +55,7 @@ async def api_internal_ipi_hit(request: Request) -> JSONResponse:
         with get_connection(db_path) as conn:
             row = conn.execute(
                 "SELECT id, uuid, source_ip, user_agent, confidence,"
-                " token_valid, timestamp, body"
+                " token_valid, via_tunnel, timestamp, body"
                 " FROM ipi_hits WHERE id = ?",
                 (hit_id,),
             ).fetchone()

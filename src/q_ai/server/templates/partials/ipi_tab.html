@@ -65,7 +65,14 @@
                         <span class="badge badge-xs badge-error">LOW</span>
                         {% endif %}
                     </td>
-                    <td class="text-xs">{{ h.source_ip }}</td>
+                    <td class="text-xs">
+                        {{ h.source_ip }}
+                        {% if h.via_tunnel %}
+                        <span class="badge badge-xs badge-outline">tunnel</span>
+                        {% else %}
+                        <span class="badge badge-xs badge-ghost">direct</span>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if h.token_valid %}
                         <span class="badge badge-xs badge-success">valid</span>

@@ -65,6 +65,7 @@ def _make_hit(
     headers: str = '{"content-type": "application/json"}',
     body: str | None = None,
     token_valid: bool = False,
+    via_tunnel: bool = False,
     confidence: HitConfidence = HitConfidence.MEDIUM,
     timestamp: datetime | None = None,
 ) -> Hit:
@@ -77,6 +78,7 @@ def _make_hit(
         headers=headers,
         body=body,
         token_valid=token_valid,
+        via_tunnel=via_tunnel,
         confidence=confidence,
         timestamp=timestamp or datetime.now(UTC),
     )
@@ -412,6 +414,78 @@ class TestSaveHitGetHits:
 
         results = get_hits(db_path=db)
         assert len(results) == 3
+
+    def test_hit_via_tunnel_defaults_false(self) -> None:
+        """Hit() without via_tunnel defaults to False — legacy call sites
+        that don't know about the field stay untouched."""
+        hit = _make_hit()
+        assert hit.via_tunnel is False
+
+    def test_hit_via_tunnel_true_round_trips(self, tmp_path: Path) -> None:
+        """A tunnel-flagged hit round-trips through save_hit + get_hits."""
+        db = tmp_path / "test.db"
+        hit = _make_hit(via_tunnel=True, confidence=HitConfidence.HIGH)
+        save_hit(hit, db_path=db)
+
+        results = get_hits(db_path=db)
+        assert len(results) == 1
+        assert results[0].via_tunnel is True
+
+    def test_hit_via_tunnel_false_round_trips(self, tmp_path: Path) -> None:
+        """A direct (non-tunnel) hit persists with via_tunnel=False."""
+        db = tmp_path / "test.db"
+        hit = _make_hit(via_tunnel=False)
+        save_hit(hit, db_path=db)
+
+        results = get_hits(db_path=db)
+        assert len(results) == 1
+        assert results[0].via_tunnel is False
+
+    def test_hit_to_dict_includes_via_tunnel(self) -> None:
+        """Hit.to_dict surfaces via_tunnel — CodeRabbit's PR #118 Campaign
+        lesson applied to Hit up front."""
+        hit = _make_hit(via_tunnel=True)
+        payload = hit.to_dict()
+        assert "via_tunnel" in payload
+        assert payload["via_tunnel"] is True
+
+    def test_hit_to_dict_preserves_false_via_tunnel(self) -> None:
+        """to_dict emits the key even when the value is False."""
+        hit = _make_hit(via_tunnel=False)
+        payload = hit.to_dict()
+        assert "via_tunnel" in payload
+        assert payload["via_tunnel"] is False
+
+    def test_hit_from_row_restores_via_tunnel(self) -> None:
+        """Hit.from_row coerces the INTEGER column to bool."""
+        row = {
+            "id": "h1",
+            "uuid": "u1",
+            "source_ip": "1.2.3.4",
+            "user_agent": "ua",
+            "headers": "{}",
+            "confidence": HitConfidence.HIGH.value,
+            "timestamp": "2026-04-17T12:00:00+00:00",
+            "body": None,
+            "token_valid": 1,
+            "via_tunnel": 1,
+        }
+        hit = Hit.from_row(row)
+        assert hit.via_tunnel is True
+
+    def test_hit_from_row_defaults_via_tunnel_to_false_when_missing(self) -> None:
+        """from_row tolerates rows without via_tunnel (pre-v14 schema)."""
+        row = {
+            "id": "h1",
+            "uuid": "u1",
+            "source_ip": "1.2.3.4",
+            "user_agent": "ua",
+            "headers": "{}",
+            "confidence": HitConfidence.LOW.value,
+            "timestamp": "2026-04-17T12:00:00+00:00",
+        }
+        hit = Hit.from_row(row)
+        assert hit.via_tunnel is False
 
 
 # ---------------------------------------------------------------------------

@@ -77,6 +77,7 @@ def _row_to_hit(row: sqlite3.Row) -> Hit:
         headers=row["headers"] or "{}",
         body=row["body"],
         token_valid=bool(row["token_valid"]),
+        via_tunnel=bool(row["via_tunnel"]),
         confidence=HitConfidence(row["confidence"]),
         timestamp=datetime.fromisoformat(timestamp_raw),
     )
@@ -208,9 +209,9 @@ def save_hit(hit: Hit, db_path: Path | None = None) -> None:
             """
             INSERT INTO ipi_hits (
                 id, uuid, source_ip, user_agent, headers, body,
-                token_valid, confidence, timestamp
+                token_valid, via_tunnel, confidence, timestamp
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 hit.id,
@@ -220,6 +221,7 @@ def save_hit(hit: Hit, db_path: Path | None = None) -> None:
                 hit.headers,
                 hit.body,
                 1 if hit.token_valid else 0,
+                1 if hit.via_tunnel else 0,
                 hit.confidence.value,
                 hit.timestamp.isoformat(),
             ),

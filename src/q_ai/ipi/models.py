@@ -439,6 +439,8 @@ class Hit:
         timestamp: UTC timestamp when hit was received.
         body: Captured request data (query params for GET, body for POST).
         token_valid: Whether the campaign authentication token was present and valid.
+        via_tunnel: True when ``source_ip`` was resolved from a trusted forwarded
+            header (tunnel mode). False when it came from the TCP peer (direct).
     """
 
     id: str
@@ -450,6 +452,7 @@ class Hit:
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     body: str | None = None
     token_valid: bool = False
+    via_tunnel: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict.
@@ -467,6 +470,7 @@ class Hit:
             "timestamp": self.timestamp.isoformat(),
             "body": self.body,
             "token_valid": self.token_valid,
+            "via_tunnel": self.via_tunnel,
         }
 
     @classmethod
@@ -493,6 +497,7 @@ class Hit:
             else datetime.now(UTC),
             body=row.get("body"),
             token_valid=bool(row.get("token_valid", 0)),
+            via_tunnel=bool(row.get("via_tunnel", 0)),
         )
 
 

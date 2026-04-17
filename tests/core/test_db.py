@@ -62,6 +62,11 @@ class TestConnection:
                 row[1] for row in conn.execute("PRAGMA table_info(ipi_payloads)").fetchall()
             }
             assert "template_id" in ipi_cols
+            # V14: verify via_tunnel column exists on ipi_hits table.
+            ipi_hits_cols = {
+                row[1] for row in conn.execute("PRAGMA table_info(ipi_hits)").fetchall()
+            }
+            assert "via_tunnel" in ipi_hits_cols
 
     def test_schema_tables_created(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"

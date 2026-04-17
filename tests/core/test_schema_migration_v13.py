@@ -17,11 +17,14 @@ from q_ai.core.schema import (
 
 
 class TestSchemaV13:
-    """Schema V13 adds a nullable template_id column to ipi_payloads."""
+    """Schema V13 adds a nullable template_id column to ipi_payloads.
 
-    def test_current_version_is_13(self) -> None:
-        """CURRENT_VERSION reflects the V13 bump."""
-        assert CURRENT_VERSION == 13
+    The "latest version" canary that originally lived here has moved —
+    each new migration now owns its own canary in
+    ``test_schema_migration_v<N>.py`` (plus the one in
+    ``test_schema_v2.py::TestSchemaV2::test_current_version``), so a
+    v13-named file no longer needs to track the ladder tail.
+    """
 
     def test_fresh_db_has_template_id_column(self, tmp_path: Path) -> None:
         """A freshly migrated database exposes template_id on ipi_payloads."""
@@ -38,12 +41,12 @@ class TestSchemaV13:
             assert col_info["template_id"][2].upper() == "TEXT"
 
     def test_user_version_after_migrate(self, tmp_path: Path) -> None:
-        """migrate() advances user_version to CURRENT_VERSION (13)."""
+        """migrate() runs the full ladder and stamps CURRENT_VERSION."""
         db_path = tmp_path / "test.db"
         with sqlite3.connect(str(db_path)) as conn:
             migrate(conn)
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert version == 13
+            assert version == CURRENT_VERSION
 
     def test_v13_on_existing_v13_db_is_noop(self, tmp_path: Path) -> None:
         """Re-running _migrate_v13 on an already-migrated DB is idempotent."""

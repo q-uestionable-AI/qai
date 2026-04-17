@@ -19,6 +19,7 @@ SAMPLE_HIT: dict[str, Any] = {
     "user_agent": "TestAgent/1.0",
     "confidence": "high",
     "token_valid": 1,
+    "via_tunnel": 1,
     "timestamp": "2026-03-21T12:00:00Z",
     "body": '{"canary": "triggered"}',
 }
@@ -35,8 +36,9 @@ def _insert_hit(db_path: Path) -> None:
     try:
         conn.execute(
             "INSERT INTO ipi_hits"
-            " (id, uuid, source_ip, user_agent, confidence, token_valid, timestamp, body)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " (id, uuid, source_ip, user_agent, confidence, token_valid,"
+            " via_tunnel, timestamp, body)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 SAMPLE_HIT["id"],
                 SAMPLE_HIT["uuid"],
@@ -44,6 +46,7 @@ def _insert_hit(db_path: Path) -> None:
                 SAMPLE_HIT["user_agent"],
                 SAMPLE_HIT["confidence"],
                 SAMPLE_HIT["token_valid"],
+                SAMPLE_HIT["via_tunnel"],
                 SAMPLE_HIT["timestamp"],
                 SAMPLE_HIT["body"],
             ),
@@ -160,5 +163,8 @@ class TestHitFeedDedup:
         assert payload["uuid"] == SAMPLE_HIT["uuid"]
         assert payload["source_ip"] == SAMPLE_HIT["source_ip"]
         assert payload["confidence"] == SAMPLE_HIT["confidence"]
+        # via_tunnel surfaces the tunnel-source indicator to the live
+        # hit-feed renderer in ws.js (mirrors the server-rendered badge).
+        assert payload["via_tunnel"] == SAMPLE_HIT["via_tunnel"]
         # The type discriminator must always be present
         assert payload["type"] == "ipi_hit"

@@ -360,7 +360,7 @@ def load_module_data(
             ph = ", ".join("?" for _ in camp_uuids)
             hit_rows = conn.execute(
                 f"SELECT id, uuid, source_ip, user_agent, confidence,"  # noqa: S608
-                f" token_valid, timestamp, body"
+                f" token_valid, via_tunnel, timestamp, body"
                 f" FROM ipi_hits WHERE uuid IN ({ph})"
                 " ORDER BY timestamp DESC",
                 camp_uuids,

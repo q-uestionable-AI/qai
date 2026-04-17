@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_VERSION = 13
+CURRENT_VERSION = 14
 
 V1_TABLES = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -340,6 +340,33 @@ def _migrate_v13(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA user_version = 13")
 
 
+def _migrate_v14(conn: sqlite3.Connection) -> None:
+    """V14: Add via_tunnel column to ipi_hits for forwarded-header provenance.
+
+    Records whether each hit's ``source_ip`` was resolved from a trusted
+    forwarded header (tunnel mode — currently ``CF-Connecting-IP``) or
+    from the TCP peer (direct). Lets the hit feed render a qualifier
+    badge next to the IP so researchers running mixed campaigns can
+    distinguish tunnel-routed hits from direct ones during evidence
+    interpretation and tunnel-health debugging.
+
+    INTEGER-as-boolean matches the existing ``token_valid`` column on the
+    same table. ``DEFAULT 0`` means legacy rows (which predate the tunnel
+    feature) read as ``direct`` — accurate rather than backfilled.
+
+    Guards against: (1) ipi_hits table not existing in partial-migration
+    test scenarios, and (2) column already existing for idempotency.
+    """
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ipi_hits'"
+    ).fetchone()
+    if has_table:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(ipi_hits)").fetchall()}
+        if "via_tunnel" not in columns:
+            conn.execute("ALTER TABLE ipi_hits ADD COLUMN via_tunnel INTEGER NOT NULL DEFAULT 0")
+    conn.execute("PRAGMA user_version = 14")
+
+
 def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901, PLR0912
     """Run schema migrations up to CURRENT_VERSION.
 
@@ -357,6 +384,7 @@ def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901, PLR0912
     Version 11 adds source column to runs table for provenance.
     Version 12 adds chain correlation columns to proxy_sessions table.
     Version 13 adds template_id column to ipi_payloads for per-run provenance.
+    Version 14 adds via_tunnel column to ipi_hits for forwarded-header provenance.
     """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version < 1:
@@ -402,3 +430,5 @@ def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901, PLR0912
         _migrate_v12(conn)
     if version < 13:
         _migrate_v13(conn)
+    if version < 14:
+        _migrate_v14(conn)
