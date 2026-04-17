@@ -79,6 +79,11 @@ class TestNonObviousRationaleInterpolation:
     ) -> None:
         rendered = _render(style, PayloadType.CALLBACK, template)
         role = get_template_spec(template).callback_role
+        # Self-contained precondition: the registry invariant is also
+        # asserted in test_template_registry.py, but pinning it here
+        # blocks this interpolation check from passing vacuously if
+        # that invariant ever gets skipped or narrowed.
+        assert role, f"{template.value} must define a non-empty callback_role"
         assert role in rendered, (
             f"callback_role={role!r} missing from {template.value}/"
             f"{style.value} rendered output: {rendered!r}"

@@ -293,11 +293,12 @@ def generate_payload(
 
     target_url = encode_payload(target_url, encoding)
 
-    resolved_template = template if template is not None else DocumentTemplate.GENERIC
-    source = get_template_spec(resolved_template).callback_role
+    def _callback_builder(url: str) -> dict[PayloadStyle, str]:
+        resolved = template if template is not None else DocumentTemplate.GENERIC
+        return _build_callback_templates(url, get_template_spec(resolved).callback_role)
 
     builders = {
-        PayloadType.CALLBACK: lambda url: _build_callback_templates(url, source),
+        PayloadType.CALLBACK: _callback_builder,
         PayloadType.EXFIL_SUMMARY: _build_exfil_summary_templates,
         PayloadType.EXFIL_CONTEXT: _build_exfil_context_templates,
         PayloadType.SSRF_INTERNAL: _build_ssrf_internal_templates,
@@ -306,7 +307,7 @@ def generate_payload(
         PayloadType.PERSISTENCE: _build_persistence_templates,
     }
 
-    builder = builders.get(payload_type, builders[PayloadType.CALLBACK])
+    builder = builders.get(payload_type, _callback_builder)
     templates = builder(target_url)
     return templates.get(style, templates[PayloadStyle.OBVIOUS])
 

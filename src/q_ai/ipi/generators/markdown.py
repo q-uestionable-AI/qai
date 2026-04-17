@@ -277,9 +277,10 @@ def create_markdown(
         sequence: Sequence number for batch deterministic generation.
         encoding: Callback URL encoding ("none", "base16", "hex").
         template: Document context template forwarded to
-            :func:`generate_payload` so CALLBACK style bodies can
-            interpolate the template's ``callback_role``. ``GENERIC``
-            (default) preserves legacy behavior.
+            :func:`generate_payload` so non-OBVIOUS CALLBACK style bodies
+            can interpolate the template's ``callback_role``. ``GENERIC``
+            (default) preserves legacy behavior for OBVIOUS and
+            non-CALLBACK payloads.
 
     Returns:
         Campaign object with UUID and metadata.

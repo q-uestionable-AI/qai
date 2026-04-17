@@ -247,9 +247,10 @@ def create_ics(
         seed: Optional seed for deterministic UUID/token generation.
         sequence: Sequence number for batch deterministic generation.
         template: Document context template forwarded to
-            :func:`generate_payload` so CALLBACK style bodies can
-            interpolate the template's ``callback_role``. ``GENERIC``
-            (default) preserves legacy behavior.
+            :func:`generate_payload` so non-OBVIOUS CALLBACK style bodies
+            can interpolate the template's ``callback_role``. ``GENERIC``
+            (default) preserves legacy behavior for OBVIOUS and
+            non-CALLBACK payloads.
 
     Returns:
         Campaign object with UUID and metadata.
