@@ -71,9 +71,12 @@ def test_launcher_shows_live_toggle_when_no_listener(tmp_db: Path, qai_dir: Path
     # Live toggle: no `disabled` attribute on the toggle input, and it carries
     # the hx-post wiring.
     assert 'hx-post="/api/ipi/managed-listener/start"' in html
-    # Slot is present but empty of a badge/indicator.
+    # Slot is present but empty of a badge/indicator. Referenced via
+    # _make_handle().public_url to avoid a URL-shaped literal in a
+    # containment check (CodeQL py/incomplete-url-substring-sanitization
+    # matches both `in` and `not in` patterns).
     assert 'id="ipi-tunnel-slot"' in html
-    assert "launcher-tunnel.trycloudflare.com" not in html
+    assert _make_handle().public_url not in html
 
 
 # ---------------------------------------------------------------------------
@@ -89,13 +92,14 @@ def test_launcher_reflects_running_managed_listener_on_page_load(
     the session), the toggle renders `checked` and the badge is inline."""
     app = create_app(db_path=tmp_db, qai_dir=qai_dir)
     with TestClient(app) as client:
-        app.state.managed_listeners["handle-1"] = _make_handle("running")
+        handle = _make_handle("running")
+        app.state.managed_listeners[handle.listener_id] = handle
         resp = client.get("/launcher")
 
     assert resp.status_code == 200
     html = resp.text
     # Badge partial rendered inline with the public URL.
-    assert "launcher-tunnel.trycloudflare.com" in html
+    assert handle.public_url in html
     assert 'data-testid="ipi-tunnel-badge"' in html
     # Toggle is checked + disabled; the live hx-post is absent for that variant.
     assert 'data-testid="ipi-tunnel-toggle"' in html
@@ -106,11 +110,12 @@ def test_launcher_reflects_adopted_managed_listener(tmp_db: Path, qai_dir: Path)
     """Adopted listeners are rendered with the same toggle-on semantics."""
     app = create_app(db_path=tmp_db, qai_dir=qai_dir)
     with TestClient(app) as client:
-        app.state.managed_listeners["handle-1"] = _make_handle("adopted")
+        handle = _make_handle("adopted")
+        app.state.managed_listeners[handle.listener_id] = handle
         resp = client.get("/launcher")
 
     assert resp.status_code == 200
-    assert "launcher-tunnel.trycloudflare.com" in resp.text
+    assert handle.public_url in resp.text
 
 
 # ---------------------------------------------------------------------------
@@ -124,9 +129,10 @@ def test_launcher_disables_toggle_when_foreign_listener_present(
 ) -> None:
     """Seed a live CLI-owned state file so lifespan populates foreign_listener,
     then assert the launcher renders a disabled toggle + read-only indicator."""
+    foreign_url = "https://foreign-cli.trycloudflare.com"
     write_state(
         build_state(
-            public_url="https://foreign-cli.trycloudflare.com",
+            public_url=foreign_url,
             provider="cloudflare",
             local_host="127.0.0.1",
             local_port=8080,
@@ -142,7 +148,7 @@ def test_launcher_disables_toggle_when_foreign_listener_present(
     assert resp.status_code == 200
     html = resp.text
     assert 'data-testid="ipi-foreign-listener-indicator"' in html
-    assert "foreign-cli.trycloudflare.com" in html
+    assert foreign_url in html
     # Disabled toggle — the live hx-post wiring is absent for this variant.
     assert 'data-testid="ipi-tunnel-toggle"' in html
     assert "disabled" in html
@@ -179,5 +185,5 @@ def test_toggle_on_posts_to_start_endpoint_and_receives_badge(
 
     assert resp.status_code == 200
     assert 'data-testid="ipi-tunnel-badge"' in resp.text
-    assert "launcher-tunnel.trycloudflare.com" in resp.text
+    assert handle.public_url in resp.text
     assert 'data-testid="ipi-tunnel-stop"' in resp.text

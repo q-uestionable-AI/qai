@@ -89,7 +89,7 @@ class TestStartEndpoint:
             resp = client.post("/api/ipi/managed-listener/start")
 
         assert resp.status_code == 200
-        assert "test.trycloudflare.com" in resp.text
+        assert handle.public_url in resp.text
         assert handle.listener_id in resp.text
 
     def test_conflict_returns_409_with_rfc_wording(
@@ -285,11 +285,12 @@ class TestStatusEndpoint:
     ) -> None:
         app = create_app(db_path=tmp_db, qai_dir=qai_dir)
         with TestClient(app) as client:
-            app.state.managed_listeners["abc"] = _make_handle("abc", state="running")
+            handle = _make_handle("abc", state="running")
+            app.state.managed_listeners[handle.listener_id] = handle
             resp = client.get("/api/ipi/managed-listener")
 
         assert resp.status_code == 200
-        assert "test.trycloudflare.com" in resp.text
+        assert handle.public_url in resp.text
         assert "running" in resp.text
         assert 'data-testid="ipi-managed-listener-stop"' in resp.text
 
@@ -329,9 +330,10 @@ class TestStatusEndpoint:
         qai_dir: Path,
     ) -> None:
         # Seeding a live state file during startup populates the foreign record.
+        foreign_url = "https://foreign.trycloudflare.com"
         write_state(
             build_state(
-                public_url="https://foreign.trycloudflare.com",
+                public_url=foreign_url,
                 provider="cloudflare",
                 local_host="127.0.0.1",
                 local_port=8080,
@@ -347,6 +349,6 @@ class TestStatusEndpoint:
 
         assert resp.status_code == 200
         assert "External listener detected" in resp.text
-        assert "foreign.trycloudflare.com" in resp.text
+        assert foreign_url in resp.text
         # No Stop/Clear control on the foreign card.
         assert 'data-testid="ipi-managed-listener-stop"' not in resp.text

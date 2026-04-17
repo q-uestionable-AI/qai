@@ -30,7 +30,7 @@ import logging
 import os
 import secrets
 import signal
-import subprocess
+import subprocess  # nosec B404 — cmd is built from sys.executable + hardcoded constants; see start_managed_listener and _hard_kill_pid
 import sys
 import threading
 import time
@@ -260,7 +260,7 @@ def start_managed_listener(
     ]
 
     try:
-        proc = subprocess.Popen(  # noqa: S603 — cmd is built from sys.executable + our own constants
+        proc = subprocess.Popen(  # noqa: S603  # nosec B603 — cmd is built from sys.executable + our own constants
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -643,8 +643,8 @@ def _hard_kill_pid(pid: int) -> None:
     """
     if sys.platform == "win32":
         with contextlib.suppress(OSError, subprocess.SubprocessError):
-            subprocess.run(  # noqa: S603 — argv is a list with no shell and no user input
-                ["taskkill", "/F", "/PID", str(pid)],  # noqa: S607 — taskkill is a trusted Windows system binary always on PATH
+            subprocess.run(  # noqa: S603  # nosec B603 B607 — argv is a list with no shell and no user input; taskkill is a trusted Windows system binary always on PATH
+                ["taskkill", "/F", "/PID", str(pid)],  # noqa: S607
                 check=False,
                 capture_output=True,
                 timeout=_STOP_GRACE_SECS,
