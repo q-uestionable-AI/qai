@@ -802,11 +802,26 @@ async function loadIpiTemplates(wfId) {
             opt.textContent = t.name + ' [' + t.source_tool + ']';
             sel.appendChild(opt);
         });
-        sel.value = 'generic';
+        /* Prefer GENERIC, but fall back to the first entry if the backend
+           contract ever drifts and GENERIC is absent. */
+        var hasGeneric = templates.some(function(t) { return t.id === 'generic'; });
+        if (hasGeneric) {
+            sel.value = 'generic';
+        } else if (templates.length > 0) {
+            sel.value = templates[0].id;
+        }
         _wireIpiFilters(wfId);
         _updateIpiTemplateDescription(wfId);
     } catch (err) {
-        /* silent fail — retain placeholder so the form remains submittable with generic */
+        /* Fetch failed — replace the placeholder with a real selectable
+           option so form submission doesn't 422 on an unparseable value.
+           Reset the loaded flag so a subsequent re-expand retries. */
+        sel.innerHTML = '';
+        var fallback = document.createElement('option');
+        fallback.value = 'generic';
+        fallback.textContent = 'Generic (templates unavailable)';
+        sel.appendChild(fallback);
+        sel.value = 'generic';
         form._ipiTemplatesLoaded = false;
     }
 }
@@ -867,11 +882,15 @@ function _updateIpiTemplateDescription(wfId) {
     var tpl = _ipiCurrentTemplate(form);
     descEl.textContent = '';
     if (!tpl) return;
-    var badge = document.createElement('span');
-    badge.className = 'badge badge-xs badge-outline';
-    badge.textContent = tpl.source_tool;
-    descEl.appendChild(badge);
-    descEl.appendChild(document.createTextNode(tpl.description));
+    if (tpl.source_tool) {
+        var badge = document.createElement('span');
+        badge.className = 'badge badge-xs badge-outline';
+        badge.textContent = tpl.source_tool;
+        descEl.appendChild(badge);
+    }
+    if (tpl.description) {
+        descEl.appendChild(document.createTextNode(tpl.description));
+    }
 }
 
 /**

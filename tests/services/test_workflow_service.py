@@ -160,6 +160,7 @@ class TestBuildTestDocsConfig:
             "tgt",
         )
         assert cfg["template_id"] == "whois"
+        assert cfg["format"] == "pdf"
 
     def test_unknown_template_raises(self) -> None:
         """Unknown template_id -> WorkflowValidationError with the value."""

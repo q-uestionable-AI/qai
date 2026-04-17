@@ -266,7 +266,7 @@ def build_test_docs_config(body: dict[str, Any], target_id: str) -> dict[str, An
     except ValueError as exc:
         raise WorkflowValidationError(f"Unknown template_id: {raw_template!r}") from exc
 
-    fmt_str = body.get("format", "pdf")
+    fmt_str = body.get("format", Format.PDF.value)
     try:
         fmt_enum = Format(fmt_str)
     except ValueError as exc:
