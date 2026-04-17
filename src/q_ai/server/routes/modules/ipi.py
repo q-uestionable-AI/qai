@@ -34,11 +34,11 @@ def _load_campaigns(db_path: Path | None) -> dict[str, Any]:
     with get_connection(db_path) as conn:
         rows = conn.execute(
             """
-            SELECT ip.uuid, ip.format, ip.technique, ip.created_at,
+            SELECT ip.uuid, ip.format, ip.technique, ip.template_id, ip.created_at,
                    COUNT(ih.id) as hit_count
             FROM ipi_payloads ip
             LEFT JOIN ipi_hits ih ON ip.uuid = ih.uuid
-            GROUP BY ip.uuid, ip.format, ip.technique, ip.created_at
+            GROUP BY ip.uuid, ip.format, ip.technique, ip.template_id, ip.created_at
             ORDER BY ip.created_at DESC
             LIMIT 50
             """

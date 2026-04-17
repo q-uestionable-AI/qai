@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_VERSION = 12
+CURRENT_VERSION = 13
 
 V1_TABLES = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -319,7 +319,28 @@ def _migrate_v12(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA user_version = 12")
 
 
-def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901
+def _migrate_v13(conn: sqlite3.Connection) -> None:
+    """V13: Add template_id column to ipi_payloads for per-run provenance.
+
+    Records which ``DocumentTemplate`` framed each generated payload so the
+    IPI inventory UI and exported run guidance can display the template
+    alongside format/technique. Nullable by design — legacy rows predate
+    the template system and remain NULL rather than being backfilled.
+
+    Guards against: (1) ipi_payloads table not existing in partial-migration
+    test scenarios, and (2) column already existing for idempotency.
+    """
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ipi_payloads'"
+    ).fetchone()
+    if has_table:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(ipi_payloads)").fetchall()}
+        if "template_id" not in columns:
+            conn.execute("ALTER TABLE ipi_payloads ADD COLUMN template_id TEXT")
+    conn.execute("PRAGMA user_version = 13")
+
+
+def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901, PLR0912
     """Run schema migrations up to CURRENT_VERSION.
 
     Checks PRAGMA user_version and runs any pending migrations sequentially.
@@ -335,6 +356,7 @@ def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901
     Version 10 adds guidance column to runs table.
     Version 11 adds source column to runs table for provenance.
     Version 12 adds chain correlation columns to proxy_sessions table.
+    Version 13 adds template_id column to ipi_payloads for per-run provenance.
     """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version < 1:
@@ -378,3 +400,5 @@ def migrate(conn: sqlite3.Connection) -> None:  # noqa: C901
         _migrate_v11(conn)
     if version < 12:
         _migrate_v12(conn)
+    if version < 13:
+        _migrate_v13(conn)

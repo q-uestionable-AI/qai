@@ -83,9 +83,37 @@ class TestBuildIPIGuidance:
         rows = inventory.metadata["rows"]
         assert len(rows) == len(campaigns)
 
-        expected_keys = {"filename", "technique", "callback_url", "token"}
+        expected_keys = {"filename", "technique", "callback_url", "token", "template_id"}
         for row in rows:
             assert expected_keys <= set(row.keys())
+
+    def test_inventory_rows_carry_template_id(self) -> None:
+        """Each inventory row dict includes the source Campaign's template_id."""
+        campaigns = [
+            _make_campaign(id="c1", uuid="u1", token="t1", filename="a.pdf", template_id="whois"),
+            _make_campaign(id="c2", uuid="u2", token="t2", filename="b.pdf", template_id=None),
+        ]
+        guidance = _build_default_guidance(campaigns=campaigns)
+        rows = guidance.blocks[0].metadata["rows"]
+
+        assert [row["template_id"] for row in rows] == ["whois", None]
+
+    def test_inventory_items_string_includes_template(self) -> None:
+        """Human-readable items strings surface template_id so text-only
+        renderings match the metadata row dicts and the UI's Template
+        column. NULL template_id uses the same em-dash fallback as the
+        inventory table (ipi_tab.html)."""
+        campaigns = [
+            _make_campaign(id="c1", uuid="u1", token="t1", filename="a.pdf", template_id="whois"),
+            _make_campaign(id="c2", uuid="u2", token="t2", filename="b.pdf", template_id=None),
+        ]
+        guidance = _build_default_guidance(campaigns=campaigns)
+        items = guidance.blocks[0].items
+
+        assert len(items) == 2
+        assert "template: whois" in items[0]
+        # NULL template_id renders as an em-dash, matching the UI fallback.
+        assert "template: \u2014" in items[1]
 
     def test_trigger_prompts_block_has_all_profiles(self) -> None:
         """Trigger prompts block has anythingllm, open_webui, and generic keys."""

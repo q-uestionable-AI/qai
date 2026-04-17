@@ -54,6 +54,7 @@ def _row_to_campaign(row: sqlite3.Row) -> Campaign:
         payload_style=row["payload_style"] or "obvious",
         payload_type=row["payload_type"] or "callback",
         run_id=row["run_id"],
+        template_id=row["template_id"],
         created_at=datetime.fromisoformat(created_at_raw),
     )
 
@@ -103,9 +104,9 @@ def save_campaign(campaign: Campaign, db_path: Path | None = None) -> None:
             INSERT INTO ipi_payloads (
                 id, run_id, uuid, token, filename, output_path,
                 format, technique, payload_style, payload_type,
-                callback_url, created_at
+                callback_url, template_id, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 campaign.id,
@@ -119,6 +120,7 @@ def save_campaign(campaign: Campaign, db_path: Path | None = None) -> None:
                 campaign.payload_style,
                 campaign.payload_type,
                 campaign.callback_url,
+                campaign.template_id,
                 campaign.created_at.isoformat(),
             ),
         )

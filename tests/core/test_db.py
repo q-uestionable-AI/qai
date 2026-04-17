@@ -44,7 +44,7 @@ class TestConnection:
         db_path = tmp_path / "qai.db"
         with get_connection(db_path) as conn:
             ver = conn.execute("PRAGMA user_version").fetchone()[0]
-            assert ver == 12
+            assert ver == 13
             # V9: verify mitigation column exists on findings table
             columns = {row[1] for row in conn.execute("PRAGMA table_info(findings)").fetchall()}
             assert "mitigation" in columns
@@ -53,6 +53,14 @@ class TestConnection:
             assert "guidance" in run_columns
             # V11: verify source column exists on runs table
             assert "source" in run_columns
+            # V13: verify template_id column exists on ipi_payloads table.
+            # This block is the one-stop canary for "did a new migration
+            # forget a column" — each schema bump should add a matching
+            # assertion here so a missed migration surfaces fast.
+            ipi_cols = {
+                row[1] for row in conn.execute("PRAGMA table_info(ipi_payloads)").fetchall()
+            }
+            assert "template_id" in ipi_cols
 
     def test_schema_tables_created(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"
