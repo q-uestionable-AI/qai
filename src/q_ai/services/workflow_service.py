@@ -248,16 +248,42 @@ def build_test_docs_config(body: dict[str, Any], target_id: str) -> dict[str, An
     """Build config for the test_docs workflow.
 
     Raises:
-        WorkflowValidationError: If callback_url is missing.
+        WorkflowValidationError: If ``callback_url`` is missing, the
+            ``template_id`` is not a known ``DocumentTemplate``, the
+            ``format`` is not a valid ``Format``, or the chosen format
+            is not in the selected template's compatible formats.
     """
+    from q_ai.ipi.models import DocumentTemplate, Format
+    from q_ai.ipi.template_registry import get_template_spec
+
     callback_url = body.get("callback_url", "").strip()
     if not callback_url:
         raise WorkflowValidationError("callback_url is required")
+
+    raw_template = (body.get("template_id") or "").strip() or DocumentTemplate.GENERIC.value
+    try:
+        template_enum = DocumentTemplate(raw_template)
+    except ValueError as exc:
+        raise WorkflowValidationError(f"Unknown template_id: {raw_template!r}") from exc
+
+    fmt_str = body.get("format", Format.PDF.value)
+    try:
+        fmt_enum = Format(fmt_str)
+    except ValueError as exc:
+        raise WorkflowValidationError(f"Unknown format: {fmt_str!r}") from exc
+
+    spec = get_template_spec(template_enum)
+    if fmt_enum not in spec.formats:
+        raise WorkflowValidationError(
+            f"Format {fmt_enum.value!r} is not valid for template {template_enum.value!r}"
+        )
+
     return {
         "target_id": target_id,
         "callback_url": callback_url,
         "output_dir": "",
-        "format": body.get("format", "pdf"),
+        "format": fmt_enum.value,
+        "template_id": template_enum.value,
         "payload_style": body.get("payload_style", "obvious"),
         "payload_type": body.get("payload_type", "callback"),
         "base_name": "report",

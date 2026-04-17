@@ -161,7 +161,7 @@ class TestLaunchTestDocs:
     """POST /api/workflows/launch with workflow_id=test_docs."""
 
     def test_valid_body_returns_201(self, client: TestClient) -> None:
-        """Valid test_docs body -> 201."""
+        """Valid test_docs body (no template_id) -> 201, defaults to GENERIC."""
         body = {
             "workflow_id": "test_docs",
             "target_name": "doc-target",
@@ -187,6 +187,55 @@ class TestLaunchTestDocs:
             resp = client.post("/api/workflows/launch", json=body)
         assert resp.status_code == 422
         assert "callback_url" in resp.json()["detail"]
+
+    def test_valid_named_template_returns_201(self, client: TestClient) -> None:
+        """Valid test_docs body with a named template -> 201."""
+        body = {
+            "workflow_id": "test_docs",
+            "target_name": "doc-target-tpl",
+            "callback_url": "https://example.com/callback",
+            "format": "pdf",
+            "template_id": "whois",
+            "payload_style": "obvious",
+            "payload_type": "callback",
+        }
+        with patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf:
+            mock_get_wf.return_value = _mock_workflow_entry("test_docs", requires_provider=False)
+            resp = client.post("/api/workflows/launch", json=body)
+        assert resp.status_code == 201
+
+    def test_unknown_template_returns_422(self, client: TestClient) -> None:
+        """Unknown template_id -> 422 with the offending value in the detail."""
+        body = {
+            "workflow_id": "test_docs",
+            "target_name": "doc-target-bad-tpl",
+            "callback_url": "https://example.com/callback",
+            "format": "pdf",
+            "template_id": "not-a-real-template",
+        }
+        with patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf:
+            mock_get_wf.return_value = _mock_workflow_entry("test_docs", requires_provider=False)
+            resp = client.post("/api/workflows/launch", json=body)
+        assert resp.status_code == 422
+        assert "not-a-real-template" in resp.json()["detail"]
+
+    def test_format_template_mismatch_returns_422(self, client: TestClient) -> None:
+        """Incompatible format+template pair -> 422 naming both."""
+        # WHOIS declares formats (pdf, markdown, docx); html is not compatible.
+        body = {
+            "workflow_id": "test_docs",
+            "target_name": "doc-target-mismatch",
+            "callback_url": "https://example.com/callback",
+            "format": "html",
+            "template_id": "whois",
+        }
+        with patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf:
+            mock_get_wf.return_value = _mock_workflow_entry("test_docs", requires_provider=False)
+            resp = client.post("/api/workflows/launch", json=body)
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "whois" in detail
+        assert "html" in detail
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from q_ai.core.db import get_connection
-from q_ai.server.routes._shared import _get_db_path, _get_templates
+from q_ai.server.routes._shared import _get_db_path, _get_templates, logger
 from q_ai.services.managed_listener import (
     ManagedListenerConflictError,
     ManagedListenerStartupError,
@@ -52,6 +52,49 @@ def _load_campaigns(db_path: Path | None) -> dict[str, Any]:
         "total_hits": total_hits_row[0] if total_hits_row else 0,
         "high_hits": high_hits_row[0] if high_hits_row else 0,
     }
+
+
+@router.get("/api/ipi/templates")
+async def api_ipi_templates(request: Request) -> JSONResponse:
+    """Return IPI document templates for the launcher dropdown.
+
+    Serves the ``DocumentTemplate`` registry as JSON in the envelope
+    ``{"templates": [...]}``. Each entry exposes the public metadata the
+    launcher needs (id, name, description, source attribution, compatible
+    formats, and default style); the internal ``top_instruction`` /
+    ``context_template`` / ``source_commit`` fields stay server-side.
+
+    Args:
+        request: The incoming FastAPI request (unused — signature parity).
+
+    Returns:
+        JSON response with the full template registry on success, or a
+        500 with a generic detail message on unexpected registry error.
+    """
+    del request
+
+    from q_ai.ipi.template_registry import TEMPLATE_REGISTRY
+
+    try:
+        templates = [
+            {
+                "id": spec.id.value,
+                "name": spec.name,
+                "description": spec.description,
+                "source_tool": spec.source_tool,
+                "source_reference": spec.source_reference,
+                "formats": [fmt.value for fmt in spec.formats],
+                "default_style": spec.default_style.value,
+            }
+            for spec in TEMPLATE_REGISTRY.values()
+        ]
+    except Exception:
+        logger.exception("Failed to load IPI templates")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to load IPI templates"},
+        )
+    return JSONResponse(content={"templates": templates})
 
 
 @router.get("/api/ipi/campaigns")

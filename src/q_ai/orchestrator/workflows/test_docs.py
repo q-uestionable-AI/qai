@@ -31,6 +31,7 @@ from urllib.parse import urlparse, urlunparse
 from q_ai.core.models import RunStatus
 from q_ai.ipi.adapter import IPIAdapter, RetrievalGate
 from q_ai.ipi.callback_state import is_pid_alive
+from q_ai.ipi.models import DocumentTemplate
 from q_ai.rxp.adapter import RXPAdapter, RXPAdapterResult
 from q_ai.services.managed_listener import (
     ListenerState,
@@ -199,6 +200,7 @@ async def test_document_ingestion(runner: WorkflowRunner, config: dict[str, Any]
         "callback_url": effective_callback_url,
         "output_dir": config["output_dir"],
         "format": config["format"],
+        "template_id": config.get("template_id", DocumentTemplate.GENERIC.value),
         "payload_style": config.get("payload_style", "obvious"),
         "payload_type": config.get("payload_type", "callback"),
         "base_name": config.get("base_name", "report"),
