@@ -165,6 +165,76 @@ class TestSaveCampaignGetCampaign:
 
 
 # ---------------------------------------------------------------------------
+# Campaign.to_dict / Campaign.from_row round-trip
+# ---------------------------------------------------------------------------
+
+
+class TestCampaignDictRoundTrip:
+    """Campaign.to_dict and Campaign.from_row preserve template_id.
+
+    The db-layer persistence helpers (save_campaign + _row_to_campaign)
+    carry template_id correctly; these tests pin the dataclass's own
+    (de)serialization surface, which is also used by JSON exports and
+    any future API response path.
+    """
+
+    def test_to_dict_includes_template_id(self) -> None:
+        """to_dict's payload contains the field with the given value."""
+        campaign = _make_campaign(template_id="whois")
+        payload = campaign.to_dict()
+        assert "template_id" in payload
+        assert payload["template_id"] == "whois"
+
+    def test_to_dict_preserves_none_template_id(self) -> None:
+        """to_dict emits the key even when the value is None."""
+        campaign = _make_campaign(template_id=None)
+        payload = campaign.to_dict()
+        assert "template_id" in payload
+        assert payload["template_id"] is None
+
+    def test_from_row_restores_template_id(self) -> None:
+        """from_row reconstructs a Campaign with the row's template_id."""
+        row = {
+            "id": "rt-id",
+            "uuid": "rt-uuid",
+            "token": "rt-token",
+            "filename": "rt.pdf",
+            "format": "pdf",
+            "technique": "white_ink",
+            "callback_url": "http://example.com/cb",
+            "output_path": "/tmp/rt.pdf",
+            "payload_style": "obvious",
+            "payload_type": "callback",
+            "run_id": None,
+            "template_id": "whois",
+            "created_at": "2026-04-17T12:00:00+00:00",
+        }
+        campaign = Campaign.from_row(row)
+        assert campaign.template_id == "whois"
+
+    def test_from_row_defaults_template_id_to_none_when_missing(self) -> None:
+        """from_row tolerates rows without a template_id key (pre-v13)."""
+        row = {
+            "id": "rt-id",
+            "uuid": "rt-uuid",
+            "token": "rt-token",
+            "filename": "rt.pdf",
+            "format": "pdf",
+            "technique": "white_ink",
+            "callback_url": "http://example.com/cb",
+            "created_at": "2026-04-17T12:00:00+00:00",
+        }
+        campaign = Campaign.from_row(row)
+        assert campaign.template_id is None
+
+    def test_to_dict_from_row_round_trip(self) -> None:
+        """to_dict → from_row preserves template_id across the boundary."""
+        original = _make_campaign(template_id="whois")
+        rehydrated = Campaign.from_row(original.to_dict())
+        assert rehydrated.template_id == "whois"
+
+
+# ---------------------------------------------------------------------------
 # get_campaign — nonexistent UUID
 # ---------------------------------------------------------------------------
 

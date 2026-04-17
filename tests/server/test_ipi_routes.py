@@ -8,6 +8,7 @@ Covers:
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import uuid
 from datetime import UTC, datetime
@@ -18,6 +19,55 @@ from fastapi.testclient import TestClient
 from q_ai.ipi import db as ipi_db
 from q_ai.ipi.models import Campaign
 from q_ai.server.routes.modules.ipi import _load_campaigns
+
+# Column ordinal for the Template <td> inside each tbody row. The partial
+# renders columns in declared order: UUID, Format, Technique, Template,
+# Hits, Created. Keeping this as a constant lets the column reshuffle
+# here in one place if the table layout ever changes.
+_TEMPLATE_COL_IDX = 3
+
+_TR_BODY_RE = re.compile(r"<tr[^>]*>(.*?)</tr>", re.DOTALL)
+_TD_RE = re.compile(r"<td[^>]*>(.*?)</td>", re.DOTALL)
+_BADGE_GHOST_TEXT_RE = re.compile(
+    r'<span[^>]*class="[^"]*\bbadge-ghost\b[^"]*"[^>]*>\s*([^<\s]+)\s*</span>',
+    re.DOTALL,
+)
+
+
+def _template_td_for_uuid(html: str, uuid_hex: str) -> str:
+    """Return the inner HTML of the Template ``<td>`` for a specific row.
+
+    The inventory table's UUID cell renders ``{{ c.uuid[:8] }}...`` inside
+    a ``<span>``; locate the row whose body contains that 8-char prefix
+    and return the ``<td>`` at :data:`_TEMPLATE_COL_IDX`. Scoping
+    assertions to a single cell prevents false positives or negatives
+    when other rows or unrelated table cells happen to contain the
+    tokens being tested for.
+
+    Args:
+        html: Full rendered response body.
+        uuid_hex: Campaign UUID (full hex); only the first 8 chars are
+            used to match the row since the partial truncates.
+
+    Returns:
+        Inner HTML of the Template ``<td>`` for that row.
+
+    Raises:
+        AssertionError: No row containing the 8-char prefix was found, or
+            the row has fewer ``<td>``s than :data:`_TEMPLATE_COL_IDX`.
+    """
+    prefix = uuid_hex[:8]
+    for body in _TR_BODY_RE.findall(html):
+        if prefix not in body:
+            continue
+        cells = _TD_RE.findall(body)
+        if len(cells) <= _TEMPLATE_COL_IDX:
+            raise AssertionError(
+                f"row for uuid prefix {prefix!r} has {len(cells)} <td>s; "
+                f"expected at least {_TEMPLATE_COL_IDX + 1}"
+            )
+        return cells[_TEMPLATE_COL_IDX]
+    raise AssertionError(f"no row found containing uuid prefix {prefix!r}")
 
 
 def _make_campaign(
@@ -115,12 +165,18 @@ class TestIpiTabTemplateColumn:
 
     def test_populated_template_renders_badge(self, client: TestClient, tmp_db: Path) -> None:
         """A populated template_id renders inside a ghost badge with the alias text."""
-        ipi_db.save_campaign(_make_campaign(template_id="whois"), db_path=tmp_db)
+        campaign = _make_campaign(template_id="whois")
+        ipi_db.save_campaign(campaign, db_path=tmp_db)
 
         resp = client.get("/api/ipi/campaigns")
         assert resp.status_code == 200
-        html = resp.text
-        assert 'badge badge-sm badge-ghost">whois' in html
+
+        cell = _template_td_for_uuid(resp.text, campaign.uuid)
+        badge = _BADGE_GHOST_TEXT_RE.search(cell)
+        assert badge is not None, (
+            f"expected a <span class='... badge-ghost ...'> in the Template <td>, got: {cell!r}"
+        )
+        assert badge.group(1) == "whois"
 
     def test_null_template_renders_em_dash(self, client: TestClient, tmp_db: Path) -> None:
         """A legacy NULL template_id renders the em-dash fallback, not a ghost badge."""
@@ -129,17 +185,26 @@ class TestIpiTabTemplateColumn:
 
         resp = client.get("/api/ipi/campaigns")
         assert resp.status_code == 200
-        html = resp.text
-        assert "&mdash;" in html
+
+        cell = _template_td_for_uuid(resp.text, legacy.uuid)
+        assert "&mdash;" in cell
         # The ghost badge is reserved for populated template_id; it must be
-        # absent when the only campaign is a legacy NULL row.
-        assert "badge-ghost" not in html
+        # absent in the specific Template cell for this legacy NULL row.
+        # (The partial itself may render badge-ghost on other columns of
+        # other rows, so the check is scoped to this cell only.)
+        assert "badge-ghost" not in cell
 
     def test_generic_template_renders_as_badge(self, client: TestClient, tmp_db: Path) -> None:
         """GENERIC is a real control condition, not a NULL — it renders a badge."""
-        ipi_db.save_campaign(_make_campaign(template_id="generic"), db_path=tmp_db)
+        campaign = _make_campaign(template_id="generic")
+        ipi_db.save_campaign(campaign, db_path=tmp_db)
 
         resp = client.get("/api/ipi/campaigns")
         assert resp.status_code == 200
-        html = resp.text
-        assert 'badge badge-sm badge-ghost">generic' in html
+
+        cell = _template_td_for_uuid(resp.text, campaign.uuid)
+        badge = _BADGE_GHOST_TEXT_RE.search(cell)
+        assert badge is not None, (
+            f"expected a <span class='... badge-ghost ...'> in the Template <td>, got: {cell!r}"
+        )
+        assert badge.group(1) == "generic"

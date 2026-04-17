@@ -180,6 +180,28 @@ def _save_campaign(campaign: Campaign, seed: int | None) -> str | None:
         return None
 
 
+def _finalize_campaign(
+    campaign: Campaign,
+    output_path: Path,
+    template: DocumentTemplate,
+) -> None:
+    """Stamp post-generation provenance onto a freshly-built Campaign.
+
+    Mutates the campaign in place with the resolved filesystem path and the
+    template alias that framed the payload. Kept separate from the
+    generator functions so the single- and batch-technique branches of
+    :func:`generate_documents` stay in lockstep when new per-campaign
+    metadata is added (e.g. the template_id field added in schema v13).
+
+    Args:
+        campaign: Newly-built campaign to annotate.
+        output_path: Resolved filesystem path of the generated document.
+        template: The document template that framed the payload.
+    """
+    campaign.output_path = str(output_path)
+    campaign.template_id = template.value
+
+
 def generate_documents(
     callback_url: str,
     output: Path,
@@ -267,8 +289,7 @@ def generate_documents(
         )
 
         for campaign in campaigns:
-            campaign.output_path = str(output_dir / campaign.filename)
-            campaign.template_id = template.value
+            _finalize_campaign(campaign, output_dir / campaign.filename, template)
             err = _save_campaign(campaign, seed)
             if err:
                 result.skipped += 1
@@ -291,8 +312,7 @@ def generate_documents(
             top_instruction=top_instruction,
             context_template=context_template,
         )
-        campaign.output_path = str(file_path)
-        campaign.template_id = template.value
+        _finalize_campaign(campaign, file_path, template)
 
         err = _save_campaign(campaign, seed)
         if err:

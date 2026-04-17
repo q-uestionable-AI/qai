@@ -46,6 +46,7 @@ class TestIPISchemaV7:
                 "payload_style",
                 "payload_type",
                 "callback_url",
+                "template_id",
                 "created_at",
             }
             assert expected.issubset(columns)

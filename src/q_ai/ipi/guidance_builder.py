@@ -11,6 +11,12 @@ from q_ai.core.guidance import BlockKind, GuidanceBlock, RunGuidance
 from q_ai.ipi.generate_service import GenerateResult
 from q_ai.ipi.models import Format
 
+_EM_DASH = "\u2014"
+"""Unicode em-dash used as the NULL-template fallback in rendered
+guidance items. Matches the em-dash fallback the inventory table
+(``ipi_tab.html``) shows when ``template_id`` is NULL so text-only and
+UI renderings read identically."""
+
 # ---------------------------------------------------------------------------
 # Authored trigger prompt content — format-aware, profile-specific
 # ---------------------------------------------------------------------------
@@ -188,8 +194,16 @@ def _build_inventory_block(result: GenerateResult) -> GuidanceBlock:
         }
         for c in result.campaigns
     ]
+    # Text-only consumers (printed guidance, exported reports) need the same
+    # template provenance the metadata rows already carry. NULL template_id
+    # comes from pre-v13 legacy rows; render it as an em-dash so the text
+    # matches the inventory table's em-dash fallback in ipi_tab.html.
     items = [
-        f"{c.filename} \u2014 {c.technique} technique \u2014 callback at {c.callback_url}"
+        (
+            f"{c.filename} {_EM_DASH} {c.technique} technique {_EM_DASH} "
+            f"callback at {c.callback_url} {_EM_DASH} "
+            f"template: {c.template_id or _EM_DASH}"
+        )
         for c in result.campaigns
     ]
     return GuidanceBlock(
