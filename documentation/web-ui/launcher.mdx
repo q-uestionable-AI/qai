@@ -43,11 +43,19 @@ Generate payloads for document pipelines and validate ingestion behavior.
 - **Target name**: Identifier for the document pipeline being tested.
 - **Callback URL**: Listener endpoint where exfiltration callbacks are sent. Often the same across runs; defaults to your saved callback URL in Settings.
 - **Format**: Document type (`pdf`, `markdown`, `html`, `docx`, `ics`, `eml`).
+- **Template**: Dropdown selector exposing the 12 document-context templates (GENERIC plus 11 Garak/BIPIA-aligned). Default `generic`. Each option shows its source (garak / bipia / baseline) and a one-line description to support selection. See the [Template Catalog](/ipi/templates) for the full list.
+- **Use tunnel**: Toggle that exposes the callback listener via a Cloudflare Tunnel. When enabled, the web server spawns a `qai ipi listen --tunnel cloudflare` managed subprocess, surfaces the public URL in the Operations / Runs view, and ties the listener lifecycle to the run. The toggle state is reflected on the Runs view's managed-listener panel (see [Runs → Managed listener panel](/web-ui/runs#managed-listener-panel)).
 - **Payload style**: Social engineering wrapper for the hidden instruction (`obvious`, `citation`, `reviewer`, `helpful`, `academic`, `compliance`, `datasource`).
 - **Payload type**: What the agent is instructed to do (`callback` for proof of execution, `exfil_summary`, `exfil_context`, `ssrf_internal`, `instruction_override`, `tool_abuse`, `persistence`). Non-callback types require the `--dangerous` flag.
 - **Pre-validate retrieval rank with RXP** (optional): If enabled, RXP validates that poisoned documents achieve high retrieval rank before injection.
   - **Embedding model**: Model ID for vector embeddings (default: `all-MiniLM-L6-v2`).
   - **Profile**: Retrieval ranking profile (leave blank for custom).
+
+**Format / template compatibility**:
+
+- Selecting a template filters the Format options to that template's compatible formats (see the [Template Catalog](/ipi/templates)).
+- Changing Format resets Template to `generic` when the new Format is incompatible with the currently-selected template.
+- These reset rules are bidirectional and happen client-side.
 
 **Provider requirement**: No. IPI tests run without an LLM if no model is selected.
 

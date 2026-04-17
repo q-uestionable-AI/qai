@@ -11,7 +11,7 @@ IPI is the only qai module where documents are uploaded to third-party AI servic
 
 ## How It Works
 
-1. **Start the callback listener** — Run `qai ipi listen` on a server you control. This opens an HTTP endpoint that receives proof-of-execution callbacks.
+1. **Start the callback listener** — Run `qai ipi listen` on a server you control. This opens an HTTP endpoint that receives proof-of-execution callbacks. The listener can also run with `--tunnel cloudflare` to receive callbacks from cloud / remote targets — see [Remote callbacks via Cloudflare Tunnel](/ipi/callbacks#remote-callbacks-via-cloudflare-tunnel).
 2. **Generate poisoned documents** — Use `qai ipi generate` to create documents with hidden payloads using your choice of format (PDF, Word, Markdown, etc.) and hiding technique (white ink text, metadata, comments, etc.).
 3. **Deploy to target** — Upload the poisoned document to the target system's document ingestion pipeline (knowledge base, RAG system, email service, calendar app, etc.).
 4. **Trigger payload execution** — Send a prompt that causes the target to ingest and process your document.
@@ -110,6 +110,7 @@ The callback listener returns a spoofed HTTP 404 response to avoid alerting the 
 - [CLI Reference](/ipi/cli) — All `qai ipi` commands and options
 - [Techniques](/ipi/techniques) — Detailed breakdown of all hiding techniques by format
 - [Formats](/ipi/formats) — Implementation status and format-specific capabilities
+- [Templates](/ipi/templates) — Document context templates that frame payloads in realistic content
 - [Payloads](/ipi/payloads) — Payload styles, types, and the `--dangerous` safety gate
 - [Callbacks](/ipi/callbacks) — Listener setup, hit tracking, and confidence scoring
 - [Deployment Playbook](/ipi/deployment-playbook) — Guided workflow for poisoning and monitoring
