@@ -129,6 +129,16 @@ async def launcher(request: Request) -> HTMLResponse:
         "audit_default_transport": db_ctx["default_transport"],
     }
 
+    # Tunnel-toggle context: surface at most one active handle (running or
+    # adopted) and the foreign-listener record if present. The template
+    # uses these to pick initial toggle state and render the inline badge.
+    managed_listeners = request.app.state.managed_listeners
+    active_managed_handle = next(
+        (h for h in managed_listeners.values() if h.state in ("running", "adopted")),
+        None,
+    )
+    foreign_listener = request.app.state.foreign_listener
+
     return templates.TemplateResponse(
         request,
         "launcher.html",
@@ -144,6 +154,8 @@ async def launcher(request: Request) -> HTMLResponse:
             ],
             "scanner_categories": list_scanner_names(),
             "cxp_formats": list_cxp_formats(),
+            "active_managed_handle": active_managed_handle,
+            "foreign_listener": foreign_listener,
         },
     )
 
