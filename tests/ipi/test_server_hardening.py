@@ -198,3 +198,94 @@ class TestInstallHardeningMiddleware:
         middleware_classes = {mw.cls for mw in app.user_middleware}
         assert BodySizeLimitMiddleware in middleware_classes
         assert RateLimitMiddleware in middleware_classes
+
+
+# ---------------------------------------------------------------------------
+# Error-path hardening (RFC Decision 3)
+# ---------------------------------------------------------------------------
+
+
+class TestErrorPathHardening:
+    """Unhandled exceptions on a tunneled listener must not leak server
+    internals into response bodies.
+
+    RFC-IPI-Web-UI-Managed-Listener Decision 3 pins FastAPI's default
+    production exception behavior (generic 500 body with no detail).
+    The rule is "don't override FastAPI's default exception handling" —
+    a future change that registers a custom exception handler echoing
+    ``str(exc)`` into a response body would fail this test.
+
+    The assertion list intentionally looks for markers that would only
+    appear if someone broke the rule: exception message contents,
+    module paths (``q_ai/``), common env-derived substrings, and the
+    word ``Traceback``. Keep the pattern list tight and motivated —
+    false positives here would make the test flaky across unrelated
+    FastAPI upgrades.
+    """
+
+    _LEAKY_EXCEPTION_MESSAGE = (
+        "sensitive-env-var=SECRET_VALUE_TOKEN "
+        "config_path=/home/user/.qai/qai.db "
+        "File q_ai/ipi/server.py"
+    )
+
+    def _build_failing_app(self) -> FastAPI:
+        app = FastAPI()
+
+        @app.get("/boom")
+        async def _boom() -> None:
+            raise RuntimeError(self._LEAKY_EXCEPTION_MESSAGE)
+
+        install_hardening_middleware(app)
+        return app
+
+    def test_unhandled_exception_returns_generic_500(
+        self,
+        _clean_tunnel_mode: None,
+    ) -> None:
+        app = self._build_failing_app()
+        # raise_server_exceptions=False makes TestClient behave like
+        # production — surface FastAPI's default 500 body rather than
+        # re-raising the exception into the test.
+        with TestClient(app, raise_server_exceptions=False) as client:
+            resp = client.get("/boom")
+
+        assert resp.status_code == 500
+        # Default FastAPI/Starlette production body is "Internal Server Error".
+        # Either that exact string or an empty body is acceptable; anything else
+        # signals a regression where exception detail leaked.
+        assert resp.text in ("", "Internal Server Error"), (
+            "unexpected 500 body; a custom exception handler may have been "
+            f"installed that echoes detail into the response: {resp.text!r}"
+        )
+
+    def test_500_body_contains_no_exception_message(
+        self,
+        _clean_tunnel_mode: None,
+    ) -> None:
+        """Specifically guard against the 'echo str(exc) into the body' bug."""
+        app = self._build_failing_app()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            resp = client.get("/boom")
+
+        body = resp.text
+        assert "SECRET_VALUE_TOKEN" not in body
+        assert "sensitive-env-var" not in body
+        assert "/home/user" not in body
+        assert "qai.db" not in body
+
+    def test_500_body_contains_no_traceback_or_module_paths(
+        self,
+        _clean_tunnel_mode: None,
+    ) -> None:
+        """Rule out framework-level tracebacks and source-tree paths."""
+        app = self._build_failing_app()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            resp = client.get("/boom")
+
+        body = resp.text
+        assert "Traceback" not in body
+        assert "RuntimeError" not in body
+        # Both POSIX and Windows path forms.
+        assert "q_ai/" not in body
+        assert "q_ai\\" not in body
