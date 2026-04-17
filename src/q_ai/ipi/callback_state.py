@@ -60,6 +60,12 @@ class CallbackState:
             written.
         instance_id: Short random identifier for this listener session
             (disambiguates between overwritten sessions for logs).
+        manager: Identifies the process that wrote the state.
+            ``"web-ui"`` for listeners spawned by the qai web server,
+            ``"cli"`` for listeners launched from ``qai ipi listen``,
+            ``None`` for state written by a pre-``manager`` build.
+            Absent from JSON when ``None`` to preserve byte-for-byte
+            compatibility with pre-existing CLI writers.
     """
 
     public_url: str
@@ -69,6 +75,7 @@ class CallbackState:
     listener_pid: int
     created_at: str
     instance_id: str
+    manager: str | None = None
 
 
 def state_path(qai_dir: Path | None = None) -> Path:
@@ -87,7 +94,7 @@ def new_instance_id() -> str:
     return secrets.token_hex(8)
 
 
-def build_state(
+def build_state(  # noqa: PLR0913 — state struct has seven independent fields; a params object would be heavier than the current callsites
     *,
     public_url: str,
     provider: str,
@@ -95,6 +102,7 @@ def build_state(
     local_port: int,
     listener_pid: int | None = None,
     instance_id: str | None = None,
+    manager: str | None = None,
 ) -> CallbackState:
     """Build a :class:`CallbackState` with current-time metadata.
 
@@ -107,6 +115,8 @@ def build_state(
             via :func:`os.getpid`.
         instance_id: Instance ID to record. Defaults to a fresh random
             identifier via :func:`new_instance_id`.
+        manager: Optional writer-identity tag (``"web-ui"`` or
+            ``"cli"``). Omitted from serialized JSON when ``None``.
 
     Returns:
         A frozen :class:`CallbackState` ready to pass to
@@ -120,16 +130,24 @@ def build_state(
         listener_pid=listener_pid if listener_pid is not None else os.getpid(),
         created_at=datetime.now(UTC).isoformat(),
         instance_id=instance_id or new_instance_id(),
+        manager=manager,
     )
 
 
 def write_state(state: CallbackState, qai_dir: Path | None = None) -> Path:
     """Write the state file atomically with restrictive permissions.
 
-    On POSIX the file is opened with ``O_CREAT|O_TRUNC|O_WRONLY`` and
-    mode ``0o600`` so it is born owner-only. On Windows the file is
-    written normally — permissions rely on the user profile's default
-    ACL (this is called out as best-effort in the acceptance criteria).
+    The payload is written to a sibling temporary file and then moved
+    into place via :func:`os.replace`, which is atomic on both POSIX
+    and Windows for Python ≥3.3. Readers therefore observe either the
+    old file or the new file — never a partial one. On POSIX the temp
+    file is created with mode ``0o600`` so the final file is born
+    owner-only. On Windows the file is written normally — permissions
+    rely on the user profile's default ACL.
+
+    The ``manager`` field is omitted from serialized JSON when
+    ``None`` so state written by a pre-``manager`` build remains
+    byte-for-byte identical.
 
     Args:
         state: State to serialize.
@@ -140,21 +158,32 @@ def write_state(state: CallbackState, qai_dir: Path | None = None) -> Path:
     """
     path = state_path(qai_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(asdict(state), indent=2).encode("utf-8")
 
-    if os.name != "nt":
-        fd = os.open(
-            str(path),
-            os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
-            _STATE_FILE_MODE,
-        )
-        try:
-            os.write(fd, payload)
-        finally:
-            os.close(fd)
-    else:
-        # Windows: default ACL from user profile; no 0o600 equivalent.
-        path.write_bytes(payload)
+    data = asdict(state)
+    if data.get("manager") is None:
+        data.pop("manager", None)
+    payload = json.dumps(data, indent=2).encode("utf-8")
+
+    tmp_path = path.parent / f"{STATE_FILENAME}.tmp"
+    try:
+        if os.name != "nt":
+            fd = os.open(
+                str(tmp_path),
+                os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
+                _STATE_FILE_MODE,
+            )
+            try:
+                os.write(fd, payload)
+            finally:
+                os.close(fd)
+        else:
+            # Windows: default ACL from user profile; no 0o600 equivalent.
+            tmp_path.write_bytes(payload)
+        tmp_path.replace(path)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            tmp_path.unlink()
+        raise
 
     return path
 
@@ -205,6 +234,9 @@ def _parse_state_file(path: Path) -> CallbackState:
     if not isinstance(data, dict):
         raise TypeError("state file did not contain a JSON object")
 
+    raw_manager = data.get("manager")
+    manager = str(raw_manager) if raw_manager is not None else None
+
     return CallbackState(
         public_url=str(data["public_url"]),
         provider=str(data["provider"]),
@@ -213,6 +245,7 @@ def _parse_state_file(path: Path) -> CallbackState:
         listener_pid=int(data["listener_pid"]),
         created_at=str(data["created_at"]),
         instance_id=str(data["instance_id"]),
+        manager=manager,
     )
 
 

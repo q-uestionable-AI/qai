@@ -231,13 +231,70 @@
                     {# ---- TEST DOCS FORM ---- #}
                     {{ target_name_field(wf.id, "doc-pipeline") }}
 
+                    <div class="form-control" id="ipi-tunnel-toggle-control">
+                        <label class="label cursor-pointer">
+                            <span class="label-text">Use tunnel (cloudflare)</span>
+                            {% if foreign_listener %}
+                            <input type="checkbox" class="toggle toggle-sm" disabled
+                                   data-testid="ipi-tunnel-toggle"
+                                   title="External tunneled listener already active — stop it to use the managed tunnel" />
+                            {% elif active_managed_handle %}
+                            <input type="checkbox" class="toggle toggle-sm" checked disabled
+                                   data-testid="ipi-tunnel-toggle" />
+                            {% else %}
+                            {# The toggle is intentionally one-way (start only). Per
+                               RFC-IPI-Web-UI-Managed-Listener Decision 1 the listener is a
+                               global resource; the dedicated Stop control in the IPI tab
+                               panel is the single place that stops it. The
+                               hx-trigger="change[target.checked]" fires only on check;
+                               unchecking the box is a no-op until the next HTMX refresh
+                               repaints the toggle based on the (still-running) listener. #}
+                            <input type="checkbox" class="toggle toggle-sm"
+                                   data-testid="ipi-tunnel-toggle"
+                                   hx-post="/api/ipi/managed-listener/start"
+                                   hx-trigger="change[target.checked]"
+                                   hx-target="#ipi-tunnel-slot"
+                                   hx-swap="innerHTML" />
+                            {% endif %}
+                        </label>
+                        <label class="label">
+                            <span class="label-text-alt text-base-content/40">
+                                Spawns <code>qai ipi listen --tunnel cloudflare</code> as a managed subprocess. Only one tunneled listener can run at a time.
+                            </span>
+                        </label>
+                    </div>
+
+                    <div id="ipi-tunnel-slot" class="mb-2">
+                        {% if active_managed_handle %}
+                        {% with handle = active_managed_handle %}
+                        {% include "partials/ipi_tunnel_badge.html" %}
+                        {% endwith %}
+                        {% elif foreign_listener %}
+                        <div class="alert alert-warning text-xs" data-testid="ipi-foreign-listener-indicator">
+                            <span>
+                                External tunneled listener detected at
+                                {# Scheme allowlist: the foreign record comes from a file
+                                   we do not fully control. Only render a clickable link
+                                   when the URL starts with http(s); otherwise show the
+                                   string as <code> so it is visible but inert. #}
+                                {% if foreign_listener.public_url.startswith(('http://', 'https://')) %}
+                                <a href="{{ foreign_listener.public_url }}" target="_blank" rel="noopener"
+                                   class="link">{{ foreign_listener.public_url }}</a>.
+                                {% else %}
+                                <code>{{ foreign_listener.public_url }}</code>.
+                                {% endif %}
+                            </span>
+                        </div>
+                        {% endif %}
+                    </div>
+
                     <div class="form-control">
                         <label class="label"><span class="label-text">Callback URL</span></label>
                         <input type="text" name="callback_url" required
                                value="{{ defaults.ipi_callback_url }}"
                                placeholder="http://your-ip:8080/callback"
                                class="input input-bordered input-sm w-full" />
-                        <label class="label"><span class="label-text-alt text-base-content/40">Your IP address where <code>qai ipi listen</code> is running. Must be reachable by the target system. The payload phones home here when executed.</span></label>
+                        <label class="label"><span class="label-text-alt text-base-content/40">Your IP address where <code>qai ipi listen</code> is running. Must be reachable by the target system. The payload phones home here when executed. When a managed tunnel is active, the workflow auto-discovers its URL.</span></label>
                     </div>
 
                     <div class="form-control">

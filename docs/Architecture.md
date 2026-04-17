@@ -130,6 +130,15 @@ workflow orchestration, persistence, or module composition.
   resolution and ignores `X-Forwarded-For` to prevent spoofing. Public-exposure
   hardening (body-size limits, per-IP rate limiting, conservative timeouts) is
   applied only in tunnel mode; local-only listener behavior is unchanged.
+- At most one tunneled IPI callback listener may exist on a host at a time
+  (managed or CLI-launched). The active-callback state file
+  (`~/.qai/active-callback`) is single-writer and records a `manager` tag
+  identifying the writer (`web-ui` for listeners spawned by the local web
+  server, `cli` for ones started from a terminal). The web server reattaches
+  to its own managed listeners after a restart by reading the state file and
+  matching the `manager` tag; foreign listeners are surfaced read-only, never
+  adopted, and never have their state file deleted. Parallel tunnels are
+  deliberately out of scope for the current single-writer contract.
 
 ## What This Document Intentionally Omits
 

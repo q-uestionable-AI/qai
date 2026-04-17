@@ -30,6 +30,7 @@ def _make_state(
     listener_pid: int | None = None,
     instance_id: str = "abc123",
     created_at: str = "2026-04-16T12:00:00+00:00",
+    manager: str | None = None,
 ) -> CallbackState:
     """Build a CallbackState with sensible defaults for testing."""
     return CallbackState(
@@ -40,6 +41,7 @@ def _make_state(
         listener_pid=listener_pid if listener_pid is not None else os.getpid(),
         created_at=created_at,
         instance_id=instance_id,
+        manager=manager,
     )
 
 
@@ -256,3 +258,167 @@ class TestBuildState:
         )
         # ISO-8601 UTC timestamp ends in +00:00 when format is used.
         assert "+00:00" in state.created_at or state.created_at.endswith("Z")
+
+
+# ---------------------------------------------------------------------------
+# manager field (round-trip, backwards-compat, omit-when-None)
+# ---------------------------------------------------------------------------
+
+
+class TestManagerField:
+    """The optional `manager` field round-trips, is omitted when None, and
+    pre-manager state files still load cleanly."""
+
+    def test_manager_web_ui_roundtrips(self, tmp_path: Path) -> None:
+        state = _make_state(manager="web-ui")
+        write_state(state, qai_dir=tmp_path)
+
+        recovered = read_state(qai_dir=tmp_path)
+        assert recovered is not None
+        assert recovered.manager == "web-ui"
+
+    def test_manager_cli_roundtrips(self, tmp_path: Path) -> None:
+        state = _make_state(manager="cli")
+        write_state(state, qai_dir=tmp_path)
+
+        recovered = read_state(qai_dir=tmp_path)
+        assert recovered is not None
+        assert recovered.manager == "cli"
+
+    def test_manager_none_is_omitted_from_serialized_json(self, tmp_path: Path) -> None:
+        """A CallbackState with manager=None must serialize to a JSON
+        object that has no `manager` key — preserving byte-for-byte
+        compatibility with pre-``manager`` CLI writers."""
+        write_state(_make_state(manager=None), qai_dir=tmp_path)
+
+        raw = state_path(tmp_path).read_text(encoding="utf-8")
+        assert "manager" not in raw
+
+    def test_build_state_defaults_manager_to_none(self) -> None:
+        state = build_state(
+            public_url="https://x.trycloudflare.com",
+            provider="cloudflare",
+            local_host="127.0.0.1",
+            local_port=8080,
+        )
+        assert state.manager is None
+
+    def test_build_state_propagates_manager(self) -> None:
+        state = build_state(
+            public_url="https://x.trycloudflare.com",
+            provider="cloudflare",
+            local_host="127.0.0.1",
+            local_port=8080,
+            manager="web-ui",
+        )
+        assert state.manager == "web-ui"
+
+    def test_legacy_state_file_without_manager_still_loads(self, tmp_path: Path) -> None:
+        """A state file written by a pre-``manager`` qai build must still
+        load; manager is treated as None (foreign listener)."""
+        path = state_path(tmp_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "public_url": "https://legacy.trycloudflare.com",
+                    "provider": "cloudflare",
+                    "local_host": "127.0.0.1",
+                    "local_port": 8080,
+                    "listener_pid": os.getpid(),
+                    "created_at": "2026-04-16T12:00:00+00:00",
+                    "instance_id": "legacy01",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        recovered = read_state(qai_dir=tmp_path)
+        assert recovered is not None
+        assert recovered.manager is None
+        assert recovered.public_url == "https://legacy.trycloudflare.com"
+
+
+# ---------------------------------------------------------------------------
+# atomic write semantics
+# ---------------------------------------------------------------------------
+
+
+class TestAtomicWrite:
+    """write_state writes via temp+replace so readers never see partial."""
+
+    def test_failed_replace_preserves_prior_file_and_removes_tmp(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """If the atomic replace fails, the pre-existing state file is
+        untouched and the sibling .tmp file is cleaned up so it
+        doesn't leak."""
+        # Seed a good state file.
+        write_state(_make_state(instance_id="original"), qai_dir=tmp_path)
+        original_bytes = state_path(tmp_path).read_bytes()
+
+        def _fail_replace(self: Path, target: Path | str) -> Path:
+            raise OSError("simulated replace failure")
+
+        monkeypatch.setattr(Path, "replace", _fail_replace)
+
+        with pytest.raises(OSError, match="simulated replace failure"):
+            write_state(_make_state(instance_id="attempted"), qai_dir=tmp_path)
+
+        # Original file is untouched.
+        assert state_path(tmp_path).read_bytes() == original_bytes
+        # Temp file is cleaned up.
+        assert not (tmp_path / "active-callback.tmp").exists()
+
+    def test_failed_write_removes_tmp_and_leaves_no_final_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """If the write itself fails (simulated here by forcing
+        os.replace-equivalent at the OS level), the temp file is
+        cleaned up and no state file appears at the final path."""
+        import q_ai.ipi.callback_state as cbs
+
+        # Force os.write (POSIX) / write_bytes (Windows) to fail.
+        if os.name != "nt":
+            real_write = cbs.os.write
+
+            def _fail_write(fd: int, data: bytes) -> int:
+                raise OSError("simulated write failure")
+
+            monkeypatch.setattr(cbs.os, "write", _fail_write)
+            _ = real_write
+        else:
+            from pathlib import Path as _Path
+
+            def _fail_write_bytes(self: _Path, data: bytes) -> int:
+                raise OSError("simulated write failure")
+
+            monkeypatch.setattr(_Path, "write_bytes", _fail_write_bytes)
+
+        with pytest.raises(OSError, match="simulated write failure"):
+            write_state(_make_state(), qai_dir=tmp_path)
+
+        assert not state_path(tmp_path).exists()
+        assert not (tmp_path / "active-callback.tmp").exists()
+
+    def test_reader_observes_old_or_new_never_partial(self, tmp_path: Path) -> None:
+        """Atomic-replace guarantee: after a completed write, the file
+        at the final path is either the exact new payload or (if writer
+        has not yet completed) the exact old payload."""
+        # Write v1.
+        write_state(_make_state(instance_id="v1"), qai_dir=tmp_path)
+        v1_bytes = state_path(tmp_path).read_bytes()
+
+        # Write v2 — completes atomically.
+        write_state(_make_state(instance_id="v2"), qai_dir=tmp_path)
+        v2_bytes = state_path(tmp_path).read_bytes()
+
+        # After v2 completes, reader sees v2 bytes exactly.
+        assert v2_bytes != v1_bytes
+        recovered = read_state(qai_dir=tmp_path)
+        assert recovered is not None
+        assert recovered.instance_id == "v2"

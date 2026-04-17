@@ -34,6 +34,7 @@ from q_ai.server.routes._shared import (
     logger,
 )
 from q_ai.services import run_service
+from q_ai.services.managed_listener import ListenerState
 from q_ai.services.workflow_service import (
     WorkflowValidationError,
     build_quick_action_config,
@@ -129,6 +130,20 @@ async def launcher(request: Request) -> HTMLResponse:
         "audit_default_transport": db_ctx["default_transport"],
     }
 
+    # Tunnel-toggle context: surface at most one active handle (running or
+    # adopted) and the foreign-listener record if present. The template
+    # uses these to pick initial toggle state and render the inline badge.
+    managed_listeners = request.app.state.managed_listeners
+    active_managed_handle = next(
+        (
+            h
+            for h in managed_listeners.values()
+            if h.state in (ListenerState.RUNNING, ListenerState.ADOPTED)
+        ),
+        None,
+    )
+    foreign_listener = request.app.state.foreign_listener
+
     return templates.TemplateResponse(
         request,
         "launcher.html",
@@ -144,6 +159,8 @@ async def launcher(request: Request) -> HTMLResponse:
             ],
             "scanner_categories": list_scanner_names(),
             "cxp_formats": list_cxp_formats(),
+            "active_managed_handle": active_managed_handle,
+            "foreign_listener": foreign_listener,
         },
     )
 
@@ -340,6 +357,7 @@ async def launch_workflow(request: Request) -> JSONResponse:
         active_workflows=request.app.state.active_workflows,
         db_path=db_path,
         source="web",
+        app_state=request.app.state,
     )
 
     # --- Set output_dir from run_id BEFORE start() persists config ---
@@ -490,6 +508,7 @@ async def launch_quick_action(request: Request) -> JSONResponse:
         active_workflows=request.app.state.active_workflows,
         db_path=db_path,
         source="web",
+        app_state=request.app.state,
     )
     await runner.start()
 

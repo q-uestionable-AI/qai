@@ -1,5 +1,12 @@
 {% from "partials/guidance_block.html" import render_guidance_block %}
 
+{# Managed-listener panel slot — hydrated by /api/ipi/managed-listener on
+   load, then self-refreshes via its own hx-trigger. #}
+<div id="ipi-managed-listener-panel-slot"
+     hx-get="/api/ipi/managed-listener"
+     hx-trigger="load, every 5s"
+     hx-swap="outerHTML"></div>
+
 {% if ipi_guidance %}
 {# ===== Run results playbook mode ===== #}
 <div class="flex items-center justify-between mb-4">
