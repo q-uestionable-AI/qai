@@ -613,8 +613,7 @@ def _stop_adopted(handle: ManagedListenerHandle) -> None:
     if _wait_for_death(handle.pid, _STOP_GRACE_SECS):
         return
 
-    hard_signal = getattr(signal, "SIGKILL", signal.SIGTERM)
-    _send_signal(handle.pid, hard_signal)
+    _hard_kill_pid(handle.pid)
     if _wait_for_death(handle.pid, _STOP_HARD_CEILING_SECS - _STOP_GRACE_SECS):
         return
 
@@ -628,6 +627,31 @@ def _send_signal(pid: int, sig: int) -> None:
     callers can stay on a simple linear path."""
     with contextlib.suppress(OSError, ProcessLookupError):
         os.kill(pid, sig)
+
+
+def _hard_kill_pid(pid: int) -> None:
+    """Force-terminate ``pid`` without relying on graceful cooperation.
+
+    POSIX sends ``SIGKILL`` via :func:`os.kill`. Windows has no SIGKILL
+    equivalent via ``os.kill`` — ``os.kill(pid, signal.SIGTERM)`` on
+    Windows maps to ``TerminateProcess`` only when the caller owns the
+    handle, which we do not for an adopted listener. Instead we shell
+    out to ``taskkill /F /PID {pid}``, which asks the OS to force-close
+    the process by PID regardless of parentage. Errors from either path
+    are swallowed so the caller can proceed to the liveness wait and,
+    if the process is still up, raise :class:`ManagedListenerStuckStopError`.
+    """
+    if sys.platform == "win32":
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(  # noqa: S603 — argv is a list with no shell and no user input
+                ["taskkill", "/F", "/PID", str(pid)],  # noqa: S607 — taskkill is a trusted Windows system binary always on PATH
+                check=False,
+                capture_output=True,
+                timeout=_STOP_GRACE_SECS,
+            )
+        return
+    with contextlib.suppress(OSError, ProcessLookupError):
+        os.kill(pid, signal.SIGKILL)
 
 
 def _wait_for_death(pid: int, timeout: float) -> bool:

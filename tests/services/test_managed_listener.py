@@ -9,7 +9,9 @@ real cloudflared child. The fake reports ``os.getpid()`` as its PID so
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -631,6 +633,130 @@ class TestStop:
         stop_managed_listener(registry, "adopted", qai_dir=tmp_path)
 
         assert len(calls) == 1  # one SIGTERM, no escalation needed
+        assert "adopted" not in registry
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only SIGKILL path")
+    def test_stop_adopted_escalates_to_sigkill_on_posix(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When the adopted listener ignores SIGTERM, escalate with SIGKILL.
+
+        Regression guard for the earlier bug where the fallback used
+        ``getattr(signal, "SIGKILL", signal.SIGTERM)``, which silently sent
+        SIGTERM twice on platforms where SIGKILL was unavailable. POSIX
+        always has SIGKILL; we assert the second signal is SIGKILL, not
+        another SIGTERM.
+        """
+        handle = ManagedListenerHandle(
+            listener_id="adopted",
+            pid=os.getpid(),
+            public_url="https://adopted.trycloudflare.com",
+            provider="cloudflare",
+            local_host="127.0.0.1",
+            local_port=8080,
+            instance_id="x",
+            created_at="2026-04-16T12:00:00+00:00",
+            state="adopted",
+        )
+        registry = {"adopted": handle}
+        signals_sent: list[int] = []
+
+        import q_ai.services.managed_listener as mod
+
+        def _fake_kill(pid: int, sig: int) -> None:
+            signals_sent.append(sig)
+
+        monkeypatch.setattr(mod.os, "kill", _fake_kill)
+
+        # Liveness is driven by what has been signalled. This guarantees
+        # the SIGTERM wait times out (PID stays alive) and forces
+        # escalation into SIGKILL, regardless of loop-poll timing.
+        def _fake_is_alive(pid: int) -> bool:
+            return signal.SIGKILL not in signals_sent
+
+        monkeypatch.setattr(mod, "is_pid_alive", _fake_is_alive)
+
+        # Keep the wall-clock wait short so test runtime stays small.
+        monkeypatch.setattr(mod, "_STOP_GRACE_SECS", 0.05)
+        monkeypatch.setattr(mod, "_STOP_HARD_CEILING_SECS", 0.1)
+
+        stop_managed_listener(registry, "adopted", qai_dir=tmp_path)
+
+        assert signals_sent == [signal.SIGTERM, signal.SIGKILL]
+        assert "adopted" not in registry
+
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only taskkill path")
+    def test_stop_adopted_escalates_to_taskkill_on_windows(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """On Windows, hard-kill of an adopted listener uses taskkill /F.
+
+        ``os.kill`` cannot force-terminate a PID the caller does not own a
+        handle for; ``taskkill /F /PID`` asks the OS to force-close by PID
+        regardless of parentage. This test pins the Windows escalation path
+        against the earlier bug where it silently degraded to a second
+        SIGTERM.
+        """
+        handle = ManagedListenerHandle(
+            listener_id="adopted",
+            pid=os.getpid(),
+            public_url="https://adopted.trycloudflare.com",
+            provider="cloudflare",
+            local_host="127.0.0.1",
+            local_port=8080,
+            instance_id="x",
+            created_at="2026-04-16T12:00:00+00:00",
+            state="adopted",
+        )
+        registry = {"adopted": handle}
+        os_kill_calls: list[int] = []
+        subprocess_run_argvs: list[list[str]] = []
+
+        import q_ai.services.managed_listener as mod
+
+        def _fake_kill(pid: int, sig: int) -> None:
+            os_kill_calls.append(sig)
+
+        def _fake_run(argv: list[str], **_kwargs: object) -> object:
+            subprocess_run_argvs.append(list(argv))
+
+            class _CompletedStub:
+                returncode = 0
+
+            return _CompletedStub()
+
+        monkeypatch.setattr(mod.os, "kill", _fake_kill)
+        monkeypatch.setattr(mod.subprocess, "run", _fake_run)
+
+        # Liveness is driven by what has been called, not by a counter.
+        # This guarantees the SIGTERM wait times out (PID stays alive) and
+        # forces escalation into _hard_kill_pid — regardless of how fast
+        # the wait loop polls. Once taskkill has been invoked, liveness
+        # flips to dead so the post-kill wait returns quickly.
+        def _fake_is_alive(pid: int) -> bool:
+            return len(subprocess_run_argvs) == 0
+
+        monkeypatch.setattr(mod, "is_pid_alive", _fake_is_alive)
+
+        # Keep the wall-clock wait short so test runtime stays small.
+        monkeypatch.setattr(mod, "_STOP_GRACE_SECS", 0.05)
+        monkeypatch.setattr(mod, "_STOP_HARD_CEILING_SECS", 0.1)
+
+        stop_managed_listener(registry, "adopted", qai_dir=tmp_path)
+
+        # First signal: SIGTERM via os.kill.
+        assert os_kill_calls == [signal.SIGTERM]
+        # Escalation: exactly one taskkill invocation with /F /PID forms.
+        assert len(subprocess_run_argvs) == 1
+        argv = subprocess_run_argvs[0]
+        assert argv[0] == "taskkill"
+        assert "/F" in argv
+        assert "/PID" in argv
+        assert str(os.getpid()) in argv
         assert "adopted" not in registry
 
 
