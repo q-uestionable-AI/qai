@@ -118,6 +118,30 @@ class ManagedListenerStuckStopError(Exception):
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class ForeignListenerRecord:
+    """Read-only description of a listener the web server did not spawn.
+
+    Surfaced in the IPI tab panel so the operator can see why their
+    "Use tunnel" toggle is disabled, and where the existing tunnel
+    points. The ``manager`` value of ``None`` corresponds to a legacy
+    CLI listener written by a pre-``manager`` qai build; for display
+    purposes treat it as ``"cli"``.
+
+    Attributes:
+        pid: Listener PID, verified live at detection time.
+        public_url: Tunnel public URL.
+        provider: Tunnel provider (e.g. ``"cloudflare"``).
+        manager: Value of ``CallbackState.manager``; ``None`` for
+            legacy CLI listeners.
+    """
+
+    pid: int
+    public_url: str
+    provider: str
+    manager: str | None
+
+
 @dataclass
 class ManagedListenerHandle:
     """In-memory record describing a single managed listener.
@@ -336,6 +360,50 @@ def stop_managed_listener(
     _maybe_delete_state_file(qai_dir)
     registry.pop(listener_id, None)
     logger.info("Managed listener %s stopped", listener_id)
+
+
+def detect_existing_listener(
+    qai_dir: Path | None = None,
+) -> tuple[ManagedListenerHandle | None, ForeignListenerRecord | None]:
+    """Classify any live listener referenced by the active-callback file.
+
+    Consulted during web-server startup (``_lifespan``) to decide
+    whether to reattach a managed listener that outlived a previous
+    server process, and whether a foreign (CLI or legacy) listener is
+    holding the single-listener slot. Malformed, missing, or
+    stale-PID state files return ``(None, None)``.
+
+    Args:
+        qai_dir: Override ``~/.qai`` for testing.
+
+    Returns:
+        ``(managed_handle, foreign_record)``. At most one is non-``None``.
+    """
+    state, _warning = read_valid_state(qai_dir=qai_dir)
+    if state is None:
+        return None, None
+
+    if state.manager == MANAGER_WEB_UI:
+        handle = ManagedListenerHandle(
+            listener_id=_new_listener_id(),
+            pid=state.listener_pid,
+            public_url=state.public_url,
+            provider=state.provider,
+            local_host=state.local_host,
+            local_port=state.local_port,
+            instance_id=state.instance_id,
+            created_at=datetime.now(UTC).isoformat(),
+            state="adopted",
+        )
+        return handle, None
+
+    foreign = ForeignListenerRecord(
+        pid=state.listener_pid,
+        public_url=state.public_url,
+        provider=state.provider,
+        manager=state.manager,
+    )
+    return None, foreign
 
 
 # ---------------------------------------------------------------------------
@@ -585,10 +653,12 @@ def _maybe_delete_state_file(qai_dir: Path | None) -> None:
 
 __all__ = [
     "MANAGER_WEB_UI",
+    "ForeignListenerRecord",
     "ManagedListenerConflictError",
     "ManagedListenerHandle",
     "ManagedListenerStartupError",
     "ManagedListenerStuckStopError",
+    "detect_existing_listener",
     "start_managed_listener",
     "stop_managed_listener",
 ]

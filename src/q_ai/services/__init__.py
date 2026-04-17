@@ -2,20 +2,24 @@
 
 from q_ai.services.managed_listener import (
     MANAGER_WEB_UI,
+    ForeignListenerRecord,
     ManagedListenerConflictError,
     ManagedListenerHandle,
     ManagedListenerStartupError,
     ManagedListenerStuckStopError,
+    detect_existing_listener,
     start_managed_listener,
     stop_managed_listener,
 )
 
 __all__ = [
     "MANAGER_WEB_UI",
+    "ForeignListenerRecord",
     "ManagedListenerConflictError",
     "ManagedListenerHandle",
     "ManagedListenerStartupError",
     "ManagedListenerStuckStopError",
+    "detect_existing_listener",
     "start_managed_listener",
     "stop_managed_listener",
 ]
