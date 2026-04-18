@@ -79,7 +79,8 @@ class TestCloudflareAdapterDetection:
     def test_install_instructions_mentions_every_platform(self) -> None:
         text = CloudflareTunnelAdapter().install_instructions()
         assert "brew install cloudflared" in text
-        assert "apt install cloudflared" in text
+        assert "snap install cloudflared" in text
+        assert "pkg.cloudflare.com" in text
         assert "winget" in text or "scoop" in text
         assert "github.com/cloudflare/cloudflared" in text
 
