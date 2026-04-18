@@ -8,7 +8,13 @@ from typer.testing import CliRunner
 
 from q_ai.cli import app
 
-runner = CliRunner()
+# Disable Rich's ANSI coloring so substring assertions on --help output are
+# stable across Windows (no color) and Linux CI (color on by default). Rich
+# respects NO_COLOR; we also unset FORCE_COLOR and override TERM so no other
+# signal re-enables styling. Without this, option names like `--reps` render
+# as ANSI-split spans (`\x1b[...]--\x1b[...]-reps\x1b[...]`) and break
+# literal substring matches.
+runner = CliRunner(env={"NO_COLOR": "1", "FORCE_COLOR": None, "TERM": "dumb"})
 
 
 class TestSweepHelp:
@@ -18,6 +24,21 @@ class TestSweepHelp:
         result = runner.invoke(app, ["ipi", "sweep", "--help"])
         assert result.exit_code == 0
         assert "Examples" in result.output
+
+    def test_help_lists_required_flags(self) -> None:
+        result = runner.invoke(app, ["ipi", "sweep", "--help"])
+        assert result.exit_code == 0
+        for flag in (
+            "--model",
+            "--target",
+            "--templates",
+            "--styles",
+            "--payload-type",
+            "--reps",
+            "--dry-run",
+            "--export",
+        ):
+            assert flag in result.output, f"--help missing {flag}"
 
     def test_ipi_help_lists_sweep(self) -> None:
         result = runner.invoke(app, ["ipi", "--help"])
