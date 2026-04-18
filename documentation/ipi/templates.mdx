@@ -30,7 +30,7 @@ Templates are selected on the CLI via `--template` (case-insensitive) or through
 
 When `--payload-type callback` is combined with a **non-`obvious`** payload style, the template's `callback_role` noun phrase substitutes into the style frame's `{source}` slot. The agent-visible callback framing therefore references something that fits the surrounding document rather than a generic placeholder.
 
-- `obvious` style is unchanged across all templates. It is preserved as the control condition and as the Phase 4.4a baseline.
+- `obvious` style is unchanged across all templates. It is preserved as the template-substitution baseline and the Phase 4.4a baseline. The no-hiding control condition is a separate axis: `Technique.NONE`, documented at [Techniques → Control Condition](/ipi/techniques#control-condition-—-none).
 - Non-`callback` payload types (`exfil_summary`, `ssrf_internal`, `instruction_override`, etc.) have no `{source}` slot in their frames, so templates do not alter their text.
 
 **Worked example.** `--payload-style citation --template whois --payload-type callback` produces a citation-style callback framing whose `{source}` resolves to **the registrar enrichment feed** — so the hidden citation reads as a pointer into WHOIS registrar infrastructure rather than an anonymous URL.

@@ -157,15 +157,14 @@ The managed listener panel appears in the Operations / Runs view whenever the We
 
 **What it surfaces:**
 
-- Listener PID
-- Tunnel provider (`cloudflare` or `none`)
 - Public URL
-- Hits-received count
-- Uptime
+- Tunnel provider (`cloudflare`)
+- Listener PID
+- Creation timestamp
 
 **Teardown control**: the panel includes a control to stop the listener subprocess.
 
-**Lifecycle**: the listener is tied to the run. It is shut down gracefully when the workflow completes or when the operator triggers teardown from the panel.
+**Lifecycle**: the managed listener is **not** tied to the run's lifecycle. Workflow completion does **not** stop it — the listener (and its public tunnel) continues running until an operator clicks **Stop** on this panel. Tunnel exposure therefore persists past workflow completion; operators must explicitly tear it down when finished.
 
 **Crash handling**: a listener crash is surfaced as a failure state in the panel. The panel does **not** auto-restart crashed listeners — restarting is an operator action.
 

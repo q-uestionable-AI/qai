@@ -62,7 +62,7 @@ When `qai ipi generate` runs without an explicit callback, the callback URL is r
 3. `~/.qai/active-callback` state file (written by a tunneled listener — see [Remote callbacks via Cloudflare Tunnel](/ipi/callbacks#remote-callbacks-via-cloudflare-tunnel))
 4. Interactive prompt (TTY only)
 
-State-file auto-discovery prints a one-line `Using active callback: <url>` notice. If the file is missing, unreadable, or references a dead listener PID, it is ignored silently (or with a one-line warning for stale state) and resolution falls through to the interactive prompt.
+State-file auto-discovery prints a one-line `Using active callback: <url>` notice. If the file is missing, unreadable, or references a dead listener PID, it is ignored silently (or with a one-line warning for stale state) and resolution falls through to the interactive prompt. The interactive prompt only fires when stdin is a TTY — in non-interactive runs (CI, pipes, nohup), callers must pass `CALLBACK` or `--callback` explicitly, otherwise the command exits with an error.
 
 ### Technique Presets
 

@@ -55,11 +55,8 @@ brew install cloudflared
 ```
 
 ```bash Linux (Debian / Ubuntu)
-sudo apt install cloudflared
-```
-
-```bash Linux (Snap)
 sudo snap install cloudflared
+# For APT-based installs, see Cloudflare's official repo setup at https://pkg.cloudflare.com/
 ```
 
 ```bash Windows (winget)
@@ -116,7 +113,7 @@ In practice this means the same `citation` style reads differently depending on 
 
 The composition rules are:
 
-- `obvious` style is unchanged across all templates — it is the control condition and also the Phase 4.4a baseline preservation path.
+- `obvious` style is unchanged across all templates — it is the template-substitution baseline and the Phase 4.4a baseline preservation path. The no-hiding control condition is a separate axis: `Technique.NONE`, documented at [Techniques → Control Condition](/ipi/techniques#control-condition-—-none).
 - Non-`callback` payload types have no `{source}` slot in their frames, so templates do not alter their text.
 - The `generic` template's non-`obvious` styles substitute **the supplementary data appendix**.
 
@@ -191,11 +188,16 @@ All hits are stored in the IPI database tables within `~/.qai/qai.db`. Use `qai 
 
 ### Reading the Web UI hit feed
 
-The live hit feed in the Web UI surfaces three per-hit signals that help you decide whether a hit is genuine and which payload produced it:
+The live hit feed in the Web UI surfaces two per-hit signals plus one piece of campaign-inventory context that together help you decide whether a hit is genuine and which payload produced it:
+
+**Per-hit signals** (rendered on each hit row):
 
 1. **Confidence badge** (HIGH / MEDIUM / LOW) — see [Confidence Levels](#confidence-levels) above for the scoring rules.
 2. **Tunnel-source badge** (`tunnel` vs `direct`) — indicates whether `source_ip` was resolved from the `CF-Connecting-IP` header (forwarded through the Cloudflare tunnel) or taken directly from the TCP peer (non-tunnel direct connection).
-3. **Per-campaign inventory `template_id` column** — visible on the run's deployment playbook inventory table; shows which template produced the payload that generated the hit.
+
+**Campaign-inventory context** (not per hit):
+
+- **`template_id` column** — visible on the run's deployment playbook inventory table, one value per campaign (not per hit row). Shows which template produced the payload whose hits are landing in the feed.
 
 A tunneled run should show `tunnel` on every hit originating from a cloud target. A `direct` hit on a tunneled run is a signal worth investigating: it suggests either that the callback URL leaked to a different origin, or that the agent bypassed the expected ingress path.
 
