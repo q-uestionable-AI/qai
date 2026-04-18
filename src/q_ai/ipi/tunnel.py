@@ -48,8 +48,8 @@ cloudflared is not installed or not on PATH.
 
 Install cloudflared:
   macOS:   brew install cloudflared
-  Linux:   sudo apt install cloudflared       (Debian / Ubuntu)
-           sudo snap install cloudflared      (Snap)
+  Linux:   sudo snap install cloudflared      (Debian / Ubuntu via Snap)
+           For APT, see https://pkg.cloudflare.com/
   Windows: winget install --id Cloudflare.cloudflared
            scoop install cloudflared
 
