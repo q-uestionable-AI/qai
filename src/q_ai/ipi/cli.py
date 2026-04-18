@@ -484,14 +484,21 @@ def generate(
         ),
     ] = Path.home() / ".qai" / "payloads",
     format_name: Annotated[
-        str, typer.Option("--format", help="Output format (default: pdf)")
+        str,
+        typer.Option(
+            "--format",
+            help="Output format: pdf, image, markdown, html, docx, ics, eml (default: pdf)",
+        ),
     ] = "pdf",
     technique: Annotated[
         str,
         typer.Option(
             "--technique",
             "-t",
-            help="Technique(s): all, phase1, phase2, or specific names (comma-separated)",
+            help=(
+                "Technique(s): all, phase1, phase2, none (visible-payload control), "
+                "or specific names (comma-separated)"
+            ),
         ),
     ] = "all",
     payload_type: Annotated[
@@ -554,27 +561,9 @@ def generate(
     payloads using the specified technique(s). Each generated document
     is registered in the database for callback tracking.
 
-    Technique options:
-
-    \b
-    Presets:
-      all     - All techniques (Phase 1 + Phase 2)
-      phase1  - white_ink, off_canvas, metadata
-      phase2  - tiny_text, white_rect, form_field, annotation,
-                javascript, embedded_file, incremental
-
-    \b
-    Individual (or comma-separated):
-      white_ink      - White text on white background (Phase 1)
-      off_canvas     - Text at negative coordinates (Phase 1)
-      metadata       - Hidden in PDF metadata fields (Phase 1)
-      tiny_text      - 0.5pt font, below visual threshold (Phase 2)
-      white_rect     - Text covered by white rectangle (Phase 2)
-      form_field     - Hidden AcroForm field (Phase 2)
-      annotation     - PDF annotation/comment layer (Phase 2)
-      javascript     - PDF JavaScript action (Phase 2)
-      embedded_file  - Hidden file attachment (Phase 2)
-      incremental    - PDF incremental update section (Phase 2)
+    For the full technique list across all formats, run
+    'qai ipi techniques'. For supported output formats, run
+    'qai ipi formats'.
     """
     # Resolve callback:
     #   positional > --callback > active-callback state file > interactive prompt
@@ -676,7 +665,11 @@ def probe(
     ] = False,
     export: Annotated[
         Path | None,
-        typer.Option("--export", "-o", help="Write raw results JSON to this path."),
+        typer.Option(
+            "--export",
+            "-o",
+            help="Write scored-prompts JSON to this path (importable via 'qai import').",
+        ),
     ] = None,
 ) -> None:
     """Test model susceptibility to indirect prompt injection.
@@ -835,7 +828,11 @@ def _display_probe_results(run_result: ProbeRunResult, run_id: str) -> None:
 def techniques(
     format_name: Annotated[
         str | None,
-        typer.Option("--format", "-f", help="Filter by format (pdf, image, markdown)"),
+        typer.Option(
+            "--format",
+            "-f",
+            help="Filter by format: pdf, image, markdown, html, docx, ics, eml",
+        ),
     ] = None,
 ) -> None:
     """List all available hiding techniques.
