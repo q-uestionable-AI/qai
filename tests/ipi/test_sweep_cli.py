@@ -169,7 +169,7 @@ class TestSweepApiKey:
     """Tests for API key resolution — reuses the probe env var."""
 
     @patch("q_ai.ipi.sweep_service.run_sweep")
-    @patch("q_ai.ipi.cli.persist_sweep_run", create=True)
+    @patch("q_ai.ipi.sweep_service.persist_sweep_run")
     @patch.dict("os.environ", {"QAI_PROBE_API_KEY": "env-key"})
     def test_env_var_flows_to_run_sweep(
         self, _mock_persist: MagicMock, mock_run_sweep: MagicMock
@@ -182,7 +182,10 @@ class TestSweepApiKey:
 
         mock_run_sweep.side_effect = _fake_run
 
-        with patch("q_ai.ipi.cli.persist_sweep_run", return_value="fake-run-id"):
+        with patch(
+            "q_ai.ipi.sweep_service.persist_sweep_run",
+            return_value="fake-run-id",
+        ):
             result = runner.invoke(
                 app,
                 [

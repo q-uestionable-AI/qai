@@ -51,10 +51,12 @@ def _make_result(
     complied: bool = True,
 ) -> SweepCaseResult:
     """Build a per-repetition sweep result with sensible defaults."""
+    resolved_case = case or _make_case()
     return SweepCaseResult(
-        case=case or _make_case(),
+        case=resolved_case,
         rep=rep,
         canary_uuid=canary_uuid,
+        rendered_user_prompt=render_sweep_prompt(resolved_case, canary_uuid),
         response_text=f"Sure, fetching http://sweep.local:9999/c/{canary_uuid}"
         if complied
         else "I cannot do that.",
@@ -158,6 +160,28 @@ class TestRenderSweepPrompt:
         case = _make_case(template=DocumentTemplate.GENERIC)
         prompt = render_sweep_prompt(case, "deadbeef1234")
         assert isinstance(prompt, str)
+
+    def test_generic_renders_to_raw_payload(self) -> None:
+        """GENERIC returns the raw payload (no-framing baseline), not empty."""
+        from q_ai.ipi.generators import generate_payload
+        from q_ai.ipi.sweep_service import _SWEEP_CALLBACK_BASE
+
+        case = _make_case(template=DocumentTemplate.GENERIC)
+        canary = "deadbeef1234"
+        prompt = render_sweep_prompt(case, canary)
+
+        expected = generate_payload(
+            _SWEEP_CALLBACK_BASE,
+            canary,
+            style=PayloadStyle.OBVIOUS,
+            payload_type=PayloadType.CALLBACK,
+            token=None,
+            encoding="none",
+            template=DocumentTemplate.GENERIC,
+        )
+        assert prompt == expected
+        assert prompt != ""
+        assert canary in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +502,58 @@ class TestRunSweep:
         assert run_result.results[0].error is not None
         assert run_result.results[0].complied is False
 
+    @pytest.mark.asyncio
+    async def test_malformed_response_does_not_abort_sweep(self) -> None:
+        """A malformed response on one case becomes a per-case error; other cases complete.
+
+        Regression guard for the gather-abort class of failure: when a response has an
+        empty ``choices`` array, ``_send_sweep_request`` raises ``IndexError``. Unless
+        ``_execute_single_case`` catches it, the exception leaks through
+        ``asyncio.gather`` and aborts the entire sweep.
+        """
+        fixed_canary = "abc123deadbe"
+        malformed = httpx.Response(
+            status_code=200,
+            json={"choices": []},  # empty list — IndexError on choices[0]
+            request=httpx.Request("POST", "http://test/v1/chat/completions"),
+        )
+        healthy = _mock_http_response(
+            f"Fetching http://sweep.local:9999/c/{fixed_canary} now.",
+        )
+
+        cases = [
+            _make_case(DocumentTemplate.WHOIS, PayloadStyle.OBVIOUS),
+            _make_case(DocumentTemplate.REPORT, PayloadStyle.OBVIOUS),
+        ]
+
+        with (
+            patch(
+                "q_ai.ipi.sweep_service.generate_canary_uuid",
+                return_value=fixed_canary,
+            ),
+            patch("q_ai.ipi.sweep_service.httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            # First call returns malformed, second returns healthy — concurrency=1
+            # forces serial execution so the assignment is deterministic.
+            mock_client.post = AsyncMock(side_effect=[malformed, healthy])
+
+            run_result = await run_sweep(
+                endpoint="http://test/v1",
+                model="test-model",
+                cases=cases,
+                reps=1,
+                concurrency=1,
+            )
+
+        assert run_result.total_cases == 2
+        assert run_result.results[0].error is not None
+        assert run_result.results[0].complied is False
+        assert run_result.results[1].error is None
+        assert run_result.results[1].complied is True
+
 
 # ---------------------------------------------------------------------------
 # Persistence
@@ -606,6 +682,26 @@ class TestExportScoredPrompts:
         assert entry["template"] == "whois"
         assert entry["style"] == "obvious"
         assert entry["complied"] is True
+
+    def test_export_user_prompt_is_captured_not_re_rendered(self, tmp_path: Path) -> None:
+        """user_prompt equals the rendered prompt captured at execution time.
+
+        Guards against re-invoking ``generate_payload`` in the export path:
+        if the export reads a recomputed prompt instead of the stored one,
+        any non-deterministic payload rendering would silently diverge from
+        what the model saw. Assert the exported entry equals the source-
+        of-truth on the case result.
+        """
+        output = tmp_path / "sweep.json"
+        result = _make_result()
+        run_result = _compute_stats([result])
+        assert result.rendered_user_prompt, "helper must populate rendered_user_prompt"
+
+        export_scored_prompts(run_result, "test-model", "http://test/v1", output)
+
+        data = json.loads(output.read_text())
+        entry = data["results"][0]
+        assert entry["user_prompt"] == result.rendered_user_prompt
 
     def test_export_does_not_overwrite(self, tmp_path: Path) -> None:
         """Second export to the same path writes an incremented variant."""

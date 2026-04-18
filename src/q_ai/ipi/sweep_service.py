@@ -18,9 +18,11 @@ import json
 import logging
 import time
 import uuid as uuid_mod
+from collections.abc import Callable, Hashable
 from dataclasses import dataclass, field
 from itertools import product
 from pathlib import Path
+from typing import TypeVar
 
 import httpx
 
@@ -104,6 +106,10 @@ class SweepCaseResult:
         case: The (template, style, payload_type) tuple being measured.
         rep: 1-indexed repetition number within the case.
         canary_uuid: Per-repetition canary embedded in the rendered payload.
+        rendered_user_prompt: The exact user-message string sent to the
+            model. Captured at request time so the scored-prompts export
+            reproduces what the model saw without re-invoking
+            ``generate_payload`` (which is not a stability contract).
         response_text: Raw model response (empty on error).
         complied: Whether the model surfaced the callback URL (url_present).
         url_present: Whether the canary UUID appears in the response.
@@ -116,6 +122,7 @@ class SweepCaseResult:
     case: SweepCase
     rep: int
     canary_uuid: str
+    rendered_user_prompt: str = ""
     response_text: str = ""
     complied: bool = False
     url_present: bool = False
@@ -279,6 +286,12 @@ def render_sweep_prompt(case: SweepCase, canary_uuid: str) -> str:
         template=case.template,
     )
 
+    # Templates with no surrounding context (notably GENERIC) should send the
+    # raw payload as the user message — that's the "no document framing"
+    # baseline condition, not an empty prompt bug.
+    if not spec.context_template.strip():
+        return payload
+
     rendered_body = spec.context_template.replace("{payload}", payload)
     if spec.top_instruction:
         return spec.top_instruction + rendered_body
@@ -369,7 +382,11 @@ async def _send_sweep_request(
 
     Raises:
         httpx.HTTPStatusError: On non-2xx response.
-        KeyError: If response JSON is malformed.
+        ValueError: If the response body is not valid JSON
+            (``json.JSONDecodeError`` is a ``ValueError`` subclass).
+        TypeError: If the top-level JSON is not a mapping.
+        KeyError: If ``choices`` / ``message`` / ``content`` are missing.
+        IndexError: If ``choices`` is an empty list.
     """
     url = f"{endpoint.rstrip('/')}/chat/completions"
     payload = {
@@ -429,7 +446,7 @@ async def _execute_single_case(  # noqa: PLR0913 — single-case executor needs 
             temperature=temperature,
             api_key=api_key,
         )
-    except (httpx.HTTPError, KeyError, TypeError) as exc:
+    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
         logger.warning(
             "Sweep case %s/%s rep %d failed: %s",
             case.template.value,
@@ -441,6 +458,7 @@ async def _execute_single_case(  # noqa: PLR0913 — single-case executor needs 
             case=case,
             rep=rep,
             canary_uuid=canary_uuid,
+            rendered_user_prompt=prompt,
             error=str(exc),
         )
 
@@ -449,6 +467,7 @@ async def _execute_single_case(  # noqa: PLR0913 — single-case executor needs 
         case=case,
         rep=rep,
         canary_uuid=canary_uuid,
+        rendered_user_prompt=prompt,
         response_text=response_text,
         complied=scored["complied"],
         url_present=scored["url_present"],
@@ -515,6 +534,36 @@ async def run_sweep(  # noqa: PLR0913 — sweep executor exposes each independen
 # Stats aggregation
 # ---------------------------------------------------------------------------
 
+_K = TypeVar("_K", bound=Hashable)
+_T = TypeVar("_T")
+
+
+def _group_and_aggregate(
+    results: list[SweepCaseResult],
+    key_fn: Callable[[SweepCaseResult], _K],
+    stats_ctor: Callable[[_K, list[SweepCaseResult]], _T],
+) -> dict[_K, _T]:
+    """Group case results by ``key_fn`` and aggregate each group via ``stats_ctor``.
+
+    Preserves insertion order of keys (Python dicts since 3.7) so downstream
+    consumers see deterministic ordering derived from the input result list.
+
+    Args:
+        results: Per-repetition sweep results.
+        key_fn: Maps a result to its grouping key.
+        stats_ctor: Builds the per-group stats object from ``(key, group)``.
+
+    Returns:
+        Insertion-ordered mapping from key to stats object.
+    """
+    groups: dict[_K, list[SweepCaseResult]] = {}
+    for r in results:
+        k = key_fn(r)
+        if k not in groups:
+            groups[k] = []
+        groups[k].append(r)
+    return {k: stats_ctor(k, group) for k, group in groups.items()}
+
 
 def _compute_stats(results: list[SweepCaseResult]) -> SweepRunResult:
     """Aggregate per-case results into per-template, per-style, and
@@ -526,64 +575,53 @@ def _compute_stats(results: list[SweepCaseResult]) -> SweepRunResult:
     Returns:
         Fully populated ``SweepRunResult``.
     """
-    template_order: list[DocumentTemplate] = []
-    by_template: dict[DocumentTemplate, list[SweepCaseResult]] = {}
-    style_order: list[PayloadStyle] = []
-    by_style: dict[PayloadStyle, list[SweepCaseResult]] = {}
-    combo_order: list[tuple[DocumentTemplate, PayloadStyle]] = []
-    by_combo: dict[tuple[DocumentTemplate, PayloadStyle], list[SweepCaseResult]] = {}
 
-    for r in results:
-        tmpl = r.case.template
-        sty = r.case.style
-        key = (tmpl, sty)
-
-        if tmpl not in by_template:
-            template_order.append(tmpl)
-            by_template[tmpl] = []
-        by_template[tmpl].append(r)
-
-        if sty not in by_style:
-            style_order.append(sty)
-            by_style[sty] = []
-        by_style[sty].append(r)
-
-        if key not in by_combo:
-            combo_order.append(key)
-            by_combo[key] = []
-        by_combo[key].append(r)
-
-    template_stats = [
-        TemplateStats(
-            template=t,
-            total=len(by_template[t]),
-            complied=sum(1 for r in by_template[t] if r.complied),
-            rate=_rate(by_template[t]),
-            severity=severity_from_compliance_rate(_rate(by_template[t])),
+    def _template_stats(template: DocumentTemplate, group: list[SweepCaseResult]) -> TemplateStats:
+        rate = _rate(group)
+        return TemplateStats(
+            template=template,
+            total=len(group),
+            complied=sum(1 for r in group if r.complied),
+            rate=rate,
+            severity=severity_from_compliance_rate(rate),
         )
-        for t in template_order
-    ]
-    style_stats = [
-        StyleStats(
-            style=s,
-            total=len(by_style[s]),
-            complied=sum(1 for r in by_style[s] if r.complied),
-            rate=_rate(by_style[s]),
-            severity=severity_from_compliance_rate(_rate(by_style[s])),
+
+    def _style_stats(style: PayloadStyle, group: list[SweepCaseResult]) -> StyleStats:
+        rate = _rate(group)
+        return StyleStats(
+            style=style,
+            total=len(group),
+            complied=sum(1 for r in group if r.complied),
+            rate=rate,
+            severity=severity_from_compliance_rate(rate),
         )
-        for s in style_order
-    ]
-    combination_stats = [
-        CombinationStats(
-            template=t,
-            style=s,
-            total=len(by_combo[(t, s)]),
-            complied=sum(1 for r in by_combo[(t, s)] if r.complied),
-            rate=_rate(by_combo[(t, s)]),
-            severity=severity_from_compliance_rate(_rate(by_combo[(t, s)])),
+
+    def _combination_stats(
+        key: tuple[DocumentTemplate, PayloadStyle],
+        group: list[SweepCaseResult],
+    ) -> CombinationStats:
+        rate = _rate(group)
+        template, style = key
+        return CombinationStats(
+            template=template,
+            style=style,
+            total=len(group),
+            complied=sum(1 for r in group if r.complied),
+            rate=rate,
+            severity=severity_from_compliance_rate(rate),
         )
-        for (t, s) in combo_order
-    ]
+
+    template_dict = _group_and_aggregate(
+        results, key_fn=lambda r: r.case.template, stats_ctor=_template_stats
+    )
+    style_dict = _group_and_aggregate(
+        results, key_fn=lambda r: r.case.style, stats_ctor=_style_stats
+    )
+    combination_dict = _group_and_aggregate(
+        results,
+        key_fn=lambda r: (r.case.template, r.case.style),
+        stats_ctor=_combination_stats,
+    )
 
     total = len(results)
     complied = sum(1 for r in results if r.complied)
@@ -591,9 +629,9 @@ def _compute_stats(results: list[SweepCaseResult]) -> SweepRunResult:
 
     return SweepRunResult(
         results=results,
-        template_stats=template_stats,
-        style_stats=style_stats,
-        combination_stats=combination_stats,
+        template_stats=list(template_dict.values()),
+        style_stats=list(style_dict.values()),
+        combination_stats=list(combination_dict.values()),
         total_cases=total,
         total_complied=complied,
         overall_rate=overall_rate,
@@ -887,7 +925,7 @@ def _build_scored_entry(result: SweepCaseResult) -> dict:
         "category": template_value,
         "description": f"Sweep {template_value} / {style_value} (rep {result.rep})",
         "system_prompt": "",
-        "user_prompt": render_sweep_prompt(result.case, result.canary_uuid),
+        "user_prompt": result.rendered_user_prompt,
         "canary": result.canary_uuid,
         "response_text": result.response_text,
         "complied": result.complied,
