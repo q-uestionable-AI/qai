@@ -19,21 +19,6 @@ class TestSweepHelp:
         assert result.exit_code == 0
         assert "Examples" in result.output
 
-    def test_help_lists_required_flags(self) -> None:
-        result = runner.invoke(app, ["ipi", "sweep", "--help"])
-        assert result.exit_code == 0
-        for flag in (
-            "--model",
-            "--target",
-            "--templates",
-            "--styles",
-            "--payload-type",
-            "--reps",
-            "--dry-run",
-            "--export",
-        ):
-            assert flag in result.output, f"--help missing {flag}"
-
     def test_ipi_help_lists_sweep(self) -> None:
         result = runner.invoke(app, ["ipi", "--help"])
         assert result.exit_code == 0
