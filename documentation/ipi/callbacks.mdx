@@ -41,6 +41,86 @@ Callbacks can also arrive without a token (at the `/c/<uuid>` path). These are s
 
 ---
 
+## Remote callbacks via Cloudflare Tunnel
+
+Local testing works when the agent runs on the same machine as the listener. Cloud, SaaS, and remote-GPU targets cannot reach a `localhost` URL. qai integrates Cloudflare Quick Tunnel as the first-class remote-reachability path for the callback listener.
+
+### Installing cloudflared
+
+The tunnel subprocess is driven by the `cloudflared` CLI. Install it with one of the following, depending on platform:
+
+<CodeGroup>
+```bash macOS
+brew install cloudflared
+```
+
+```bash Linux (Debian / Ubuntu)
+sudo snap install cloudflared
+# For APT-based installs, see Cloudflare's official repo setup at https://pkg.cloudflare.com/
+```
+
+```bash Windows (winget)
+winget install --id Cloudflare.cloudflared
+```
+
+```bash Windows (Scoop)
+scoop install cloudflared
+```
+</CodeGroup>
+
+Prebuilt binaries are also available from the upstream releases page: `https://github.com/cloudflare/cloudflared/releases/latest`.
+
+### Starting the tunneled listener
+
+```bash
+qai ipi listen --tunnel cloudflare
+```
+
+On start-up, qai launches the `cloudflared` subprocess, waits for it to announce a public HTTPS URL (`https://<subdomain>.trycloudflare.com`), and prints a tunnel-active confirmation with the callback-URL template. In parallel it writes a JSON state file at `~/.qai/active-callback` containing the listener PID, local bind host/port, public URL, provider name, and an instance ID. The tunnel subprocess is torn down and the state file removed when the listener exits.
+
+### Auto-discovery on generate
+
+```bash
+qai ipi generate
+```
+
+When `--callback` and the positional argument are both omitted, `qai ipi generate` reads `~/.qai/active-callback` and auto-populates the callback URL. A one-line notice prints so you can see which URL was picked up:
+
+```
+Using active callback: https://<subdomain>.trycloudflare.com (cloudflare tunnel)
+```
+
+If the state file is present but its PID no longer exists (the listener crashed or was killed), `generate` ignores the file, prints a one-line stale-state warning, and falls through to the interactive prompt. The next `listen --tunnel` overwrites the stale file.
+
+### When to use tunnel mode
+
+- **Local Ollama / LM Studio / same-machine LibreChat** — no tunnel needed; `http://localhost:8080` is reachable.
+- **Cloud-hosted LibreChat / Dify / remote SaaS targets** — tunnel required; the target cannot reach your localhost.
+
+### Advanced setups
+
+Cloudflare Quick Tunnels produce an ephemeral URL that changes on every restart. If you need a stable URL or a different tunnel topology, consider these alternatives (not covered in this guide):
+
+- **Named Cloudflare tunnels** — require a Cloudflare account and produce stable, reusable hostnames.
+- **SSH reverse tunnels** — forward a remote host's port into your listener over SSH.
+- **VPS deployment** — run the listener on a publicly-addressable VPS.
+
+### Template-aware callback framing
+
+When a `callback` payload is rendered with a document-context template and a non-`obvious` style, the template's `callback_role` noun phrase substitutes into the style frame's `{source}` slot. The agent-visible callback framing therefore references something that fits the surrounding document rather than a generic placeholder.
+
+In practice this means the same `citation` style reads differently depending on the template. A `citation` + `whois` campaign renders the callback as **the registrar enrichment feed**; a `compliance` + `legal_snippet` campaign renders it as **the cited legal authority**. Both are drawn directly from the per-template `callback_role` entries in the registry.
+
+The composition rules are:
+
+- `obvious` style is unchanged across all templates — it is the template-substitution baseline and the Phase 4.4a baseline preservation path. The no-hiding control condition is a separate axis: `Technique.NONE`, documented at [Techniques → Control Condition](/ipi/techniques#control-condition-—-none).
+- Non-`callback` payload types have no `{source}` slot in their frames, so templates do not alter their text.
+- The `generic` template's non-`obvious` styles substitute **the supplementary data appendix**.
+
+The full list of `callback_role` phrases per template is in the [Template Catalog](/ipi/templates).
+
+---
+
 ## Confidence Levels
 
 The listener scores each hit based on two signals: token validity and User-Agent analysis.
@@ -106,6 +186,21 @@ Each hit records the following evidence:
 
 All hits are stored in the IPI database tables within `~/.qai/qai.db`. Use `qai ipi export` to extract data as JSON for external analysis.
 
+### Reading the Web UI hit feed
+
+The live hit feed in the Web UI surfaces two per-hit signals plus one piece of campaign-inventory context that together help you decide whether a hit is genuine and which payload produced it:
+
+**Per-hit signals** (rendered on each hit row):
+
+1. **Confidence badge** (HIGH / MEDIUM / LOW) — see [Confidence Levels](#confidence-levels) above for the scoring rules.
+2. **Tunnel-source badge** (`tunnel` vs `direct`) — indicates whether `source_ip` was resolved from the `CF-Connecting-IP` header (forwarded through the Cloudflare tunnel) or taken directly from the TCP peer (non-tunnel direct connection).
+
+**Campaign-inventory context** (not per hit):
+
+- **`template_id` column** — visible on the run's deployment playbook inventory table, one value per campaign (not per hit row). Shows which template produced the payload whose hits are landing in the feed.
+
+A tunneled run should show `tunnel` on every hit originating from a cloud target. A `direct` hit on a tunneled run is a signal worth investigating: it suggests either that the callback URL leaked to a different origin, or that the agent bypassed the expected ingress path.
+
 ---
 
 ## Listener Address
@@ -114,18 +209,4 @@ The callback URL embedded in payloads must be reachable from the target system. 
 
 - **Local testing:** `http://localhost:8080` works when the agent runs on the same machine
 - **Network testing:** Use your machine's LAN IP (e.g., `http://192.168.1.100:8080`)
-- **Cloud targets:** The listener needs a public IP or a tunneling service
-
-<Tip>
-For testing against cloud-hosted AI systems, use a tunneling service like ngrok or Cloudflare Tunnel to expose your local listener:
-
-```bash
-# Start the listener
-qai ipi listen --port 8080
-
-# In another terminal, expose it
-ngrok http 8080
-```
-
-Then use the ngrok URL as your `--callback` address when generating payloads.
-</Tip>
+- **Cloud targets:** Run the listener behind a Cloudflare Tunnel — see [Remote callbacks via Cloudflare Tunnel](#remote-callbacks-via-cloudflare-tunnel) above.

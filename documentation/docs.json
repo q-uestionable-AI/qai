@@ -95,6 +95,7 @@
           "ipi/cli",
           "ipi/techniques",
           "ipi/formats",
+          "ipi/templates",
           "ipi/payloads",
           "ipi/callbacks",
           "ipi/deployment-playbook"

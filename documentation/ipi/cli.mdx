@@ -50,6 +50,19 @@ Creates one or more documents containing hidden prompt injection payloads using 
 | `--name`, `-n` | TEXT | No | `report` | Base filename |
 | `--dangerous` | FLAG | No | `false` | Enable non-callback payload types (exfil, ssrf, override, etc.) |
 | `--seed` | INT | No | — | Seed for deterministic UUID/token generation (reproducible corpus) |
+| `--template` | TEXT | No | `generic` | Document-context template for payload framing. Case-insensitive. Valid values are the 12 templates listed in the [Template Catalog](/ipi/templates). |
+| `--encoding` | TEXT | No | `none` | Payload URL encoding. Choices: `none`, `base16`, `hex`. Non-default values obfuscate the payload text. |
+
+### Callback Resolution Order
+
+When `qai ipi generate` runs without an explicit callback, the callback URL is resolved in the following order:
+
+1. Positional `CALLBACK` argument
+2. `--callback` / `-c` flag
+3. `~/.qai/active-callback` state file (written by a tunneled listener — see [Remote callbacks via Cloudflare Tunnel](/ipi/callbacks#remote-callbacks-via-cloudflare-tunnel))
+4. Interactive prompt (TTY only)
+
+State-file auto-discovery prints a one-line `Using active callback: <url>` notice. If the file is missing, unreadable, or references a dead listener PID, it is ignored silently (or with a one-line warning for stale state) and resolution falls through to the interactive prompt. The interactive prompt only fires when stdin is a TTY — in non-interactive runs (CI, pipes, nohup), callers must pass `CALLBACK` or `--callback` explicitly, otherwise the command exits with an error.
 
 ### Technique Presets
 
@@ -226,6 +239,7 @@ Launches the FastAPI server that receives and logs callback requests from AI age
 | `--port`, `-p` | INT | No | `8080` | Port to listen on |
 | `--host`, `-h` | TEXT | No | `127.0.0.1` | Host to bind to |
 | `--notify-url` | TEXT | No | `http://127.0.0.1:8899` | Main qai server URL for hit notifications |
+| `--tunnel` | TEXT | No | — | Expose the listener via a public tunnel. Supported provider: `cloudflare`. Spawns a provider tunnel subprocess, writes `~/.qai/active-callback` state for cross-process discovery, and records forwarded client IPs via `CF-Connecting-IP` headers. See [Remote callbacks via Cloudflare Tunnel](/ipi/callbacks#remote-callbacks-via-cloudflare-tunnel). |
 
 ### Examples
 

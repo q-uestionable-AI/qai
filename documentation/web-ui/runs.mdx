@@ -91,6 +91,10 @@ Indirect prompt injection results with guidance blocks for deployment mitigation
 
 **Guidance blocks** provide step-by-step remediations organized by playbook section (detection, response, prevention).
 
+**Per-campaign inventory `template_id` column**: the deployment playbook inventory table shows a template_id badge per payload (e.g., `whois`, `email`, `generic`) or `—` for pre-migration runs created before the template system shipped. See the [Template Catalog](/ipi/templates) for the full list of template IDs.
+
+**Tunnel-source badge on hit feed rows**: each live hit row displays a small badge indicating how `source_ip` was resolved — `tunnel` (forwarded via `CF-Connecting-IP`) or `direct` (TCP peer). The badges follow existing badge styling conventions: `badge-outline` for tunnel, `badge-ghost` for direct.
+
 ### CXP Tab
 
 Context file poisoning results with deployment playbooks.
@@ -146,6 +150,27 @@ For in-progress runs, the status bar shows:
 - **Waiting banner** (if applicable): Indicates a paused run awaiting user input or external callback
 
 A **Resume** button appears if the run is waiting for user action.
+
+### Managed listener panel
+
+The managed listener panel appears in the Operations / Runs view whenever the Web UI has spawned a managed callback listener (via the launcher's **Use tunnel** toggle).
+
+**What it surfaces:**
+
+- Public URL
+- Tunnel provider (`cloudflare`)
+- Listener PID
+- Creation timestamp
+
+**Teardown control**: the panel includes a control to stop the listener subprocess.
+
+**Lifecycle**: the managed listener is **not** tied to the run's lifecycle. Workflow completion does **not** stop it — the listener (and its public tunnel) continues running until an operator clicks **Stop** on this panel. Tunnel exposure therefore persists past workflow completion; operators must explicitly tear it down when finished.
+
+**Crash handling**: a listener crash is surfaced as a failure state in the panel. The panel does **not** auto-restart crashed listeners — restarting is an operator action.
+
+**Concurrency**: the managed-listener machinery enforces a single-listener invariant. Attempting to start a second managed listener while one is already active fails loudly with a user-facing error.
+
+**Server restart**: on server restart, the managed-listener machinery re-attaches to a running subprocess by reading the `~/.qai/active-callback` state file written by the existing listener. See [callbacks → auto-discovery on generate](/ipi/callbacks#auto-discovery-on-generate) for the state-file semantics.
 
 ## Concurrent Runs
 

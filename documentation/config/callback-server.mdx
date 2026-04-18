@@ -92,6 +92,16 @@ If WebSocket hit notifications stop working, delete `~/.qai/bridge.token` and re
 
 The server exposes a health endpoint at `/health` that returns `{"status": "ok"}`.
 
+## Public exposure and tunnel mode
+
+When the listener runs with `--tunnel cloudflare` (see [Remote callbacks via Cloudflare Tunnel](/ipi/callbacks#remote-callbacks-via-cloudflare-tunnel)), a few behaviors differ from a bare listener bound to `127.0.0.1` or a plain `--host 0.0.0.0`.
+
+**Forwarded-header trust**. In tunnel mode the server resolves each hit's `source_ip` from the `CF-Connecting-IP` header rather than the TCP peer. This trust is scoped to tunnel mode only — a bare `--host 0.0.0.0` listener does **not** trust forwarded headers.
+
+**Hardening in tunnel mode**. Tunneled listeners activate defensive measures against public-internet exposure: request body size limits, per-peer rate limiting, and a startup warning banner. These are defaults for tunnel mode and cannot be silently disabled.
+
+**State file permissions**. The `~/.qai/active-callback` state file is created with mode `0o600` on POSIX (owner read/write only). Windows has no direct equivalent; on Windows the file is protected only by the default user profile ACL. This is best-effort and is called out here as an explicit known limitation, not a hardening claim.
+
 ## Network Considerations
 
 <Warning>
