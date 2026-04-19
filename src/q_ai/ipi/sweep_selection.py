@@ -249,9 +249,13 @@ def _age_in_days(completed_at: datetime.datetime, now: datetime.datetime) -> int
 def _most_recent_completed_run(conn: sqlite3.Connection, target_id: str) -> Run | None:
     """Return the newest completed ipi-sweep run for a target, or None.
 
-    Prefers ``finished_at`` as the ordering key (brief's staleness clock
-    source) with ``started_at`` used as a deterministic tiebreaker for
-    the rare case where two runs share the same finish timestamp.
+    Sorts on ``finished_at`` (the brief's staleness clock source),
+    normalized to UTC-aware so legacy rows written before the UTC
+    pipeline do not raise ``TypeError`` when compared with current-format
+    rows. No Python-level tiebreaker: :func:`list_runs` already orders by
+    ``started_at DESC`` at the SQL layer and Python's ``list.sort`` is
+    stable, so that ordering survives the finish-timestamp sort when two
+    runs share a ``finished_at``.
 
     Args:
         conn: Active database connection.
@@ -269,8 +273,27 @@ def _most_recent_completed_run(conn: sqlite3.Connection, target_id: str) -> Run 
     eligible = [r for r in runs if r.finished_at is not None]
     if not eligible:
         return None
-    eligible.sort(key=lambda r: (r.finished_at, r.started_at), reverse=True)
+    eligible.sort(key=_completed_run_sort_key, reverse=True)
     return eligible[0]
+
+
+def _completed_run_sort_key(run: Run) -> datetime.datetime:
+    """Sort-key helper: ``finished_at`` coerced to UTC-aware.
+
+    Callers filter out ``finished_at is None`` before invoking this, but
+    mypy cannot propagate that filter into the sort's lambda; falling
+    back to ``datetime.min`` keeps the sort total-ordered even if a
+    caller ever forgets to filter.
+
+    Args:
+        run: The run whose ordering key to compute.
+
+    Returns:
+        UTC-aware datetime suitable as a sort key.
+    """
+    if run.finished_at is None:
+        return datetime.datetime.min.replace(tzinfo=datetime.UTC)
+    return _as_utc(run.finished_at)
 
 
 def _max_rate_per_template(conn: sqlite3.Connection, run_id: str) -> dict[DocumentTemplate, float]:
