@@ -192,6 +192,105 @@
             </form>
         </div>
 
+        {# ════════════════════════════════════════════════════════
+           Sweep Card
+           ════════════════════════════════════════════════════════ #}
+        <div class="intel-card" id="card-sweep">
+            <div class="intel-card-header">
+                <div class="intel-card-bar"></div>
+                <span class="intel-card-name">Sweep</span>
+            </div>
+            <p class="intel-card-desc">
+                Measure per-template compliance on a target model to inform
+                <code class="text-xs">qai ipi generate --target</code> auto-select.
+            </p>
+
+            <form id="form-sweep" onsubmit="return launchSweep(event)" class="space-y-4">
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Endpoint URL</span></label>
+                    <input type="url" name="endpoint" required
+                           placeholder="http://localhost:8000/v1"
+                           class="input input-bordered input-sm w-full" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Model</span></label>
+                    <input type="text" name="model" required
+                           placeholder="gpt-4o-mini"
+                           class="input input-bordered input-sm w-full" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">API Key (optional)</span></label>
+                    <input type="password" name="api_key"
+                           placeholder="sk-..."
+                           class="input input-bordered input-sm w-full"
+                           autocomplete="off" />
+                </div>
+
+                <div class="flex gap-4">
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Temperature</span></label>
+                        <input type="number" name="temperature" value="0.0"
+                               min="0" max="2" step="0.1"
+                               class="input input-bordered input-sm w-24" />
+                    </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Concurrency</span></label>
+                        <input type="number" name="concurrency" value="1"
+                               min="1" max="10"
+                               class="input input-bordered input-sm w-24" />
+                    </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Reps</span></label>
+                        <input type="number" name="reps" value="3"
+                               min="1" max="20"
+                               class="input input-bordered input-sm w-24" />
+                    </div>
+                </div>
+
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Templates (Ctrl/Cmd-click to deselect)</span>
+                    </label>
+                    <select name="templates" multiple size="6"
+                            class="select select-bordered select-sm w-full">
+                        {% for t in sweep_templates %}
+                        <option value="{{ t }}" selected>{{ t }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Styles (Ctrl/Cmd-click to deselect)</span>
+                    </label>
+                    <select name="styles" multiple size="5"
+                            class="select select-bordered select-sm w-full">
+                        {% for s in sweep_styles %}
+                        <option value="{{ s }}" selected>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Target (optional)</span></label>
+                    <select name="target_id" class="select select-bordered select-sm w-full">
+                        <option value="">No target</option>
+                        {% for t in targets %}
+                        <option value="{{ t.id }}">{{ t.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <input type="hidden" name="payload_type" value="callback" />
+
+                <button type="submit" class="btn btn-sm btn-launch">Launch Sweep</button>
+
+                <div id="sweep-error" class="text-sm hidden" style="color: #f87171;"></div>
+            </form>
+        </div>
+
     </div>{# /intel-cards #}
 </div>
 
@@ -495,6 +594,78 @@ async function launchProbe(e) {
         errEl.classList.remove('hidden');
     } finally {
         _probeInFlight = false;
+        if (btn) btn.disabled = false;
+    }
+    return false;
+}
+
+/* ── Sweep: Launch ───────────────────────────────────────────── */
+var _sweepInFlight = false;
+async function launchSweep(e) {
+    e.preventDefault();
+    if (_sweepInFlight) return false;
+
+    var form = document.getElementById('form-sweep');
+    var errEl = document.getElementById('sweep-error');
+    var btn = form.querySelector('button[type="submit"]');
+
+    errEl.classList.add('hidden');
+    _sweepInFlight = true;
+    if (btn) btn.disabled = true;
+
+    try {
+        var templatesSel = form.querySelector('select[name="templates"]');
+        var stylesSel = form.querySelector('select[name="styles"]');
+        var templates = Array.from(templatesSel.selectedOptions).map(function(o) {
+            return o.value;
+        });
+        var styles = Array.from(stylesSel.selectedOptions).map(function(o) {
+            return o.value;
+        });
+
+        if (!templates.length) {
+            errEl.textContent = 'Select at least one template.';
+            errEl.classList.remove('hidden');
+            return false;
+        }
+        if (!styles.length) {
+            errEl.textContent = 'Select at least one style.';
+            errEl.classList.remove('hidden');
+            return false;
+        }
+
+        var data = {
+            endpoint: form.querySelector('input[name="endpoint"]').value,
+            model: form.querySelector('input[name="model"]').value,
+            api_key: form.querySelector('input[name="api_key"]').value,
+            target_id: form.querySelector('select[name="target_id"]').value,
+            temperature: parseFloat(form.querySelector('input[name="temperature"]').value) || 0.0,
+            concurrency: parseInt(form.querySelector('input[name="concurrency"]').value, 10) || 1,
+            reps: parseInt(form.querySelector('input[name="reps"]').value, 10) || 3,
+            templates: templates,
+            styles: styles,
+            payload_type: 'callback',
+        };
+        if (!data.api_key) delete data.api_key;
+        if (!data.target_id) delete data.target_id;
+
+        var resp = await fetch('/api/intel/sweep/launch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+        });
+        var result = await resp.json();
+        if (resp.ok) {
+            window.location.href = result.redirect;
+        } else {
+            errEl.textContent = result.detail || 'Sweep launch failed';
+            errEl.classList.remove('hidden');
+        }
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+    } finally {
+        _sweepInFlight = false;
         if (btn) btn.disabled = false;
     }
     return false;

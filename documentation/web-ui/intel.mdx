@@ -63,8 +63,55 @@ Probing runs 20 built-in probes across 8 IPI categories with canary-based scorin
 The API key entered in the Probe form is used only for the probe request and is not logged or stored in the database. It is passed to the background task in memory and discarded after probing completes.
 </Note>
 
+## Sweep Card
+
+Measure per-template compliance on a target model. This is the Web UI equivalent of `qai ipi sweep`. Sweep results feed the auto-select in `qai ipi generate --target`.
+
+### Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| Endpoint URL | Yes | OpenAI-compatible API base URL |
+| Model | Yes | Model name for chat completions |
+| API Key | No | Bearer token — in-memory only |
+| Temperature | No | Default `0.0` |
+| Concurrency | No | Default `1` |
+| Reps | No | Repetitions per (template, style) — default `3` |
+| Templates | Yes | Multi-select; all 12 templates selected by default (Ctrl/Cmd-click to deselect) |
+| Styles | Yes | Multi-select; all 7 styles selected by default |
+| Target | No | Associate the run with a target for sweep-aware auto-select |
+| Payload Type | — | Fixed to `callback` in v1 |
+
+### Workflow
+
+1. Fill endpoint and model, adjust templates/styles as needed
+2. **Launch Sweep** — the sweep runs as a fire-and-forget background task
+3. When a target is set, the browser redirects to that target's detail page; otherwise it lands on `/intel`
+4. The completed sweep appears in the target's **Sweep Runs** section on the next page load
+
+<Note>
+Launch responses do not include a `run_id`. The run row is created inside `persist_sweep_run` after the sweep HTTP calls complete — that is, after the 202 response is sent. Refresh the target detail page to see the completed run.
+</Note>
+
+### API Endpoint
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/intel/sweep/launch` | Launch sweep as background task, returns 202 |
+
+## Target Detail Page — Sweep Runs Section
+
+The per-target detail page at `/intel/targets/<target_id>` renders three evidence sections. The **Sweep Runs** section lists every `ipi-sweep` run for the target, most recent first.
+
+- When at least one sweep exists, a summary line under the section header reports the latest sweep's age, template count, style count, `N` (reps), and completion status.
+- Each row is a clickable link to `/runs?run_id=<id>`, anchored as `#sweep-run-<id>` for direct deep-linking.
+- Empty targets show a link back to the Sweep card on `/intel`.
+
+See [IPI Sweep CLI](/ipi/cli#sweep) for the underlying sweep semantics — the Web UI uses the same persistence layer.
+
 ## Next Steps
 
 - [IPI Probe CLI](/ipi/cli#probe) — CLI reference for `qai ipi probe`
+- [IPI Sweep CLI](/ipi/cli#sweep) — CLI reference for `qai ipi sweep`
 - [Import Overview](/imports/overview) — Supported formats and taxonomy bridging
-- [Runs](/web-ui/runs) — View probe and import results
+- [Runs](/web-ui/runs) — View probe, sweep, and import results

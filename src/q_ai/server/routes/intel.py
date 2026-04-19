@@ -18,9 +18,11 @@ from q_ai.server.routes._shared import (
     logger,
 )
 from q_ai.services.run_service import (
+    SweepRunSummary,
     TargetOverviewRow,
     TargetsOverviewResult,
     query_target_overview_by_id,
+    query_target_sweep_runs,
     query_targets_overview,
 )
 
@@ -32,6 +34,8 @@ _background_tasks: set[asyncio.Task[None]] = set()
 @router.get("/intel")
 async def intel_page(request: Request) -> HTMLResponse:
     """Render the Intel landing page — target list with evidence summary."""
+    from q_ai.ipi.models import DocumentTemplate, PayloadStyle
+
     templates = _get_templates(request)
     db_path = _get_db_path(request)
 
@@ -45,7 +49,13 @@ async def intel_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "intel.html",
-        {"active": "intel", "overview": overview, "targets": targets},
+        {
+            "active": "intel",
+            "overview": overview,
+            "targets": targets,
+            "sweep_templates": [t.value for t in DocumentTemplate],
+            "sweep_styles": [s.value for s in PayloadStyle],
+        },
     )
 
 
@@ -59,18 +69,22 @@ async def intel_target_detail(request: Request, target_id: str) -> HTMLResponse:
     templates = _get_templates(request)
     db_path = _get_db_path(request)
 
-    def _load_row() -> TargetOverviewRow | None:
+    def _load_detail() -> tuple[TargetOverviewRow | None, list[SweepRunSummary]]:
         with get_connection(db_path) as conn:
-            return query_target_overview_by_id(conn, target_id)
+            row = query_target_overview_by_id(conn, target_id)
+            if row is None:
+                return None, []
+            sweep_runs = query_target_sweep_runs(conn, target_id)
+            return row, sweep_runs
 
-    row = await asyncio.to_thread(_load_row)
+    row, sweep_runs = await asyncio.to_thread(_load_detail)
     if row is None:
         return HTMLResponse(status_code=404, content="Target not found")
 
     return templates.TemplateResponse(
         request,
         "intel_target_detail.html",
-        {"active": "intel", "overview_row": row},
+        {"active": "intel", "overview_row": row, "sweep_runs": sweep_runs},
     )
 
 
@@ -353,5 +367,218 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
         content={
             "status": "launched",
             "redirect": "/runs",
+        },
+    )
+
+
+def _coerce_enum_list(
+    raw: Any,
+    enum_cls: type,
+    missing_detail: str,
+    unknown_template: str,
+) -> list[Any] | JSONResponse:
+    """Coerce a JSON list into enum members, or return a 422 response.
+
+    Args:
+        raw: The raw JSON value for the list field.
+        enum_cls: The target enum class (e.g. ``DocumentTemplate``).
+        missing_detail: Error detail when the list is missing/empty/non-list.
+        unknown_template: ``str.format``-ready template with ``{value}``
+            placeholder for the offending value.
+
+    Returns:
+        List of enum members on success, or ``JSONResponse`` on failure.
+    """
+    if not isinstance(raw, list) or not raw:
+        return JSONResponse(status_code=422, content={"detail": missing_detail})
+    try:
+        return [enum_cls(v) for v in raw]
+    except (ValueError, KeyError) as exc:
+        # exc.args[0] is the offending value for both ValueError and KeyError
+        # paths through enum constructors; fall back to str(exc) if empty.
+        offending = exc.args[0] if exc.args else str(exc)
+        return JSONResponse(
+            status_code=422,
+            content={"detail": unknown_template.format(value=offending)},
+        )
+
+
+def _validate_sweep_scalars(body: dict[str, Any]) -> dict[str, Any] | JSONResponse:
+    """Validate the scalar (non-list) fields of a sweep launch body."""
+    endpoint = (body.get("endpoint") or "").strip()
+    model = (body.get("model") or "").strip()
+    payload_type_raw = (body.get("payload_type") or "callback").strip() or "callback"
+
+    try:
+        temperature = float(body.get("temperature", 0.0))
+    except (TypeError, ValueError):
+        return JSONResponse(status_code=422, content={"detail": "temperature must be a number"})
+
+    try:
+        concurrency = int(body.get("concurrency", 1))
+    except (TypeError, ValueError):
+        return JSONResponse(status_code=422, content={"detail": "concurrency must be an integer"})
+
+    try:
+        reps = int(body.get("reps", 3))
+    except (TypeError, ValueError):
+        return JSONResponse(status_code=422, content={"detail": "reps must be an integer"})
+
+    error = (
+        "endpoint is required"
+        if not endpoint
+        else "model is required"
+        if not model
+        else "concurrency must be >= 1"
+        if concurrency < 1
+        else "reps must be >= 1"
+        if reps < 1
+        else "payload_type must be 'callback' in v1"
+        if payload_type_raw != "callback"
+        else None
+    )
+    if error:
+        return JSONResponse(status_code=422, content={"detail": error})
+
+    return {
+        "endpoint": endpoint,
+        "model": model,
+        "api_key": (body.get("api_key") or "").strip() or None,
+        "target_id": (body.get("target_id") or "").strip() or None,
+        "temperature": temperature,
+        "concurrency": concurrency,
+        "reps": reps,
+    }
+
+
+def _validate_sweep_body(
+    body: Any,
+    db_path: Path | None,
+) -> dict[str, Any] | JSONResponse:
+    """Validate and extract sweep launch parameters from a JSON body.
+
+    Args:
+        body: Parsed JSON body (may be any type).
+        db_path: Database path used to verify ``target_id`` existence when set.
+
+    Returns:
+        A dict of validated parameters, or a JSONResponse on error.
+    """
+    from q_ai.ipi.models import DocumentTemplate, PayloadStyle
+
+    if not isinstance(body, dict):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Request body must be a JSON object"},
+        )
+
+    scalars = _validate_sweep_scalars(body)
+    if isinstance(scalars, JSONResponse):
+        return scalars
+
+    templates_result = _coerce_enum_list(
+        body.get("templates"),
+        DocumentTemplate,
+        missing_detail="at least one template is required",
+        unknown_template="unknown template '{value}'",
+    )
+    if isinstance(templates_result, JSONResponse):
+        return templates_result
+    styles_result = _coerce_enum_list(
+        body.get("styles"),
+        PayloadStyle,
+        missing_detail="at least one style is required",
+        unknown_template="unknown style '{value}'",
+    )
+    if isinstance(styles_result, JSONResponse):
+        return styles_result
+
+    if scalars["target_id"]:
+        with get_connection(db_path) as conn:
+            if get_target(conn, scalars["target_id"]) is None:
+                return JSONResponse(
+                    status_code=422,
+                    content={"detail": "Target not found"},
+                )
+
+    return {**scalars, "templates": templates_result, "styles": styles_result}
+
+
+@router.post("/api/intel/sweep/launch")
+async def intel_sweep_launch(request: Request) -> JSONResponse:
+    """Launch an IPI sweep against a model endpoint.
+
+    Runs the sweep in the background (fire-and-forget) and returns 202
+    with a redirect URL. The run row is created inside
+    :func:`persist_sweep_run` *after* the sweep HTTP calls complete,
+    which is after this response is returned — so the response body
+    intentionally does not include a ``run_id``. Callers see the run
+    on the next page load of the target detail page (when ``target_id``
+    is set) or the Runs page.
+
+    Response shape: ``{"status": "launched", "redirect": "<url>"}``.
+    Redirect is ``/intel/targets/<target_id>#sweep-runs`` when a target
+    is supplied, else ``/intel``.
+    """
+    from q_ai.ipi.models import PayloadType
+    from q_ai.ipi.sweep_service import build_sweep_cases, persist_sweep_run, run_sweep
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON body"})
+
+    db_path = _get_db_path(request)
+    validated = _validate_sweep_body(body, db_path)
+    if isinstance(validated, JSONResponse):
+        return validated
+
+    endpoint = validated["endpoint"]
+    model = validated["model"]
+    target_id = validated["target_id"]
+
+    cases = build_sweep_cases(
+        validated["templates"],
+        validated["styles"],
+        PayloadType.CALLBACK,
+    )
+
+    # Bundle run_sweep kwargs here so api_key stays out of the closure's
+    # own scope — prevents CodeQL data-flow from the secret into the
+    # except block's frame locals. Same pattern as _run_probe_task.
+    sweep_kwargs: dict[str, Any] = {
+        "endpoint": endpoint,
+        "model": model,
+        "cases": cases,
+        "reps": validated["reps"],
+        "temperature": validated["temperature"],
+        "concurrency": validated["concurrency"],
+        "api_key": validated["api_key"],
+    }
+
+    async def _run_sweep_task() -> None:
+        try:
+            run_result = await run_sweep(**sweep_kwargs)
+            await asyncio.to_thread(
+                persist_sweep_run,
+                run_result,
+                model=model,
+                endpoint=endpoint,
+                target_id=target_id,
+                db_path=db_path,
+            )
+        except Exception:
+            logger.error("IPI sweep background task failed")
+
+    task = asyncio.create_task(_run_sweep_task())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+    redirect = f"/intel/targets/{target_id}#sweep-runs" if target_id else "/intel"
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "launched",
+            "redirect": redirect,
         },
     )

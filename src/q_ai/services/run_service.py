@@ -775,3 +775,143 @@ def format_age(
     if delta < _SECONDS_PER_DAY:
         return f"{int(delta // _SECONDS_PER_HOUR)}h"
     return f"{int(delta // _SECONDS_PER_DAY)}d"
+
+
+# ---------------------------------------------------------------------------
+# Sweep run summaries (Intel target-detail Sweep Runs section)
+# ---------------------------------------------------------------------------
+
+
+_SWEEP_METADATA_EVIDENCE_TYPE = "ipi_sweep_metadata"
+
+
+@dataclass(slots=True)
+class SweepRunSummary:
+    """Per-row summary for the Intel detail page's Sweep Runs section.
+
+    Attributes:
+        run_id: The sweep run's ID.
+        status: Run status (used to render a completion badge).
+        finished_at: ``finished_at`` timestamp or ``None`` if the run has
+            not completed.
+        template_count: Number of distinct templates measured in the
+            sweep. ``0`` when the metadata blob is unavailable.
+        style_count: Number of distinct styles measured in the sweep.
+            ``0`` when the metadata blob is unavailable.
+        reps: Repetitions per (template, style) combination, inferred as
+            ``total_cases // (template_count * style_count)``. ``None``
+            when the divisor is zero or the metadata blob is unavailable.
+        total_cases: Total (case, rep) pairs executed. ``0`` when the
+            metadata blob is unavailable.
+        metadata_available: ``True`` when the ``ipi_sweep_metadata``
+            evidence blob was found and parsed. ``False`` for degenerate
+            DB states where the row must still render but aggregate
+            fields are meaningless — templates key the "metadata
+            unavailable" note off this flag, not off sentinel values.
+    """
+
+    run_id: str
+    status: RunStatus
+    finished_at: _dt.datetime | None
+    template_count: int = 0
+    style_count: int = 0
+    reps: int | None = None
+    total_cases: int = 0
+    metadata_available: bool = False
+
+
+def extract_sweep_run_summary(
+    conn: sqlite3.Connection,
+    run: Run,
+) -> SweepRunSummary:
+    """Build a :class:`SweepRunSummary` for a sweep run.
+
+    Reads the ``ipi_sweep_metadata`` evidence blob written by
+    :func:`q_ai.ipi.sweep_service.persist_sweep_run` for the numeric
+    aggregate fields. When the blob is missing or malformed, returns a
+    summary with ``metadata_available=False`` and zeroed counts so that
+    the caller can still render a row.
+
+    Reps is inferred from ``total_cases // (template_count * style_count)``
+    because ``persist_sweep_run`` does not persist ``reps`` independently.
+
+    Args:
+        conn: Active database connection.
+        run: The sweep ``Run`` whose summary should be extracted. Callers
+            pass the ``Run`` object from ``list_runs`` rather than a bare
+            ``run_id`` so ``status`` and ``finished_at`` are not re-fetched.
+
+    Returns:
+        A populated :class:`SweepRunSummary`. Never returns ``None``;
+        the ``metadata_available`` flag pins absence of the blob.
+    """
+    blob = evidence_service.load_evidence_json(conn, run.id, _SWEEP_METADATA_EVIDENCE_TYPE)
+    if blob is None:
+        return SweepRunSummary(
+            run_id=run.id,
+            status=run.status,
+            finished_at=run.finished_at,
+            metadata_available=False,
+        )
+
+    total_cases_raw = blob.get("total_cases", 0)
+    template_summary = blob.get("template_summary") or {}
+    style_summary = blob.get("style_summary") or {}
+
+    try:
+        total_cases = int(total_cases_raw)
+    except (TypeError, ValueError):
+        total_cases = 0
+
+    template_count = len(template_summary) if isinstance(template_summary, dict) else 0
+    style_count = len(style_summary) if isinstance(style_summary, dict) else 0
+
+    divisor = template_count * style_count
+    reps = total_cases // divisor if divisor > 0 else None
+
+    return SweepRunSummary(
+        run_id=run.id,
+        status=run.status,
+        finished_at=run.finished_at,
+        template_count=template_count,
+        style_count=style_count,
+        reps=reps,
+        total_cases=total_cases,
+        metadata_available=True,
+    )
+
+
+def query_target_sweep_runs(
+    conn: sqlite3.Connection,
+    target_id: str,
+) -> list[SweepRunSummary]:
+    """List sweep-run summaries for a target, most recent first.
+
+    The result list is driven by ``module='ipi-sweep'`` runs for the
+    given target. Each row's aggregate fields come from the per-run
+    ``ipi_sweep_metadata`` evidence blob — see
+    :func:`extract_sweep_run_summary`. Runs missing the blob still
+    render, with ``metadata_available=False``.
+
+    Ordering is ``finished_at`` descending. Runs whose ``finished_at``
+    is ``None`` (e.g. still running or failed before finish) sort last.
+
+    Args:
+        conn: Active database connection.
+        target_id: The target ID whose sweep runs should be listed.
+
+    Returns:
+        List of :class:`SweepRunSummary`; empty if the target has no
+        sweep runs.
+    """
+    runs = _db_list_runs(conn, module=_SWEEP_MODULE, target_id=target_id)
+    # list_runs orders by started_at DESC; re-sort by finished_at DESC
+    # with None-finishes pushed to the end so the "latest" row always
+    # reflects the most recent completion.
+    runs.sort(
+        key=lambda r: (
+            r.finished_at is None,
+            -r.finished_at.timestamp() if r.finished_at else 0,
+        ),
+    )
+    return [extract_sweep_run_summary(conn, r) for r in runs]
