@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import os
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -18,12 +17,13 @@ from q_ai.ipi.sweep_selection import (
     TieRefusal,
 )
 
-# Rich colors the `[red]` markup used for error messages; substring asserts
-# on error text need the ANSI-free form. Matches the approach in
-# tests/ipi/test_sweep_cli.py.
-os.environ["NO_COLOR"] = "1"
-
-runner = CliRunner()
+# Disable Rich's ANSI coloring so substring assertions on --help output are
+# stable across Windows (no color) and Linux/macOS CI (color on by default).
+# Rich respects NO_COLOR; we also unset FORCE_COLOR and override TERM so no
+# other signal re-enables styling. Without this, option names like `--target`
+# render as ANSI-split spans (`\x1b[...]--\x1b[...]-target\x1b[...]`) and
+# break literal substring matches.
+runner = CliRunner(env={"NO_COLOR": "1", "FORCE_COLOR": None, "TERM": "dumb"})
 
 
 class TestIpiGenerateCallbackArg:
