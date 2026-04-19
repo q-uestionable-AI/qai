@@ -234,6 +234,33 @@ async def intel_import_commit(
     )
 
 
+def _coerce_optional_string(
+    raw: Any,
+    field: str,
+) -> str | JSONResponse:
+    """Coerce a JSON value to a stripped string, or return a 422 response.
+
+    Accepts missing / null / empty values as the empty string. Non-string
+    JSON types (int, list, dict, bool) return a 422 rather than crashing
+    with ``AttributeError`` on ``.strip()``.
+
+    Args:
+        raw: Value pulled from the JSON body.
+        field: Field name for the error detail.
+
+    Returns:
+        The stripped string on success, or a ``JSONResponse`` on error.
+    """
+    if raw is None:
+        return ""
+    if not isinstance(raw, str):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"{field} must be a string"},
+        )
+    return raw.strip()
+
+
 def _validate_probe_body(
     body: Any,
 ) -> dict[str, Any] | JSONResponse:
@@ -251,8 +278,12 @@ def _validate_probe_body(
             content={"detail": "Request body must be a JSON object"},
         )
 
-    endpoint = (body.get("endpoint") or "").strip()
-    model = (body.get("model") or "").strip()
+    strings: dict[str, str] = {}
+    for field in ("endpoint", "model", "api_key", "target_id"):
+        coerced = _coerce_optional_string(body.get(field), field)
+        if isinstance(coerced, JSONResponse):
+            return coerced
+        strings[field] = coerced
 
     try:
         temperature = float(body.get("temperature", 0.0))
@@ -273,9 +304,9 @@ def _validate_probe_body(
     # Check required fields and value constraints together.
     error = (
         "endpoint is required"
-        if not endpoint
+        if not strings["endpoint"]
         else "model is required"
-        if not model
+        if not strings["model"]
         else "concurrency must be >= 1"
         if concurrency < 1
         else None
@@ -284,10 +315,10 @@ def _validate_probe_body(
         return JSONResponse(status_code=422, content={"detail": error})
 
     return {
-        "endpoint": endpoint,
-        "model": model,
-        "api_key": (body.get("api_key") or "").strip() or None,
-        "target_id": (body.get("target_id") or "").strip() or None,
+        "endpoint": strings["endpoint"],
+        "model": strings["model"],
+        "api_key": strings["api_key"] or None,
+        "target_id": strings["target_id"] or None,
         "temperature": temperature,
         "concurrency": concurrency,
     }
@@ -379,6 +410,11 @@ def _coerce_enum_list(
 ) -> list[Any] | JSONResponse:
     """Coerce a JSON list into enum members, or return a 422 response.
 
+    Iterates per-item so the 422 detail can quote the raw offending value
+    rather than the enum constructor's exception message — the latter
+    would leak the class name and exposes a stack-trace-like string to
+    the client (CodeQL ``py/stack-trace-exposure`` sink).
+
     Args:
         raw: The raw JSON value for the list field.
         enum_cls: The target enum class (e.g. ``DocumentTemplate``).
@@ -391,23 +427,52 @@ def _coerce_enum_list(
     """
     if not isinstance(raw, list) or not raw:
         return JSONResponse(status_code=422, content={"detail": missing_detail})
-    try:
-        return [enum_cls(v) for v in raw]
-    except (ValueError, KeyError) as exc:
-        # exc.args[0] is the offending value for both ValueError and KeyError
-        # paths through enum constructors; fall back to str(exc) if empty.
-        offending = exc.args[0] if exc.args else str(exc)
-        return JSONResponse(
-            status_code=422,
-            content={"detail": unknown_template.format(value=offending)},
-        )
+    members: list[Any] = []
+    for v in raw:
+        # TypeError covers non-hashable JSON values like dicts/lists;
+        # ValueError/KeyError cover the normal "not a valid member" paths.
+        try:
+            members.append(enum_cls(v))
+        except (TypeError, ValueError, KeyError):
+            safe_value = v if isinstance(v, str) else repr(v)
+            return JSONResponse(
+                status_code=422,
+                content={"detail": unknown_template.format(value=safe_value)},
+            )
+    return members
+
+
+def _validate_sweep_strings(body: dict[str, Any]) -> dict[str, str] | JSONResponse:
+    """Coerce the string-typed fields of a sweep body to stripped strings.
+
+    Args:
+        body: Parsed JSON body (already known to be a dict).
+
+    Returns:
+        Dict of field-name -> stripped string on success, or a
+        ``JSONResponse`` 422 if any field is present with a non-string
+        type.
+    """
+    fields = ("endpoint", "model", "api_key", "target_id", "payload_type")
+    out: dict[str, str] = {}
+    for field in fields:
+        coerced = _coerce_optional_string(body.get(field), field)
+        if isinstance(coerced, JSONResponse):
+            return coerced
+        out[field] = coerced
+    return out
 
 
 def _validate_sweep_scalars(body: dict[str, Any]) -> dict[str, Any] | JSONResponse:
-    """Validate the scalar (non-list) fields of a sweep launch body."""
-    endpoint = (body.get("endpoint") or "").strip()
-    model = (body.get("model") or "").strip()
-    payload_type_raw = (body.get("payload_type") or "callback").strip() or "callback"
+    """Validate the scalar (non-list) fields of a sweep launch body.
+
+    Type-hardens the string fields first (non-string JSON values return
+    422 rather than crashing ``.strip()`` with ``AttributeError``), then
+    coerces numerics and enforces value constraints.
+    """
+    strings = _validate_sweep_strings(body)
+    if isinstance(strings, JSONResponse):
+        return strings
 
     try:
         temperature = float(body.get("temperature", 0.0))
@@ -424,11 +489,13 @@ def _validate_sweep_scalars(body: dict[str, Any]) -> dict[str, Any] | JSONRespon
     except (TypeError, ValueError):
         return JSONResponse(status_code=422, content={"detail": "reps must be an integer"})
 
+    payload_type_raw = strings["payload_type"] or "callback"
+
     error = (
         "endpoint is required"
-        if not endpoint
+        if not strings["endpoint"]
         else "model is required"
-        if not model
+        if not strings["model"]
         else "concurrency must be >= 1"
         if concurrency < 1
         else "reps must be >= 1"
@@ -441,10 +508,10 @@ def _validate_sweep_scalars(body: dict[str, Any]) -> dict[str, Any] | JSONRespon
         return JSONResponse(status_code=422, content={"detail": error})
 
     return {
-        "endpoint": endpoint,
-        "model": model,
-        "api_key": (body.get("api_key") or "").strip() or None,
-        "target_id": (body.get("target_id") or "").strip() or None,
+        "endpoint": strings["endpoint"],
+        "model": strings["model"],
+        "api_key": strings["api_key"] or None,
+        "target_id": strings["target_id"] or None,
         "temperature": temperature,
         "concurrency": concurrency,
         "reps": reps,
@@ -453,13 +520,16 @@ def _validate_sweep_scalars(body: dict[str, Any]) -> dict[str, Any] | JSONRespon
 
 def _validate_sweep_body(
     body: Any,
-    db_path: Path | None,
 ) -> dict[str, Any] | JSONResponse:
     """Validate and extract sweep launch parameters from a JSON body.
 
+    Purely synchronous validation — no DB work. The caller is
+    responsible for verifying ``target_id`` existence off the event
+    loop (see :func:`intel_sweep_launch`), mirroring the pattern in
+    :func:`intel_import_commit`.
+
     Args:
         body: Parsed JSON body (may be any type).
-        db_path: Database path used to verify ``target_id`` existence when set.
 
     Returns:
         A dict of validated parameters, or a JSONResponse on error.
@@ -493,14 +563,6 @@ def _validate_sweep_body(
     if isinstance(styles_result, JSONResponse):
         return styles_result
 
-    if scalars["target_id"]:
-        with get_connection(db_path) as conn:
-            if get_target(conn, scalars["target_id"]) is None:
-                return JSONResponse(
-                    status_code=422,
-                    content={"detail": "Target not found"},
-                )
-
     return {**scalars, "templates": templates_result, "styles": styles_result}
 
 
@@ -528,14 +590,28 @@ async def intel_sweep_launch(request: Request) -> JSONResponse:
     except Exception:
         return JSONResponse(status_code=400, content={"detail": "Invalid JSON body"})
 
-    db_path = _get_db_path(request)
-    validated = _validate_sweep_body(body, db_path)
+    validated = _validate_sweep_body(body)
     if isinstance(validated, JSONResponse):
         return validated
 
     endpoint = validated["endpoint"]
     model = validated["model"]
     target_id = validated["target_id"]
+    db_path = _get_db_path(request)
+
+    # Target existence check is off the event loop (sqlite is blocking),
+    # mirroring intel_import_commit's pattern above.
+    if target_id:
+
+        def _check_target() -> bool:
+            with get_connection(db_path) as conn:
+                return get_target(conn, target_id) is not None
+
+        if not await asyncio.to_thread(_check_target):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Target not found"},
+            )
 
     cases = build_sweep_cases(
         validated["templates"],

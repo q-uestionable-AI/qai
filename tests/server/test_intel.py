@@ -272,6 +272,31 @@ class TestIntelTargetDetailSweepRendering:
         assert f'id="sweep-run-{run_id}"' in text
         assert f'href="/runs?run_id={run_id}"' in text
 
+    def test_running_sweep_summary_does_not_render_em_dash_ago(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        """When the most recent sweep has no finished_at, render a status-only summary.
+
+        Regression guard: previously the template piped ``None`` through
+        ``format_age`` and rendered "Latest sweep: — ago" for sweeps
+        still in RUNNING.
+        """
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="running-sweep")
+            run_id = create_run(conn, module="ipi-sweep", target_id=target_id)
+            update_run_status(conn, run_id, RunStatus.RUNNING)
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert resp.status_code == 200
+        assert "Latest sweep:" in text
+        assert "\u2014 ago" not in text
+        assert "not yet completed" in text
+
     def test_multiple_sweeps_render_most_recent_first(
         self, tmp_db: Path, client: TestClient
     ) -> None:
@@ -355,7 +380,12 @@ class TestSweepLaunch:
             json={**self._VALID_BODY, "templates": ["generic", "not-a-template"]},
         )
         assert resp.status_code == 422
-        assert "not-a-template" in resp.json()["detail"]
+        # Detail must be the raw value, not the StrEnum ValueError text
+        # (which contains "is not a valid DocumentTemplate" — a
+        # CodeQL py/stack-trace-exposure sink).
+        detail = resp.json()["detail"]
+        assert detail == "unknown template 'not-a-template'"
+        assert "DocumentTemplate" not in detail
 
     def test_unknown_style(self, client: TestClient) -> None:
         resp = client.post(
@@ -363,7 +393,35 @@ class TestSweepLaunch:
             json={**self._VALID_BODY, "styles": ["bogus"]},
         )
         assert resp.status_code == 422
-        assert "bogus" in resp.json()["detail"]
+        detail = resp.json()["detail"]
+        assert detail == "unknown style 'bogus'"
+        assert "PayloadStyle" not in detail
+
+    def test_non_hashable_template_value_returns_422(self, client: TestClient) -> None:
+        """JSON objects/arrays inside templates list must not crash with TypeError."""
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "templates": [{}]},
+        )
+        assert resp.status_code == 422
+        assert "unknown template" in resp.json()["detail"]
+
+    def test_non_string_endpoint_returns_422(self, client: TestClient) -> None:
+        """Non-string scalar fields return 422, not a 500 AttributeError."""
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "endpoint": 123},
+        )
+        assert resp.status_code == 422
+        assert "endpoint must be a string" in resp.json()["detail"]
+
+    def test_non_string_target_id_returns_422(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "target_id": []},
+        )
+        assert resp.status_code == 422
+        assert "target_id must be a string" in resp.json()["detail"]
 
     def test_invalid_payload_type(self, client: TestClient) -> None:
         resp = client.post(
@@ -433,15 +491,28 @@ class TestSweepLaunch:
         assert resp.json()["redirect"] == f"/intel/targets/{target_id}#sweep-runs"
 
     def test_background_task_is_scheduled(self, client: TestClient) -> None:
+        """Handler registers the task in _background_tasks synchronously.
+
+        The registration (``_background_tasks.add(task)``) happens before
+        the response is produced, so spying on the set's ``add`` call is
+        race-free — unlike asserting that the mocked ``run_sweep`` was
+        invoked, which depended on the event loop stepping into the
+        coroutine and was macOS-flaky.
+        """
+        from q_ai.server.routes import intel as intel_module
+
+        real_set = intel_module._background_tasks
+        spy = MagicMock(wraps=real_set)
         mock_sweep = AsyncMock(return_value=MagicMock())
         with (
-            patch("q_ai.ipi.sweep_service.run_sweep", mock_sweep) as m_run,
+            patch.object(intel_module, "_background_tasks", spy),
+            patch("q_ai.ipi.sweep_service.run_sweep", mock_sweep),
             patch("q_ai.ipi.sweep_service.persist_sweep_run"),
         ):
             resp = client.post("/api/intel/sweep/launch", json=self._VALID_BODY)
-            assert resp.status_code == 202
-            # Task was scheduled — run_sweep is reached on the event loop.
-            assert m_run.called
+
+        assert resp.status_code == 202
+        spy.add.assert_called_once()
 
 
 def _garak_jsonl() -> str:
@@ -600,6 +671,15 @@ class TestProbeLaunch:
         )
         assert resp.status_code == 422
         assert "concurrency" in resp.json()["detail"]
+
+    def test_non_string_endpoint_returns_422(self, client: TestClient) -> None:
+        """Non-string endpoint returns 422, not a 500 AttributeError on .strip()."""
+        resp = client.post(
+            "/api/intel/probe/launch",
+            json={"endpoint": 123, "model": "m"},
+        )
+        assert resp.status_code == 422
+        assert "endpoint must be a string" in resp.json()["detail"]
 
     def test_happy_path_launches(self, client: TestClient) -> None:
         mock_probes = [MagicMock()]

@@ -55,7 +55,12 @@
             </div>
             {% if sweep_runs %}
                 {% set latest = sweep_runs[0] %}
-                {% if latest.metadata_available and latest.reps is not none %}
+                {% if latest.finished_at is none %}
+                <p class="intel-sweep-summary">
+                    Latest sweep: {{ latest.status.name | format_status | lower }}
+                    &mdash; not yet completed
+                </p>
+                {% elif latest.metadata_available and latest.reps is not none %}
                 <p class="intel-sweep-summary">
                     Latest sweep: {{ latest.finished_at | format_age }} ago
                     &mdash; {{ latest.template_count }} templates

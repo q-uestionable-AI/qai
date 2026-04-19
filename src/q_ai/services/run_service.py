@@ -907,11 +907,12 @@ def query_target_sweep_runs(
     runs = _db_list_runs(conn, module=_SWEEP_MODULE, target_id=target_id)
     # list_runs orders by started_at DESC; re-sort by finished_at DESC
     # with None-finishes pushed to the end so the "latest" row always
-    # reflects the most recent completion.
+    # reflects the most recent completion. _as_utc mirrors PR #126's
+    # sweep-run sort defense against mixed tz-naive/aware rows.
     runs.sort(
         key=lambda r: (
             r.finished_at is None,
-            -r.finished_at.timestamp() if r.finished_at else 0,
+            -_as_utc(r.finished_at).timestamp() if r.finished_at else 0.0,
         ),
     )
     return [extract_sweep_run_summary(conn, r) for r in runs]
