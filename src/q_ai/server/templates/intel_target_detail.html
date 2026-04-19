@@ -42,9 +42,66 @@
                 <div class="intel-card-bar"></div>
                 <span class="intel-card-name">Probe Runs</span>
             </div>
+            {% if probe_runs %}
+                {% set latest_probe = probe_runs[0] %}
+                {% if latest_probe.finished_at is none %}
+                <p class="intel-probe-summary">
+                    Latest probe: {{ latest_probe.status.name | format_status | lower }}
+                    &mdash; not yet completed
+                </p>
+                {% elif latest_probe.metadata_available %}
+                <p class="intel-probe-summary">
+                    Latest probe: {{ latest_probe.finished_at | format_age }} ago
+                    &mdash; {{ latest_probe.total_probes }} probes
+                    across {{ latest_probe.category_count }} categories,
+                    {{ "%.0f" | format(latest_probe.overall_compliance_rate * 100) }}% compliance,
+                    {{ latest_probe.overall_severity.name | lower }} severity,
+                    {{ latest_probe.status.name | format_status | lower }}
+                </p>
+                {% else %}
+                <p class="intel-probe-summary">
+                    Latest probe: {{ latest_probe.finished_at | format_age }} ago
+                    &mdash; {{ latest_probe.status.name | format_status | lower }}
+                </p>
+                {% endif %}
+                <div class="intel-probe-rows">
+                    {% for run in probe_runs %}
+                    <a class="intel-probe-row"
+                       id="probe-run-{{ run.run_id }}"
+                       href="/runs?run_id={{ run.run_id }}&amp;intel=1">
+                        <span class="intel-probe-col-age">{{ run.finished_at | format_age }}</span>
+                        {% if run.metadata_available %}
+                        <span class="intel-probe-col-counts">
+                            {{ run.total_probes }} probes / {{ run.category_count }} cats
+                        </span>
+                        <span class="intel-probe-col-rate">
+                            {{ "%.0f" | format(run.overall_compliance_rate * 100) }}%
+                        </span>
+                        <span class="intel-probe-col-severity">
+                            {{ run.overall_severity.name | lower }}
+                        </span>
+                        {% else %}
+                        <span class="intel-probe-col-counts intel-probe-col-muted">
+                            metadata unavailable
+                        </span>
+                        <span class="intel-probe-col-rate"></span>
+                        <span class="intel-probe-col-severity"></span>
+                        {% endif %}
+                        <span class="intel-probe-col-status">
+                            {{ run.status.name | format_status | lower }}
+                        </span>
+                    </a>
+                    {% endfor %}
+                </div>
+            {% else %}
             <div class="intel-section-body">
-                <p class="intel-card-desc" style="margin-bottom: 0;">No probe runs yet.</p>
+                <p class="intel-card-desc" style="margin-bottom: 0;">
+                    No probe runs yet.
+                    <a href="/intel#card-probe" style="color: #06b6d4;">Run a probe</a>
+                    to measure IPI susceptibility.
+                </p>
             </div>
+            {% endif %}
         </section>
 
         {# Sweep Runs #}
@@ -193,6 +250,52 @@
     font-style: italic;
 }
 .intel-sweep-col-status {
+    color: #94a3b8;
+    text-align: right;
+}
+.intel-probe-summary {
+    color: #94a3b8;
+    font-size: 0.9rem;
+    margin: 0 0 1rem;
+}
+.intel-probe-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.intel-probe-row {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr) minmax(0, 4rem) minmax(0, 5rem) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.intel-probe-row:hover {
+    background: rgba(139, 92, 246, 0.08);
+    border-color: rgba(139, 92, 246, 0.35);
+}
+.intel-probe-col-age {
+    font-family: 'Fira Code', monospace;
+    color: #a78bfa;
+}
+.intel-probe-col-counts,
+.intel-probe-col-rate,
+.intel-probe-col-severity {
+    font-family: 'Fira Code', monospace;
+    color: #cbd5e1;
+}
+.intel-probe-col-muted {
+    color: #64748b;
+    font-style: italic;
+}
+.intel-probe-col-status {
     color: #94a3b8;
     text-align: right;
 }

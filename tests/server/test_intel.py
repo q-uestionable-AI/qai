@@ -171,6 +171,8 @@ class TestIntelTargetDetail:
         assert "No sweep runs yet." in text
         assert "measure per-template compliance" in text
         assert "/intel#card-sweep" in text
+        assert "measure IPI susceptibility" in text
+        assert "/intel#card-probe" in text
 
     def test_nav_marks_intel_active(self, tmp_db: Path, client: TestClient) -> None:
         """Top nav highlights Intel on the detail page too."""
@@ -316,6 +318,147 @@ class TestIntelTargetDetailSweepRendering:
         latest_pos = text.find(f"sweep-run-{latest}")
         mid_pos = text.find(f"sweep-run-{mid}")
         earlier_pos = text.find(f"sweep-run-{earlier}")
+        assert 0 < latest_pos < mid_pos < earlier_pos
+
+
+def _seed_probe_run(
+    conn: sqlite3.Connection,
+    target_id: str,
+    *,
+    finished_at: str | None,
+    overall_severity: str = "MEDIUM",
+    total_probes: int = 20,
+    total_complied: int = 4,
+    overall_rate: float = 0.2,
+    categories: int = 3,
+    with_metadata: bool = True,
+    status: RunStatus = RunStatus.COMPLETED,
+) -> str:
+    """Create a probe run with an optional matching metadata blob."""
+    run_id = create_run(conn, module="ipi-probe", target_id=target_id)
+    update_run_status(conn, run_id, status, finished_at=finished_at)
+    if with_metadata:
+        blob = {
+            "model": "test-model",
+            "endpoint": "http://localhost:8000/v1",
+            "total_probes": total_probes,
+            "total_complied": total_complied,
+            "overall_compliance_rate": overall_rate,
+            "overall_severity": overall_severity,
+            "category_summary": {
+                f"cat_{i}": {
+                    "total": 1,
+                    "complied": 0,
+                    "rate": 0.0,
+                    "severity": "INFO",
+                }
+                for i in range(categories)
+            },
+        }
+        create_evidence(
+            conn,
+            type="ipi_probe_metadata",
+            run_id=run_id,
+            storage="inline",
+            content=json.dumps(blob),
+        )
+    return run_id
+
+
+class TestIntelTargetDetailProbeRendering:
+    """Probe Runs section populates on the target detail page."""
+
+    def test_single_probe_renders_row_and_summary(self, tmp_db: Path, client: TestClient) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="one-probe")
+            run_id = _seed_probe_run(
+                conn,
+                target_id,
+                finished_at="2026-04-15T12:00:00+00:00",
+                total_probes=20,
+                overall_severity="HIGH",
+                categories=8,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert resp.status_code == 200
+        assert "Latest probe:" in text
+        assert "20 probes" in text
+        assert "8 categories" in text
+        assert "high severity" in text
+        assert f'id="probe-run-{run_id}"' in text
+        # Intel-originated row links carry the bypass marker.
+        assert f"/runs?run_id={run_id}&amp;intel=1" in text
+
+    def test_running_probe_summary_renders_not_yet_completed(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="running-probe")
+            _seed_probe_run(
+                conn,
+                target_id,
+                finished_at=None,
+                with_metadata=False,
+                status=RunStatus.RUNNING,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert resp.status_code == 200
+        assert "Latest probe:" in text
+        assert "\u2014 ago" not in text
+        assert "not yet completed" in text
+
+    def test_metadata_unavailable_row_is_muted(self, tmp_db: Path, client: TestClient) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="no-meta-probe")
+            _seed_probe_run(
+                conn,
+                target_id,
+                finished_at="2026-04-15T12:00:00+00:00",
+                with_metadata=False,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert resp.status_code == 200
+        assert "Latest probe:" in text
+        assert "metadata unavailable" in text
+        # The populated aggregate phrases must not appear when metadata is missing.
+        assert "probes across" not in text
+
+    def test_multiple_probes_render_most_recent_first(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="multi-probe")
+            earlier = _seed_probe_run(conn, target_id, finished_at="2026-04-01T12:00:00+00:00")
+            latest = _seed_probe_run(conn, target_id, finished_at="2026-04-15T12:00:00+00:00")
+            mid = _seed_probe_run(conn, target_id, finished_at="2026-04-05T12:00:00+00:00")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        latest_pos = text.find(f"probe-run-{latest}")
+        mid_pos = text.find(f"probe-run-{mid}")
+        earlier_pos = text.find(f"probe-run-{earlier}")
         assert 0 < latest_pos < mid_pos < earlier_pos
 
 
@@ -681,7 +824,7 @@ class TestProbeLaunch:
         assert resp.status_code == 422
         assert "endpoint must be a string" in resp.json()["detail"]
 
-    def test_happy_path_launches(self, client: TestClient) -> None:
+    def test_happy_path_launches_no_target(self, client: TestClient) -> None:
         mock_probes = [MagicMock()]
         mock_result = MagicMock()
         with (
@@ -704,8 +847,59 @@ class TestProbeLaunch:
         assert resp.status_code == 202
         data = resp.json()
         assert data["status"] == "launched"
-        assert data["redirect"] == "/runs"
+        assert data["redirect"] == "/intel"
+        assert "run_id" not in data
         m_load.assert_called_once()
+
+    def test_happy_path_launches_with_target(self, tmp_db: Path, client: TestClient) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="probe-launch-target")
+            conn.commit()
+        finally:
+            conn.close()
+
+        mock_probes = [MagicMock()]
+        mock_result = MagicMock()
+        with (
+            patch("q_ai.ipi.probe_service.load_probes", return_value=mock_probes),
+            patch(
+                "q_ai.ipi.probe_service.run_probes",
+                new_callable=AsyncMock,
+                return_value=mock_result,
+            ),
+            patch("q_ai.ipi.probe_service.persist_probe_run"),
+        ):
+            resp = client.post(
+                "/api/intel/probe/launch",
+                json={
+                    "endpoint": "http://localhost:8000/v1",
+                    "model": "gpt-4o-mini",
+                    "target_id": target_id,
+                },
+            )
+
+        assert resp.status_code == 202
+        assert resp.json()["redirect"] == f"/intel/targets/{target_id}#probe-runs"
+
+    def test_nonexistent_target_returns_422(self, client: TestClient) -> None:
+        """Probe launch rejects an unknown target_id with 422, mirroring sweep.
+
+        Regression guard: Phase 3's redirect target is
+        ``/intel/targets/<target_id>#probe-runs``; without this check a
+        bogus target_id would 202 into a redirect that 404s while the
+        background task's FK insert fails silently.
+        """
+        resp = client.post(
+            "/api/intel/probe/launch",
+            json={
+                "endpoint": "http://localhost:8000/v1",
+                "model": "gpt-4o-mini",
+                "target_id": "does-not-exist",
+            },
+        )
+        assert resp.status_code == 422
+        assert "Target not found" in resp.json()["detail"]
 
 
 class TestImportCommitTargetValidation:

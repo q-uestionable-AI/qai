@@ -16,7 +16,7 @@ from q_ai.core.db import get_run as _db_get_run
 from q_ai.core.db import get_target as _db_get_target
 from q_ai.core.db import list_runs as _db_list_runs
 from q_ai.core.db import list_targets as _db_list_targets
-from q_ai.core.models import Finding, Run, RunStatus, Target
+from q_ai.core.models import Finding, Run, RunStatus, Severity, Target
 from q_ai.services import audit_service, evidence_service, finding_service
 
 _TERMINAL_STATUSES = {
@@ -916,3 +916,173 @@ def query_target_sweep_runs(
         ),
     )
     return [extract_sweep_run_summary(conn, r) for r in runs]
+
+
+# ---------------------------------------------------------------------------
+# Probe run summaries (Intel target-detail Probe Runs section)
+# ---------------------------------------------------------------------------
+
+
+_PROBE_METADATA_EVIDENCE_TYPE = "ipi_probe_metadata"
+_PROBE_MODULE = "ipi-probe"
+
+
+@dataclass(slots=True)
+class ProbeRunSummary:
+    """Per-row summary for the Intel detail page's Probe Runs section.
+
+    Attributes:
+        run_id: The probe run's ID.
+        status: Run status (used to render a completion badge).
+        finished_at: ``finished_at`` timestamp or ``None`` if the run has
+            not completed.
+        total_probes: Total probes executed in the run. ``0`` when the
+            metadata blob is unavailable or malformed.
+        total_complied: Total probes where the model complied. ``0`` when
+            the metadata blob is unavailable or malformed.
+        overall_compliance_rate: Run-wide compliance rate (0.0-1.0).
+            ``0.0`` when the metadata blob is unavailable or malformed.
+        overall_severity: Derived severity for the run. Defaults to
+            :attr:`Severity.INFO` when the metadata blob is unavailable
+            or the serialized name does not map to a known member.
+        category_count: Number of distinct probe categories measured.
+            ``0`` when the metadata blob is unavailable or the
+            ``category_summary`` field is not a mapping.
+        metadata_available: ``True`` when the ``ipi_probe_metadata``
+            evidence blob was found and every required field parsed
+            cleanly. ``False`` for blob-missing, malformed-blob,
+            missing-key, unknown-severity, and type-unexpected paths
+            (stricter than sweep — the probe row has no meaningful
+            render without severity and category count, so the flag
+            doubles as a "render the muted row" switch).
+    """
+
+    run_id: str
+    status: RunStatus
+    finished_at: _dt.datetime | None
+    total_probes: int = 0
+    total_complied: int = 0
+    overall_compliance_rate: float = 0.0
+    overall_severity: Severity = Severity.INFO
+    category_count: int = 0
+    metadata_available: bool = False
+
+
+def _unavailable_probe_summary(run: Run) -> ProbeRunSummary:
+    """Return a :class:`ProbeRunSummary` with ``metadata_available=False``.
+
+    Used by every defensive branch of :func:`extract_probe_run_summary`
+    so the shape of the "no aggregates" summary is defined in one place.
+    """
+    return ProbeRunSummary(
+        run_id=run.id,
+        status=run.status,
+        finished_at=run.finished_at,
+        metadata_available=False,
+    )
+
+
+def extract_probe_run_summary(
+    conn: sqlite3.Connection,
+    run: Run,
+) -> ProbeRunSummary:
+    """Build a :class:`ProbeRunSummary` for a probe run.
+
+    Reads the ``ipi_probe_metadata`` evidence blob written by
+    :func:`q_ai.ipi.probe_service.persist_probe_run`. Per the Phase 3
+    brief, the extractor treats missing evidence rows, malformed blobs,
+    missing required keys, unknown severity names, and type-unexpected
+    ``category_summary`` values as indistinguishable: all clear the
+    ``metadata_available`` flag and leave numeric fields at their
+    defaults. This is stricter than the sweep extractor — the probe
+    row has no meaningful aggregate rendering without severity and
+    category count, so a single flag suffices for the template.
+
+    The severity value in the blob is the enum's ``name`` attribute
+    (e.g. ``"HIGH"``) as written by ``persist_probe_run``; parsing
+    uses ``Severity[name]``.
+
+    Args:
+        conn: Active database connection.
+        run: The probe ``Run`` whose summary should be extracted. Callers
+            pass the ``Run`` object from ``list_runs`` rather than a bare
+            ``run_id`` so ``status`` and ``finished_at`` are not re-fetched
+            (PR #128 sweep-extractor contract).
+
+    Returns:
+        A populated :class:`ProbeRunSummary`. Never raises.
+    """
+    blob = evidence_service.load_evidence_json(conn, run.id, _PROBE_METADATA_EVIDENCE_TYPE)
+    if not isinstance(blob, dict):
+        return _unavailable_probe_summary(run)
+
+    category_summary = blob.get("category_summary")
+    if not isinstance(category_summary, dict):
+        return _unavailable_probe_summary(run)
+
+    severity_name = blob.get("overall_severity")
+    if not isinstance(severity_name, str):
+        return _unavailable_probe_summary(run)
+    try:
+        severity = Severity[severity_name]
+    except KeyError:
+        return _unavailable_probe_summary(run)
+
+    try:
+        total_probes = int(blob.get("total_probes", 0))
+    except (TypeError, ValueError):
+        total_probes = 0
+    try:
+        total_complied = int(blob.get("total_complied", 0))
+    except (TypeError, ValueError):
+        total_complied = 0
+    try:
+        overall_rate = float(blob.get("overall_compliance_rate", 0.0))
+    except (TypeError, ValueError):
+        overall_rate = 0.0
+
+    return ProbeRunSummary(
+        run_id=run.id,
+        status=run.status,
+        finished_at=run.finished_at,
+        total_probes=total_probes,
+        total_complied=total_complied,
+        overall_compliance_rate=overall_rate,
+        overall_severity=severity,
+        category_count=len(category_summary),
+        metadata_available=True,
+    )
+
+
+def query_target_probe_runs(
+    conn: sqlite3.Connection,
+    target_id: str,
+) -> list[ProbeRunSummary]:
+    """List probe-run summaries for a target, most recent first.
+
+    The result list is driven by ``module='ipi-probe'`` runs for the
+    given target. Each row's aggregate fields come from the per-run
+    ``ipi_probe_metadata`` evidence blob — see
+    :func:`extract_probe_run_summary`. Runs missing the blob (or with
+    a malformed one) still render, with ``metadata_available=False``.
+
+    Ordering is ``finished_at`` descending. Runs whose ``finished_at``
+    is ``None`` sort last. ``_as_utc`` guards against mixed tz-naive
+    and tz-aware rows (PR #126 precedent).
+
+    Args:
+        conn: Active database connection.
+        target_id: The target ID whose probe runs should be listed.
+
+    Returns:
+        List of :class:`ProbeRunSummary`; empty if the target has no
+        probe runs.
+    """
+    runs = _db_list_runs(conn, module=_PROBE_MODULE, target_id=target_id)
+    runs.sort(
+        key=lambda r: (
+            r.finished_at is None,
+            -_as_utc(r.finished_at).timestamp() if r.finished_at else 0.0,
+        ),
+    )
+    return [extract_probe_run_summary(conn, r) for r in runs]
