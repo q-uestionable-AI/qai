@@ -282,9 +282,18 @@ async def runs(
     templates = _get_templates(request)
     db_path = _get_db_path(request)
 
+    # When the request carries the ``intel`` bypass marker, in-page
+    # navigation that re-hits this handler (e.g. status_bar's Refresh
+    # link) must preserve the marker — otherwise the Phase 3 probe
+    # redirect fires on the next click and bounces the user out of the
+    # runs view. The suffix is consumed by templates that emit
+    # ``/runs?run_id=…`` links while the user is in intra-Intel flow.
+    runs_link_suffix = "&intel=1" if intel is not None else ""
+
     ctx: dict[str, Any] = {
         "active": "runs",
         "run_id": run_id,
+        "runs_link_suffix": runs_link_suffix,
         "workflow_run": None,
         "child_runs": [],
         "findings": [],

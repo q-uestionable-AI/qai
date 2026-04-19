@@ -642,3 +642,52 @@ class TestRunsProbeRedirect:
     def test_unknown_run_id_is_not_redirected(self, client: TestClient) -> None:
         resp = client.get("/runs?run_id=does-not-exist-anywhere", follow_redirects=False)
         assert resp.status_code == 200
+
+
+class TestRunsIntelMarkerPropagation:
+    """Intra-Intel /runs views preserve ``intel=1`` on in-page Refresh links.
+
+    Regression guard: without propagation, the status_bar's Refresh
+    button strips the marker, so the first click inside the runs view
+    triggers the Phase 3 redirect and bounces the user back to Intel.
+    """
+
+    def _make_running_probe(self, tmp_db: Path, *, with_target: bool) -> tuple[str, str | None]:
+        """Create a RUNNING ipi-probe run so status_bar.html is rendered.
+
+        runs.html branches on ``is_terminal``; only non-terminal runs
+        include the status bar with its Refresh link.
+        """
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            target_id: str | None = None
+            if with_target:
+                target_id = create_target(conn, type="server", name="marker-target")
+            run_id = create_run(conn, module="ipi-probe", target_id=target_id)
+            update_run_status(conn, run_id, RunStatus.RUNNING)
+            conn.commit()
+            return run_id, target_id
+        finally:
+            conn.close()
+
+    def test_refresh_link_carries_marker_when_request_has_marker(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        run_id, _ = self._make_running_probe(tmp_db, with_target=True)
+        resp = client.get(f"/runs?run_id={run_id}&intel=1", follow_redirects=False)
+        assert resp.status_code == 200
+        # HTML attribute value — `&` is encoded as `&amp;` by Jinja.
+        assert f'href="/runs?run_id={run_id}&amp;intel=1"' in resp.text
+
+    def test_refresh_link_omits_marker_when_request_lacks_marker(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        # Unbound probe run does not redirect, so we can assert the
+        # no-marker Refresh href shape without hitting the 302.
+        run_id, _ = self._make_running_probe(tmp_db, with_target=False)
+        resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
+        assert resp.status_code == 200
+        assert f'href="/runs?run_id={run_id}"' in resp.text
+        assert "intel=1" not in resp.text

@@ -882,6 +882,25 @@ class TestProbeLaunch:
         assert resp.status_code == 202
         assert resp.json()["redirect"] == f"/intel/targets/{target_id}#probe-runs"
 
+    def test_nonexistent_target_returns_422(self, client: TestClient) -> None:
+        """Probe launch rejects an unknown target_id with 422, mirroring sweep.
+
+        Regression guard: Phase 3's redirect target is
+        ``/intel/targets/<target_id>#probe-runs``; without this check a
+        bogus target_id would 202 into a redirect that 404s while the
+        background task's FK insert fails silently.
+        """
+        resp = client.post(
+            "/api/intel/probe/launch",
+            json={
+                "endpoint": "http://localhost:8000/v1",
+                "model": "gpt-4o-mini",
+                "target_id": "does-not-exist",
+            },
+        )
+        assert resp.status_code == 422
+        assert "Target not found" in resp.json()["detail"]
+
 
 class TestImportCommitTargetValidation:
     """POST /api/intel/import/commit validates target_id."""

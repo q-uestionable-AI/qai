@@ -49,9 +49,9 @@ Test a model endpoint directly for IPI susceptibility. This is the Web UI equiva
 
 1. Fill in endpoint and model (minimum required fields)
 2. **Launch** — probing runs as a background task
-3. Results appear in the target's **Probe Runs** section on the detail page when complete (or on `/intel` when no target is set)
+3. Target-bound results appear in the target's **Probe Runs** section on the detail page when complete; launches without a target return to `/intel`.
 
-Probing runs 20 built-in probes across 8 IPI categories with canary-based scoring. Results are persisted to the database and, for target-bound runs, rendered in the target's **Probe Runs** section at `/intel/targets/<target_id>`.
+Probing runs 20 built-in probes across 8 IPI categories with canary-based scoring. Results are persisted to the database and, for target-bound runs, rendered in the target's **Probe Runs** section at `/intel/targets/<target_id>`. Unbound runs (no target) are persisted only; open them via `/runs?run_id=<id>` directly.
 
 ### API Endpoint
 

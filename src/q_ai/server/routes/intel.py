@@ -372,6 +372,26 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
     temperature = validated["temperature"]
     concurrency = validated["concurrency"]
 
+    db_path = _get_db_path(request)
+
+    # Validate target existence off the event loop before loading probe
+    # definitions or scheduling the background task — mirrors
+    # :func:`intel_sweep_launch`. Without this check, a nonexistent
+    # target_id accepts a 202 and a redirect to
+    # ``/intel/targets/<bogus>#probe-runs``, which 404s; the background
+    # task then fails silently on the target_id FK constraint.
+    if target_id:
+
+        def _check_target() -> bool:
+            with get_connection(db_path) as conn:
+                return get_target(conn, target_id) is not None
+
+        if not await asyncio.to_thread(_check_target):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Target not found"},
+            )
+
     try:
         probes = await asyncio.to_thread(load_probes)
     except (FileNotFoundError, ValueError):
@@ -380,8 +400,6 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
             status_code=500,
             content={"detail": "Failed to load probe definitions"},
         )
-
-    db_path = _get_db_path(request)
 
     # Bundle run_probes kwargs here so api_key stays out of the
     # closure's own scope — prevents CodeQL data-flow from the
