@@ -52,6 +52,7 @@ Creates one or more documents containing hidden prompt injection payloads using 
 | `--dangerous` | FLAG | No | `false` | Enable non-callback payload types (exfil, ssrf, override, etc.) |
 | `--seed` | INT | No | — | Seed for deterministic UUID/token generation (reproducible corpus) |
 | `--template` | TEXT | No | `generic` | Document-context template for payload framing. Case-insensitive. Valid values are the 12 templates listed in the [Template Catalog](/ipi/templates). |
+| `--target` | TEXT | No | — | Target ID. With no explicit `--template`, auto-selects the best template from the target's most recent `ipi sweep` findings. |
 | `--encoding` | TEXT | No | `none` | Payload URL encoding. Choices: `none`, `base16`, `hex`. Non-default values obfuscate the payload text. |
 
 ### Callback Resolution Order
@@ -64,6 +65,30 @@ When `qai ipi generate` runs without an explicit callback, the callback URL is r
 4. Interactive prompt (TTY only)
 
 State-file auto-discovery prints a one-line `Using active callback: <url>` notice. If the file is missing, unreadable, or references a dead listener PID, it is ignored silently (or with a one-line warning for stale state) and resolution falls through to the interactive prompt. The interactive prompt only fires when stdin is a TTY — in non-interactive runs (CI, pipes, nohup), callers must pass `CALLBACK` or `--callback` explicitly, otherwise the command exits with an error.
+
+### Auto-select from sweep findings
+
+When `--target <id>` is supplied without an explicit `--template`, generate reads the target's most recent completed [`ipi sweep`](#sweep) run and auto-selects the template with the highest compliance rate. An explicit `--template` always wins and bypasses auto-select entirely.
+
+On a successful auto-select, generate prints a one-line prefix before its usual output:
+
+```
+Auto-selected template: <template> (sweep run <ISO8601>, <N> days ago, <XX>% compliance)
+```
+
+Auto-select refuses and exits non-zero — without generating — in three cases:
+
+| Refusal | Cause | Action |
+|---------|-------|--------|
+| No findings | Target has no completed sweep run. | Run `qai ipi sweep --target <id>`, or pass `--template` explicitly. |
+| Tie | The top two templates are within 10 percentage points of each other (inclusive). The error lists every template inside the band. | Pass `--template` explicitly to choose one. |
+| Stale | The most recent sweep run completed more than 30 days ago. The error includes the run timestamp and age. | Run a fresh sweep, or pass `--template` explicitly. |
+
+When the most recent run is 8–30 days old, auto-select proceeds and appends ` — consider re-running sweep` to the prefix line.
+
+<Note>
+The 10 percentage-point tie band, 7-day stale-warn threshold, and 30-day stale-refuse threshold are current defaults. They may tighten as sweep sample sizes grow; do not treat them as a stable public contract.
+</Note>
 
 ### Technique Presets
 
@@ -99,6 +124,11 @@ qai ipi generate http://localhost:8080 \
 qai ipi generate http://localhost:8080 \
   --technique all \
   --seed 42
+```
+
+```bash Auto-select template from sweep findings
+qai ipi generate http://localhost:8080 \
+  --target my-model-target-id
 ```
 </CodeGroup>
 
