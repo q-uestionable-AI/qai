@@ -11,11 +11,17 @@ from typing import Any
 from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from q_ai.core.db import get_connection, get_target, list_targets
+from q_ai.core.db import get_connection, get_target
 from q_ai.server.routes._shared import (
     _get_db_path,
     _get_templates,
     logger,
+)
+from q_ai.services.run_service import (
+    TargetOverviewRow,
+    TargetsOverviewResult,
+    query_target_overview_by_id,
+    query_targets_overview,
 )
 
 router = APIRouter()
@@ -25,20 +31,46 @@ _background_tasks: set[asyncio.Task[None]] = set()
 
 @router.get("/intel")
 async def intel_page(request: Request) -> HTMLResponse:
-    """Render the Intel page — evidence collection hub."""
+    """Render the Intel landing page — target list with evidence summary."""
     templates = _get_templates(request)
     db_path = _get_db_path(request)
 
-    def _load_targets() -> list:
+    def _load_overview() -> TargetsOverviewResult:
         with get_connection(db_path) as conn:
-            return list_targets(conn)
+            return query_targets_overview(conn)
 
-    targets = await asyncio.to_thread(_load_targets)
+    overview = await asyncio.to_thread(_load_overview)
+    targets = [row.target for row in overview.rows]
 
     return templates.TemplateResponse(
         request,
         "intel.html",
-        {"active": "intel", "targets": targets},
+        {"active": "intel", "overview": overview, "targets": targets},
+    )
+
+
+@router.get("/intel/targets/{target_id}")
+async def intel_target_detail(request: Request, target_id: str) -> HTMLResponse:
+    """Render the per-target Intel detail page.
+
+    Returns HTTP 404 with a plain HTML body when the target does not exist,
+    matching the ``runs_compare`` HTML-404 convention.
+    """
+    templates = _get_templates(request)
+    db_path = _get_db_path(request)
+
+    def _load_row() -> TargetOverviewRow | None:
+        with get_connection(db_path) as conn:
+            return query_target_overview_by_id(conn, target_id)
+
+    row = await asyncio.to_thread(_load_row)
+    if row is None:
+        return HTMLResponse(status_code=404, content="Target not found")
+
+    return templates.TemplateResponse(
+        request,
+        "intel_target_detail.html",
+        {"active": "intel", "overview_row": row},
     )
 
 

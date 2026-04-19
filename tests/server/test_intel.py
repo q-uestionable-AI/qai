@@ -9,7 +9,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from q_ai.core.db import create_target
+from q_ai.core.db import create_run, create_target, update_run_status
+from q_ai.core.models import RunStatus
+
+
+def _open_db(path: Path) -> sqlite3.Connection:
+    """Open a sqlite connection against the test DB with FK + row factory."""
+    conn = sqlite3.connect(str(path))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
 
 
 class TestIntelPage:
@@ -43,9 +52,7 @@ class TestIntelPage:
             assert fmt in resp.text.lower()
 
     def test_target_selector_populated(self, tmp_db: Path, client: TestClient) -> None:
-        conn = sqlite3.connect(str(tmp_db))
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys=ON")
+        conn = _open_db(tmp_db)
         try:
             create_target(conn, type="server", name="intel-test-target")
             conn.commit()
@@ -54,6 +61,126 @@ class TestIntelPage:
 
         resp = client.get("/intel")
         assert "intel-test-target" in resp.text
+
+    def test_target_list_shows_em_dash_when_no_evidence(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        """A target with no runs renders with em-dash age cells."""
+        conn = _open_db(tmp_db)
+        try:
+            create_target(conn, type="server", name="no-evidence-target")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get("/intel")
+        assert resp.status_code == 200
+        assert "no-evidence-target" in resp.text
+        # Three em-dash cells appear in the row (plus the URI em-dash → 4 total).
+        assert resp.text.count("\u2014") >= 3
+
+    def test_target_row_links_to_detail(self, tmp_db: Path, client: TestClient) -> None:
+        """Target-list rows link to /intel/targets/<id>."""
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="clickable-target")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get("/intel")
+        assert f'href="/intel/targets/{target_id}"' in resp.text
+
+    def test_empty_state_still_shows_launcher_cards(self, client: TestClient) -> None:
+        """With zero targets, empty-state copy renders alongside launcher forms."""
+        resp = client.get("/intel")
+        assert resp.status_code == 200
+        assert "No targets defined" in resp.text
+        assert "form-import" in resp.text
+        assert "form-probe" in resp.text
+
+
+class TestIntelTargetDetail:
+    """GET /intel/targets/<target_id> renders the detail page."""
+
+    def test_valid_target_returns_200(self, tmp_db: Path, client: TestClient) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="detail-target")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        assert resp.status_code == 200
+        assert "detail-target" in resp.text
+
+    def test_all_three_section_headers_present(self, tmp_db: Path, client: TestClient) -> None:
+        """Detail page renders the Imports / Probe Runs / Sweep Runs sections."""
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="sections-target")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        assert resp.status_code == 200
+        text = resp.text
+        assert 'id="imports"' in text
+        assert 'id="probe-runs"' in text
+        assert 'id="sweep-runs"' in text
+        assert "Imports" in text
+        assert "Probe Runs" in text
+        assert "Sweep Runs" in text
+
+    def test_empty_state_text_per_section(self, tmp_db: Path, client: TestClient) -> None:
+        """Each section renders its distinct empty-state copy."""
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="empty-sections-target")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert "No imports yet." in text
+        assert "No probe runs yet." in text
+        assert "No sweep runs yet." in text
+
+    def test_nav_marks_intel_active(self, tmp_db: Path, client: TestClient) -> None:
+        """Top nav highlights Intel on the detail page too."""
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="nav-target")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        # The base.html nav gives the active link an 'active bg-primary/10' class.
+        assert 'href="/intel"' in resp.text
+        assert "active bg-primary/10 text-primary" in resp.text
+
+    def test_invalid_target_returns_404(self, client: TestClient) -> None:
+        resp = client.get("/intel/targets/nonexistent-id")
+        assert resp.status_code == 404
+
+    def test_completed_runs_do_not_crash_detail(self, tmp_db: Path, client: TestClient) -> None:
+        """Detail page renders cleanly when completed runs exist for the target."""
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="has-runs-target")
+            run_id = create_run(conn, module="ipi-probe", target_id=target_id)
+            update_run_status(conn, run_id, RunStatus.COMPLETED)
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        assert resp.status_code == 200
+        assert "has-runs-target" in resp.text
 
 
 def _garak_jsonl() -> str:

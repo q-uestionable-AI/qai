@@ -10,8 +10,46 @@
             INTEL
         </h1>
         <p style="color: #64748b; font-size: 0.95rem; margin-top: 0.5rem;">
-            Gather intelligence on your targets — import external results or probe models directly.
+            Targets with their intel at a glance — click a target to review its evidence.
         </p>
+    </div>
+
+    {# ── Target list ── #}
+    <div class="intel-target-list" style="max-width: 725px; margin: 0 auto 1.5rem;">
+        <div class="intel-card-header" style="margin-bottom: 0.75rem;">
+            <div class="intel-card-bar"></div>
+            <span class="intel-card-name">Targets</span>
+        </div>
+
+        {% if overview.rows %}
+        <div class="intel-target-rows">
+            <div class="intel-target-row intel-target-row-head">
+                <span class="intel-target-col-name">Name</span>
+                <span class="intel-target-col-type">Type</span>
+                <span class="intel-target-col-uri">URI</span>
+                <span class="intel-target-col-badge">Probe</span>
+                <span class="intel-target-col-badge">Sweep</span>
+                <span class="intel-target-col-badge">Imports</span>
+            </div>
+            {% for row in overview.rows %}
+            <a class="intel-target-row" href="/intel/targets/{{ row.target.id }}">
+                <span class="intel-target-col-name">{{ row.target.name }}</span>
+                <span class="intel-target-col-type">{{ row.target.type }}</span>
+                <span class="intel-target-col-uri">{{ row.target.uri or "—" }}</span>
+                <span class="intel-target-col-badge">{{ row.latest_probe_finished_at | format_age }}</span>
+                <span class="intel-target-col-badge">{{ row.latest_sweep_finished_at | format_age }}</span>
+                <span class="intel-target-col-badge">{{ row.latest_import_finished_at | format_age }}</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="intel-target-empty">
+            <p class="text-sm" style="color: #94a3b8;">
+                No targets defined. Add targets via <code class="text-xs">qai targets add</code>,
+                or use the cards below to gather evidence.
+            </p>
+        </div>
+        {% endif %}
     </div>
 
     {# ── Card container ── #}
@@ -210,6 +248,68 @@
 .intel-card .btn-launch:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+/* Target list */
+.intel-target-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.intel-target-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.7fr) minmax(0, 1.2fr) 3.25rem 3.25rem 3.5rem;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.intel-target-row:hover:not(.intel-target-row-head) {
+    background: rgba(139, 92, 246, 0.08);
+    border-color: rgba(139, 92, 246, 0.35);
+}
+.intel-target-row-head {
+    background: transparent;
+    border-color: transparent;
+    color: #94a3b8;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding-bottom: 0.25rem;
+    pointer-events: none;
+}
+.intel-target-col-name {
+    font-weight: 500;
+    color: #e2e8f0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.intel-target-col-type,
+.intel-target-col-uri {
+    color: #94a3b8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.intel-target-col-badge {
+    font-family: 'Fira Code', monospace;
+    font-size: 0.8rem;
+    color: #a78bfa;
+    text-align: right;
+}
+.intel-target-empty {
+    padding: 1rem 1.25rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px dashed rgba(139, 92, 246, 0.25);
 }
 
 /* Preview table */
