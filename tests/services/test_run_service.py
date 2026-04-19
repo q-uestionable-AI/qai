@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 import sqlite3
 
-from q_ai.core.db import create_run, update_run_status
+from q_ai.core.db import create_run, create_target, update_run_status
 from q_ai.core.models import RunStatus
 from q_ai.services import run_service
 
@@ -162,3 +163,186 @@ class TestSourceField:
         child = run_service.get_run(db, child_id)
         assert child is not None
         assert child.source == "cli"
+
+
+def _completed_run(
+    db: sqlite3.Connection,
+    *,
+    module: str,
+    target_id: str,
+    finished_at: str,
+) -> str:
+    """Create a run already in COMPLETED with a pinned finished_at."""
+    run_id = create_run(db, module=module, target_id=target_id)
+    update_run_status(db, run_id, RunStatus.COMPLETED, finished_at=finished_at)
+    return run_id
+
+
+class TestQueryTargetsOverview:
+    """Tests for run_service.query_targets_overview()."""
+
+    def test_zero_targets_returns_empty(self, db: sqlite3.Connection) -> None:
+        """Zero targets → empty rows."""
+        result = run_service.query_targets_overview(db)
+        assert result.rows == []
+
+    def test_target_with_no_runs_still_produces_row(self, db: sqlite3.Connection) -> None:
+        """A target without any runs produces a row with all three latests None."""
+        target_id = create_target(db, type="server", name="alpha")
+        result = run_service.query_targets_overview(db)
+        assert len(result.rows) == 1
+        row = result.rows[0]
+        assert row.target.id == target_id
+        assert row.latest_probe_finished_at is None
+        assert row.latest_sweep_finished_at is None
+        assert row.latest_import_finished_at is None
+
+    def test_one_target_one_run_per_module(self, db: sqlite3.Connection) -> None:
+        """One completed run of each tracked module populates all three latests."""
+        target_id = create_target(db, type="server", name="beta")
+        _completed_run(
+            db, module="ipi-probe", target_id=target_id, finished_at="2026-04-10T12:00:00+00:00"
+        )
+        _completed_run(
+            db, module="ipi-sweep", target_id=target_id, finished_at="2026-04-11T12:00:00+00:00"
+        )
+        _completed_run(
+            db, module="import", target_id=target_id, finished_at="2026-04-12T12:00:00+00:00"
+        )
+
+        result = run_service.query_targets_overview(db)
+        assert len(result.rows) == 1
+        row = result.rows[0]
+        assert row.latest_probe_finished_at == _dt.datetime(2026, 4, 10, 12, 0, 0, tzinfo=_dt.UTC)
+        assert row.latest_sweep_finished_at == _dt.datetime(2026, 4, 11, 12, 0, 0, tzinfo=_dt.UTC)
+        assert row.latest_import_finished_at == _dt.datetime(2026, 4, 12, 12, 0, 0, tzinfo=_dt.UTC)
+
+    def test_ignores_non_completed_runs(self, db: sqlite3.Connection) -> None:
+        """A RUNNING probe after a COMPLETED one does not win; completed wins."""
+        target_id = create_target(db, type="server", name="gamma")
+        _completed_run(
+            db, module="ipi-probe", target_id=target_id, finished_at="2026-04-10T12:00:00+00:00"
+        )
+        running_id = create_run(db, module="ipi-probe", target_id=target_id)
+        update_run_status(db, running_id, RunStatus.RUNNING)
+
+        result = run_service.query_targets_overview(db)
+        row = result.rows[0]
+        assert row.latest_probe_finished_at == _dt.datetime(2026, 4, 10, 12, 0, 0, tzinfo=_dt.UTC)
+
+    def test_ignores_other_modules(self, db: sqlite3.Connection) -> None:
+        """Runs with module='ipi' or 'audit' do not populate any latest field."""
+        target_id = create_target(db, type="server", name="delta")
+        _completed_run(
+            db, module="ipi", target_id=target_id, finished_at="2026-04-10T12:00:00+00:00"
+        )
+        _completed_run(
+            db, module="audit", target_id=target_id, finished_at="2026-04-11T12:00:00+00:00"
+        )
+
+        result = run_service.query_targets_overview(db)
+        row = result.rows[0]
+        assert row.latest_probe_finished_at is None
+        assert row.latest_sweep_finished_at is None
+        assert row.latest_import_finished_at is None
+
+    def test_latest_wins_across_multiple_completed(self, db: sqlite3.Connection) -> None:
+        """Given multiple completed sweeps, the greatest finished_at wins."""
+        target_id = create_target(db, type="server", name="epsilon")
+        _completed_run(
+            db, module="ipi-sweep", target_id=target_id, finished_at="2026-04-01T12:00:00+00:00"
+        )
+        _completed_run(
+            db, module="ipi-sweep", target_id=target_id, finished_at="2026-04-15T12:00:00+00:00"
+        )
+        _completed_run(
+            db, module="ipi-sweep", target_id=target_id, finished_at="2026-04-05T12:00:00+00:00"
+        )
+
+        result = run_service.query_targets_overview(db)
+        row = result.rows[0]
+        assert row.latest_sweep_finished_at == _dt.datetime(2026, 4, 15, 12, 0, 0, tzinfo=_dt.UTC)
+
+    def test_multiple_targets_each_isolated(self, db: sqlite3.Connection) -> None:
+        """Each target's latest fields are scoped to its own runs."""
+        t1 = create_target(db, type="server", name="a-target")
+        t2 = create_target(db, type="server", name="b-target")
+        _completed_run(
+            db, module="ipi-probe", target_id=t1, finished_at="2026-04-10T12:00:00+00:00"
+        )
+        _completed_run(db, module="import", target_id=t2, finished_at="2026-04-11T12:00:00+00:00")
+
+        result = run_service.query_targets_overview(db)
+        by_id = {r.target.id: r for r in result.rows}
+        assert by_id[t1].latest_probe_finished_at is not None
+        assert by_id[t1].latest_import_finished_at is None
+        assert by_id[t2].latest_probe_finished_at is None
+        assert by_id[t2].latest_import_finished_at is not None
+
+
+class TestQueryTargetOverviewById:
+    """Tests for run_service.query_target_overview_by_id()."""
+
+    def test_returns_none_for_missing(self, db: sqlite3.Connection) -> None:
+        """Missing target ID returns None."""
+        assert run_service.query_target_overview_by_id(db, "does-not-exist") is None
+
+    def test_returns_row_for_valid_target(self, db: sqlite3.Connection) -> None:
+        """Valid target returns a row with correct latests."""
+        target_id = create_target(db, type="server", name="zed")
+        _completed_run(
+            db, module="ipi-probe", target_id=target_id, finished_at="2026-04-10T12:00:00+00:00"
+        )
+
+        row = run_service.query_target_overview_by_id(db, target_id)
+        assert row is not None
+        assert row.target.id == target_id
+        assert row.latest_probe_finished_at == _dt.datetime(2026, 4, 10, 12, 0, 0, tzinfo=_dt.UTC)
+        assert row.latest_sweep_finished_at is None
+        assert row.latest_import_finished_at is None
+
+
+class TestFormatAge:
+    """Tests for run_service.format_age()."""
+
+    _NOW = _dt.datetime(2026, 4, 19, 12, 0, 0, tzinfo=_dt.UTC)
+
+    def test_none_returns_em_dash(self) -> None:
+        assert run_service.format_age(None) == "\u2014"
+
+    def test_sub_minute_returns_now(self) -> None:
+        dt = self._NOW - _dt.timedelta(seconds=30)
+        assert run_service.format_age(dt, now=self._NOW) == "now"
+
+    def test_future_returns_now(self) -> None:
+        dt = self._NOW + _dt.timedelta(minutes=5)
+        assert run_service.format_age(dt, now=self._NOW) == "now"
+
+    def test_minutes(self) -> None:
+        dt = self._NOW - _dt.timedelta(minutes=5)
+        assert run_service.format_age(dt, now=self._NOW) == "5m"
+
+    def test_minutes_upper_boundary(self) -> None:
+        dt = self._NOW - _dt.timedelta(minutes=59)
+        assert run_service.format_age(dt, now=self._NOW) == "59m"
+
+    def test_hours(self) -> None:
+        dt = self._NOW - _dt.timedelta(hours=3)
+        assert run_service.format_age(dt, now=self._NOW) == "3h"
+
+    def test_hours_upper_boundary(self) -> None:
+        dt = self._NOW - _dt.timedelta(hours=23, minutes=59)
+        assert run_service.format_age(dt, now=self._NOW) == "23h"
+
+    def test_days(self) -> None:
+        dt = self._NOW - _dt.timedelta(days=2)
+        assert run_service.format_age(dt, now=self._NOW) == "2d"
+
+    def test_very_old(self) -> None:
+        dt = self._NOW - _dt.timedelta(days=1000)
+        assert run_service.format_age(dt, now=self._NOW) == "1000d"
+
+    def test_naive_dt_treated_as_utc(self) -> None:
+        """Naive datetimes are assumed to be UTC (matches DB convention)."""
+        dt = (self._NOW - _dt.timedelta(hours=2)).replace(tzinfo=None)
+        assert run_service.format_age(dt, now=self._NOW) == "2h"

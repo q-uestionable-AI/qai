@@ -574,3 +574,204 @@ def query_history_runs(
         targets=targets,
         prior_run_counts=prior_run_counts,
     )
+
+
+# ---------------------------------------------------------------------------
+# Per-target overview (Intel target-list and target-detail pages)
+# ---------------------------------------------------------------------------
+
+
+_PROBE_MODULE = "ipi-probe"
+_SWEEP_MODULE = "ipi-sweep"
+_IMPORT_MODULE = "import"
+_OVERVIEW_MODULES = (_PROBE_MODULE, _SWEEP_MODULE, _IMPORT_MODULE)
+
+
+@dataclass(slots=True)
+class TargetOverviewRow:
+    """Per-target summary of the most recent evidence by module.
+
+    Attributes:
+        target: The target this row describes.
+        latest_probe_finished_at: ``finished_at`` of the most recent
+            completed ``ipi-probe`` run for this target, or ``None``.
+        latest_sweep_finished_at: ``finished_at`` of the most recent
+            completed ``ipi-sweep`` run for this target, or ``None``.
+        latest_import_finished_at: ``finished_at`` of the most recent
+            completed ``import`` run for this target, or ``None``.
+    """
+
+    target: Target
+    latest_probe_finished_at: _dt.datetime | None = None
+    latest_sweep_finished_at: _dt.datetime | None = None
+    latest_import_finished_at: _dt.datetime | None = None
+
+
+@dataclass(slots=True)
+class TargetsOverviewResult:
+    """Typed result for the Intel target-list view."""
+
+    rows: list[TargetOverviewRow]
+
+
+def _as_utc(value: _dt.datetime) -> _dt.datetime:
+    """Coerce a datetime to UTC-aware.
+
+    Naive datetimes are assumed to already be UTC (matches how
+    :func:`q_ai.core.db._now_iso` writes timestamps).
+
+    Args:
+        value: Datetime to coerce.
+
+    Returns:
+        UTC-aware datetime.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=_dt.UTC)
+    return value.astimezone(_dt.UTC)
+
+
+def _load_latest_per_target_module(
+    conn: sqlite3.Connection,
+    target_ids: list[str],
+) -> dict[tuple[str, str], _dt.datetime]:
+    """Return a ``(target_id, module) -> latest finished_at`` map.
+
+    Runs a single GROUP BY query over completed ``ipi-probe`` /
+    ``ipi-sweep`` / ``import`` runs for the supplied targets.
+
+    Args:
+        conn: Active database connection.
+        target_ids: Target IDs to include. Empty list returns ``{}``.
+
+    Returns:
+        Dict keyed by ``(target_id, module)``; only populated for the
+        (target, module) pairs that have at least one completed run.
+    """
+    if not target_ids:
+        return {}
+
+    target_ph = ", ".join("?" for _ in target_ids)
+    module_ph = ", ".join("?" for _ in _OVERVIEW_MODULES)
+    rows = conn.execute(
+        f"SELECT target_id, module, MAX(finished_at) AS latest "  # noqa: S608
+        f"FROM runs "
+        f"WHERE target_id IN ({target_ph}) "
+        f"AND module IN ({module_ph}) "
+        f"AND status = ? "
+        f"AND finished_at IS NOT NULL "
+        f"GROUP BY target_id, module",
+        (*target_ids, *_OVERVIEW_MODULES, int(RunStatus.COMPLETED)),
+    ).fetchall()
+
+    result: dict[tuple[str, str], _dt.datetime] = {}
+    for row in rows:
+        latest = row["latest"]
+        if not latest:
+            continue
+        parsed = _dt.datetime.fromisoformat(latest)
+        result[(row["target_id"], row["module"])] = _as_utc(parsed)
+    return result
+
+
+def _build_overview_row(
+    target: Target,
+    latest_map: dict[tuple[str, str], _dt.datetime],
+) -> TargetOverviewRow:
+    """Assemble a :class:`TargetOverviewRow` by looking up per-module latests."""
+    return TargetOverviewRow(
+        target=target,
+        latest_probe_finished_at=latest_map.get((target.id, _PROBE_MODULE)),
+        latest_sweep_finished_at=latest_map.get((target.id, _SWEEP_MODULE)),
+        latest_import_finished_at=latest_map.get((target.id, _IMPORT_MODULE)),
+    )
+
+
+def query_targets_overview(
+    conn: sqlite3.Connection,
+) -> TargetsOverviewResult:
+    """Load one overview row per target in a single DB pass.
+
+    The row list is driven by :func:`list_targets`, so a target with no
+    completed runs still produces a row with all three
+    ``latest_*_finished_at`` fields set to ``None``. The per-module
+    latests are fetched in a single ``GROUP BY`` query to avoid an N+1.
+    Rows preserve the ``list_targets`` ordering (name ascending, NOCASE).
+    Only ``status = COMPLETED`` runs populate the latest fields.
+    Runs from other modules are ignored.
+    """
+    targets = _db_list_targets(conn)
+    if not targets:
+        return TargetsOverviewResult(rows=[])
+
+    target_ids = [t.id for t in targets]
+    latest_map = _load_latest_per_target_module(conn, target_ids)
+    rows = [_build_overview_row(t, latest_map) for t in targets]
+    return TargetsOverviewResult(rows=rows)
+
+
+def query_target_overview_by_id(
+    conn: sqlite3.Connection,
+    target_id: str,
+) -> TargetOverviewRow | None:
+    """Load a single target's overview row.
+
+    Args:
+        conn: Active database connection.
+        target_id: The target ID to look up.
+
+    Returns:
+        A populated :class:`TargetOverviewRow` or ``None`` if the target
+        does not exist.
+    """
+    target = _db_get_target(conn, target_id)
+    if target is None:
+        return None
+    latest_map = _load_latest_per_target_module(conn, [target_id])
+    return _build_overview_row(target, latest_map)
+
+
+# ---------------------------------------------------------------------------
+# Age-badge formatting (Intel target list and detail pages)
+# ---------------------------------------------------------------------------
+
+
+_SECONDS_PER_MINUTE = 60
+_SECONDS_PER_HOUR = 60 * 60
+_SECONDS_PER_DAY = 24 * _SECONDS_PER_HOUR
+_EM_DASH = "\u2014"
+
+
+def format_age(
+    dt: _dt.datetime | None,
+    now: _dt.datetime | None = None,
+) -> str:
+    """Format a datetime as a compact age badge.
+
+    Used for the Intel target-list evidence cells and the detail-page
+    section headers. Returns the em-dash placeholder for missing data to
+    match the ``targets_table.html`` convention.
+
+    Args:
+        dt: The reference timestamp, or ``None`` if no evidence exists.
+        now: Optional pinned "now" for deterministic formatting in tests.
+            Defaults to :func:`datetime.datetime.now` in UTC.
+
+    Returns:
+        ``"—"`` when ``dt`` is ``None``, ``"now"`` for sub-minute and
+        future deltas (clock skew), ``"{N}m"`` under one hour,
+        ``"{N}h"`` under one day, or ``"{N}d"`` otherwise.
+    """
+    if dt is None:
+        return _EM_DASH
+
+    current = _as_utc(now) if now is not None else _dt.datetime.now(_dt.UTC)
+    delta = (current - _as_utc(dt)).total_seconds()
+
+    if delta < _SECONDS_PER_MINUTE:
+        return "now"
+    if delta < _SECONDS_PER_HOUR:
+        return f"{int(delta // _SECONDS_PER_MINUTE)}m"
+    if delta < _SECONDS_PER_DAY:
+        return f"{int(delta // _SECONDS_PER_HOUR)}h"
+    return f"{int(delta // _SECONDS_PER_DAY)}d"
