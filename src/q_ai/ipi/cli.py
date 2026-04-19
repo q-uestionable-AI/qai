@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from q_ai.ipi.probe_service import Probe, ProbeRunResult
     from q_ai.ipi.sweep_service import SweepCase, SweepRunResult
 
+import click
 import typer
 from rich.console import Console
 from rich.markup import escape
@@ -65,6 +66,13 @@ from q_ai.ipi.models import (
     Technique,
 )
 from q_ai.ipi.server import start_server
+from q_ai.ipi.sweep_selection import (
+    NoFindings,
+    SelectedTemplate,
+    StaleRefusal,
+    TieRefusal,
+    select_template_for_target,
+)
 from q_ai.ipi.tunnel import TunnelError, get_tunnel_adapter
 
 SUPPORTED_TUNNEL_PROVIDERS = ("cloudflare",)
@@ -417,6 +425,119 @@ def _resolve_techniques(technique: str, format_name: Format) -> list[Technique]:
     return valid_techniques
 
 
+def _resolve_template_for_target(
+    ctx: typer.Context,
+    target: str | None,
+    template: DocumentTemplate,
+) -> DocumentTemplate:
+    """Resolve the generate ``--template`` when ``--target`` is supplied.
+
+    Auto-selects from sweep findings only when ``target`` is set AND
+    ``--template`` was not explicitly passed on the command line. Explicit
+    ``--template`` always wins, regardless of ``target`` or findings
+    state. This invariant is enforced at the CLI entry point (not at any
+    caller site) so future entry points that share this command's
+    arguments inherit the same contract.
+
+    Args:
+        ctx: Typer/Click context used to distinguish an explicit
+            ``--template`` from its default value.
+        target: Target ID passed via ``--target``, or None.
+        template: The template value already resolved from CLI parsing
+            (default :attr:`DocumentTemplate.GENERIC` when not supplied).
+
+    Returns:
+        The template to use for generation.
+
+    Raises:
+        typer.Exit: On any auto-select refusal (tie, stale-refuse,
+            no-findings). Exits with code 1 after printing a specific
+            error message.
+    """
+    if target is None:
+        return template
+
+    source = ctx.get_parameter_source("template")
+    if source == click.core.ParameterSource.COMMANDLINE:
+        return template
+
+    result = select_template_for_target(target)
+
+    if isinstance(result, SelectedTemplate):
+        _emit_auto_select_prefix(result)
+        return result.template
+
+    if isinstance(result, TieRefusal):
+        _print_tie_error(target, result)
+    elif isinstance(result, StaleRefusal):
+        _print_stale_refuse_error(target, result)
+    elif isinstance(result, NoFindings):
+        _print_no_findings_error(target)
+    raise typer.Exit(1)
+
+
+def _emit_auto_select_prefix(selection: SelectedTemplate) -> None:
+    """Print the one-line auto-select prefix to stdout.
+
+    Args:
+        selection: Successful selection result.
+    """
+    day_word = "day" if selection.age_days == 1 else "days"
+    percent = round(selection.compliance_rate * 100)
+    iso = selection.completed_at.isoformat()
+    line = (
+        f"Auto-selected template: {selection.template.value}"
+        f" (sweep run {iso}, {selection.age_days} {day_word} ago,"
+        f" {percent}% compliance)"
+    )
+    if selection.stale_warn:
+        line += " — consider re-running sweep"
+    console.print(line)
+
+
+def _print_no_findings_error(target: str) -> None:
+    """Print the no-findings refusal to the console.
+
+    Args:
+        target: Target ID that yielded no sweep runs.
+    """
+    console.print(f"[red]X No sweep findings for target {target!r}.[/red]")
+    console.print(f"  Run `qai ipi sweep --target {target}` first, or pass --template explicitly.")
+
+
+def _print_tie_error(target: str, refusal: TieRefusal) -> None:
+    """Print the tie refusal listing all candidates inside the 10pp band.
+
+    Args:
+        target: Target ID associated with the run.
+        refusal: The :class:`TieRefusal` describing the near-tie.
+    """
+    console.print(
+        f"[red]X Sweep findings for target {target!r} are tied within"
+        " 10pp — cannot auto-select a template:[/red]"
+    )
+    for template, rate in refusal.candidates:
+        percent = round(rate * 100)
+        console.print(f"  - {template.value}: {percent}% compliance")
+    console.print("  Pass --template explicitly to choose one.")
+
+
+def _print_stale_refuse_error(target: str, refusal: StaleRefusal) -> None:
+    """Print the stale-refuse error with run timestamp and age.
+
+    Args:
+        target: Target ID associated with the run.
+        refusal: The :class:`StaleRefusal` with timestamp and age.
+    """
+    iso = refusal.completed_at.isoformat()
+    console.print(
+        f"[red]X Most recent sweep for target {target!r} completed"
+        f" {iso} ({refusal.age_days} days ago) — exceeds the 30-day"
+        " freshness limit.[/red]"
+    )
+    console.print("  Run a fresh sweep, or pass --template explicitly.")
+
+
 def _display_generate_results(
     result: GenerateResult,
     format_name: Format,
@@ -466,6 +587,7 @@ def _display_generate_results(
     ),
 )
 def generate(
+    ctx: typer.Context,
     callback: Annotated[
         str | None,
         typer.Argument(
@@ -552,6 +674,17 @@ def generate(
             case_sensitive=False,
         ),
     ] = DocumentTemplate.GENERIC,
+    target: Annotated[
+        str | None,
+        typer.Option(
+            "--target",
+            help=(
+                "Target ID. When supplied without an explicit --template,"
+                " auto-selects the best template from the target's most"
+                " recent sweep findings."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Generate document(s) with hidden prompt injection payload.
 
@@ -593,6 +726,8 @@ def generate(
     encoding = _parse_encoding(encoding)
     _enforce_dangerous_gate(payload_type_enum, dangerous)
     techniques = _resolve_techniques(technique, format_name)
+
+    template = _resolve_template_for_target(ctx, target, template)
 
     # Generate documents via shared service
     result = generate_documents(

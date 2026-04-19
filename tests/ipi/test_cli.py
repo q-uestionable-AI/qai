@@ -2,11 +2,26 @@
 
 from __future__ import annotations
 
+import datetime
+import os
 from unittest.mock import patch
 
 from typer.testing import CliRunner
 
 from q_ai.cli import app
+from q_ai.ipi.generate_service import GenerateResult
+from q_ai.ipi.models import DocumentTemplate
+from q_ai.ipi.sweep_selection import (
+    NoFindings,
+    SelectedTemplate,
+    StaleRefusal,
+    TieRefusal,
+)
+
+# Rich colors the `[red]` markup used for error messages; substring asserts
+# on error text need the ANSI-free form. Matches the approach in
+# tests/ipi/test_sweep_cli.py.
+os.environ["NO_COLOR"] = "1"
 
 runner = CliRunner()
 
@@ -74,3 +89,216 @@ class TestIpiHelpText:
         assert "scored-prompts" in result.output or "scored prompts" in result.output, (
             "probe --export help does not reference scored-prompts JSON"
         )
+
+    def test_generate_help_mentions_target_auto_select(self) -> None:
+        """`qai ipi generate --help` must mention the --target auto-select flag."""
+        result = runner.invoke(app, ["ipi", "generate", "--help"])
+        assert result.exit_code == 0
+        assert "--target" in result.output, "--target flag missing from generate --help"
+
+
+class TestIpiGenerateTargetAutoSelect:
+    """Tests for `qai ipi generate --target` auto-selecting a template."""
+
+    _FIXED_NOW = datetime.datetime(2026, 4, 18, 12, 0, 0, tzinfo=datetime.UTC)
+
+    def _selected(
+        self,
+        template: DocumentTemplate = DocumentTemplate.WHOIS,
+        age_days: int = 2,
+        stale_warn: bool = False,
+        rate: float = 0.80,
+    ) -> SelectedTemplate:
+        return SelectedTemplate(
+            template=template,
+            run_id="run-id",
+            completed_at=self._FIXED_NOW - datetime.timedelta(days=age_days),
+            compliance_rate=rate,
+            age_days=age_days,
+            stale_warn=stale_warn,
+        )
+
+    @patch("q_ai.ipi.mapper.persist_generate")
+    @patch("q_ai.ipi.cli.generate_documents")
+    @patch("q_ai.ipi.cli.select_template_for_target")
+    def test_target_with_findings_emits_prefix_and_generates(
+        self,
+        mock_select: object,
+        mock_gen: object,
+        _mock_persist: object,
+    ) -> None:
+        mock_select.return_value = self._selected()  # type: ignore[attr-defined]
+        mock_gen.return_value = GenerateResult(campaigns=[], errors=[])  # type: ignore[attr-defined]
+
+        result = runner.invoke(
+            app,
+            ["ipi", "generate", "http://localhost:8080", "--target", "target-123"],
+        )
+
+        assert result.exit_code == 0, result.output
+        collapsed = " ".join(result.output.split())
+        assert "Auto-selected template: whois" in collapsed
+        assert "80% compliance" in collapsed
+        mock_select.assert_called_once_with("target-123")  # type: ignore[attr-defined]
+        # Confirm the chosen template reached the generator call.
+        call_kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
+        assert call_kwargs["template"] == DocumentTemplate.WHOIS
+
+    @patch("q_ai.ipi.mapper.persist_generate")
+    @patch("q_ai.ipi.cli.generate_documents")
+    @patch("q_ai.ipi.cli.select_template_for_target")
+    def test_explicit_template_bypasses_selection(
+        self,
+        mock_select: object,
+        mock_gen: object,
+        _mock_persist: object,
+    ) -> None:
+        """--template on the command line wins; no selection, no prefix."""
+        mock_gen.return_value = GenerateResult(campaigns=[], errors=[])  # type: ignore[attr-defined]
+
+        result = runner.invoke(
+            app,
+            [
+                "ipi",
+                "generate",
+                "http://localhost:8080",
+                "--target",
+                "target-123",
+                "--template",
+                "report",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Auto-selected template" not in result.output
+        mock_select.assert_not_called()  # type: ignore[attr-defined]
+        call_kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
+        assert call_kwargs["template"] == DocumentTemplate.REPORT
+
+    @patch("q_ai.ipi.mapper.persist_generate")
+    @patch("q_ai.ipi.cli.generate_documents")
+    @patch("q_ai.ipi.cli.select_template_for_target")
+    def test_no_findings_exits_non_zero_with_guidance(
+        self,
+        mock_select: object,
+        mock_gen: object,
+        _mock_persist: object,
+    ) -> None:
+        mock_select.return_value = NoFindings(target_id="target-123")  # type: ignore[attr-defined]
+
+        result = runner.invoke(
+            app,
+            ["ipi", "generate", "http://localhost:8080", "--target", "target-123"],
+        )
+
+        assert result.exit_code != 0
+        collapsed = " ".join(result.output.split())
+        assert "No sweep findings" in collapsed
+        assert "qai ipi sweep" in collapsed
+        assert "--template" in collapsed
+        mock_gen.assert_not_called()  # type: ignore[attr-defined]
+
+    @patch("q_ai.ipi.mapper.persist_generate")
+    @patch("q_ai.ipi.cli.generate_documents")
+    @patch("q_ai.ipi.cli.select_template_for_target")
+    def test_tie_exits_non_zero_listing_candidates(
+        self,
+        mock_select: object,
+        mock_gen: object,
+        _mock_persist: object,
+    ) -> None:
+        mock_select.return_value = TieRefusal(  # type: ignore[attr-defined]
+            candidates=[
+                (DocumentTemplate.WHOIS, 0.80),
+                (DocumentTemplate.REPORT, 0.75),
+            ],
+            run_id="run-id",
+        )
+
+        result = runner.invoke(
+            app,
+            ["ipi", "generate", "http://localhost:8080", "--target", "target-123"],
+        )
+
+        assert result.exit_code != 0
+        collapsed = " ".join(result.output.split())
+        assert "tied within 10pp" in collapsed
+        assert "whois: 80% compliance" in collapsed
+        assert "report: 75% compliance" in collapsed
+        assert "--template" in collapsed
+        mock_gen.assert_not_called()  # type: ignore[attr-defined]
+
+    @patch("q_ai.ipi.mapper.persist_generate")
+    @patch("q_ai.ipi.cli.generate_documents")
+    @patch("q_ai.ipi.cli.select_template_for_target")
+    def test_stale_refuse_exits_non_zero_with_timestamp(
+        self,
+        mock_select: object,
+        mock_gen: object,
+        _mock_persist: object,
+    ) -> None:
+        completed_at = self._FIXED_NOW - datetime.timedelta(days=35)
+        mock_select.return_value = StaleRefusal(  # type: ignore[attr-defined]
+            run_id="run-id",
+            completed_at=completed_at,
+            age_days=35,
+        )
+
+        result = runner.invoke(
+            app,
+            ["ipi", "generate", "http://localhost:8080", "--target", "target-123"],
+        )
+
+        assert result.exit_code != 0
+        collapsed = " ".join(result.output.split())
+        assert "35 days ago" in collapsed
+        assert completed_at.isoformat() in collapsed
+        assert "fresh sweep" in collapsed
+        mock_gen.assert_not_called()  # type: ignore[attr-defined]
+
+    @patch("q_ai.ipi.mapper.persist_generate")
+    @patch("q_ai.ipi.cli.generate_documents")
+    @patch("q_ai.ipi.cli.select_template_for_target")
+    def test_stale_warn_appends_rerun_suggestion(
+        self,
+        mock_select: object,
+        mock_gen: object,
+        _mock_persist: object,
+    ) -> None:
+        mock_select.return_value = self._selected(  # type: ignore[attr-defined]
+            age_days=10,
+            stale_warn=True,
+        )
+        mock_gen.return_value = GenerateResult(campaigns=[], errors=[])  # type: ignore[attr-defined]
+
+        result = runner.invoke(
+            app,
+            ["ipi", "generate", "http://localhost:8080", "--target", "target-123"],
+        )
+
+        assert result.exit_code == 0, result.output
+        # Rich may line-wrap the prefix; collapse whitespace before checking.
+        collapsed = " ".join(result.output.split())
+        assert "Auto-selected template: whois" in collapsed
+        assert "10 days ago" in collapsed
+        assert "consider re-running sweep" in collapsed
+
+    @patch("q_ai.ipi.mapper.persist_generate")
+    @patch("q_ai.ipi.cli.generate_documents")
+    @patch("q_ai.ipi.cli.select_template_for_target")
+    def test_no_target_preserves_existing_behavior(
+        self,
+        mock_select: object,
+        mock_gen: object,
+        _mock_persist: object,
+    ) -> None:
+        """Without --target, selection is never invoked, even when no --template is passed."""
+        mock_gen.return_value = GenerateResult(campaigns=[], errors=[])  # type: ignore[attr-defined]
+
+        result = runner.invoke(app, ["ipi", "generate", "http://localhost:8080"])
+
+        assert result.exit_code == 0, result.output
+        mock_select.assert_not_called()  # type: ignore[attr-defined]
+        assert "Auto-selected template" not in result.output
+        call_kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
+        assert call_kwargs["template"] == DocumentTemplate.GENERIC
