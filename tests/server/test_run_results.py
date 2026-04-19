@@ -573,3 +573,72 @@ class TestContentSanitization:
         resp = client.get(f"/api/operations/findings-sidebar?run_id={run_id}")
         assert "<script>alert" not in resp.text
         assert "&lt;script&gt;" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: two-release redirect on /runs for target-bound probe runs
+# ---------------------------------------------------------------------------
+
+
+def _make_probe_run(tmp_db: Path, *, with_target: bool) -> tuple[str, str | None]:
+    """Create a COMPLETED ipi-probe run; returns (run_id, target_id)."""
+    conn = sqlite3.connect(str(tmp_db))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        target_id: str | None = None
+        if with_target:
+            target_id = create_target(conn, type="server", name="redirect-target")
+        run_id = create_run(conn, module="ipi-probe", target_id=target_id)
+        update_run_status(conn, run_id, RunStatus.COMPLETED)
+        conn.commit()
+        return run_id, target_id
+    finally:
+        conn.close()
+
+
+class TestRunsProbeRedirect:
+    """GET /runs two-release redirect for target-bound probe runs."""
+
+    def test_target_bound_probe_without_marker_redirects(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        run_id, target_id = _make_probe_run(tmp_db, with_target=True)
+        assert target_id is not None
+
+        resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == (f"/intel/targets/{target_id}#probe-run-{run_id}")
+
+    def test_target_bound_probe_with_marker_renders(self, client: TestClient, tmp_db: Path) -> None:
+        run_id, _ = _make_probe_run(tmp_db, with_target=True)
+        resp = client.get(f"/runs?run_id={run_id}&intel=1", follow_redirects=False)
+        assert resp.status_code == 200
+
+    def test_null_target_probe_renders(self, client: TestClient, tmp_db: Path) -> None:
+        run_id, _ = _make_probe_run(tmp_db, with_target=False)
+        resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
+        assert resp.status_code == 200
+
+    def test_sweep_run_is_not_redirected(self, client: TestClient, tmp_db: Path) -> None:
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            target_id = create_target(conn, type="server", name="sweep-target")
+            run_id = create_run(conn, module="ipi-sweep", target_id=target_id)
+            update_run_status(conn, run_id, RunStatus.COMPLETED)
+            conn.commit()
+        finally:
+            conn.close()
+        resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
+        assert resp.status_code == 200
+
+    def test_workflow_run_is_not_redirected(self, client: TestClient, tmp_db: Path) -> None:
+        parent_id, _, _ = _setup_completed_assess_run(tmp_db)
+        resp = client.get(f"/runs?run_id={parent_id}", follow_redirects=False)
+        assert resp.status_code == 200
+
+    def test_unknown_run_id_is_not_redirected(self, client: TestClient) -> None:
+        resp = client.get("/runs?run_id=does-not-exist-anywhere", follow_redirects=False)
+        assert resp.status_code == 200

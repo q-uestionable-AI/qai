@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import datetime as _dt
+import json
 import sqlite3
 
 from q_ai.core.db import create_evidence, create_run, create_target, update_run_status
-from q_ai.core.models import RunStatus
+from q_ai.core.models import RunStatus, Severity
 from q_ai.services import run_service
 
 
@@ -578,3 +579,372 @@ class TestExtractSweepRunSummary:
         summary = run_service.extract_sweep_run_summary(db, run)
         assert summary.metadata_available is True
         assert summary.reps is None
+
+
+# ---------------------------------------------------------------------------
+# Probe-run summary tests (Phase 3)
+# ---------------------------------------------------------------------------
+
+
+def _seed_probe_metadata(
+    db: sqlite3.Connection,
+    run_id: str,
+    *,
+    total_probes: int = 20,
+    total_complied: int = 4,
+    overall_rate: float = 0.2,
+    overall_severity: str = "MEDIUM",
+    categories: int = 3,
+) -> None:
+    """Seed a matching ipi_probe_metadata evidence blob for a probe run."""
+    blob = {
+        "model": "test-model",
+        "endpoint": "http://localhost:8000/v1",
+        "total_probes": total_probes,
+        "total_complied": total_complied,
+        "overall_compliance_rate": overall_rate,
+        "overall_severity": overall_severity,
+        "category_summary": {
+            f"cat_{i}": {
+                "total": 1,
+                "complied": 0,
+                "rate": 0.0,
+                "severity": "INFO",
+            }
+            for i in range(categories)
+        },
+    }
+    create_evidence(
+        db,
+        type="ipi_probe_metadata",
+        run_id=run_id,
+        storage="inline",
+        content=json.dumps(blob),
+    )
+
+
+def _seed_probe_metadata_raw(
+    db: sqlite3.Connection,
+    run_id: str,
+    content: str,
+) -> None:
+    """Seed the probe metadata evidence row with an arbitrary content string."""
+    create_evidence(
+        db,
+        type="ipi_probe_metadata",
+        run_id=run_id,
+        storage="inline",
+        content=content,
+    )
+
+
+class TestExtractProbeRunSummary:
+    """Tests for run_service.extract_probe_run_summary()."""
+
+    def test_valid_blob_populates_summary(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="valid-probe")
+        run_id = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_probe_metadata(
+            db,
+            run_id,
+            total_probes=20,
+            total_complied=5,
+            overall_rate=0.25,
+            overall_severity="HIGH",
+            categories=8,
+        )
+
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_probe_run_summary(db, run)
+        assert summary.metadata_available is True
+        assert summary.total_probes == 20
+        assert summary.total_complied == 5
+        assert summary.overall_compliance_rate == 0.25
+        assert summary.overall_severity is Severity.HIGH
+        assert summary.category_count == 8
+
+    def test_missing_blob_returns_flagged_summary(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="absent-probe")
+        run_id = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_probe_run_summary(db, run)
+        assert summary.metadata_available is False
+        assert summary.total_probes == 0
+        assert summary.total_complied == 0
+        assert summary.overall_compliance_rate == 0.0
+        assert summary.overall_severity is Severity.INFO
+        assert summary.category_count == 0
+
+    def test_malformed_json_returns_flagged_summary(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="malformed-probe")
+        run_id = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_probe_metadata_raw(db, run_id, "not json {{{")
+
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_probe_run_summary(db, run)
+        assert summary.metadata_available is False
+        assert summary.total_probes == 0
+
+    def test_missing_category_summary_key(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="missing-cats")
+        run_id = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_probe_metadata_raw(
+            db,
+            run_id,
+            json.dumps({"overall_severity": "HIGH", "total_probes": 20}),
+        )
+
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_probe_run_summary(db, run)
+        assert summary.metadata_available is False
+        assert summary.category_count == 0
+
+    def test_missing_overall_severity_key(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="missing-sev")
+        run_id = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_probe_metadata_raw(
+            db,
+            run_id,
+            json.dumps({"category_summary": {"a": {}}, "total_probes": 5}),
+        )
+
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_probe_run_summary(db, run)
+        assert summary.metadata_available is False
+        assert summary.overall_severity is Severity.INFO
+
+    def test_unknown_severity_name(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="unknown-sev")
+        run_id = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_probe_metadata(db, run_id, overall_severity="SUPER_CRITICAL")
+
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_probe_run_summary(db, run)
+        assert summary.metadata_available is False
+
+    def test_type_unexpected_category_summary(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="weird-cats")
+        run_id = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_probe_metadata_raw(
+            db,
+            run_id,
+            json.dumps(
+                {
+                    "overall_severity": "HIGH",
+                    "category_summary": ["not", "a", "dict"],
+                    "total_probes": 5,
+                }
+            ),
+        )
+
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_probe_run_summary(db, run)
+        assert summary.metadata_available is False
+
+    def test_non_numeric_rate_defaults_without_raising(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="bad-rate")
+        run_id = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_probe_metadata_raw(
+            db,
+            run_id,
+            json.dumps(
+                {
+                    "overall_severity": "HIGH",
+                    "category_summary": {"a": {}},
+                    "total_probes": "twenty",
+                    "total_complied": None,
+                    "overall_compliance_rate": "high",
+                }
+            ),
+        )
+
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_probe_run_summary(db, run)
+        # Blob is present and the required fields parse — metadata_available
+        # is True; only the type-unexpected numerics fall back to defaults.
+        assert summary.metadata_available is True
+        assert summary.total_probes == 0
+        assert summary.total_complied == 0
+        assert summary.overall_compliance_rate == 0.0
+        assert summary.overall_severity is Severity.HIGH
+
+    def test_blob_that_is_a_json_list_not_dict(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="list-blob")
+        run_id = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_probe_metadata_raw(db, run_id, json.dumps([1, 2, 3]))
+
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_probe_run_summary(db, run)
+        assert summary.metadata_available is False
+
+
+class TestQueryTargetProbeRuns:
+    """Tests for run_service.query_target_probe_runs()."""
+
+    def test_zero_runs_returns_empty(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="empty-probe")
+        assert run_service.query_target_probe_runs(db, target_id) == []
+
+    def test_one_completed_row_with_aggregates(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="one-probe")
+        run_id = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_probe_metadata(db, run_id, overall_severity="HIGH", categories=5)
+
+        rows = run_service.query_target_probe_runs(db, target_id)
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.run_id == run_id
+        assert row.status == RunStatus.COMPLETED
+        assert row.finished_at == _dt.datetime(2026, 4, 10, 12, 0, 0, tzinfo=_dt.UTC)
+        assert row.overall_severity is Severity.HIGH
+        assert row.category_count == 5
+        assert row.metadata_available is True
+
+    def test_ordering_is_finished_at_desc_with_none_last(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="multi-probe")
+        earlier = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-01T12:00:00+00:00",
+        )
+        latest = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-15T12:00:00+00:00",
+        )
+        mid = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-05T12:00:00+00:00",
+        )
+        # Running probe (no finished_at) must sort last.
+        running = create_run(db, module="ipi-probe", target_id=target_id)
+        update_run_status(db, running, RunStatus.RUNNING)
+
+        rows = run_service.query_target_probe_runs(db, target_id)
+        assert [r.run_id for r in rows] == [latest, mid, earlier, running]
+
+    def test_excludes_other_modules_and_targets(self, db: sqlite3.Connection) -> None:
+        t1 = create_target(db, type="server", name="probe-t1")
+        t2 = create_target(db, type="server", name="probe-t2")
+        own = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=t1,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=t2,
+            finished_at="2026-04-11T12:00:00+00:00",
+        )
+        _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=t1,
+            finished_at="2026-04-12T12:00:00+00:00",
+        )
+        _completed_run(
+            db,
+            module="import",
+            target_id=t1,
+            finished_at="2026-04-13T12:00:00+00:00",
+        )
+
+        rows = run_service.query_target_probe_runs(db, t1)
+        assert [r.run_id for r in rows] == [own]
+
+    def test_row_without_metadata_renders_with_flag(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="no-metadata-probe")
+        run_id = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        rows = run_service.query_target_probe_runs(db, target_id)
+        assert len(rows) == 1
+        assert rows[0].run_id == run_id
+        assert rows[0].metadata_available is False
+        assert rows[0].total_probes == 0
+        assert rows[0].category_count == 0
+
+    def test_mixed_tz_naive_and_aware_does_not_raise(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="mixed-tz-probe")
+        aware = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        naive = _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-11T12:00:00",
+        )
+        rows = run_service.query_target_probe_runs(db, target_id)
+        assert {r.run_id for r in rows} == {aware, naive}

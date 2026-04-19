@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Query, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 from q_ai.audit.reporting.csv_report import generate_csv_report
 from q_ai.audit.reporting.ndjson_report import generate_ndjson_report
@@ -266,8 +266,17 @@ async def runs(
     target_id: str | None = Query(None),
     status: str | None = Query(None),
     group_by_target: str | None = Query(None),
-) -> HTMLResponse:
-    """Render the runs view — history list or single-run results."""
+    intel: str | None = Query(None),
+) -> Response:
+    """Render the runs view — history list or single-run results.
+
+    For target-bound probe runs, requests without the ``intel`` query
+    marker are 302-redirected to the target's Intel detail page
+    (Phase 3 two-release migration). Intra-Intel links carry
+    ``?run_id=<id>&intel=1`` and render the existing runs.html view.
+    The redirect is 302 (not permanent) so removal in Phase 6 does not
+    leave bookmarked users stranded by a cached response.
+    """
     from q_ai.server.routes.assist import _get_suggested_prompts
 
     templates = _get_templates(request)
@@ -303,6 +312,22 @@ async def runs(
 
     if run_id:
         run_ctx = await asyncio.to_thread(_build_runs_context, db_path, run_id)
+        # Two-release redirect: target-bound probe runs whose request
+        # lacks the bypass marker go to the Intel detail page. Reads
+        # `workflow_run` from the already-built context — no second DB
+        # fetch. Unknown run_id falls out for free: _build_runs_context
+        # returns `workflow_run=None` in that case, skipping the branch.
+        wf_run = run_ctx.get("workflow_run")
+        if (
+            intel is None
+            and wf_run is not None
+            and wf_run.module == "ipi-probe"
+            and wf_run.target_id
+        ):
+            return RedirectResponse(
+                url=f"/intel/targets/{wf_run.target_id}#probe-run-{run_id}",
+                status_code=302,
+            )
         ctx.update(run_ctx)
     else:
         do_group = group_by_target in ("1", "true", "on")

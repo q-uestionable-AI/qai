@@ -18,10 +18,12 @@ from q_ai.server.routes._shared import (
     logger,
 )
 from q_ai.services.run_service import (
+    ProbeRunSummary,
     SweepRunSummary,
     TargetOverviewRow,
     TargetsOverviewResult,
     query_target_overview_by_id,
+    query_target_probe_runs,
     query_target_sweep_runs,
     query_targets_overview,
 )
@@ -69,22 +71,32 @@ async def intel_target_detail(request: Request, target_id: str) -> HTMLResponse:
     templates = _get_templates(request)
     db_path = _get_db_path(request)
 
-    def _load_detail() -> tuple[TargetOverviewRow | None, list[SweepRunSummary]]:
+    def _load_detail() -> tuple[
+        TargetOverviewRow | None,
+        list[SweepRunSummary],
+        list[ProbeRunSummary],
+    ]:
         with get_connection(db_path) as conn:
             row = query_target_overview_by_id(conn, target_id)
             if row is None:
-                return None, []
+                return None, [], []
             sweep_runs = query_target_sweep_runs(conn, target_id)
-            return row, sweep_runs
+            probe_runs = query_target_probe_runs(conn, target_id)
+            return row, sweep_runs, probe_runs
 
-    row, sweep_runs = await asyncio.to_thread(_load_detail)
+    row, sweep_runs, probe_runs = await asyncio.to_thread(_load_detail)
     if row is None:
         return HTMLResponse(status_code=404, content="Target not found")
 
     return templates.TemplateResponse(
         request,
         "intel_target_detail.html",
-        {"active": "intel", "overview_row": row, "sweep_runs": sweep_runs},
+        {
+            "active": "intel",
+            "overview_row": row,
+            "sweep_runs": sweep_runs,
+            "probe_runs": probe_runs,
+        },
     )
 
 
@@ -328,9 +340,19 @@ def _validate_probe_body(
 async def intel_probe_launch(request: Request) -> JSONResponse:
     """Launch IPI probing against a model endpoint.
 
-    Runs probes in the background (fire-and-forget) and redirects
-    to the runs page, following the same async pattern as workflow
-    launches.
+    Runs probes in the background (fire-and-forget) and returns 202
+    with a redirect URL. The run row is created inside
+    :func:`persist_probe_run` *after* the probe HTTP calls complete,
+    which is after this response is returned — so the response body
+    intentionally does not include a ``run_id`` and the redirect
+    targets the Probe Runs *section*, not a specific row. Callers see
+    the new run on the next page load of the target detail page
+    (when ``target_id`` is set) or the Intel landing page.
+
+    Response shape: ``{"status": "launched", "redirect": "<url>"}``.
+    Redirect is ``/intel/targets/<target_id>#probe-runs`` when a
+    target is supplied, else ``/intel``. Mirrors
+    :func:`intel_sweep_launch`.
     """
     from q_ai.ipi.probe_service import load_probes, persist_probe_run, run_probes
 
@@ -393,11 +415,12 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
+    redirect = f"/intel/targets/{target_id}#probe-runs" if target_id else "/intel"
     return JSONResponse(
         status_code=202,
         content={
             "status": "launched",
-            "redirect": "/runs",
+            "redirect": redirect,
         },
     )
 
