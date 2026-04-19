@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as _dt
 import sqlite3
 
-from q_ai.core.db import create_run, create_target, update_run_status
+from q_ai.core.db import create_evidence, create_run, create_target, update_run_status
 from q_ai.core.models import RunStatus
 from q_ai.services import run_service
 
@@ -346,3 +346,235 @@ class TestFormatAge:
         """Naive datetimes are assumed to be UTC (matches DB convention)."""
         dt = (self._NOW - _dt.timedelta(hours=2)).replace(tzinfo=None)
         assert run_service.format_age(dt, now=self._NOW) == "2h"
+
+
+def _seed_sweep_metadata(
+    db: sqlite3.Connection,
+    run_id: str,
+    *,
+    template_count: int,
+    style_count: int,
+    total_cases: int,
+) -> None:
+    """Seed a matching ipi_sweep_metadata evidence blob for a sweep run."""
+    blob = {
+        "total_cases": total_cases,
+        "total_complied": 0,
+        "overall_compliance_rate": 0.0,
+        "overall_severity": "INFO",
+        "template_summary": {
+            f"template_{i}": {"total": 1, "complied": 0, "rate": 0.0, "severity": "INFO"}
+            for i in range(template_count)
+        },
+        "style_summary": {
+            f"style_{i}": {"total": 1, "complied": 0, "rate": 0.0, "severity": "INFO"}
+            for i in range(style_count)
+        },
+        "combination_summary": [],
+    }
+    import json
+
+    create_evidence(
+        db,
+        type="ipi_sweep_metadata",
+        run_id=run_id,
+        storage="inline",
+        content=json.dumps(blob),
+    )
+
+
+class TestQueryTargetSweepRuns:
+    """Tests for run_service.query_target_sweep_runs()."""
+
+    def test_zero_runs_returns_empty(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="empty")
+        assert run_service.query_target_sweep_runs(db, target_id) == []
+
+    def test_one_completed_row_with_aggregates(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="one-sweep")
+        run_id = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_sweep_metadata(db, run_id, template_count=3, style_count=2, total_cases=24)
+
+        rows = run_service.query_target_sweep_runs(db, target_id)
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.run_id == run_id
+        assert row.status == RunStatus.COMPLETED
+        assert row.finished_at == _dt.datetime(2026, 4, 10, 12, 0, 0, tzinfo=_dt.UTC)
+        assert row.template_count == 3
+        assert row.style_count == 2
+        assert row.reps == 4  # 24 / (3 * 2)
+        assert row.total_cases == 24
+        assert row.metadata_available is True
+
+    def test_ordering_is_finished_at_desc(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="multi-sweep")
+        earlier = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-01T12:00:00+00:00",
+        )
+        latest = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-15T12:00:00+00:00",
+        )
+        mid = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-05T12:00:00+00:00",
+        )
+        for rid in (earlier, latest, mid):
+            _seed_sweep_metadata(db, rid, template_count=1, style_count=1, total_cases=1)
+
+        rows = run_service.query_target_sweep_runs(db, target_id)
+        assert [r.run_id for r in rows] == [latest, mid, earlier]
+
+    def test_excludes_other_modules(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="cross-module")
+        sweep_id = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_sweep_metadata(db, sweep_id, template_count=1, style_count=1, total_cases=1)
+        _completed_run(
+            db,
+            module="ipi-probe",
+            target_id=target_id,
+            finished_at="2026-04-11T12:00:00+00:00",
+        )
+        _completed_run(
+            db,
+            module="import",
+            target_id=target_id,
+            finished_at="2026-04-12T12:00:00+00:00",
+        )
+        _completed_run(
+            db,
+            module="ipi",
+            target_id=target_id,
+            finished_at="2026-04-13T12:00:00+00:00",
+        )
+
+        rows = run_service.query_target_sweep_runs(db, target_id)
+        assert [r.run_id for r in rows] == [sweep_id]
+
+    def test_excludes_other_targets(self, db: sqlite3.Connection) -> None:
+        t1 = create_target(db, type="server", name="t1")
+        t2 = create_target(db, type="server", name="t2")
+        own = _completed_run(
+            db, module="ipi-sweep", target_id=t1, finished_at="2026-04-10T12:00:00+00:00"
+        )
+        _seed_sweep_metadata(db, own, template_count=1, style_count=1, total_cases=1)
+        other = _completed_run(
+            db, module="ipi-sweep", target_id=t2, finished_at="2026-04-11T12:00:00+00:00"
+        )
+        _seed_sweep_metadata(db, other, template_count=1, style_count=1, total_cases=1)
+
+        assert [r.run_id for r in run_service.query_target_sweep_runs(db, t1)] == [own]
+
+    def test_row_without_metadata_renders_with_flag(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="no-metadata")
+        run_id = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        # No evidence seeded.
+
+        rows = run_service.query_target_sweep_runs(db, target_id)
+        assert len(rows) == 1
+        assert rows[0].run_id == run_id
+        assert rows[0].metadata_available is False
+        assert rows[0].template_count == 0
+        assert rows[0].style_count == 0
+        assert rows[0].reps is None
+        assert rows[0].total_cases == 0
+
+
+class TestExtractSweepRunSummary:
+    """Tests for run_service.extract_sweep_run_summary()."""
+
+    def test_valid_blob_populates_summary(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="valid")
+        run_id = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_sweep_metadata(db, run_id, template_count=5, style_count=4, total_cases=60)
+
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_sweep_run_summary(db, run)
+        assert summary.metadata_available is True
+        assert summary.template_count == 5
+        assert summary.style_count == 4
+        assert summary.total_cases == 60
+        assert summary.reps == 3  # 60 / (5 * 4)
+
+    def test_missing_blob_returns_flagged_summary(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="absent")
+        run_id = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_sweep_run_summary(db, run)
+        assert summary.metadata_available is False
+        assert summary.reps is None
+        assert summary.template_count == 0
+
+    def test_malformed_json_returns_flagged_summary(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="malformed")
+        run_id = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        create_evidence(
+            db,
+            type="ipi_sweep_metadata",
+            run_id=run_id,
+            storage="inline",
+            content="not json {{{",
+        )
+
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_sweep_run_summary(db, run)
+        assert summary.metadata_available is False
+        assert summary.template_count == 0
+        assert summary.style_count == 0
+
+    def test_zero_combinations_returns_none_reps(self, db: sqlite3.Connection) -> None:
+        target_id = create_target(db, type="server", name="zero-combos")
+        run_id = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_sweep_metadata(db, run_id, template_count=0, style_count=0, total_cases=0)
+
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_sweep_run_summary(db, run)
+        assert summary.metadata_available is True
+        assert summary.reps is None

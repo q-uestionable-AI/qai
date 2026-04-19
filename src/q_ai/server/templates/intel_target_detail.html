@@ -53,9 +53,61 @@
                 <div class="intel-card-bar"></div>
                 <span class="intel-card-name">Sweep Runs</span>
             </div>
+            {% if sweep_runs %}
+                {% set latest = sweep_runs[0] %}
+                {% if latest.finished_at is none %}
+                <p class="intel-sweep-summary">
+                    Latest sweep: {{ latest.status.name | format_status | lower }}
+                    &mdash; not yet completed
+                </p>
+                {% elif latest.metadata_available and latest.reps is not none %}
+                <p class="intel-sweep-summary">
+                    Latest sweep: {{ latest.finished_at | format_age }} ago
+                    &mdash; {{ latest.template_count }} templates
+                    &times; {{ latest.style_count }} styles,
+                    N={{ latest.reps }},
+                    {{ latest.status.name | format_status | lower }}
+                </p>
+                {% else %}
+                <p class="intel-sweep-summary">
+                    Latest sweep: {{ latest.finished_at | format_age }} ago
+                    &mdash; {{ latest.status.name | format_status | lower }}
+                </p>
+                {% endif %}
+                <div class="intel-sweep-rows">
+                    {% for run in sweep_runs %}
+                    <a class="intel-sweep-row"
+                       id="sweep-run-{{ run.run_id }}"
+                       href="/runs?run_id={{ run.run_id }}">
+                        <span class="intel-sweep-col-age">{{ run.finished_at | format_age }}</span>
+                        {% if run.metadata_available %}
+                        <span class="intel-sweep-col-combo">
+                            {{ run.template_count }} &times; {{ run.style_count }}
+                        </span>
+                        <span class="intel-sweep-col-reps">
+                            N={{ run.reps if run.reps is not none else "?" }}
+                        </span>
+                        {% else %}
+                        <span class="intel-sweep-col-combo intel-sweep-col-muted">
+                            metadata unavailable
+                        </span>
+                        <span class="intel-sweep-col-reps"></span>
+                        {% endif %}
+                        <span class="intel-sweep-col-status">
+                            {{ run.status.name | format_status | lower }}
+                        </span>
+                    </a>
+                    {% endfor %}
+                </div>
+            {% else %}
             <div class="intel-section-body">
-                <p class="intel-card-desc" style="margin-bottom: 0;">No sweep runs yet.</p>
+                <p class="intel-card-desc" style="margin-bottom: 0;">
+                    No sweep runs yet.
+                    <a href="/intel#card-sweep" style="color: #06b6d4;">Run a sweep</a>
+                    to measure per-template compliance.
+                </p>
             </div>
+            {% endif %}
         </section>
 
     </div>
@@ -98,6 +150,51 @@
 .intel-section-body {
     color: #94a3b8;
     font-size: 0.9rem;
+}
+.intel-sweep-summary {
+    color: #94a3b8;
+    font-size: 0.9rem;
+    margin: 0 0 1rem;
+}
+.intel-sweep-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.intel-sweep-row {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr) minmax(0, 4rem) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.intel-sweep-row:hover {
+    background: rgba(139, 92, 246, 0.08);
+    border-color: rgba(139, 92, 246, 0.35);
+}
+.intel-sweep-col-age {
+    font-family: 'Fira Code', monospace;
+    color: #a78bfa;
+}
+.intel-sweep-col-combo,
+.intel-sweep-col-reps {
+    font-family: 'Fira Code', monospace;
+    color: #cbd5e1;
+}
+.intel-sweep-col-muted {
+    color: #64748b;
+    font-style: italic;
+}
+.intel-sweep-col-status {
+    color: #94a3b8;
+    text-align: right;
 }
 </style>
 {% endblock %}

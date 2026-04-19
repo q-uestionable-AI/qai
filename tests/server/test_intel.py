@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from q_ai.core.db import create_run, create_target, update_run_status
+from q_ai.core.db import create_evidence, create_run, create_target, update_run_status
 from q_ai.core.models import RunStatus
 
 
@@ -45,6 +46,26 @@ class TestIntelPage:
         resp = client.get("/intel")
         assert "Probe Model" in resp.text
         assert "form-probe" in resp.text
+
+    def test_contains_sweep_card(self, client: TestClient) -> None:
+        """Sweep launcher card renders on /intel."""
+        resp = client.get("/intel")
+        assert 'id="card-sweep"' in resp.text
+        assert "form-sweep" in resp.text
+        assert "Launch Sweep" in resp.text
+
+    def test_sweep_card_defaults(self, client: TestClient) -> None:
+        """All 12 DocumentTemplate values and all 7 PayloadStyle values are preselected."""
+        from q_ai.ipi.models import DocumentTemplate, PayloadStyle
+
+        resp = client.get("/intel")
+        text = resp.text
+        for t in DocumentTemplate:
+            assert f'value="{t.value}" selected' in text
+        for s in PayloadStyle:
+            assert f'value="{s.value}" selected' in text
+        assert 'value="3"' in text  # reps default
+        assert 'value="callback"' in text  # payload_type hidden input
 
     def test_format_options_present(self, client: TestClient) -> None:
         resp = client.get("/intel")
@@ -148,6 +169,8 @@ class TestIntelTargetDetail:
         assert "No imports yet." in text
         assert "No probe runs yet." in text
         assert "No sweep runs yet." in text
+        assert "measure per-template compliance" in text
+        assert "/intel#card-sweep" in text
 
     def test_nav_marks_intel_active(self, tmp_db: Path, client: TestClient) -> None:
         """Top nav highlights Intel on the detail page too."""
@@ -181,6 +204,315 @@ class TestIntelTargetDetail:
         resp = client.get(f"/intel/targets/{target_id}")
         assert resp.status_code == 200
         assert "has-runs-target" in resp.text
+
+
+def _seed_sweep_run(
+    conn: sqlite3.Connection,
+    target_id: str,
+    *,
+    finished_at: str,
+    template_count: int = 3,
+    style_count: int = 2,
+    total_cases: int = 12,
+) -> str:
+    """Create a completed ipi-sweep run with a matching metadata blob."""
+    run_id = create_run(conn, module="ipi-sweep", target_id=target_id)
+    update_run_status(conn, run_id, RunStatus.COMPLETED, finished_at=finished_at)
+    blob = {
+        "total_cases": total_cases,
+        "total_complied": 0,
+        "overall_compliance_rate": 0.0,
+        "overall_severity": "INFO",
+        "template_summary": {
+            f"template_{i}": {"total": 1, "complied": 0, "rate": 0.0, "severity": "INFO"}
+            for i in range(template_count)
+        },
+        "style_summary": {
+            f"style_{i}": {"total": 1, "complied": 0, "rate": 0.0, "severity": "INFO"}
+            for i in range(style_count)
+        },
+        "combination_summary": [],
+    }
+    create_evidence(
+        conn,
+        type="ipi_sweep_metadata",
+        run_id=run_id,
+        storage="inline",
+        content=json.dumps(blob),
+    )
+    return run_id
+
+
+class TestIntelTargetDetailSweepRendering:
+    """Sweep Runs section populates on the target detail page."""
+
+    def test_single_sweep_renders_row_and_summary(self, tmp_db: Path, client: TestClient) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="one-sweep")
+            run_id = _seed_sweep_run(
+                conn,
+                target_id,
+                finished_at="2026-04-15T12:00:00+00:00",
+                template_count=11,
+                style_count=3,
+                total_cases=33,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert resp.status_code == 200
+        assert "Latest sweep:" in text
+        assert "11 templates" in text
+        assert "3 styles" in text
+        assert "N=1" in text  # 33 / (11 * 3) = 1
+        assert f'id="sweep-run-{run_id}"' in text
+        assert f'href="/runs?run_id={run_id}"' in text
+
+    def test_running_sweep_summary_does_not_render_em_dash_ago(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        """When the most recent sweep has no finished_at, render a status-only summary.
+
+        Regression guard: previously the template piped ``None`` through
+        ``format_age`` and rendered "Latest sweep: — ago" for sweeps
+        still in RUNNING.
+        """
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="running-sweep")
+            run_id = create_run(conn, module="ipi-sweep", target_id=target_id)
+            update_run_status(conn, run_id, RunStatus.RUNNING)
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert resp.status_code == 200
+        assert "Latest sweep:" in text
+        assert "\u2014 ago" not in text
+        assert "not yet completed" in text
+
+    def test_multiple_sweeps_render_most_recent_first(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="multi-sweep")
+            earlier = _seed_sweep_run(conn, target_id, finished_at="2026-04-01T12:00:00+00:00")
+            latest = _seed_sweep_run(conn, target_id, finished_at="2026-04-15T12:00:00+00:00")
+            mid = _seed_sweep_run(conn, target_id, finished_at="2026-04-05T12:00:00+00:00")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        # Latest should appear before the others in document order.
+        latest_pos = text.find(f"sweep-run-{latest}")
+        mid_pos = text.find(f"sweep-run-{mid}")
+        earlier_pos = text.find(f"sweep-run-{earlier}")
+        assert 0 < latest_pos < mid_pos < earlier_pos
+
+
+class TestSweepLaunch:
+    """POST /api/intel/sweep/launch validates and accepts."""
+
+    _VALID_BODY: ClassVar[dict[str, object]] = {
+        "endpoint": "http://localhost:8000/v1",
+        "model": "gpt-4o-mini",
+        "templates": ["generic"],
+        "styles": ["obvious"],
+    }
+
+    def test_invalid_json_body(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            content=b"not json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 400
+
+    def test_non_dict_body(self, client: TestClient) -> None:
+        resp = client.post("/api/intel/sweep/launch", json=["a"])
+        assert resp.status_code == 422
+        assert "object" in resp.json()["detail"]
+
+    def test_missing_endpoint(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "endpoint": ""},
+        )
+        assert resp.status_code == 422
+        assert "endpoint" in resp.json()["detail"]
+
+    def test_missing_model(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "model": ""},
+        )
+        assert resp.status_code == 422
+        assert "model" in resp.json()["detail"]
+
+    def test_empty_templates(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "templates": []},
+        )
+        assert resp.status_code == 422
+        assert "at least one template is required" in resp.json()["detail"]
+
+    def test_empty_styles(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "styles": []},
+        )
+        assert resp.status_code == 422
+        assert "at least one style is required" in resp.json()["detail"]
+
+    def test_unknown_template(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "templates": ["generic", "not-a-template"]},
+        )
+        assert resp.status_code == 422
+        # Detail must be the raw value, not the StrEnum ValueError text
+        # (which contains "is not a valid DocumentTemplate" — a
+        # CodeQL py/stack-trace-exposure sink).
+        detail = resp.json()["detail"]
+        assert detail == "unknown template 'not-a-template'"
+        assert "DocumentTemplate" not in detail
+
+    def test_unknown_style(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "styles": ["bogus"]},
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert detail == "unknown style 'bogus'"
+        assert "PayloadStyle" not in detail
+
+    def test_non_hashable_template_value_returns_422(self, client: TestClient) -> None:
+        """JSON objects/arrays inside templates list must not crash with TypeError."""
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "templates": [{}]},
+        )
+        assert resp.status_code == 422
+        assert "unknown template" in resp.json()["detail"]
+
+    def test_non_string_endpoint_returns_422(self, client: TestClient) -> None:
+        """Non-string scalar fields return 422, not a 500 AttributeError."""
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "endpoint": 123},
+        )
+        assert resp.status_code == 422
+        assert "endpoint must be a string" in resp.json()["detail"]
+
+    def test_non_string_target_id_returns_422(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "target_id": []},
+        )
+        assert resp.status_code == 422
+        assert "target_id must be a string" in resp.json()["detail"]
+
+    def test_invalid_payload_type(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "payload_type": "exfil_summary"},
+        )
+        assert resp.status_code == 422
+        assert "callback" in resp.json()["detail"]
+
+    def test_reps_below_one(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "reps": 0},
+        )
+        assert resp.status_code == 422
+        assert "reps" in resp.json()["detail"]
+
+    def test_concurrency_below_one(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "concurrency": 0},
+        )
+        assert resp.status_code == 422
+        assert "concurrency" in resp.json()["detail"]
+
+    def test_nonexistent_target(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "target_id": "does-not-exist"},
+        )
+        assert resp.status_code == 422
+        assert "Target not found" in resp.json()["detail"]
+
+    def test_happy_path_no_target(self, client: TestClient) -> None:
+        mock_sweep = AsyncMock(return_value=MagicMock())
+        with (
+            patch("q_ai.ipi.sweep_service.run_sweep", mock_sweep),
+            patch("q_ai.ipi.sweep_service.persist_sweep_run"),
+        ):
+            resp = client.post("/api/intel/sweep/launch", json=self._VALID_BODY)
+
+        assert resp.status_code == 202
+        data = resp.json()
+        assert data["status"] == "launched"
+        assert data["redirect"] == "/intel"
+        assert "run_id" not in data
+
+    def test_happy_path_with_target(self, tmp_db: Path, client: TestClient) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="sweep-target")
+            conn.commit()
+        finally:
+            conn.close()
+
+        mock_sweep = AsyncMock(return_value=MagicMock())
+        with (
+            patch("q_ai.ipi.sweep_service.run_sweep", mock_sweep),
+            patch("q_ai.ipi.sweep_service.persist_sweep_run"),
+        ):
+            resp = client.post(
+                "/api/intel/sweep/launch",
+                json={**self._VALID_BODY, "target_id": target_id},
+            )
+
+        assert resp.status_code == 202
+        assert resp.json()["redirect"] == f"/intel/targets/{target_id}#sweep-runs"
+
+    def test_background_task_is_scheduled(self, client: TestClient) -> None:
+        """Handler registers the task in _background_tasks synchronously.
+
+        The registration (``_background_tasks.add(task)``) happens before
+        the response is produced, so spying on the set's ``add`` call is
+        race-free — unlike asserting that the mocked ``run_sweep`` was
+        invoked, which depended on the event loop stepping into the
+        coroutine and was macOS-flaky.
+        """
+        from q_ai.server.routes import intel as intel_module
+
+        real_set = intel_module._background_tasks
+        spy = MagicMock(wraps=real_set)
+        mock_sweep = AsyncMock(return_value=MagicMock())
+        with (
+            patch.object(intel_module, "_background_tasks", spy),
+            patch("q_ai.ipi.sweep_service.run_sweep", mock_sweep),
+            patch("q_ai.ipi.sweep_service.persist_sweep_run"),
+        ):
+            resp = client.post("/api/intel/sweep/launch", json=self._VALID_BODY)
+
+        assert resp.status_code == 202
+        spy.add.assert_called_once()
 
 
 def _garak_jsonl() -> str:
@@ -339,6 +671,15 @@ class TestProbeLaunch:
         )
         assert resp.status_code == 422
         assert "concurrency" in resp.json()["detail"]
+
+    def test_non_string_endpoint_returns_422(self, client: TestClient) -> None:
+        """Non-string endpoint returns 422, not a 500 AttributeError on .strip()."""
+        resp = client.post(
+            "/api/intel/probe/launch",
+            json={"endpoint": 123, "model": "m"},
+        )
+        assert resp.status_code == 422
+        assert "endpoint must be a string" in resp.json()["detail"]
 
     def test_happy_path_launches(self, client: TestClient) -> None:
         mock_probes = [MagicMock()]
