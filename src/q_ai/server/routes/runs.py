@@ -8,6 +8,7 @@ import datetime as _dt
 import json as _json
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -334,7 +335,7 @@ async def runs(
             and wf_run.target_id
         ):
             return RedirectResponse(
-                url=f"/intel/targets/{wf_run.target_id}#probe-run-{run_id}",
+                url=(f"/intel/targets/{quote(wf_run.target_id)}#probe-run-{quote(wf_run.id)}"),
                 status_code=302,
             )
         ctx.update(run_ctx)
