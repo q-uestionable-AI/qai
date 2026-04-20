@@ -34,11 +34,22 @@ class TestSweepHelp:
             "--templates",
             "--styles",
             "--payload-type",
+            "--citation-frame",
             "--reps",
             "--dry-run",
             "--export",
         ):
             assert flag in result.output, f"--help missing {flag}"
+
+    def test_help_lists_citation_frame(self) -> None:
+        """PR #123-style drift guard: --citation-frame surfaces in --help.
+
+        Uses the same literal substring check as the other flag assertions
+        above so ANSI-color rendering can't silently hide the flag.
+        """
+        result = runner.invoke(app, ["ipi", "sweep", "--help"])
+        assert result.exit_code == 0
+        assert "citation-frame" in result.output
 
     def test_ipi_help_lists_sweep(self) -> None:
         result = runner.invoke(app, ["ipi", "--help"])
@@ -126,6 +137,29 @@ class TestSweepFlagValidation:
         )
         assert result.exit_code == 0
 
+    def test_citation_frame_plain_accepted(self) -> None:
+        """--citation-frame plain parses."""
+        result = runner.invoke(app, ["ipi", "sweep", "--dry-run", "--citation-frame", "plain"])
+        assert result.exit_code == 0
+
+    def test_citation_frame_template_aware_accepted(self) -> None:
+        """--citation-frame template-aware parses."""
+        result = runner.invoke(
+            app, ["ipi", "sweep", "--dry-run", "--citation-frame", "template-aware"]
+        )
+        assert result.exit_code == 0
+
+    def test_citation_frame_absent_defaults(self) -> None:
+        """No --citation-frame flag is accepted (defaults to template-aware)."""
+        result = runner.invoke(app, ["ipi", "sweep", "--dry-run"])
+        assert result.exit_code == 0
+
+    def test_citation_frame_invalid_value_rejected(self) -> None:
+        """Unknown --citation-frame value produces a non-zero exit + echoes the value."""
+        result = runner.invoke(app, ["ipi", "sweep", "--dry-run", "--citation-frame", "bogus"])
+        assert result.exit_code != 0
+        assert "bogus" in result.output.lower()
+
     @patch("q_ai.core.cli.prompt.is_tty", return_value=False)
     def test_no_endpoint_non_tty_fails(self, _mock: MagicMock) -> None:
         """Non-TTY with no endpoint fails (dry-run off)."""
@@ -204,3 +238,81 @@ class TestSweepApiKey:
         assert result.exit_code == 0
         assert mock_run_sweep.called
         assert mock_run_sweep.call_args.kwargs["api_key"] == "env-key"
+
+
+class TestSweepCitationFrameKwarg:
+    """Tests that --citation-frame reaches run_sweep as a CitationFrame enum."""
+
+    @patch("q_ai.ipi.sweep_service.run_sweep")
+    @patch("q_ai.ipi.sweep_service.persist_sweep_run")
+    def test_plain_flows_to_run_sweep(
+        self, _mock_persist: MagicMock, mock_run_sweep: MagicMock
+    ) -> None:
+        """--citation-frame plain is forwarded as CitationFrame.PLAIN."""
+        from q_ai.ipi.models import CitationFrame
+        from q_ai.ipi.sweep_service import SweepRunResult
+
+        async def _fake_run(**kwargs: object) -> SweepRunResult:
+            return SweepRunResult()
+
+        mock_run_sweep.side_effect = _fake_run
+
+        with patch(
+            "q_ai.ipi.sweep_service.persist_sweep_run",
+            return_value="fake-run-id",
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "ipi",
+                    "sweep",
+                    "http://localhost/v1",
+                    "--model",
+                    "test",
+                    "--templates",
+                    "whois",
+                    "--reps",
+                    "1",
+                    "--citation-frame",
+                    "plain",
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert mock_run_sweep.call_args.kwargs["citation_frame"] is CitationFrame.PLAIN
+
+    @patch("q_ai.ipi.sweep_service.run_sweep")
+    @patch("q_ai.ipi.sweep_service.persist_sweep_run")
+    def test_default_is_template_aware(
+        self, _mock_persist: MagicMock, mock_run_sweep: MagicMock
+    ) -> None:
+        """No flag forwards CitationFrame.TEMPLATE_AWARE."""
+        from q_ai.ipi.models import CitationFrame
+        from q_ai.ipi.sweep_service import SweepRunResult
+
+        async def _fake_run(**kwargs: object) -> SweepRunResult:
+            return SweepRunResult()
+
+        mock_run_sweep.side_effect = _fake_run
+
+        with patch(
+            "q_ai.ipi.sweep_service.persist_sweep_run",
+            return_value="fake-run-id",
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "ipi",
+                    "sweep",
+                    "http://localhost/v1",
+                    "--model",
+                    "test",
+                    "--templates",
+                    "whois",
+                    "--reps",
+                    "1",
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert mock_run_sweep.call_args.kwargs["citation_frame"] is CitationFrame.TEMPLATE_AWARE

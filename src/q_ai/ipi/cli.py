@@ -57,6 +57,7 @@ from q_ai.ipi.generators.markdown import MARKDOWN_TECHNIQUES as MARKDOWN_TECHNIQ
 from q_ai.ipi.generators.pdf import PDF_PHASE1_TECHNIQUES, PDF_PHASE2_TECHNIQUES
 from q_ai.ipi.models import (
     Campaign,
+    CitationFrame,
     DocumentTemplate,
     Format,
     Hit,
@@ -1045,6 +1046,27 @@ def _parse_sweep_payload_type(value: str) -> PayloadType:
     return PayloadType.CALLBACK
 
 
+def _parse_citation_frame(value: str) -> CitationFrame:
+    """Parse --citation-frame. Accepts the two CitationFrame values.
+
+    Args:
+        value: Frame name. One of ``"plain"`` or ``"template-aware"``
+            (case-insensitive). Leading/trailing whitespace is tolerated.
+
+    Returns:
+        The resolved :class:`CitationFrame` enum.
+
+    Raises:
+        typer.BadParameter: If ``value`` is not a known frame.
+    """
+    normalized = value.strip().lower()
+    for frame in CitationFrame:
+        if frame.value == normalized:
+            return frame
+    valid = ", ".join(f"'{f.value}'" for f in CitationFrame)
+    raise typer.BadParameter(f"--citation-frame must be one of {valid} (got {value!r}).")
+
+
 @app.command(
     epilog=(
         "Examples:\n"
@@ -1108,6 +1130,17 @@ def sweep(
             help="Attack objective. v1 accepts 'callback' only.",
         ),
     ] = "callback",
+    citation_frame_value: Annotated[
+        str,
+        typer.Option(
+            "--citation-frame",
+            help=(
+                "Citation-style callback rendering: 'plain' uses pre-4.5 hardcoded"
+                " text (report-context baseline); 'template-aware' (default) uses"
+                " per-template callback rationale. No effect on non-CITATION styles."
+            ),
+        ),
+    ] = "template-aware",
     reps: Annotated[
         int,
         typer.Option(
@@ -1157,6 +1190,7 @@ def sweep(
     templates = _parse_templates_flag(templates_value)
     styles = _parse_styles_flag(styles_value)
     payload_type_enum = _parse_sweep_payload_type(payload_type_value)
+    citation_frame_enum = _parse_citation_frame(citation_frame_value)
     cases = build_sweep_cases(templates, styles, payload_type_enum)
 
     if dry_run:
@@ -1199,6 +1233,7 @@ def sweep(
             temperature=temperature,
             concurrency=concurrency,
             api_key=resolved_api_key,
+            citation_frame=citation_frame_enum,
         )
     )
 

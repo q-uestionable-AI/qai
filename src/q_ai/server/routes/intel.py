@@ -39,7 +39,7 @@ _background_tasks: set[asyncio.Task[None]] = set()
 @router.get("/intel")
 async def intel_page(request: Request) -> HTMLResponse:
     """Render the Intel landing page — target list with evidence summary."""
-    from q_ai.ipi.models import DocumentTemplate, PayloadStyle
+    from q_ai.ipi.models import CitationFrame, DocumentTemplate, PayloadStyle
 
     templates = _get_templates(request)
     db_path = _get_db_path(request)
@@ -60,6 +60,8 @@ async def intel_page(request: Request) -> HTMLResponse:
             "targets": targets,
             "sweep_templates": [t.value for t in DocumentTemplate],
             "sweep_styles": [s.value for s in PayloadStyle],
+            "sweep_citation_frames": [f.value for f in CitationFrame],
+            "sweep_citation_frame_default": CitationFrame.TEMPLATE_AWARE.value,
         },
     )
 
@@ -658,7 +660,7 @@ def _validate_sweep_strings(body: dict[str, Any]) -> dict[str, str] | JSONRespon
         ``JSONResponse`` 422 if any field is present with a non-string
         type.
     """
-    fields = ("endpoint", "model", "target_id", "payload_type")
+    fields = ("endpoint", "model", "target_id", "payload_type", "citation_frame")
     out: dict[str, str] = {}
     for field in fields:
         coerced = _coerce_optional_string(body.get(field), field)
@@ -695,6 +697,10 @@ def _validate_sweep_scalars(body: dict[str, Any]) -> dict[str, Any] | JSONRespon
         return JSONResponse(status_code=422, content={"detail": "reps must be an integer"})
 
     payload_type_raw = strings["payload_type"] or "callback"
+    from q_ai.ipi.models import CitationFrame
+
+    citation_frame_raw = strings["citation_frame"] or CitationFrame.TEMPLATE_AWARE.value
+    citation_frame_valid = {f.value for f in CitationFrame}
 
     error = (
         "endpoint is required"
@@ -707,6 +713,11 @@ def _validate_sweep_scalars(body: dict[str, Any]) -> dict[str, Any] | JSONRespon
         if reps < 1
         else "payload_type must be 'callback' in v1"
         if payload_type_raw != "callback"
+        else (
+            f"citation_frame must be one of "
+            f"{sorted(citation_frame_valid)} (got '{citation_frame_raw}')"
+        )
+        if citation_frame_raw not in citation_frame_valid
         else None
     )
     if error:
@@ -721,6 +732,7 @@ def _validate_sweep_scalars(body: dict[str, Any]) -> dict[str, Any] | JSONRespon
         "temperature": temperature,
         "concurrency": concurrency,
         "reps": reps,
+        "citation_frame": CitationFrame(citation_frame_raw),
     }
 
 
@@ -836,6 +848,7 @@ async def intel_sweep_launch(request: Request) -> JSONResponse:
         "temperature": validated["temperature"],
         "concurrency": validated["concurrency"],
         "api_key": _read_api_key_header(request),
+        "citation_frame": validated["citation_frame"],
     }
 
     async def _run_sweep_task() -> None:

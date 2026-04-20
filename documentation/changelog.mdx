@@ -3,6 +3,36 @@ title: Changelog
 description: Release history for q-ai
 ---
 
+## v0.10.1
+
+Opt-in plain CITATION mode for `qai ipi sweep`, enabling plain vs.
+template-aware callback-rationale measurement.
+
+### New: `--citation-frame` on `qai ipi sweep`
+
+- `--citation-frame plain` renders the CITATION-style callback line using
+  the pre-4.5 hardcoded sentence across every template — a report-context
+  baseline suitable as a control condition.
+- `--citation-frame template-aware` (default) preserves the current
+  per-template callback-rationale composition. No-flag invocations are
+  byte-identical to v0.10.0.
+- Flag only affects CITATION-style CALLBACK payloads. Other styles,
+  OBVIOUS, and non-CALLBACK payload types are unchanged.
+
+### New: `citation_frame` field on `POST /api/intel/sweep/launch`
+
+Companion JSON body field accepting `plain` or `template-aware`. Missing
+or empty defaults to `template-aware`; invalid values return 422.
+
+### New: Intel Sweep launcher card — Citation frame selector
+
+The Sweep card on `/intel` now exposes a **Citation frame** dropdown
+adjacent to the existing Styles multi-select, defaulting to
+`template-aware`.
+
+Parent context: Campaign 1 Phase 4 Step 3 — plain vs. template-aware
+CITATION style-selection measurement.
+
 ## v0.10.0
 
 Intel target-centric workspace, sweep subcommand, and target-aware generate.
