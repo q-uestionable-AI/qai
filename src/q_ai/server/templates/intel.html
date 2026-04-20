@@ -592,7 +592,7 @@ async function launchProbe(e) {
         var apiKey = '';
         for (var [key, val] of fd.entries()) {
             if (key === 'api_key') {
-                apiKey = val;
+                apiKey = String(val).trim();
                 continue;
             }
             data[key] = val;
@@ -666,7 +666,7 @@ async function launchSweep(e) {
             return false;
         }
 
-        var apiKey = form.querySelector('input[name="api_key"]').value;
+        var apiKey = form.querySelector('input[name="api_key"]').value.trim();
         var data = {
             endpoint: form.querySelector('input[name="endpoint"]').value,
             model: form.querySelector('input[name="model"]').value,

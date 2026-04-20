@@ -622,6 +622,10 @@ class TestRunsProbeTargetBound:
         run_id, _ = _make_probe_run(tmp_db, with_target=True)
         resp = client.get(f"/runs?run_id={run_id}&intel=1", follow_redirects=False)
         assert resp.status_code == 200
+        # A plain 200 could also be the history view if ``run_id`` were
+        # silently dropped. Asserting the id in the body pins down
+        # single-run rendering under the tolerance guarantee.
+        assert run_id in resp.text
 
     def test_null_target_probe_renders(self, client: TestClient, tmp_db: Path) -> None:
         run_id, _ = _make_probe_run(tmp_db, with_target=False)

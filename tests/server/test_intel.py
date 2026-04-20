@@ -1664,6 +1664,16 @@ class TestProbeLaunchApiKeyHeader:
 
     def test_legacy_body_api_key_is_tolerated(self, client: TestClient) -> None:
         """Legacy body ``api_key`` field does not 422 and is ignored."""
+        from q_ai.server.routes.intel import _validate_probe_body
+
+        # Deterministic check: the validator drops the body api_key
+        # from the returned dict entirely. This guards against a
+        # regression where the handler reads body["api_key"] and
+        # produces a 202 for the wrong reason.
+        validated = _validate_probe_body({**self._VALID_BODY, "api_key": "sk-legacy-body"})
+        assert isinstance(validated, dict)
+        assert "api_key" not in validated
+
         with (
             patch("q_ai.ipi.probe_service.load_probes", return_value=[MagicMock()]),
             patch("q_ai.ipi.probe_service.run_probes", new_callable=AsyncMock),
@@ -1730,6 +1740,16 @@ class TestSweepLaunchApiKeyHeader:
 
     def test_legacy_body_api_key_is_tolerated(self, client: TestClient) -> None:
         """Legacy body ``api_key`` field does not 422 and is ignored."""
+        from q_ai.server.routes.intel import _validate_sweep_body
+
+        # Deterministic check: the validator drops the body api_key
+        # from the returned dict entirely. This guards against a
+        # regression where the handler reads body["api_key"] and
+        # produces a 202 for the wrong reason.
+        validated = _validate_sweep_body({**self._VALID_BODY, "api_key": "sk-legacy-body"})
+        assert isinstance(validated, dict)
+        assert "api_key" not in validated
+
         with (
             patch("q_ai.ipi.sweep_service.run_sweep", new_callable=AsyncMock),
             patch("q_ai.ipi.sweep_service.persist_sweep_run"),
