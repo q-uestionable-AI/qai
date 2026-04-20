@@ -3,6 +3,44 @@ title: Changelog
 description: Release history for q-ai
 ---
 
+## v0.10.2
+
+Persists the `citation_frame` selection from v0.10.1 so plain and
+template-aware sweep runs are distinguishable in the database and in
+exports, and prevents plain-frame control runs from silently driving
+`qai ipi generate --target` auto-select.
+
+### New: `citation_frame` persistence
+
+- Sweep-run `config` JSON now carries `citation_frame`.
+- `ipi_sweep_metadata` evidence blob now carries `citation_frame`.
+- Scored-prompts export JSON now carries `citation_frame` at run-scope
+  level (per-entry shape is unchanged).
+
+### Changed: template auto-select filters to template-aware runs
+
+- `qai ipi generate --target <id>` auto-select now considers only sweep
+  runs whose `citation_frame` is `template-aware`. Plain-frame runs are
+  control-condition measurements and are intentionally excluded from
+  production template recommendation.
+- If a target's only sweep history is plain-frame, auto-select returns
+  the existing `NoFindings` shape rather than recommending from a
+  control run.
+
+### New: Intel Sweep Runs table — Frame column
+
+The per-target Sweep Runs section renders a new Frame column
+(`plain` / `template-aware`) on each row.
+
+### Backward compatibility
+
+Pre-v0.10.2 sweep runs predate the field. Every read site defaults a
+missing `citation_frame` to `template-aware`, matching the only
+behavior that existed before v0.10.1 — legacy runs remain selectable
+and render sensibly on the Intel detail page.
+
+Parent context: PR #134 review item 4 (Codex P1 / CodeRabbit Major).
+
 ## v0.10.1
 
 Opt-in plain CITATION mode for `qai ipi sweep`, enabling plain vs.

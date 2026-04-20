@@ -41,6 +41,15 @@ SWEEP_MODULE = "ipi-sweep"
 METADATA_EVIDENCE_TYPE = "ipi_sweep_metadata"
 """Evidence type carrying the structured ``combination_summary`` blob."""
 
+_TEMPLATE_AWARE_FRAME = "template-aware"
+"""Default frame for pre-v0.10.2 runs with no recorded ``citation_frame``.
+
+Matches :attr:`q_ai.ipi.models.CitationFrame.TEMPLATE_AWARE.value`. Kept
+as a literal here to avoid a selection-module dependency on the enum
+for a single read-path default; :func:`_citation_frame_for_run` returns
+this string when the metadata blob lacks the field.
+"""
+
 TIE_BAND_PP = 10
 """Inclusive tie-band width, in integer percentage points."""
 
@@ -140,6 +149,13 @@ def select_template_for_target(
     and applies the selection contract from the IPI sweep integration
     design RFC: max-across-styles per template, inclusive 10pp tie band,
     7d stale-warn, 30d stale-refuse.
+
+    Since v0.10.2, only ``citation_frame == "template-aware"`` runs are
+    eligible. Plain-frame runs are control conditions for framing
+    measurement (Campaign 1 Phase 4 Step 3) and are intentionally
+    excluded from auto-select so a plain baseline never drives
+    production template recommendation. Pre-v0.10.2 runs (no frame
+    recorded) default to template-aware and remain eligible.
 
     Args:
         target_id: Target ID previously associated with a sweep run.
@@ -247,7 +263,7 @@ def _age_in_days(completed_at: datetime.datetime, now: datetime.datetime) -> int
 
 
 def _most_recent_completed_run(conn: sqlite3.Connection, target_id: str) -> Run | None:
-    """Return the newest completed ipi-sweep run for a target, or None.
+    """Return the newest completed template-aware ipi-sweep run, or None.
 
     Sorts on ``finished_at`` (the brief's staleness clock source),
     normalized to UTC-aware so legacy rows written before the UTC
@@ -257,12 +273,18 @@ def _most_recent_completed_run(conn: sqlite3.Connection, target_id: str) -> Run 
     stable, so that ordering survives the finish-timestamp sort when two
     runs share a ``finished_at``.
 
+    Walks the time-sorted list and returns the first run whose metadata
+    blob declares ``citation_frame == "template-aware"``. Pre-v0.10.2
+    runs with no frame recorded default to template-aware and are
+    eligible. Plain-frame runs are skipped regardless of recency.
+
     Args:
         conn: Active database connection.
         target_id: Target ID to query.
 
     Returns:
-        Most recent completed :class:`Run`, or None if none exist.
+        Most recent completed template-aware :class:`Run`, or None if
+        none exist.
     """
     runs = list_runs(
         conn,
@@ -274,7 +296,46 @@ def _most_recent_completed_run(conn: sqlite3.Connection, target_id: str) -> Run 
     if not eligible:
         return None
     eligible.sort(key=_completed_run_sort_key, reverse=True)
-    return eligible[0]
+    for run in eligible:
+        if _citation_frame_for_run(conn, run.id) == _TEMPLATE_AWARE_FRAME:
+            return run
+    return None
+
+
+def _citation_frame_for_run(conn: sqlite3.Connection, run_id: str) -> str:
+    """Return a run's recorded citation_frame, defaulting to template-aware.
+
+    Reads the ``ipi_sweep_metadata`` evidence blob (same source
+    :func:`_max_rate_per_template` uses for compliance rates — single
+    source of truth for sweep-run scalar metadata). Pre-v0.10.2 runs
+    predate the field; a missing key, missing blob, or malformed JSON
+    all map to the default per the v0.10.2 persistence brief's backward
+    compat rule.
+
+    Args:
+        conn: Active database connection.
+        run_id: Sweep run ID.
+
+    Returns:
+        The frame string (``"plain"`` or ``"template-aware"``).
+        Unknown values pass through unchanged — callers compare equality
+        against a specific expected value rather than validating the
+        full enum.
+    """
+    records = list_evidence(conn, run_id=run_id)
+    metadata = next((e for e in records if e.type == METADATA_EVIDENCE_TYPE), None)
+    if metadata is None or not metadata.content:
+        return _TEMPLATE_AWARE_FRAME
+    try:
+        parsed = json.loads(metadata.content)
+    except json.JSONDecodeError:
+        return _TEMPLATE_AWARE_FRAME
+    if not isinstance(parsed, dict):
+        return _TEMPLATE_AWARE_FRAME
+    frame = parsed.get("citation_frame")
+    if not isinstance(frame, str):
+        return _TEMPLATE_AWARE_FRAME
+    return frame
 
 
 def _completed_run_sort_key(run: Run) -> datetime.datetime:

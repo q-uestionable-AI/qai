@@ -218,6 +218,13 @@ class SweepRunResult:
         total_complied: Total compliant responses.
         overall_rate: Overall compliance rate.
         overall_severity: Severity derived from the overall rate.
+        citation_frame: Which CITATION-rendering frame produced these
+            results. Persisted alongside the run so plain (control) and
+            template-aware (production) sweeps are distinguishable in
+            the DB, metadata evidence, and scored-prompts exports.
+            Defaults to ``TEMPLATE_AWARE`` on any construction path that
+            does not pass a frame explicitly — preserves semantics for
+            any pre-v0.10.2 caller and for legacy-read default paths.
     """
 
     results: list[SweepCaseResult] = field(default_factory=list)
@@ -228,6 +235,7 @@ class SweepRunResult:
     total_complied: int = 0
     overall_rate: float = 0.0
     overall_severity: Severity = Severity.INFO
+    citation_frame: CitationFrame = CitationFrame.TEMPLATE_AWARE
 
 
 # ---------------------------------------------------------------------------
@@ -573,7 +581,7 @@ async def run_sweep(  # noqa: PLR0913 — sweep executor exposes each independen
         tasks = [_bounded_execute(case, rep + 1) for case in cases for rep in range(reps)]
         results = await asyncio.gather(*tasks)
 
-    return _compute_stats(list(results))
+    return _compute_stats(list(results), citation_frame=citation_frame)
 
 
 # ---------------------------------------------------------------------------
@@ -611,12 +619,20 @@ def _group_and_aggregate(
     return {k: stats_ctor(k, group) for k, group in groups.items()}
 
 
-def _compute_stats(results: list[SweepCaseResult]) -> SweepRunResult:
+def _compute_stats(
+    results: list[SweepCaseResult],
+    citation_frame: CitationFrame = CitationFrame.TEMPLATE_AWARE,
+) -> SweepRunResult:
     """Aggregate per-case results into per-template, per-style, and
     per-combination statistics.
 
     Args:
         results: List of per-repetition case results.
+        citation_frame: Frame value to pin on the returned
+            :class:`SweepRunResult`. Defaults to ``TEMPLATE_AWARE`` so
+            existing test fixtures and any caller that builds
+            ``SweepRunResult`` for unit purposes retain the pre-v0.10.2
+            shape.
 
     Returns:
         Fully populated ``SweepRunResult``.
@@ -682,6 +698,7 @@ def _compute_stats(results: list[SweepCaseResult]) -> SweepRunResult:
         total_complied=complied,
         overall_rate=overall_rate,
         overall_severity=severity_from_compliance_rate(overall_rate),
+        citation_frame=citation_frame,
     )
 
 
@@ -740,6 +757,7 @@ def persist_sweep_run(
                 "total_cases": run_result.total_cases,
                 "total_complied": run_result.total_complied,
                 "overall_compliance_rate": run_result.overall_rate,
+                "citation_frame": run_result.citation_frame.value,
             },
         )
 
@@ -849,6 +867,7 @@ def _build_metadata_evidence(
     return {
         "model": model,
         "endpoint": endpoint,
+        "citation_frame": run_result.citation_frame.value,
         "total_cases": run_result.total_cases,
         "total_complied": run_result.total_complied,
         "overall_compliance_rate": run_result.overall_rate,
@@ -929,6 +948,7 @@ def export_scored_prompts(
         "source": "ipi-sweep",
         "model": model,
         "endpoint": endpoint,
+        "citation_frame": run_result.citation_frame.value,
         "total_probes": run_result.total_cases,
         "total_complied": run_result.total_complied,
         "overall_compliance_rate": run_result.overall_rate,

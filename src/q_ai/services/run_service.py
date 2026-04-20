@@ -808,6 +808,14 @@ class SweepRunSummary:
             DB states where the row must still render but aggregate
             fields are meaningless — templates key the "metadata
             unavailable" note off this flag, not off sentinel values.
+        citation_frame: Frame recorded by the run (``"plain"`` or
+            ``"template-aware"``). Defaults to ``"template-aware"``
+            regardless of ``metadata_available`` — pre-v0.10.2 runs
+            predate the field and the template-aware path was the only
+            behavior that existed, so defaulting preserves that
+            semantic for legacy data. The default is also applied when
+            the metadata blob is present but missing the
+            ``citation_frame`` key.
     """
 
     run_id: str
@@ -818,6 +826,7 @@ class SweepRunSummary:
     reps: int | None = None
     total_cases: int = 0
     metadata_available: bool = False
+    citation_frame: str = "template-aware"
 
 
 def extract_sweep_run_summary(
@@ -847,11 +856,16 @@ def extract_sweep_run_summary(
     """
     blob = evidence_service.load_evidence_json(conn, run.id, _SWEEP_METADATA_EVIDENCE_TYPE)
     if blob is None:
+        # Explicit citation_frame assignment here (rather than relying on
+        # the dataclass default) makes the legacy-read contract visible
+        # at the construction site. Pre-v0.10.2 runs with no evidence
+        # row still render the Frame column as "template-aware".
         return SweepRunSummary(
             run_id=run.id,
             status=run.status,
             finished_at=run.finished_at,
             metadata_available=False,
+            citation_frame="template-aware",
         )
 
     total_cases_raw = blob.get("total_cases", 0)
@@ -869,6 +883,9 @@ def extract_sweep_run_summary(
     divisor = template_count * style_count
     reps = total_cases // divisor if divisor > 0 else None
 
+    frame_raw = blob.get("citation_frame")
+    citation_frame = frame_raw if isinstance(frame_raw, str) else "template-aware"
+
     return SweepRunSummary(
         run_id=run.id,
         status=run.status,
@@ -878,6 +895,7 @@ def extract_sweep_run_summary(
         reps=reps,
         total_cases=total_cases,
         metadata_available=True,
+        citation_frame=citation_frame,
     )
 
 

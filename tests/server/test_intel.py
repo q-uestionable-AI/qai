@@ -241,11 +241,16 @@ def _seed_sweep_run(
     template_count: int = 3,
     style_count: int = 2,
     total_cases: int = 12,
+    citation_frame: str | None = "template-aware",
 ) -> str:
-    """Create a completed ipi-sweep run with a matching metadata blob."""
+    """Create a completed ipi-sweep run with a matching metadata blob.
+
+    Pass ``citation_frame=None`` to omit the key from the blob —
+    simulates a pre-v0.10.2 sweep run.
+    """
     run_id = create_run(conn, module="ipi-sweep", target_id=target_id)
     update_run_status(conn, run_id, RunStatus.COMPLETED, finished_at=finished_at)
-    blob = {
+    blob: dict[str, object] = {
         "total_cases": total_cases,
         "total_complied": 0,
         "overall_compliance_rate": 0.0,
@@ -260,6 +265,8 @@ def _seed_sweep_run(
         },
         "combination_summary": [],
     }
+    if citation_frame is not None:
+        blob["citation_frame"] = citation_frame
     create_evidence(
         conn,
         type="ipi_sweep_metadata",
@@ -344,6 +351,121 @@ class TestIntelTargetDetailSweepRendering:
         mid_pos = text.find(f"sweep-run-{mid}")
         earlier_pos = text.find(f"sweep-run-{earlier}")
         assert 0 < latest_pos < mid_pos < earlier_pos
+
+
+class TestIntelTargetDetailSweepFrameColumn:
+    """Sweep Runs rows render a Frame column on the target detail page.
+
+    v0.10.2 adds ``citation_frame`` to ``SweepRunSummary`` and a
+    corresponding cell in the row template. Tests cover all three
+    legacy-read branches: normal template-aware, plain, blob missing
+    the key, and no blob at all.
+    """
+
+    def _row_span(self, text: str, run_id: str) -> str:
+        """Return the HTML substring for a single sweep-run row.
+
+        Anchors on the ``id="sweep-run-<run_id>"`` attribute (a single
+        occurrence per row) so assertions on one row can't leak into
+        another. Ends at the closing ``</a>`` that terminates the row.
+        """
+        start = text.find(f'id="sweep-run-{run_id}"')
+        assert start != -1, f"row for {run_id} not found"
+        end = text.find("</a>", start)
+        assert end != -1, "row not closed"
+        return text[start:end]
+
+    def test_template_aware_row_renders_frame_literal(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        """Template-aware sweep run displays ``template-aware`` in its row."""
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="frame-template-aware")
+            run_id = _seed_sweep_run(
+                conn,
+                target_id,
+                finished_at="2026-04-15T12:00:00+00:00",
+                citation_frame="template-aware",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        row = self._row_span(resp.text, run_id)
+        assert "intel-sweep-col-frame" in row
+        assert "template-aware" in row
+
+    def test_plain_row_renders_frame_literal(self, tmp_db: Path, client: TestClient) -> None:
+        """Plain-frame sweep run displays ``plain`` in its row."""
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="frame-plain")
+            run_id = _seed_sweep_run(
+                conn,
+                target_id,
+                finished_at="2026-04-15T12:00:00+00:00",
+                citation_frame="plain",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        row = self._row_span(resp.text, run_id)
+        assert "intel-sweep-col-frame" in row
+        assert "plain" in row
+
+    def test_legacy_row_defaults_to_template_aware(self, tmp_db: Path, client: TestClient) -> None:
+        """Pre-v0.10.2 blob (no ``citation_frame`` key) renders as template-aware."""
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="frame-legacy")
+            run_id = _seed_sweep_run(
+                conn,
+                target_id,
+                finished_at="2026-04-15T12:00:00+00:00",
+                citation_frame=None,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        row = self._row_span(resp.text, run_id)
+        assert "intel-sweep-col-frame" in row
+        assert "template-aware" in row
+
+    def test_missing_metadata_row_renders_template_aware_frame(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        """Addresses the reviewer concern on the ``metadata_available=False`` path.
+
+        When a sweep run has no ``ipi_sweep_metadata`` evidence row at
+        all (degenerate DB state — the row still renders with the
+        "metadata unavailable" note), the Frame column must still
+        render a sensible default instead of an empty cell.
+        """
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="frame-no-metadata")
+            run_id = create_run(conn, module="ipi-sweep", target_id=target_id)
+            update_run_status(
+                conn,
+                run_id,
+                RunStatus.COMPLETED,
+                finished_at="2026-04-15T12:00:00+00:00",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        row = self._row_span(resp.text, run_id)
+        assert "metadata unavailable" in row
+        assert "intel-sweep-col-frame" in row
+        assert "template-aware" in row
 
 
 class TestIntelTargetDetailGenerateAffordance:

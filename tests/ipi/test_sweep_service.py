@@ -1017,5 +1017,119 @@ class TestRenderNonCitationStylesUnaffected:
         assert plain == aware
 
 
+# ---------------------------------------------------------------------------
+# Citation-frame persistence (v0.10.2)
+# ---------------------------------------------------------------------------
+
+
+class TestCitationFramePropagation:
+    """``citation_frame`` threads through _compute_stats and SweepRunResult."""
+
+    def test_compute_stats_default_is_template_aware(self) -> None:
+        """No-arg _compute_stats preserves the pre-v0.10.2 shape."""
+        result = _compute_stats([_make_result()])
+        assert result.citation_frame is CitationFrame.TEMPLATE_AWARE
+
+    def test_compute_stats_carries_plain(self) -> None:
+        """Explicit PLAIN survives the aggregation step."""
+        result = _compute_stats([_make_result()], citation_frame=CitationFrame.PLAIN)
+        assert result.citation_frame is CitationFrame.PLAIN
+
+    def test_compute_stats_carries_template_aware(self) -> None:
+        """Explicit TEMPLATE_AWARE survives the aggregation step."""
+        result = _compute_stats([_make_result()], citation_frame=CitationFrame.TEMPLATE_AWARE)
+        assert result.citation_frame is CitationFrame.TEMPLATE_AWARE
+
+
+class TestCitationFramePersistence:
+    """Run config and metadata evidence JSON both carry citation_frame."""
+
+    def _persist_plain_run(self, tmp_path: Path) -> tuple[Path, str]:
+        """Build a plain-frame run, persist it, return (db_path, run_id)."""
+        db_path = tmp_path / "test.db"
+        run_result = _compute_stats([_make_result()], citation_frame=CitationFrame.PLAIN)
+        run_id = persist_sweep_run(
+            run_result=run_result,
+            model="test-model",
+            endpoint="http://test/v1",
+            db_path=db_path,
+        )
+        return db_path, run_id
+
+    def test_run_config_records_plain(self, tmp_path: Path) -> None:
+        """Plain-frame sweep writes ``citation_frame='plain'`` into run config."""
+        from q_ai.core.db import get_run
+
+        db_path, run_id = self._persist_plain_run(tmp_path)
+        with get_connection(db_path) as conn:
+            run = get_run(conn, run_id)
+        assert run is not None and run.config is not None
+        assert run.config["citation_frame"] == "plain"
+
+    def test_run_config_records_template_aware_by_default(self, tmp_path: Path) -> None:
+        """Default-frame sweep writes ``citation_frame='template-aware'``."""
+        from q_ai.core.db import get_run
+
+        db_path = tmp_path / "test.db"
+        run_id = persist_sweep_run(
+            run_result=_make_run_result(),
+            model="test-model",
+            endpoint="http://test/v1",
+            db_path=db_path,
+        )
+        with get_connection(db_path) as conn:
+            run = get_run(conn, run_id)
+        assert run is not None and run.config is not None
+        assert run.config["citation_frame"] == "template-aware"
+
+    def test_metadata_evidence_carries_frame(self, tmp_path: Path) -> None:
+        """The ipi_sweep_metadata blob's top-level ``citation_frame`` is set."""
+        from q_ai.core.db import list_evidence
+
+        db_path, run_id = self._persist_plain_run(tmp_path)
+        with get_connection(db_path) as conn:
+            records = list_evidence(conn, run_id=run_id)
+        metadata = next(e for e in records if e.type == "ipi_sweep_metadata")
+        assert metadata.content is not None
+        blob = json.loads(metadata.content)
+        assert blob["citation_frame"] == "plain"
+
+
+class TestCitationFrameExport:
+    """Scored-prompts export carries citation_frame at run scope."""
+
+    def test_export_wrapper_carries_plain_frame(self, tmp_path: Path) -> None:
+        """Top-level export_data dict exposes ``citation_frame='plain'``."""
+        output = tmp_path / "exports" / "sweep.json"
+        run_result = _compute_stats([_make_result()], citation_frame=CitationFrame.PLAIN)
+
+        written = export_scored_prompts(run_result, "test-model", "http://test/v1", output)
+        export_data = json.loads(written.read_text(encoding="utf-8"))
+        assert export_data["citation_frame"] == "plain"
+
+    def test_export_wrapper_defaults_to_template_aware(self, tmp_path: Path) -> None:
+        """Default-frame export_data records ``citation_frame='template-aware'``."""
+        output = tmp_path / "exports" / "sweep-default.json"
+        written = export_scored_prompts(_make_run_result(), "test-model", "http://test/v1", output)
+        export_data = json.loads(written.read_text(encoding="utf-8"))
+        assert export_data["citation_frame"] == "template-aware"
+
+    def test_export_entries_do_not_duplicate_frame(self, tmp_path: Path) -> None:
+        """Per-entry shape is unchanged — frame is run-scope only, not per prompt."""
+        output = tmp_path / "exports" / "sweep-no-per-entry-frame.json"
+        run_result = _compute_stats([_make_result()], citation_frame=CitationFrame.PLAIN)
+        written = export_scored_prompts(run_result, "test-model", "http://test/v1", output)
+        export_data = json.loads(written.read_text(encoding="utf-8"))
+        assert all("citation_frame" not in entry for entry in export_data["results"])
+
+    def test_export_round_trips_through_scored_parser(self, tmp_path: Path) -> None:
+        """Adding the top-level field does not break ``parse_scored``."""
+        output = tmp_path / "exports" / "sweep-roundtrip.json"
+        run_result = _compute_stats([_make_result()], citation_frame=CitationFrame.PLAIN)
+        written = export_scored_prompts(run_result, "test-model", "http://test/v1", output)
+        parsed = parse_scored(written)
+        assert parsed is not None
+
+
 # Re-export markers so the test collector does not warn about unused imports.
 _ = sweep_service
