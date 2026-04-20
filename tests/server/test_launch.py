@@ -55,6 +55,105 @@ class TestLaunchCreatesTarget:
             conn.close()
 
 
+class TestLaunchTargetDedup:
+    """Phase 5 WA6 — launch_workflow looks up existing target by name before insert.
+
+    Closes the Phase 4 Risk #4 gap where every launch submit produced a
+    duplicate `type='server'` target row sharing the same display name.
+    """
+
+    def test_repeat_submit_same_name_reuses_target(self, client: TestClient, tmp_db: Path) -> None:
+        """Two launches with the same target_name end up with ONE target row."""
+        with (
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
+        ):
+            executor = _noop_executor()
+            mock_get_wf.return_value.executor = executor
+            mock_get_wf.return_value.id = "assess"
+
+            resp1 = client.post("/api/workflows/launch", json=_valid_body())
+            resp2 = client.post("/api/workflows/launch", json=_valid_body())
+
+        assert resp1.status_code == 201
+        assert resp2.status_code == 201
+
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute(
+                "SELECT COUNT(*) AS n FROM targets WHERE name = ? AND type = 'server'",
+                ("test-server",),
+            ).fetchone()
+            assert rows["n"] == 1
+        finally:
+            conn.close()
+
+    def test_different_names_create_separate_targets(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        """Distinct target_name submits still create separate rows."""
+        body_a = _valid_body()
+        body_b = _valid_body() | {"target_name": "other-server"}
+
+        with (
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
+        ):
+            executor = _noop_executor()
+            mock_get_wf.return_value.executor = executor
+            mock_get_wf.return_value.id = "assess"
+
+            client.post("/api/workflows/launch", json=body_a)
+            client.post("/api/workflows/launch", json=body_b)
+
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute(
+                "SELECT COUNT(*) AS n FROM targets WHERE type = 'server'"
+            ).fetchone()
+            assert rows["n"] == 2
+        finally:
+            conn.close()
+
+    def test_reused_target_id_in_workflow_config(self, client: TestClient, tmp_db: Path) -> None:
+        """Both workflow configs store the same target_id when names match.
+
+        Parent workflow runs persist ``target_id`` inside the ``config``
+        JSON blob (see :meth:`WorkflowRunner.start`), not the
+        ``runs.target_id`` column. Dedup means both configs reference the
+        one existing target row.
+        """
+        import json
+
+        with (
+            patch("q_ai.services.workflow_service.get_credential", return_value="test-key"),
+            patch("q_ai.server.routes.workflows.get_workflow") as mock_get_wf,
+        ):
+            executor = _noop_executor()
+            mock_get_wf.return_value.executor = executor
+            mock_get_wf.return_value.id = "assess"
+
+            client.post("/api/workflows/launch", json=_valid_body())
+            client.post("/api/workflows/launch", json=_valid_body())
+
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute("SELECT config FROM runs WHERE module = 'workflow'").fetchall()
+            assert len(rows) == 2
+            target_ids_in_config: set[str] = set()
+            for row in rows:
+                cfg = json.loads(row["config"]) if row["config"] else {}
+                tid = cfg.get("target_id")
+                if tid:
+                    target_ids_in_config.add(tid)
+            assert len(target_ids_in_config) == 1
+        finally:
+            conn.close()
+
+
 class TestLaunchCreatesWorkflowRun:
     """POST /api/workflows/launch creates a workflow run in DB."""
 

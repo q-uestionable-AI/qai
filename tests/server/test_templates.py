@@ -67,9 +67,14 @@ class TestEmptyStates:
         resp = client.get("/api/findings")
         assert "No findings" in resp.text
 
-    def test_targets_empty(self, client: TestClient) -> None:
+    def test_targets_renders_synthetic_unbound(self, client: TestClient) -> None:
+        """Phase 5 — the startup migration always creates a synthetic Unbound
+        target, so ``/api/targets`` renders that row on a fresh DB rather than
+        the old "No targets" empty-state copy.
+        """
         resp = client.get("/api/targets")
-        assert "No targets" in resp.text
+        assert resp.status_code == 200
+        assert "(Unbound historical intel)" in resp.text
 
 
 class TestSeverityBadges:
