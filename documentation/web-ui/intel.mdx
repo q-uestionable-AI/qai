@@ -162,7 +162,7 @@ The **Generate** affordance sits at the bottom of the **Sweep Runs** section. It
 
 **Button renders (you can launch generate)**
 
-- `SelectedTemplate` — fresh. Latest sweep is under 7 days old, and one template clearly leads the pack. The button reads `Generate with <TEMPLATE>` and links to `/launcher` prefilled with the target and template.
+- `SelectedTemplate` — fresh. Latest sweep is 7 days old or newer, and one template clearly leads the pack. The button reads `Generate with <TEMPLATE>` and links to `/launcher` prefilled with the target and template.
 - `SelectedTemplate` with `stale_warn` — a template recommendation is available, but the latest sweep is 8–30 days old. The button renders muted and appends the age to the label (e.g., `Generate with CITATION (12d ago)`). Click-through still works; the hint is to consider re-running the sweep first.
 
 **Button does not render — inline explanation instead**
