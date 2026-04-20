@@ -1,38 +1,62 @@
 ---
 title: Intel
-description: Evidence collection hub — gather intelligence about targets before launching operations
+description: Target-centric evidence workspace — gather probes, sweeps, and imports against a target, then launch generate with the recommended template
 ---
 
-The Intel page is a top-level section in the qai Web UI, accessible from the navigation bar between Runs and Settings. It unifies all evidence collection in one place: build understanding of your target's vulnerabilities before you launch operations against it.
+Intel is the evidence workspace for qai's target-centric workflow. You pick a target, build evidence against it (import findings, probe the model, sweep document-context templates), review everything on the target's detail page, and — once a sweep has produced usable findings — launch `qai ipi generate` with the recommended template straight from the page.
 
-## Layout
+The entry point is the **Intel** nav item, which opens the target list landing at `/intel`. Each target has a detail page at `/intel/targets/<target_id>` that surfaces its evidence.
 
-Intel uses a card-based layout with three source cards (Import Results, Probe Model, Sweep). Each card is self-contained with its own form, actions, and result display. Future evidence sources add new cards without redesigning the page.
+## Target list landing
 
-## Import Results Card
+`/intel` is a list of targets. Each row shows the target's name, type, URI, and age badges for its most recent probe run, sweep run, and import — in the `12d` / `2h` / `45m` / `now` / `—` format. Click any row to open that target's detail page.
 
-Upload findings from external tools and benchmarks. Supports all import formats: Garak (JSONL), PyRIT (JSON), SARIF, scored-prompts (JSON), and BIPIA (CSV).
+Below the target list sit three launcher cards — **Import Results**, **Probe Model**, and **Sweep**. Use these to collect evidence for a target. Each launcher requires a target; no card runs against "no target" or offers an "optional" target field.
+
+<Note>
+Targets themselves are managed via `qai targets` (add / list / delete) or created inline from any Intel launcher card. New targets do not have to exist before you click a launcher — the `+ Create new target` option in the target selector opens a modal that creates the target and binds the launch to it in one step.
+</Note>
+
+### Inline target creation
+
+Every launcher card's **Target** selector offers:
+
+- every existing target, and
+- a `+ Create new target` sentinel option at the top of the list.
+
+Selecting the sentinel opens a shared modal. Submitting the modal calls `POST /api/intel/targets/create`, appends the new target to the selector, and binds the current launch to it. The modal closes on success; the launcher's existing form values (endpoint, model, API key, etc.) are preserved.
+
+## Import Results card
+
+Upload findings from external tools and benchmarks. Supported formats: Garak (JSONL), PyRIT (JSON), SARIF, scored-prompts (JSON), and BIPIA (CSV).
+
+### Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| File | Yes | Findings file in one of the supported formats |
+| Format | Yes | `bipia`, `garak`, `pyrit`, `sarif`, or `scored` |
+| Target | Yes | Target to attach findings to — choose an existing target or `+ Create new target` |
 
 ### Workflow
 
-1. **Select format** from the dropdown
-2. **Upload file** using the file input
-3. **Optionally select a target** to associate findings with (enables workflow integration)
-4. **Preview** — parses the file and shows a findings summary without writing to the database
-5. **Import** — commits findings to the database, returns finding count and run ID
+1. Choose a file and format.
+2. Pick the target (or create one inline).
+3. **Preview** — parses the file and shows a findings summary without writing to the database.
+4. **Import** — commits findings to the database and returns a run ID.
 
-The preview step lets you verify what will be imported before committing. This is the same two-step flow as the CLI's `--dry-run` flag.
+The preview step lets you verify what will be imported before committing. This mirrors the CLI's `--dry-run` flag on `qai import`.
 
-### API Endpoints
+### API endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/intel/import/preview` | Parse file, return findings summary (no DB write) |
-| POST | `/api/intel/import/commit` | Parse file, persist to DB, return run ID |
+| POST | `/api/intel/import/preview` | Parse the file, return findings summary — no DB write |
+| POST | `/api/intel/import/commit` | Parse the file, persist to DB, return run ID |
 
-## Probe Model Card
+## Probe Model card
 
-Test a model endpoint directly for IPI susceptibility. This is the Web UI equivalent of `qai ipi probe`.
+Runs the 20 built-in probes across 8 IPI categories against a target model using canary-based scoring. This is the Web UI equivalent of [`qai ipi probe`](/ipi/cli#probe).
 
 ### Fields
 
@@ -40,32 +64,31 @@ Test a model endpoint directly for IPI susceptibility. This is the Web UI equiva
 |-------|----------|-------------|
 | Endpoint URL | Yes | OpenAI-compatible API base URL (e.g., `http://localhost:8000/v1`) |
 | Model | Yes | Model name for chat completions |
-| API Key | No | Bearer token (not logged or stored beyond the request) |
-| Temperature | No | Sampling temperature (default: 0.0). Use 0.0 for reproducible probing results. Higher values add randomness to model responses. |
-| Concurrency | No | Max parallel requests (default: 1). Increase to 4–8 for faster sweeps on endpoints that support concurrent requests. Too high may cause rate limiting or out-of-memory errors on the target. |
-| Target | No | Associate results with a target for workflow integration |
+| API Key | No | Sent as the `X-API-Key` request header to the qai probe endpoint — qai forwards it to the upstream provider as `Authorization: Bearer`. Not logged, not persisted |
+| Temperature | No | Sampling temperature (default `0.0`). Use `0.0` for reproducible probing. Higher values add randomness |
+| Concurrency | No | Max parallel upstream requests (default `1`). Raise to 4–8 on endpoints that tolerate concurrency |
+| Target | Yes | Target to bind the probe run to — existing target or `+ Create new target` |
+
+<Note>
+Probe and Sweep launch endpoints accept the API key via the `X-API-Key` request header, not as a JSON body field. The form sends the value in that header automatically. Any `api_key` field found in the JSON body is silently ignored for backward compatibility.
+</Note>
 
 ### Workflow
 
-1. Fill in endpoint and model (minimum required fields)
-2. **Launch** — probing runs as a background task
-3. Target-bound results appear in the target's **Probe Runs** section on the detail page when complete; launches without a target return to `/intel`.
+1. Fill in endpoint and model.
+2. Pick or create the target.
+3. **Launch Probes** — probing runs as a background task. The browser navigates to the target's detail page.
+4. When the run finishes, refresh the detail page to see it surface in **Probe Runs**.
 
-Probing runs 20 built-in probes across 8 IPI categories with canary-based scoring. Results are persisted to the database and, for target-bound runs, rendered in the target's **Probe Runs** section at `/intel/targets/<target_id>`. Unbound runs (no target) are persisted only; open them via `/runs?run_id=<id>` directly.
-
-### API Endpoint
+### API endpoint
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/intel/probe/launch` | Launch probing as background task, returns 202 |
 
-<Note>
-The API key entered in the Probe form is used only for the probe request and is not logged or stored in the database. It is passed to the background task in memory and discarded after probing completes.
-</Note>
+## Sweep card
 
-## Sweep Card
-
-Measure per-template compliance on a target model. This is the Web UI equivalent of `qai ipi sweep`. Sweep results feed the auto-select in `qai ipi generate --target`.
+Measures per-template compliance against a target model. Sweep results feed the template recommendation that drives the **Generate** button on the target detail page and `qai ipi generate --target`. This is the Web UI equivalent of [`qai ipi sweep`](/ipi/cli#sweep).
 
 ### Fields
 
@@ -73,45 +96,96 @@ Measure per-template compliance on a target model. This is the Web UI equivalent
 |-------|----------|-------------|
 | Endpoint URL | Yes | OpenAI-compatible API base URL |
 | Model | Yes | Model name for chat completions |
-| API Key | No | Bearer token — in-memory only |
+| API Key | No | Sent as the `X-API-Key` request header to the qai sweep endpoint — qai forwards it to the upstream provider as `Authorization: Bearer`. In-memory only |
 | Temperature | No | Default `0.0` |
 | Concurrency | No | Default `1` |
-| Reps | No | Repetitions per (template, style) — default `3` |
-| Templates | Yes | Multi-select; all 12 templates selected by default (Ctrl/Cmd-click to deselect) |
-| Styles | Yes | Multi-select; all 7 styles selected by default |
-| Target | No | Associate the run with a target for sweep-aware auto-select |
-| Payload Type | — | Fixed to `callback` in v1 |
+| Reps | No | Repetitions per `(template, style)` pair — default `3` |
+| Templates | Yes | Multi-select. All 12 document-context templates are selected by default. Ctrl/Cmd-click to deselect individual templates |
+| Styles | Yes | Multi-select. All 7 payload styles are selected by default. Ctrl/Cmd-click to deselect |
+| Target | Yes | Target to bind the sweep run to |
+| Payload Type | — | Fixed to `callback` in v1 (sent as a hidden form field) |
 
 ### Workflow
 
-1. Fill endpoint and model, adjust templates/styles as needed
-2. **Launch Sweep** — the sweep runs as a fire-and-forget background task
-3. When a target is set, the browser redirects to that target's detail page; otherwise it lands on `/intel`
-4. The completed sweep appears in the target's **Sweep Runs** section on the next page load
+1. Fill in endpoint and model.
+2. Adjust templates/styles/reps if you don't want the defaults.
+3. Pick or create the target.
+4. **Launch Sweep** — the sweep runs as a fire-and-forget background task. The browser navigates to the target's detail page.
+5. Refresh the detail page once the sweep finishes to see it surface in **Sweep Runs** and, if the findings are conclusive, enable the **Generate** button.
 
 <Note>
-Launch responses do not include a `run_id`. The run row is created inside `persist_sweep_run` after the sweep HTTP calls complete — that is, after the 202 response is sent. Refresh the target detail page to see the completed run.
+The launch response (202) does not include a `run_id`. The run row is created inside the background task after the sweep's HTTP calls complete, which happens after the 202 is returned. Refresh the target detail page to pick up the completed run.
 </Note>
 
-### API Endpoint
+### API endpoint
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/intel/sweep/launch` | Launch sweep as background task, returns 202 |
 
-## Target Detail Page — Sweep Runs Section
+## Target detail page
 
-The per-target detail page at `/intel/targets/<target_id>` renders three evidence sections. The **Sweep Runs** section lists every `ipi-sweep` run for the target, most recent first.
+`/intel/targets/<target_id>` is the primary workspace for a single target. Three sections render the target's evidence, most-recent-first:
 
-- When at least one sweep exists, a summary line under the section header reports the latest sweep's age, template count, style count, `N` (reps), and completion status.
-- Each row is a clickable link to `/runs?run_id=<id>`, anchored as `#sweep-run-<id>` for direct deep-linking.
-- Empty targets show a link back to the Sweep card on `/intel`.
+- **Imports** — `#imports`
+- **Probe Runs** — `#probe-runs`
+- **Sweep Runs** — `#sweep-runs`
 
-See [IPI Sweep CLI](/ipi/cli#sweep) for the underlying sweep semantics — the Web UI uses the same persistence layer.
+Each section also deep-links individual runs (`#import-run-<run_id>`, `#probe-run-<run_id>`, `#sweep-run-<run_id>`).
 
-## Next Steps
+### Imports section
 
-- [IPI Probe CLI](/ipi/cli#probe) — CLI reference for `qai ipi probe`
-- [IPI Sweep CLI](/ipi/cli#sweep) — CLI reference for `qai ipi sweep`
-- [Import Overview](/imports/overview) — Supported formats and taxonomy bridging
-- [Runs](/web-ui/runs) — View workflow, import, and legacy run results
+Lists every import run (`module = import`) bound to the target. Each row carries:
+
+- an age badge (`12d` / `2h` / `now` / `—`),
+- the source label (Garak / PyRIT / SARIF / scored-prompts / BIPIA),
+- the finding count,
+- the run status.
+
+Rows link to `/runs?run_id=<run_id>` — the standard Runs detail view for import runs.
+
+### Probe Runs section
+
+Lists every probe run (`module = ipi-probe`) bound to the target. A summary line under the section header describes the latest probe — `Latest probe: <age> ago — N probes across C categories, X% compliance, <severity> severity, <status>`. Each row shows the finished-at age, probes × categories, overall compliance, severity, and status.
+
+Rows link to `/runs?run_id=<probe_run_id>`. As of Phase 6 this URL returns 200 directly (the old Intel redirect was removed).
+
+### Sweep Runs section
+
+Lists every sweep run (`module = ipi-sweep`) bound to the target. The summary line describes the latest sweep — `Latest sweep: <age> ago — T templates × S styles, N=<reps>, <status>`. Each row shows the finished-at age, the template × style combo count, the rep count, and status.
+
+Rows link to `/runs?run_id=<sweep_run_id>` and carry the `#sweep-run-<id>` anchor for deep-linking.
+
+### Generate button
+
+The **Generate** affordance sits at the bottom of the **Sweep Runs** section. Its rendering is re-evaluated on every page load — there is no caching. The taxonomy covers five states, grouped by user-visible behavior:
+
+**Button renders (you can launch generate)**
+
+- `SelectedTemplate` — fresh. Latest sweep is under 7 days old, and one template clearly leads the pack. The button reads `Generate with <TEMPLATE>` and links to `/launcher` prefilled with the target and template.
+- `SelectedTemplate` with `stale_warn` — a template recommendation is available, but the latest sweep is 8–30 days old. The button renders muted and appends the age to the label (e.g., `Generate with CITATION (12d ago)`). Click-through still works; the hint is to consider re-running the sweep first.
+
+**Button does not render — inline explanation instead**
+
+- `TieRefusal` — the top two templates are within 10 percentage points of each other. The section shows a note listing the templates in the tie band and suggests either re-running the sweep with more reps or picking a template explicitly from the launcher.
+- `StaleRefusal` — the latest sweep is more than 30 days old. The section shows a note with the sweep's age and prompts a fresh sweep.
+
+**No sweep findings yet**
+
+- `NoFindings` — at least one sweep run exists for the target, but none produced usable findings. The section shows a link back to the Sweep card on `/intel`. When the target has no sweep runs at all, the Sweep Runs section itself shows the empty-state prompt to run a sweep.
+
+The thresholds here (10 percentage-point tie band, 7-day stale-warn, 30-day stale-refuse) match the CLI's `qai ipi generate --target` contract — see [IPI CLI — Auto-select from sweep findings](/ipi/cli#auto-select-from-sweep-findings).
+
+## The `(Unbound historical intel)` target
+
+One synthetic target with name `(Unbound historical intel)` and metadata `{"kind": "synthetic-unbound"}` holds historical probe, sweep, and import runs from before target binding was required. It appears on the Intel target list like any other target, and its detail page surfaces the migrated runs in the usual three sections.
+
+No new unbound runs are created post-Phase-5 — every Intel launcher now requires a target. The synthetic target exists purely so historical runs remain reachable from the target-centric workspace. If your project predates target binding, expect to see it in the list with a backlog of runs attached.
+
+## Next steps
+
+- [IPI Probe CLI](/ipi/cli#probe) — CLI reference for `qai ipi probe`.
+- [IPI Sweep CLI](/ipi/cli#sweep) — CLI reference for `qai ipi sweep`.
+- [IPI Generate `--target`](/ipi/cli#auto-select-from-sweep-findings) — CLI auto-select contract matching the Generate button.
+- [Import Overview](/imports/overview) — supported formats and taxonomy bridging.
+- [Runs](/web-ui/runs) — workflow runs and imports. Probe and sweep runs live here on Intel, not there.
