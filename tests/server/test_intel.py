@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -1558,3 +1558,219 @@ class TestIntelTargetDetailImportsRendering:
         assert "1 finding " in text or "1 finding\n" in text or "1 finding<" in text
         # And not the plural form with this exact count.
         assert "1 findings" not in text
+
+
+def _spy_api_key_header(captured: list[str | None]) -> Any:
+    """Build a side_effect callable that mirrors ``_read_api_key_header``.
+
+    Used to verify synchronously (pre-response) what value the launch
+    handler read from the ``X-API-Key`` header. The background task's
+    invocation of ``run_probes`` / ``run_sweep`` is not race-free across
+    platforms (see ``TestSweepLaunch.test_background_task_is_scheduled``),
+    so spying on the header-read is the reliable inspection point.
+    """
+    from q_ai.server.routes import intel as intel_module
+
+    real = intel_module._read_api_key_header
+
+    def _capture(request: Any) -> str | None:
+        value = real(request)
+        captured.append(value)
+        return value
+
+    return _capture
+
+
+class TestProbeLaunchApiKeyHeader:
+    """POST /api/intel/probe/launch reads api_key from ``X-API-Key`` header.
+
+    Phase 6 security hardening: the upstream-provider credential ships
+    as a request header, not a JSON-body field. The body ``api_key``
+    field is tolerated for backwards compatibility but ignored by the
+    validator.
+    """
+
+    _VALID_BODY: ClassVar[dict[str, object]] = {
+        "endpoint": "http://localhost:8000/v1",
+        "model": "gpt-4o-mini",
+    }
+
+    def test_header_value_is_read_by_handler(self, client: TestClient) -> None:
+        """``X-API-Key`` header value is read before the background task starts."""
+        from q_ai.server.routes import intel as intel_module
+
+        captured: list[str | None] = []
+        with (
+            patch.object(
+                intel_module,
+                "_read_api_key_header",
+                side_effect=_spy_api_key_header(captured),
+            ),
+            patch("q_ai.ipi.probe_service.load_probes", return_value=[MagicMock()]),
+            patch("q_ai.ipi.probe_service.run_probes", new_callable=AsyncMock),
+            patch("q_ai.ipi.probe_service.persist_probe_run"),
+        ):
+            resp = client.post(
+                "/api/intel/probe/launch",
+                json=self._VALID_BODY,
+                headers={"X-API-Key": "sk-test-probe-123"},
+            )
+        assert resp.status_code == 202
+        assert captured == ["sk-test-probe-123"]
+
+    def test_no_header_yields_none(self, client: TestClient) -> None:
+        """Absent header reads as ``None`` — downstream treats as no auth."""
+        from q_ai.server.routes import intel as intel_module
+
+        captured: list[str | None] = []
+        with (
+            patch.object(
+                intel_module,
+                "_read_api_key_header",
+                side_effect=_spy_api_key_header(captured),
+            ),
+            patch("q_ai.ipi.probe_service.load_probes", return_value=[MagicMock()]),
+            patch("q_ai.ipi.probe_service.run_probes", new_callable=AsyncMock),
+            patch("q_ai.ipi.probe_service.persist_probe_run"),
+        ):
+            resp = client.post("/api/intel/probe/launch", json=self._VALID_BODY)
+        assert resp.status_code == 202
+        assert captured == [None]
+
+    def test_whitespace_only_header_yields_none(self, client: TestClient) -> None:
+        """Whitespace-only header value collapses to ``None`` after strip."""
+        from q_ai.server.routes import intel as intel_module
+
+        captured: list[str | None] = []
+        with (
+            patch.object(
+                intel_module,
+                "_read_api_key_header",
+                side_effect=_spy_api_key_header(captured),
+            ),
+            patch("q_ai.ipi.probe_service.load_probes", return_value=[MagicMock()]),
+            patch("q_ai.ipi.probe_service.run_probes", new_callable=AsyncMock),
+            patch("q_ai.ipi.probe_service.persist_probe_run"),
+        ):
+            resp = client.post(
+                "/api/intel/probe/launch",
+                json=self._VALID_BODY,
+                headers={"X-API-Key": "   "},
+            )
+        assert resp.status_code == 202
+        assert captured == [None]
+
+    def test_legacy_body_api_key_is_tolerated(self, client: TestClient) -> None:
+        """Legacy body ``api_key`` field does not 422 and is ignored."""
+        with (
+            patch("q_ai.ipi.probe_service.load_probes", return_value=[MagicMock()]),
+            patch("q_ai.ipi.probe_service.run_probes", new_callable=AsyncMock),
+            patch("q_ai.ipi.probe_service.persist_probe_run"),
+        ):
+            resp = client.post(
+                "/api/intel/probe/launch",
+                json={**self._VALID_BODY, "api_key": "sk-legacy-body"},
+            )
+        assert resp.status_code == 202
+
+
+class TestSweepLaunchApiKeyHeader:
+    """POST /api/intel/sweep/launch reads api_key from ``X-API-Key`` header.
+
+    Mirrors :class:`TestProbeLaunchApiKeyHeader` — symmetric auth shape
+    across the two Intel launch endpoints per the Phase 6 brief.
+    """
+
+    _VALID_BODY: ClassVar[dict[str, object]] = {
+        "endpoint": "http://localhost:8000/v1",
+        "model": "gpt-4o-mini",
+        "templates": ["generic"],
+        "styles": ["obvious"],
+    }
+
+    def test_header_value_is_read_by_handler(self, client: TestClient) -> None:
+        from q_ai.server.routes import intel as intel_module
+
+        captured: list[str | None] = []
+        with (
+            patch.object(
+                intel_module,
+                "_read_api_key_header",
+                side_effect=_spy_api_key_header(captured),
+            ),
+            patch("q_ai.ipi.sweep_service.run_sweep", new_callable=AsyncMock),
+            patch("q_ai.ipi.sweep_service.persist_sweep_run"),
+        ):
+            resp = client.post(
+                "/api/intel/sweep/launch",
+                json=self._VALID_BODY,
+                headers={"X-API-Key": "sk-test-sweep-456"},
+            )
+        assert resp.status_code == 202
+        assert captured == ["sk-test-sweep-456"]
+
+    def test_no_header_yields_none(self, client: TestClient) -> None:
+        from q_ai.server.routes import intel as intel_module
+
+        captured: list[str | None] = []
+        with (
+            patch.object(
+                intel_module,
+                "_read_api_key_header",
+                side_effect=_spy_api_key_header(captured),
+            ),
+            patch("q_ai.ipi.sweep_service.run_sweep", new_callable=AsyncMock),
+            patch("q_ai.ipi.sweep_service.persist_sweep_run"),
+        ):
+            resp = client.post("/api/intel/sweep/launch", json=self._VALID_BODY)
+        assert resp.status_code == 202
+        assert captured == [None]
+
+    def test_legacy_body_api_key_is_tolerated(self, client: TestClient) -> None:
+        """Legacy body ``api_key`` field does not 422 and is ignored."""
+        with (
+            patch("q_ai.ipi.sweep_service.run_sweep", new_callable=AsyncMock),
+            patch("q_ai.ipi.sweep_service.persist_sweep_run"),
+        ):
+            resp = client.post(
+                "/api/intel/sweep/launch",
+                json={**self._VALID_BODY, "api_key": "sk-legacy-body"},
+            )
+        assert resp.status_code == 202
+
+
+class TestApiKeyHeaderHelper:
+    """Unit-level checks on :func:`_read_api_key_header`.
+
+    Exercised directly against a minimal Starlette ``Request`` so the
+    contract is clear regardless of the launch-endpoint integration.
+    """
+
+    def _make_request(self, headers: list[tuple[bytes, bytes]] | None) -> Any:
+        from fastapi import Request
+
+        scope: dict[str, Any] = {
+            "type": "http",
+            "method": "POST",
+            "path": "/",
+            "headers": headers or [],
+        }
+        return Request(scope)
+
+    def test_missing_header_returns_none(self) -> None:
+        from q_ai.server.routes.intel import _read_api_key_header
+
+        req = self._make_request(None)
+        assert _read_api_key_header(req) is None
+
+    def test_populated_header_returns_stripped(self) -> None:
+        from q_ai.server.routes.intel import _read_api_key_header
+
+        req = self._make_request([(b"x-api-key", b"  sk-abc  ")])
+        assert _read_api_key_header(req) == "sk-abc"
+
+    def test_whitespace_only_header_returns_none(self) -> None:
+        from q_ai.server.routes.intel import _read_api_key_header
+
+        req = self._make_request([(b"x-api-key", b"   ")])
+        assert _read_api_key_header(req) is None

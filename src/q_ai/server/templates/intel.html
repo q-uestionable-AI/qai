@@ -589,12 +589,16 @@ async function launchProbe(e) {
     try {
         var fd = new FormData(form);
         var data = {};
+        var apiKey = '';
         for (var [key, val] of fd.entries()) {
+            if (key === 'api_key') {
+                apiKey = val;
+                continue;
+            }
             data[key] = val;
         }
         data.temperature = parseFloat(data.temperature) || 0.0;
         data.concurrency = parseInt(data.concurrency, 10) || 1;
-        if (!data.api_key) delete data.api_key;
         /* Phase 5 — target_id required via modal binding. __new__ must be
            resolved by the modal before submit; if it's still set, block. */
         if (data.target_id === '__new__' || !data.target_id) {
@@ -603,9 +607,11 @@ async function launchProbe(e) {
             return false;
         }
 
+        var headers = {'Content-Type': 'application/json'};
+        if (apiKey) headers['X-API-Key'] = apiKey;
         var resp = await fetch('/api/intel/probe/launch', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: headers,
             body: JSON.stringify(data),
         });
         var result = await resp.json();
@@ -660,10 +666,10 @@ async function launchSweep(e) {
             return false;
         }
 
+        var apiKey = form.querySelector('input[name="api_key"]').value;
         var data = {
             endpoint: form.querySelector('input[name="endpoint"]').value,
             model: form.querySelector('input[name="model"]').value,
-            api_key: form.querySelector('input[name="api_key"]').value,
             target_id: form.querySelector('select[name="target_id"]').value,
             temperature: parseFloat(form.querySelector('input[name="temperature"]').value) || 0.0,
             concurrency: parseInt(form.querySelector('input[name="concurrency"]').value, 10) || 1,
@@ -672,7 +678,6 @@ async function launchSweep(e) {
             styles: styles,
             payload_type: 'callback',
         };
-        if (!data.api_key) delete data.api_key;
         /* Phase 5 — target_id required via modal binding. __new__ must be
            resolved by the modal before submit; if it's still set, block. */
         if (data.target_id === '__new__' || !data.target_id) {
@@ -681,9 +686,11 @@ async function launchSweep(e) {
             return false;
         }
 
+        var headers = {'Content-Type': 'application/json'};
+        if (apiKey) headers['X-API-Key'] = apiKey;
         var resp = await fetch('/api/intel/sweep/launch', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: headers,
             body: JSON.stringify(data),
         });
         var result = await resp.json();

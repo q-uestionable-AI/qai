@@ -290,6 +290,30 @@ def _coerce_optional_string(
     return raw.strip()
 
 
+def _read_api_key_header(request: Request) -> str | None:
+    """Read the api_key from the ``X-API-Key`` request header.
+
+    Used by the probe and sweep launch handlers to keep the upstream-
+    provider credential out of the JSON body (and out of any logs that
+    dump ``request.json()``). Absent, empty, or whitespace-only header
+    values all map to ``None`` — the downstream kwargs treat that as
+    "no auth", matching the body-field semantics these endpoints had
+    before Phase 6.
+
+    Args:
+        request: The incoming FastAPI request.
+
+    Returns:
+        The stripped header value, or ``None`` when the header is
+        missing or blank.
+    """
+    raw = request.headers.get("X-API-Key")
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    return stripped or None
+
+
 def _validate_create_target_body(
     body: Any,
 ) -> dict[str, Any] | JSONResponse:
@@ -430,7 +454,7 @@ def _validate_probe_body(
         )
 
     strings: dict[str, str] = {}
-    for field in ("endpoint", "model", "api_key", "target_id"):
+    for field in ("endpoint", "model", "target_id"):
         coerced = _coerce_optional_string(body.get(field), field)
         if isinstance(coerced, JSONResponse):
             return coerced
@@ -465,10 +489,11 @@ def _validate_probe_body(
     if error:
         return JSONResponse(status_code=422, content={"detail": error})
 
+    # api_key is sourced from the ``X-API-Key`` header, not this body.
+    # Any ``api_key`` field present in the body is silently ignored.
     return {
         "endpoint": strings["endpoint"],
         "model": strings["model"],
-        "api_key": strings["api_key"] or None,
         "target_id": strings["target_id"] or None,
         "temperature": temperature,
         "concurrency": concurrency,
@@ -506,10 +531,10 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
 
     endpoint = validated["endpoint"]
     model = validated["model"]
-    api_key = validated["api_key"]
     target_id = validated["target_id"]
     temperature = validated["temperature"]
     concurrency = validated["concurrency"]
+    api_key = _read_api_key_header(request)
 
     db_path = _get_db_path(request)
 
@@ -633,7 +658,7 @@ def _validate_sweep_strings(body: dict[str, Any]) -> dict[str, str] | JSONRespon
         ``JSONResponse`` 422 if any field is present with a non-string
         type.
     """
-    fields = ("endpoint", "model", "api_key", "target_id", "payload_type")
+    fields = ("endpoint", "model", "target_id", "payload_type")
     out: dict[str, str] = {}
     for field in fields:
         coerced = _coerce_optional_string(body.get(field), field)
@@ -687,10 +712,11 @@ def _validate_sweep_scalars(body: dict[str, Any]) -> dict[str, Any] | JSONRespon
     if error:
         return JSONResponse(status_code=422, content={"detail": error})
 
+    # api_key is sourced from the ``X-API-Key`` header, not this body.
+    # Any ``api_key`` field present in the body is silently ignored.
     return {
         "endpoint": strings["endpoint"],
         "model": strings["model"],
-        "api_key": strings["api_key"] or None,
         "target_id": strings["target_id"] or None,
         "temperature": temperature,
         "concurrency": concurrency,
@@ -809,7 +835,7 @@ async def intel_sweep_launch(request: Request) -> JSONResponse:
         "reps": validated["reps"],
         "temperature": validated["temperature"],
         "concurrency": validated["concurrency"],
-        "api_key": validated["api_key"],
+        "api_key": _read_api_key_header(request),
     }
 
     async def _run_sweep_task() -> None:
