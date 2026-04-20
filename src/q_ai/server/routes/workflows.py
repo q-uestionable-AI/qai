@@ -91,14 +91,15 @@ def _lookup_or_create_server_target(db_path: Path | None, target_name: str) -> s
     Returns:
         The hex UUID of the existing or newly created target.
     """
-    # NOTE: SELECT-then-INSERT is not atomic — two truly concurrent
-    # submits with the same target_name could both see an empty lookup
-    # and both insert, reintroducing one duplicate row. Accepted under
-    # the Phase 5 brief PD #2 single-operator localhost threat model
-    # (no DB-level UNIQUE constraint; collision is a UX warning). If
-    # this tool ever ships a multi-operator mode, close the window with
-    # BEGIN IMMEDIATE or a (type, name) UNIQUE constraint + upsert.
     with get_connection(db_path) as conn:
+        # BEGIN IMMEDIATE acquires a RESERVED lock before the SELECT so
+        # two concurrent launches with the same target_name cannot both
+        # observe an empty lookup and both INSERT (PR #131 review
+        # Issue #2). The lock holds through the INSERT and releases on
+        # the context-manager commit. Python's default isolation_level
+        # does not auto-begin on SELECT, so this explicit BEGIN does
+        # not conflict with the module's implicit-transaction handling.
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
             "SELECT id FROM targets WHERE type = 'server' AND name = ? LIMIT 1",
             (target_name,),
