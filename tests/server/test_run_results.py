@@ -597,20 +597,28 @@ def _make_probe_run(tmp_db: Path, *, with_target: bool) -> tuple[str, str | None
         conn.close()
 
 
-class TestRunsProbeRedirect:
-    """GET /runs two-release redirect for target-bound probe runs."""
+class TestRunsProbeTargetBound:
+    """GET /runs renders target-bound probe runs in the runs view.
 
-    def test_target_bound_probe_without_marker_redirects(
-        self, client: TestClient, tmp_db: Path
-    ) -> None:
+    Phase 6 removed the two-release redirect to the Intel detail page;
+    every probe run — bound or unbound — now renders the single-run
+    results view directly. The ``intel`` query parameter is also gone
+    from the handler signature but is silently ignored by Starlette
+    when passed, per the Phase 6 brief's tolerance guarantee.
+    """
+
+    def test_target_bound_probe_renders_runs_view(self, client: TestClient, tmp_db: Path) -> None:
         run_id, target_id = _make_probe_run(tmp_db, with_target=True)
         assert target_id is not None
 
         resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
-        assert resp.status_code == 302
-        assert resp.headers["location"] == (f"/intel/targets/{target_id}#probe-run-{run_id}")
+        assert resp.status_code == 200
+        # runs.html renders a results-mode view for the single run —
+        # the run_id appears in the rendered body. Matches the shape
+        # used by ``test_null_target_probe_renders`` below.
+        assert run_id in resp.text
 
-    def test_target_bound_probe_with_marker_renders(self, client: TestClient, tmp_db: Path) -> None:
+    def test_intel_query_param_is_silently_ignored(self, client: TestClient, tmp_db: Path) -> None:
         run_id, _ = _make_probe_run(tmp_db, with_target=True)
         resp = client.get(f"/runs?run_id={run_id}&intel=1", follow_redirects=False)
         assert resp.status_code == 200
@@ -620,7 +628,7 @@ class TestRunsProbeRedirect:
         resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
         assert resp.status_code == 200
 
-    def test_sweep_run_is_not_redirected(self, client: TestClient, tmp_db: Path) -> None:
+    def test_sweep_run_renders(self, client: TestClient, tmp_db: Path) -> None:
         conn = sqlite3.connect(str(tmp_db))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
@@ -634,22 +642,22 @@ class TestRunsProbeRedirect:
         resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
         assert resp.status_code == 200
 
-    def test_workflow_run_is_not_redirected(self, client: TestClient, tmp_db: Path) -> None:
+    def test_workflow_run_renders(self, client: TestClient, tmp_db: Path) -> None:
         parent_id, _, _ = _setup_completed_assess_run(tmp_db)
         resp = client.get(f"/runs?run_id={parent_id}", follow_redirects=False)
         assert resp.status_code == 200
 
-    def test_unknown_run_id_is_not_redirected(self, client: TestClient) -> None:
+    def test_unknown_run_id_renders(self, client: TestClient) -> None:
         resp = client.get("/runs?run_id=does-not-exist-anywhere", follow_redirects=False)
         assert resp.status_code == 200
 
 
-class TestRunsIntelMarkerPropagation:
-    """Intra-Intel /runs views preserve ``intel=1`` on in-page Refresh links.
+class TestRunsStatusBarRefreshLink:
+    """Refresh link on the runs-view status bar has no ``intel=1`` suffix.
 
-    Regression guard: without propagation, the status_bar's Refresh
-    button strips the marker, so the first click inside the runs view
-    triggers the Phase 3 redirect and bounces the user back to Intel.
+    Phase 6 removed the ``runs_link_suffix`` template variable and the
+    Refresh link now emits a clean ``/runs?run_id=<id>`` URL regardless
+    of the request's query string.
     """
 
     def _make_running_probe(self, tmp_db: Path, *, with_target: bool) -> tuple[str, str | None]:
@@ -672,20 +680,16 @@ class TestRunsIntelMarkerPropagation:
         finally:
             conn.close()
 
-    def test_refresh_link_carries_marker_when_request_has_marker(
-        self, client: TestClient, tmp_db: Path
-    ) -> None:
+    def test_refresh_link_has_no_intel_suffix_bound(self, client: TestClient, tmp_db: Path) -> None:
         run_id, _ = self._make_running_probe(tmp_db, with_target=True)
-        resp = client.get(f"/runs?run_id={run_id}&intel=1", follow_redirects=False)
+        resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
         assert resp.status_code == 200
-        # HTML attribute value — `&` is encoded as `&amp;` by Jinja.
-        assert f'href="/runs?run_id={run_id}&amp;intel=1"' in resp.text
+        assert f'href="/runs?run_id={run_id}"' in resp.text
+        assert "intel=1" not in resp.text
 
-    def test_refresh_link_omits_marker_when_request_lacks_marker(
+    def test_refresh_link_has_no_intel_suffix_unbound(
         self, client: TestClient, tmp_db: Path
     ) -> None:
-        # Unbound probe run does not redirect, so we can assert the
-        # no-marker Refresh href shape without hitting the 302.
         run_id, _ = self._make_running_probe(tmp_db, with_target=False)
         resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
         assert resp.status_code == 200

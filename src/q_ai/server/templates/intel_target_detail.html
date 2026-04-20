@@ -91,7 +91,7 @@
                     {% for run in probe_runs %}
                     <a class="intel-probe-row"
                        id="probe-run-{{ run.run_id }}"
-                       href="/runs?run_id={{ run.run_id }}&amp;intel=1">
+                       href="/runs?run_id={{ run.run_id }}">
                         <span class="intel-probe-col-age">{{ run.finished_at | format_age }}</span>
                         {% if run.metadata_available %}
                         <span class="intel-probe-col-counts">

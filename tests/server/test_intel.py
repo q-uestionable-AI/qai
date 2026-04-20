@@ -641,8 +641,10 @@ class TestIntelTargetDetailProbeRendering:
         assert "8 categories" in text
         assert "high severity" in text
         assert f'id="probe-run-{run_id}"' in text
-        # Intel-originated row links carry the bypass marker.
-        assert f"/runs?run_id={run_id}&amp;intel=1" in text
+        # Phase 6 — probe-row links are clean ``/runs?run_id=<id>``;
+        # the ``intel=1`` bypass marker was removed with the redirect.
+        assert f'href="/runs?run_id={run_id}"' in text
+        assert "intel=1" not in text
 
     def test_running_probe_summary_renders_not_yet_completed(
         self, tmp_db: Path, client: TestClient
