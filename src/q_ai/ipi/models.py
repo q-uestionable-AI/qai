@@ -538,6 +538,7 @@ class Hit:
 
 __all__ = [
     "Campaign",
+    "CitationFrame",
     "DocumentTemplate",
     "Format",
     "Hit",

@@ -860,9 +860,10 @@ class TestRenderPlainCitation:
     def test_plain_citation_omits_template_aware_source(self, template: DocumentTemplate) -> None:
         """Plain CITATION must not reference the template's callback_role noun phrase.
 
-        Confirms the plain path bypasses template-aware composition; otherwise
-        the test above would pass with a hybrid string that still mentions
-        ``{source}``.
+        Reconstructs the full expected prompt — template framing plus the
+        plain-CITATION payload — and asserts byte-equality against the
+        rendered output. A hybrid composition that still interpolated
+        ``{source}`` (the template-aware path) would fail this check.
         """
         from q_ai.ipi.template_registry import get_template_spec
 
@@ -874,14 +875,13 @@ class TestRenderPlainCitation:
         )
         prompt = render_sweep_prompt(case, canary, CitationFrame.PLAIN)
 
-        callback_role = get_template_spec(template).callback_role
-        # Isolate the payload substring (between top_instruction/context_template
-        # and trailing context) so callback_role incidentally appearing in
-        # template framing doesn't produce a false positive.
+        spec = get_template_spec(template)
         expected_url = f"{sweep_service._SWEEP_CALLBACK_BASE}/c/{canary}"
         expected_payload = _EXPECTED_PLAIN_CITATION.format(target_url=expected_url)
-        assert expected_payload in prompt
-        assert callback_role not in expected_payload
+        expected_prompt = spec.context_template.replace("{payload}", expected_payload)
+        if spec.top_instruction:
+            expected_prompt = spec.top_instruction + expected_prompt
+        assert prompt == expected_prompt
 
     def test_plain_citation_generic_renders_raw_payload(self) -> None:
         """GENERIC + plain CITATION returns only the plain payload (no framing)."""
@@ -990,6 +990,28 @@ class TestRenderNonCitationStylesUnaffected:
             style=PayloadStyle.OBVIOUS,
             payload_type=PayloadType.CALLBACK,
         )
+        plain = render_sweep_prompt(case, canary, CitationFrame.PLAIN)
+        aware = render_sweep_prompt(case, canary, CitationFrame.TEMPLATE_AWARE)
+        assert plain == aware
+
+    @pytest.mark.parametrize(
+        "payload_type",
+        [pt for pt in PayloadType if pt is not PayloadType.CALLBACK],
+    )
+    @pytest.mark.parametrize("template", _NON_GENERIC_TEMPLATES)
+    def test_plain_frame_no_op_for_citation_non_callback(
+        self, template: DocumentTemplate, payload_type: PayloadType
+    ) -> None:
+        """CITATION + non-CALLBACK renders identically under both frames.
+
+        Exercises the third conjunct of ``render_sweep_prompt``'s plain-branch
+        guard: the bypass requires ``payload_type is PayloadType.CALLBACK``.
+        Sweep's CLI/API reject non-CALLBACK payload types, so this branch is
+        reachable only by direct function calls — this test guards against a
+        future regression that drops the ``payload_type`` conjunct.
+        """
+        canary = "cafebabe0009"
+        case = SweepCase(template=template, style=PayloadStyle.CITATION, payload_type=payload_type)
         plain = render_sweep_prompt(case, canary, CitationFrame.PLAIN)
         aware = render_sweep_prompt(case, canary, CitationFrame.TEMPLATE_AWARE)
         assert plain == aware
