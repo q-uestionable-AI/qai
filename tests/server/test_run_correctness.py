@@ -51,7 +51,14 @@ def db_path(tmp_path: Path) -> Path:
 
 
 class TestDuplicateTargetName:
-    """Reusing a target name must always create a distinct target and run."""
+    """Repeat submits with the same target name: runs are distinct, target is reused.
+
+    Phase 5 WA6 (see :func:`q_ai.server.routes.workflows._lookup_or_create_server_target`)
+    changed the launcher path to dedup on target name so repeat submits no
+    longer create duplicate target rows. The low-level
+    :func:`create_target` helper still inserts a new row every call — dedup
+    lives only in the launcher wrapper.
+    """
 
     def test_duplicate_target_name_creates_distinct_targets(self, db_path: Path) -> None:
         """Two create_target calls with the same name produce different IDs."""
@@ -62,7 +69,7 @@ class TestDuplicateTargetName:
         assert id_a != id_b
 
     def test_duplicate_target_name_via_launch(self, client: TestClient, tmp_db: Path) -> None:
-        """Launching twice with the same target name creates two distinct runs."""
+        """Launching twice with the same name: two distinct runs, ONE target row."""
         body = {
             "target_name": "same-name",
             "transport": "stdio",
@@ -88,7 +95,6 @@ class TestDuplicateTargetName:
         run_id_2 = resp2.json()["run_id"]
         assert run_id_1 != run_id_2
 
-        # Verify both runs exist in DB
         conn = sqlite3.connect(str(tmp_db))
         conn.row_factory = sqlite3.Row
         try:
@@ -97,11 +103,11 @@ class TestDuplicateTargetName:
             assert run_id_1 in run_ids
             assert run_id_2 in run_ids
 
+            # WA6 — repeat-name launches now reuse the existing target row.
             targets = conn.execute(
                 "SELECT * FROM targets WHERE name = ?", ("same-name",)
             ).fetchall()
-            assert len(targets) == 2
-            assert targets[0]["id"] != targets[1]["id"]
+            assert len(targets) == 1
         finally:
             conn.close()
 

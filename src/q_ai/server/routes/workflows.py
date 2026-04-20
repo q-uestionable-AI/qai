@@ -66,6 +66,42 @@ def _validation_error_response(exc: WorkflowValidationError) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": exc.detail})
 
 
+def _lookup_or_create_server_target(db_path: Path | None, target_name: str) -> str:
+    """Return the id of a ``type='server'`` target by name, creating it if absent.
+
+    Phase 5 closes the duplicate-row loophole opened by
+    :func:`launch_workflow` and :func:`launch_quick_action` each calling
+    :func:`create_target` unconditionally on every submit. Free-text
+    ``target_name`` inputs share the same name across repeat submits
+    (same host, same model, same sweep), so unconditional inserts
+    produce one target per submit — per the Phase 4 Risk #4 note and
+    RFC Design Decision 3.
+
+    Lookup is constrained to ``type='server'`` to match the type
+    passed to :func:`create_target` here — avoids colliding against
+    synthetic Unbound (``type='virtual'``) or endpoint targets that
+    happen to share the name.
+
+    Blocking SQLite; callers wrap in ``asyncio.to_thread``.
+
+    Args:
+        db_path: Path to the SQLite database, or ``None`` for default.
+        target_name: Human-readable target name from the launcher form.
+
+    Returns:
+        The hex UUID of the existing or newly created target.
+    """
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT id FROM targets WHERE type = 'server' AND name = ? LIMIT 1",
+            (target_name,),
+        ).fetchone()
+        if row is not None:
+            existing_id: str = row["id"]
+            return existing_id
+        return create_target(conn, type="server", name=target_name)
+
+
 async def _call_provider_validator(
     body: dict[str, Any], db_path: Path | None
 ) -> JSONResponse | None:
@@ -356,12 +392,7 @@ async def launch_workflow(request: Request) -> JSONResponse:
 
     # --- Create target (only after builder succeeds, skip for existing-target workflows) ---
     if workflow_id not in _NO_TARGET_NAME_WORKFLOWS:
-
-        def _create_target_sync() -> str:
-            with get_connection(db_path) as conn:
-                return create_target(conn, type="server", name=target_name)
-
-        target_id = await asyncio.to_thread(_create_target_sync)
+        target_id = await asyncio.to_thread(_lookup_or_create_server_target, db_path, target_name)
         _apply_target_id(config, target_id)
 
     # --- Create runner ---
@@ -505,11 +536,7 @@ async def launch_quick_action(request: Request) -> JSONResponse:
         return result
     action, target_name = result
 
-    def _create_target_sync() -> str:
-        with get_connection(db_path) as conn:
-            return create_target(conn, type="server", name=target_name)
-
-    target_id = await asyncio.to_thread(_create_target_sync)
+    target_id = await asyncio.to_thread(_lookup_or_create_server_target, db_path, target_name)
 
     try:
         config = build_quick_action_config(action, body, target_id)

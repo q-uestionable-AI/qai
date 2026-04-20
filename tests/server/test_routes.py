@@ -82,9 +82,14 @@ class TestTableAPIRoutes:
         resp = client.get("/api/findings")
         assert "No findings" in resp.text
 
-    def test_api_targets_empty_state(self, client: TestClient) -> None:
+    def test_api_targets_renders_synthetic_unbound_on_fresh_db(self, client: TestClient) -> None:
+        """Phase 5 — the startup migration always creates a synthetic Unbound
+        target, so ``/api/targets`` is never truly empty on a fresh DB. Verify
+        the synthetic row renders instead of the old empty-state copy.
+        """
         resp = client.get("/api/targets")
-        assert "No targets" in resp.text
+        assert resp.status_code == 200
+        assert "(Unbound historical intel)" in resp.text
 
     def test_api_runs_with_invalid_filter_ignored(self, client: TestClient) -> None:
         resp = client.get("/api/runs?status=invalid")

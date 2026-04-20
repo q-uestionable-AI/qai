@@ -31,9 +31,32 @@
                 <div class="intel-card-bar"></div>
                 <span class="intel-card-name">Imports</span>
             </div>
-            <div class="intel-section-body">
-                <p class="intel-card-desc" style="margin-bottom: 0;">No imports yet.</p>
+            {% if import_runs %}
+            <div class="intel-import-rows">
+                {% for run in import_runs %}
+                <a class="intel-import-row"
+                   id="import-run-{{ run.run_id }}"
+                   href="/runs?run_id={{ run.run_id }}">
+                    <span class="intel-import-col-age">{{ run.started_at | format_age }}</span>
+                    <span class="intel-import-col-source">{{ run.source or "—" }}</span>
+                    <span class="intel-import-col-count">
+                        {{ run.finding_count }} finding{{ "" if run.finding_count == 1 else "s" }}
+                    </span>
+                    <span class="intel-import-col-status">
+                        {{ run.status.name | format_status | lower }}
+                    </span>
+                </a>
+                {% endfor %}
             </div>
+            {% else %}
+            <div class="intel-section-body">
+                <p class="intel-card-desc" style="margin-bottom: 0;">
+                    No imports yet.
+                    <a href="/intel#card-import" style="color: #06b6d4;">Import findings</a>
+                    from external tools (Garak, PyRIT, SARIF, BIPIA) to populate this section.
+                </p>
+            </div>
+            {% endif %}
         </section>
 
         {# Probe Runs #}
@@ -329,6 +352,42 @@
     font-style: italic;
 }
 .intel-probe-col-status {
+    color: #94a3b8;
+    text-align: right;
+}
+.intel-import-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.intel-import-row {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.intel-import-row:hover {
+    background: rgba(139, 92, 246, 0.08);
+    border-color: rgba(139, 92, 246, 0.35);
+}
+.intel-import-col-age {
+    font-family: 'Fira Code', monospace;
+    color: #a78bfa;
+}
+.intel-import-col-source,
+.intel-import-col-count {
+    font-family: 'Fira Code', monospace;
+    color: #cbd5e1;
+}
+.intel-import-col-status {
     color: #94a3b8;
     text-align: right;
 }

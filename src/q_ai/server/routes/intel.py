@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from q_ai.core.db import get_connection, get_target
+from q_ai.core.db import create_target, get_connection, get_target
 from q_ai.ipi.sweep_selection import SelectionResult, select_template_for_target
 from q_ai.server.routes._shared import (
     _get_db_path,
@@ -19,10 +19,12 @@ from q_ai.server.routes._shared import (
     logger,
 )
 from q_ai.services.run_service import (
+    ImportRunSummary,
     ProbeRunSummary,
     SweepRunSummary,
     TargetOverviewRow,
     TargetsOverviewResult,
+    query_target_import_runs,
     query_target_overview_by_id,
     query_target_probe_runs,
     query_target_sweep_runs,
@@ -76,21 +78,23 @@ async def intel_target_detail(request: Request, target_id: str) -> HTMLResponse:
         TargetOverviewRow | None,
         list[SweepRunSummary],
         list[ProbeRunSummary],
+        list[ImportRunSummary],
         SelectionResult | None,
     ]:
         with get_connection(db_path) as conn:
             row = query_target_overview_by_id(conn, target_id)
             if row is None:
-                return None, [], [], None
+                return None, [], [], [], None
             sweep_runs = query_target_sweep_runs(conn, target_id)
             probe_runs = query_target_probe_runs(conn, target_id)
+            import_runs = query_target_import_runs(conn, target_id)
         # Evaluated on every GET. Per RFC-Intel-Target-Centric-Workspace-Design
         # Decision 5 Semantic Note, no caching — a stale button is worse than
         # re-running the selector (the helper opens its own connection).
         selection = select_template_for_target(target_id, db_path=db_path)
-        return row, sweep_runs, probe_runs, selection
+        return row, sweep_runs, probe_runs, import_runs, selection
 
-    row, sweep_runs, probe_runs, selection = await asyncio.to_thread(_load_detail)
+    row, sweep_runs, probe_runs, import_runs, selection = await asyncio.to_thread(_load_detail)
     if row is None:
         return HTMLResponse(status_code=404, content="Target not found")
 
@@ -102,6 +106,7 @@ async def intel_target_detail(request: Request, target_id: str) -> HTMLResponse:
             "overview_row": row,
             "sweep_runs": sweep_runs,
             "probe_runs": probe_runs,
+            "import_runs": import_runs,
             "selection": selection,
             "selection_kind": type(selection).__name__ if selection is not None else None,
         },
@@ -183,14 +188,21 @@ async def intel_import_commit(
 ) -> JSONResponse:
     """Parse an uploaded file and persist findings to the database.
 
-    Expects multipart form with ``file``, ``format``, and optional
-    ``target_id`` fields.  Returns the finding count and run ID.
+    Expects multipart form with ``file``, ``format``, and ``target_id``
+    fields. ``target_id`` is required (Phase 5 — required target binding
+    per RFC Design Decision 3). Returns the finding count and run ID.
     """
     from q_ai.imports.cli import _PARSERS, _persist
 
     form = await request.form()
     fmt = str(form.get("format") or "").strip()
-    target_id = str(form.get("target_id") or "").strip() or None
+    target_id = str(form.get("target_id") or "").strip()
+
+    if not target_id:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "target_id is required"},
+        )
 
     parser = _PARSERS.get(fmt)
     if parser is None:
@@ -201,18 +213,15 @@ async def intel_import_commit(
 
     db_path = _get_db_path(request)
 
-    # Validate target_id exists before persisting.
-    if target_id:
+    def _check_target() -> bool:
+        with get_connection(db_path) as conn:
+            return get_target(conn, target_id) is not None
 
-        def _check_target() -> bool:
-            with get_connection(db_path) as conn:
-                return get_target(conn, target_id) is not None
-
-        if not await asyncio.to_thread(_check_target):
-            return JSONResponse(
-                status_code=422,
-                content={"detail": "Target not found"},
-            )
+    if not await asyncio.to_thread(_check_target):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Target not found"},
+        )
 
     suffix = Path(file.filename or "upload").suffix or ".tmp"
     file_bytes = await file.read()
@@ -279,6 +288,128 @@ def _coerce_optional_string(
             content={"detail": f"{field} must be a string"},
         )
     return raw.strip()
+
+
+def _validate_create_target_body(
+    body: Any,
+) -> dict[str, Any] | JSONResponse:
+    """Validate a ``/api/intel/targets/create`` request body.
+
+    Mirrors :func:`_validate_probe_body` in shape: per-field coercion via
+    :func:`_coerce_optional_string`, with 422 JSON responses on failure.
+    Required fields are ``name`` and ``type`` (both non-empty after strip).
+    Optional fields are ``uri`` (nullable string) and ``metadata`` (nullable
+    dict of string → string).
+
+    Args:
+        body: Parsed JSON body (may be any type).
+
+    Returns:
+        Dict with validated ``name``/``type``/``uri``/``metadata`` keys on
+        success (``uri`` and ``metadata`` are ``None`` when absent), or a
+        ``JSONResponse`` 422 on failure.
+    """
+    if not isinstance(body, dict):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Request body must be a JSON object"},
+        )
+
+    strings: dict[str, str] = {}
+    for field in ("name", "type", "uri"):
+        coerced = _coerce_optional_string(body.get(field), field)
+        if isinstance(coerced, JSONResponse):
+            return coerced
+        strings[field] = coerced
+
+    error = (
+        "name is required"
+        if not strings["name"]
+        else "type is required"
+        if not strings["type"]
+        else None
+    )
+    if error:
+        return JSONResponse(status_code=422, content={"detail": error})
+
+    metadata_raw = body.get("metadata")
+    metadata: dict[str, str] | None
+    if metadata_raw is None:
+        metadata = None
+    elif not isinstance(metadata_raw, dict):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "metadata must be an object"},
+        )
+    else:
+        for k, v in metadata_raw.items():
+            if not isinstance(k, str) or not isinstance(v, str):
+                return JSONResponse(
+                    status_code=422,
+                    content={"detail": "metadata keys and values must be strings"},
+                )
+        metadata = dict(metadata_raw)
+
+    return {
+        "name": strings["name"],
+        "type": strings["type"],
+        "uri": strings["uri"] or None,
+        "metadata": metadata,
+    }
+
+
+@router.post("/api/intel/targets/create")
+async def intel_create_target(request: Request) -> JSONResponse:
+    """Create a new target from the Intel page inline-creation modal.
+
+    Thin wrapper over :func:`q_ai.core.db.create_target`. Blocking DB work
+    runs inside ``asyncio.to_thread`` to keep the event loop free.
+
+    Args:
+        request: Incoming HTTP request with a JSON body.
+
+    Returns:
+        JSONResponse with status 201 and body ``{"target_id", "name",
+        "type"}`` on success (``uri`` and ``metadata`` included when
+        supplied). 400 on malformed JSON, 422 on validation failure.
+
+    Notes:
+        Name collisions still return 201 (per PD #2 in the Phase 5 brief —
+        the client gets a non-blocking warning from
+        ``/api/targets/check-name`` before submit).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON body"})
+
+    validated = _validate_create_target_body(body)
+    if isinstance(validated, JSONResponse):
+        return validated
+
+    name = validated["name"]
+    type_ = validated["type"]
+    uri = validated["uri"]
+    metadata = validated["metadata"]
+
+    db_path = _get_db_path(request)
+
+    def _create_sync() -> str:
+        with get_connection(db_path) as conn:
+            return create_target(conn, type=type_, name=name, uri=uri, metadata=metadata)
+
+    target_id = await asyncio.to_thread(_create_sync)
+
+    payload: dict[str, Any] = {
+        "target_id": target_id,
+        "name": name,
+        "type": type_,
+    }
+    if uri is not None:
+        payload["uri"] = uri
+    if metadata is not None:
+        payload["metadata"] = metadata
+    return JSONResponse(status_code=201, content=payload)
 
 
 def _validate_probe_body(

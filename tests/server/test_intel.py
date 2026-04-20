@@ -112,11 +112,14 @@ class TestIntelPage:
         resp = client.get("/intel")
         assert f'href="/intel/targets/{target_id}"' in resp.text
 
-    def test_empty_state_still_shows_launcher_cards(self, client: TestClient) -> None:
-        """With zero targets, empty-state copy renders alongside launcher forms."""
+    def test_launcher_cards_render_with_only_synthetic_target(self, client: TestClient) -> None:
+        """Fresh DB — Phase 5 migration creates the synthetic Unbound target on
+        startup, so the target list is never empty. The launcher cards still
+        render regardless.
+        """
         resp = client.get("/intel")
         assert resp.status_code == 200
-        assert "No targets defined" in resp.text
+        assert "(Unbound historical intel)" in resp.text
         assert "form-import" in resp.text
         assert "form-probe" in resp.text
 
@@ -971,7 +974,14 @@ class TestImportPreview:
 class TestImportCommit:
     """POST /api/intel/import/commit parses and persists."""
 
-    def test_commit_garak(self, client: TestClient, tmp_path: Path) -> None:
+    def test_commit_garak(self, client: TestClient, tmp_db: Path, tmp_path: Path) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="commit-garak-target")
+            conn.commit()
+        finally:
+            conn.close()
+
         file_path = tmp_path / "garak.jsonl"
         file_path.write_text(_garak_jsonl(), encoding="utf-8")
 
@@ -979,7 +989,7 @@ class TestImportCommit:
             resp = client.post(
                 "/api/intel/import/commit",
                 files={"file": ("garak.jsonl", f, "application/jsonl")},
-                data={"format": "garak"},
+                data={"format": "garak", "target_id": target_id},
             )
 
         assert resp.status_code == 201
@@ -987,7 +997,14 @@ class TestImportCommit:
         assert data["finding_count"] >= 1
         assert "run_id" in data
 
-    def test_commit_unknown_format(self, client: TestClient, tmp_path: Path) -> None:
+    def test_commit_unknown_format(self, client: TestClient, tmp_db: Path, tmp_path: Path) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="commit-unknown-target")
+            conn.commit()
+        finally:
+            conn.close()
+
         file_path = tmp_path / "data.json"
         file_path.write_text("{}", encoding="utf-8")
 
@@ -995,7 +1012,7 @@ class TestImportCommit:
             resp = client.post(
                 "/api/intel/import/commit",
                 files={"file": ("data.json", f, "application/json")},
-                data={"format": "unknown"},
+                data={"format": "unknown", "target_id": target_id},
             )
 
         assert resp.status_code == 422
@@ -1165,6 +1182,36 @@ class TestImportCommitTargetValidation:
         assert resp.status_code == 422
         assert "Target not found" in resp.json()["detail"]
 
+    def test_missing_target_id_returns_422(self, client: TestClient, tmp_path: Path) -> None:
+        """Phase 5 — target_id is required on import commit."""
+        file_path = tmp_path / "garak.jsonl"
+        file_path.write_text(_garak_jsonl(), encoding="utf-8")
+
+        with file_path.open("rb") as f:
+            resp = client.post(
+                "/api/intel/import/commit",
+                files={"file": ("garak.jsonl", f, "application/jsonl")},
+                data={"format": "garak"},
+            )
+
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "target_id is required"
+
+    def test_empty_target_id_returns_422(self, client: TestClient, tmp_path: Path) -> None:
+        """Whitespace-only target_id is rejected as empty-after-strip."""
+        file_path = tmp_path / "garak.jsonl"
+        file_path.write_text(_garak_jsonl(), encoding="utf-8")
+
+        with file_path.open("rb") as f:
+            resp = client.post(
+                "/api/intel/import/commit",
+                files={"file": ("garak.jsonl", f, "application/jsonl")},
+                data={"format": "garak", "target_id": "   "},
+            )
+
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "target_id is required"
+
 
 class TestErrorMessagesAreGeneric:
     """Error responses must not leak exception text."""
@@ -1186,7 +1233,16 @@ class TestErrorMessagesAreGeneric:
         assert "Parse failed:" not in detail
         assert "Traceback" not in detail
 
-    def test_commit_error_is_generic(self, client: TestClient, tmp_path: Path) -> None:
+    def test_commit_error_is_generic(
+        self, client: TestClient, tmp_db: Path, tmp_path: Path
+    ) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="generic-error-target")
+            conn.commit()
+        finally:
+            conn.close()
+
         file_path = tmp_path / "bad.jsonl"
         file_path.write_text("not valid garak data\n", encoding="utf-8")
 
@@ -1194,10 +1250,311 @@ class TestErrorMessagesAreGeneric:
             resp = client.post(
                 "/api/intel/import/commit",
                 files={"file": ("bad.jsonl", f, "application/jsonl")},
-                data={"format": "garak"},
+                data={"format": "garak", "target_id": target_id},
             )
 
         assert resp.status_code == 422
         detail = resp.json()["detail"]
         assert "Import failed:" not in detail
         assert "Traceback" not in detail
+
+
+class TestIntelCreateTargetEndpoint:
+    """POST /api/intel/targets/create validates input and persists."""
+
+    def test_valid_minimum_payload_returns_201(self, client: TestClient, tmp_db: Path) -> None:
+        resp = client.post(
+            "/api/intel/targets/create",
+            json={"name": "new-target", "type": "server"},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert "target_id" in data
+        assert data["name"] == "new-target"
+        assert data["type"] == "server"
+
+        conn = _open_db(tmp_db)
+        try:
+            row = conn.execute(
+                "SELECT name, type FROM targets WHERE id = ?", (data["target_id"],)
+            ).fetchone()
+            assert row is not None
+            assert row["name"] == "new-target"
+            assert row["type"] == "server"
+        finally:
+            conn.close()
+
+    def test_full_payload_round_trips_uri_and_metadata(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        payload = {
+            "name": "full-target",
+            "type": "endpoint",
+            "uri": "https://example.invalid",
+            "metadata": {"owner": "alice", "env": "prod"},
+        }
+        resp = client.post("/api/intel/targets/create", json=payload)
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["uri"] == "https://example.invalid"
+        assert data["metadata"] == {"owner": "alice", "env": "prod"}
+
+        conn = _open_db(tmp_db)
+        try:
+            row = conn.execute(
+                "SELECT uri, metadata FROM targets WHERE id = ?", (data["target_id"],)
+            ).fetchone()
+            assert row is not None
+            assert row["uri"] == "https://example.invalid"
+            assert json.loads(row["metadata"]) == {"owner": "alice", "env": "prod"}
+        finally:
+            conn.close()
+
+    def test_missing_name_returns_422(self, client: TestClient) -> None:
+        resp = client.post("/api/intel/targets/create", json={"type": "server"})
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "name is required"
+
+    def test_empty_name_returns_422(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/targets/create",
+            json={"name": "   ", "type": "server"},
+        )
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "name is required"
+
+    def test_missing_type_returns_422(self, client: TestClient) -> None:
+        resp = client.post("/api/intel/targets/create", json={"name": "t"})
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "type is required"
+
+    def test_non_string_name_returns_422(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/targets/create",
+            json={"name": 42, "type": "server"},
+        )
+        assert resp.status_code == 422
+        assert "name" in resp.json()["detail"]
+
+    def test_non_dict_metadata_returns_422(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/targets/create",
+            json={"name": "t", "type": "server", "metadata": "not-a-dict"},
+        )
+        assert resp.status_code == 422
+        assert "metadata" in resp.json()["detail"]
+
+    def test_metadata_with_non_string_value_returns_422(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/targets/create",
+            json={"name": "t", "type": "server", "metadata": {"k": 1}},
+        )
+        assert resp.status_code == 422
+        assert "metadata" in resp.json()["detail"]
+
+    def test_malformed_json_returns_400(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/targets/create",
+            content=b"{not json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 400
+
+    def test_non_object_body_returns_422(self, client: TestClient) -> None:
+        resp = client.post("/api/intel/targets/create", json=["not", "an", "object"])
+        assert resp.status_code == 422
+
+    def test_absent_metadata_omitted_from_response(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/intel/targets/create",
+            json={"name": "bare", "type": "server"},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert "uri" not in data
+        assert "metadata" not in data
+
+    def test_name_collision_still_returns_201(self, client: TestClient, tmp_db: Path) -> None:
+        """Per PD #2 — collisions warn but do not block creation."""
+        conn = _open_db(tmp_db)
+        try:
+            create_target(conn, type="server", name="dup-name")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.post(
+            "/api/intel/targets/create",
+            json={"name": "dup-name", "type": "server"},
+        )
+        assert resp.status_code == 201
+
+        conn = _open_db(tmp_db)
+        try:
+            rows = conn.execute(
+                "SELECT COUNT(*) AS n FROM targets WHERE name = ?", ("dup-name",)
+            ).fetchone()
+            assert rows["n"] == 2
+        finally:
+            conn.close()
+
+
+class TestIntelPageModalAndSentinel:
+    """/intel renders the shared modal and the __new__ sentinel option."""
+
+    def test_modal_partial_rendered(self, client: TestClient) -> None:
+        resp = client.get("/intel")
+        assert resp.status_code == 200
+        assert 'id="target-create-modal"' in resp.text
+        assert 'id="target-create-form"' in resp.text
+
+    def test_new_sentinel_in_all_three_cards(self, client: TestClient) -> None:
+        resp = client.get("/intel")
+        text = resp.text
+        # Exactly three sentinel options, one per card.
+        assert text.count('value="__new__"') == 3
+
+    def test_no_blank_target_option(self, client: TestClient) -> None:
+        """Phase 5 removes the `<option value="">No target</option>` in all three cards."""
+        resp = client.get("/intel")
+        assert "No target" not in resp.text
+
+
+def _seed_import_run(
+    conn: sqlite3.Connection,
+    target_id: str,
+    *,
+    started_at: str,
+    finished_at: str | None,
+    source: str,
+    finding_count: int,
+) -> str:
+    """Insert an ``import`` module run with N findings."""
+    from q_ai.core.db import create_finding
+    from q_ai.core.models import Severity
+
+    run_id = create_run(
+        conn,
+        module="import",
+        name=f"{source}-import-run",
+        target_id=target_id,
+        source=source,
+    )
+    # update_run_status handles status + finished_at; started_at needs a
+    # direct UPDATE (not exposed by the helper) so ordering tests can
+    # pin a specific timestamp.
+    update_run_status(
+        conn,
+        run_id=run_id,
+        status=RunStatus.COMPLETED,
+        finished_at=finished_at,
+    )
+    conn.execute(
+        "UPDATE runs SET started_at = ? WHERE id = ?",
+        (started_at, run_id),
+    )
+    for i in range(finding_count):
+        create_finding(
+            conn,
+            run_id=run_id,
+            module=source,
+            category="test",
+            severity=Severity.INFO,
+            title=f"finding-{i}",
+        )
+    return run_id
+
+
+class TestIntelTargetDetailImportsRendering:
+    """Imports section populates on the target detail page."""
+
+    def test_empty_state_renders(self, tmp_db: Path, client: TestClient) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="empty-imports")
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        assert resp.status_code == 200
+        assert "No imports yet." in resp.text
+
+    def test_single_import_renders_row(self, tmp_db: Path, client: TestClient) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="single-import")
+            run_id = _seed_import_run(
+                conn,
+                target_id,
+                started_at="2026-04-15T12:00:00+00:00",
+                finished_at="2026-04-15T12:00:10+00:00",
+                source="garak",
+                finding_count=3,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert resp.status_code == 200
+        assert f'id="import-run-{run_id}"' in text
+        assert "garak" in text
+        assert "3 findings" in text
+        assert f'href="/runs?run_id={run_id}"' in text
+
+    def test_rows_ordered_started_at_desc(self, tmp_db: Path, client: TestClient) -> None:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="ordering-imports")
+            older_id = _seed_import_run(
+                conn,
+                target_id,
+                started_at="2026-04-10T12:00:00+00:00",
+                finished_at="2026-04-10T12:00:10+00:00",
+                source="pyrit",
+                finding_count=1,
+            )
+            newer_id = _seed_import_run(
+                conn,
+                target_id,
+                started_at="2026-04-15T12:00:00+00:00",
+                finished_at="2026-04-15T12:00:10+00:00",
+                source="garak",
+                finding_count=2,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        older_pos = text.find(f"import-run-{older_id}")
+        newer_pos = text.find(f"import-run-{newer_id}")
+        assert older_pos != -1
+        assert newer_pos != -1
+        assert newer_pos < older_pos  # newer renders first
+
+    def test_singular_finding_count(self, tmp_db: Path, client: TestClient) -> None:
+        """1 finding renders singular form (no trailing 's')."""
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="singular-import")
+            _seed_import_run(
+                conn,
+                target_id,
+                started_at="2026-04-15T12:00:00+00:00",
+                finished_at="2026-04-15T12:00:10+00:00",
+                source="sarif",
+                finding_count=1,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert "1 finding " in text or "1 finding\n" in text or "1 finding<" in text
+        # And not the plural form with this exact count.
+        assert "1 findings" not in text

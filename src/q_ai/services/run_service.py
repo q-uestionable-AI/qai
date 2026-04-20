@@ -1054,6 +1054,84 @@ def extract_probe_run_summary(
     )
 
 
+# ---------------------------------------------------------------------------
+# Import run summaries (Intel target-detail Imports section)
+# ---------------------------------------------------------------------------
+
+
+_IMPORT_MODULE = "import"
+
+
+@dataclass(slots=True)
+class ImportRunSummary:
+    """Per-row summary for the Intel detail page's Imports section.
+
+    Attributes:
+        run_id: The import run's ID.
+        status: Run status (used to render a completion badge).
+        started_at: ``started_at`` timestamp (used for ordering and age
+            display). May be ``None`` for runs that failed to record one.
+        finished_at: ``finished_at`` timestamp or ``None`` if the run has
+            not completed.
+        source: Source format / tool name (e.g. ``garak``, ``pyrit``,
+            ``sarif``), copied from the run's ``source`` column.
+        finding_count: Number of findings persisted by this import run.
+    """
+
+    run_id: str
+    status: RunStatus
+    started_at: _dt.datetime | None
+    finished_at: _dt.datetime | None
+    source: str | None
+    finding_count: int = 0
+
+
+def query_target_import_runs(
+    conn: sqlite3.Connection,
+    target_id: str,
+) -> list[ImportRunSummary]:
+    """List import-run summaries for a target, most recent first.
+
+    Driven by ``module='import'`` runs for the given target. Finding
+    counts are gathered per-run via :func:`get_finding_count_for_runs`;
+    the N+1 query pattern is acceptable at expected scales (tens of
+    imports per target) — see the Phase 5 brief Risk #6.
+
+    Ordering is ``started_at`` descending. Runs whose ``started_at`` is
+    ``None`` sort last. ``_as_utc`` guards against mixed tz-naive and
+    tz-aware rows (PR #126 precedent).
+
+    Args:
+        conn: Active database connection.
+        target_id: The target ID whose import runs should be listed.
+
+    Returns:
+        List of :class:`ImportRunSummary`; empty if the target has no
+        import runs.
+    """
+    runs = _db_list_runs(conn, module=_IMPORT_MODULE, target_id=target_id)
+    runs.sort(
+        key=lambda r: (
+            r.started_at is None,
+            -_as_utc(r.started_at).timestamp() if r.started_at else 0.0,
+        ),
+    )
+    summaries: list[ImportRunSummary] = []
+    for run in runs:
+        count = get_finding_count_for_runs(conn, [run.id])
+        summaries.append(
+            ImportRunSummary(
+                run_id=run.id,
+                status=run.status,
+                started_at=run.started_at,
+                finished_at=run.finished_at,
+                source=run.source,
+                finding_count=count,
+            )
+        )
+    return summaries
+
+
 def query_target_probe_runs(
     conn: sqlite3.Connection,
     target_id: str,

@@ -2,6 +2,7 @@
 {% block title %}q-ai — Intel{% endblock %}
 
 {% block content %}
+{% include "partials/target_create_modal.html" %}
 <div class="max-w-5xl mx-auto px-6 pt-12 lg:pt-16 pb-6 lg:pb-8">
 
     {# ── Page header ── #}
@@ -88,9 +89,12 @@
                 </div>
 
                 <div class="form-control">
-                    <label class="label"><span class="label-text">Target (optional)</span></label>
-                    <select name="target_id" class="select select-bordered select-sm w-full">
-                        <option value="">No target</option>
+                    <label class="label"><span class="label-text">Target</span></label>
+                    <select name="target_id" required
+                            class="select select-bordered select-sm w-full"
+                            onchange="onTargetSelectChange(event)">
+                        <option value="" disabled selected>Select target...</option>
+                        <option value="__new__">+ Create new target</option>
                         {% for t in targets %}
                         <option value="{{ t.id }}">{{ t.name }}</option>
                         {% endfor %}
@@ -177,9 +181,12 @@
                 </div>
 
                 <div class="form-control">
-                    <label class="label"><span class="label-text">Target (optional)</span></label>
-                    <select name="target_id" class="select select-bordered select-sm w-full">
-                        <option value="">No target</option>
+                    <label class="label"><span class="label-text">Target</span></label>
+                    <select name="target_id" required
+                            class="select select-bordered select-sm w-full"
+                            onchange="onTargetSelectChange(event)">
+                        <option value="" disabled selected>Select target...</option>
+                        <option value="__new__">+ Create new target</option>
                         {% for t in targets %}
                         <option value="{{ t.id }}">{{ t.name }}</option>
                         {% endfor %}
@@ -274,9 +281,12 @@
                 </div>
 
                 <div class="form-control">
-                    <label class="label"><span class="label-text">Target (optional)</span></label>
-                    <select name="target_id" class="select select-bordered select-sm w-full">
-                        <option value="">No target</option>
+                    <label class="label"><span class="label-text">Target</span></label>
+                    <select name="target_id" required
+                            class="select select-bordered select-sm w-full"
+                            onchange="onTargetSelectChange(event)">
+                        <option value="" disabled selected>Select target...</option>
+                        <option value="__new__">+ Create new target</option>
                         {% for t in targets %}
                         <option value="{{ t.id }}">{{ t.name }}</option>
                         {% endfor %}
@@ -515,12 +525,20 @@ async function importCommit() {
     var formatSel = form.querySelector('select[name="format"]');
     var targetSel = form.querySelector('select[name="target_id"]');
 
+    /* Phase 5 — target_id is required. The __new__ sentinel must be
+       resolved to a real target via the modal before Import is clicked;
+       the disabled default option is not a valid submit value. */
+    if (!targetSel.value || targetSel.value === '__new__') {
+        errEl.textContent = 'Please select or create a target before importing.';
+        errEl.classList.remove('hidden');
+        commitBtn.disabled = false;
+        return;
+    }
+
     var fd = new FormData();
     fd.append('file', fileInput.files[0]);
     fd.append('format', formatSel.value);
-    if (targetSel.value) {
-        fd.append('target_id', targetSel.value);
-    }
+    fd.append('target_id', targetSel.value);
 
     try {
         var resp = await fetch('/api/intel/import/commit', { method: 'POST', body: fd });
@@ -533,12 +551,14 @@ async function importCommit() {
         }
 
         previewEl.classList.add('hidden');
+        var detailHref = '/intel/targets/' + encodeURIComponent(targetSel.value)
+            + '#import-run-' + encodeURIComponent(data.run_id);
         var html = '<p style="color: #22c55e; font-weight: 600;">';
         html += 'Imported ' + data.finding_count + ' findings.</p>';
         html += '<p style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.25rem;">';
         html += 'Run ID: <code style="color: #a78bfa;">' + escapeHtml(data.run_id) + '</code>';
-        html += ' &mdash; <a href="/runs?run_id=' + encodeURIComponent(data.run_id) + '" ';
-        html += 'style="color: #06b6d4;">View in Runs</a></p>';
+        html += ' &mdash; <a href="' + detailHref + '" ';
+        html += 'style="color: #06b6d4;">View in target</a></p>';
         if (data.warning_count > 0) {
             html += '<p style="color: #fbbf24; font-size: 0.85rem; margin-top: 0.25rem;">';
             html += data.warning_count + ' parse warning(s).</p>';
@@ -575,7 +595,13 @@ async function launchProbe(e) {
         data.temperature = parseFloat(data.temperature) || 0.0;
         data.concurrency = parseInt(data.concurrency, 10) || 1;
         if (!data.api_key) delete data.api_key;
-        if (!data.target_id) delete data.target_id;
+        /* Phase 5 — target_id required via modal binding. __new__ must be
+           resolved by the modal before submit; if it's still set, block. */
+        if (data.target_id === '__new__' || !data.target_id) {
+            errEl.textContent = 'Please select or create a target.';
+            errEl.classList.remove('hidden');
+            return false;
+        }
 
         var resp = await fetch('/api/intel/probe/launch', {
             method: 'POST',
@@ -647,7 +673,13 @@ async function launchSweep(e) {
             payload_type: 'callback',
         };
         if (!data.api_key) delete data.api_key;
-        if (!data.target_id) delete data.target_id;
+        /* Phase 5 — target_id required via modal binding. __new__ must be
+           resolved by the modal before submit; if it's still set, block. */
+        if (data.target_id === '__new__' || !data.target_id) {
+            errEl.textContent = 'Please select or create a target.';
+            errEl.classList.remove('hidden');
+            return false;
+        }
 
         var resp = await fetch('/api/intel/sweep/launch', {
             method: 'POST',
