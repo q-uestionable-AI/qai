@@ -67,6 +67,28 @@ class TestIntelPage:
         assert 'value="3"' in text  # reps default
         assert 'value="callback"' in text  # payload_type hidden input
 
+    def test_sweep_card_has_citation_frame_control(self, client: TestClient) -> None:
+        """Sweep card exposes a citation_frame selector with both values, default template-aware."""
+        from q_ai.ipi.models import CitationFrame
+
+        resp = client.get("/intel")
+        text = resp.text
+        assert 'name="citation_frame"' in text
+        for f in CitationFrame:
+            assert f'value="{f.value}"' in text
+
+        # template-aware is the selected option; plain is not. Scan each
+        # ``<option>`` tag individually to avoid coupling to Jinja whitespace.
+        ta_idx = text.find(f'value="{CitationFrame.TEMPLATE_AWARE.value}"')
+        ta_end = text.find("</option>", ta_idx)
+        assert ta_idx != -1 and ta_end != -1
+        assert "selected" in text[ta_idx:ta_end]
+
+        plain_idx = text.find(f'value="{CitationFrame.PLAIN.value}"')
+        plain_end = text.find("</option>", plain_idx)
+        assert plain_idx != -1 and plain_end != -1
+        assert "selected" not in text[plain_idx:plain_end]
+
     def test_format_options_present(self, client: TestClient) -> None:
         resp = client.get("/intel")
         for fmt in ["garak", "pyrit", "sarif", "scored", "bipia"]:
@@ -824,6 +846,86 @@ class TestSweepLaunch:
         )
         assert resp.status_code == 422
         assert "callback" in resp.json()["detail"]
+
+    def test_citation_frame_plain_validated(self) -> None:
+        """``citation_frame: 'plain'`` is accepted and stored as ``CitationFrame.PLAIN``.
+
+        Uses ``_validate_sweep_body`` directly — the background task is
+        scheduled but not awaited by ``TestClient``, so inspecting the
+        mocked ``run_sweep`` kwargs is race-prone (see
+        :meth:`test_background_task_is_scheduled`). The validator is pure,
+        so asserting on its output is both faster and deterministic.
+        """
+        from q_ai.ipi.models import CitationFrame
+        from q_ai.server.routes.intel import _validate_sweep_body
+
+        validated = _validate_sweep_body({**self._VALID_BODY, "citation_frame": "plain"})
+        assert isinstance(validated, dict)
+        assert validated["citation_frame"] is CitationFrame.PLAIN
+
+    def test_citation_frame_template_aware_validated(self) -> None:
+        """``citation_frame: 'template-aware'`` is stored as the enum value."""
+        from q_ai.ipi.models import CitationFrame
+        from q_ai.server.routes.intel import _validate_sweep_body
+
+        validated = _validate_sweep_body({**self._VALID_BODY, "citation_frame": "template-aware"})
+        assert isinstance(validated, dict)
+        assert validated["citation_frame"] is CitationFrame.TEMPLATE_AWARE
+
+    def test_citation_frame_missing_defaults_to_template_aware(self) -> None:
+        """Absent ``citation_frame`` defaults to template-aware."""
+        from q_ai.ipi.models import CitationFrame
+        from q_ai.server.routes.intel import _validate_sweep_body
+
+        validated = _validate_sweep_body(dict(self._VALID_BODY))
+        assert isinstance(validated, dict)
+        assert validated["citation_frame"] is CitationFrame.TEMPLATE_AWARE
+
+    def test_citation_frame_empty_string_defaults_to_template_aware(self) -> None:
+        """Empty-string ``citation_frame`` is treated as missing."""
+        from q_ai.ipi.models import CitationFrame
+        from q_ai.server.routes.intel import _validate_sweep_body
+
+        validated = _validate_sweep_body({**self._VALID_BODY, "citation_frame": ""})
+        assert isinstance(validated, dict)
+        assert validated["citation_frame"] is CitationFrame.TEMPLATE_AWARE
+
+    def test_citation_frame_plain_accepted_via_http(self, client: TestClient) -> None:
+        """End-to-end: ``citation_frame: 'plain'`` returns 202 on the launch endpoint."""
+        with (
+            patch("q_ai.ipi.sweep_service.run_sweep", AsyncMock(return_value=MagicMock())),
+            patch("q_ai.ipi.sweep_service.persist_sweep_run"),
+        ):
+            resp = client.post(
+                "/api/intel/sweep/launch",
+                json={**self._VALID_BODY, "citation_frame": "plain"},
+            )
+        assert resp.status_code == 202
+
+    def test_citation_frame_invalid_value_returns_422(self, client: TestClient) -> None:
+        """Unknown ``citation_frame`` returns 422 with the offending value in detail.
+
+        Detail must be a flat string that does NOT leak ``CitationFrame`` —
+        mirrors the PR #128 CodeQL alert #23 remediation pattern.
+        """
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "citation_frame": "bogus"},
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert isinstance(detail, str)
+        assert "bogus" in detail
+        assert "CitationFrame" not in detail
+
+    def test_citation_frame_non_string_returns_422(self, client: TestClient) -> None:
+        """Non-string citation_frame returns 422 (same shape as other fields)."""
+        resp = client.post(
+            "/api/intel/sweep/launch",
+            json={**self._VALID_BODY, "citation_frame": 42},
+        )
+        assert resp.status_code == 422
+        assert "citation_frame must be a string" in resp.json()["detail"]
 
     def test_reps_below_one(self, client: TestClient) -> None:
         resp = client.post(

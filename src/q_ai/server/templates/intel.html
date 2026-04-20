@@ -281,6 +281,19 @@
                 </div>
 
                 <div class="form-control">
+                    <label class="label"><span class="label-text">Citation frame</span></label>
+                    <select name="citation_frame"
+                            class="select select-bordered select-sm w-full">
+                        {% for f in sweep_citation_frames %}
+                        <option value="{{ f }}"
+                                {% if f == sweep_citation_frame_default %}selected{% endif %}>
+                            {{ f }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-control">
                     <label class="label"><span class="label-text">Target</span></label>
                     <select name="target_id" required
                             class="select select-bordered select-sm w-full"
@@ -667,6 +680,7 @@ async function launchSweep(e) {
         }
 
         var apiKey = form.querySelector('input[name="api_key"]').value.trim();
+        var citationFrameSel = form.querySelector('select[name="citation_frame"]');
         var data = {
             endpoint: form.querySelector('input[name="endpoint"]').value,
             model: form.querySelector('input[name="model"]').value,
@@ -677,6 +691,7 @@ async function launchSweep(e) {
             templates: templates,
             styles: styles,
             payload_type: 'callback',
+            citation_frame: citationFrameSel ? citationFrameSel.value : 'template-aware',
         };
         /* Phase 5 — target_id required via modal binding. __new__ must be
            resolved by the modal before submit; if it's still set, block. */

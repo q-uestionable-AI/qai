@@ -280,6 +280,34 @@ class PayloadType(StrEnum):
     PERSISTENCE = "persistence"
 
 
+class CitationFrame(StrEnum):
+    """Callback-line framing choice for CITATION-style CALLBACK payloads.
+
+    Controls which CITATION text ``q_ai.ipi.sweep_service.render_sweep_prompt``
+    emits when the sweep case is ``style=CITATION`` and
+    ``payload_type=CALLBACK``. Any other style/type combination ignores this
+    value — see Campaign 1 Phase 4 Step 3 and
+    ``Archive/RFC/RFC-IPI-Template-Callback-Rationale.md``.
+
+    Attributes:
+        PLAIN: Pre-4.5 hardcoded CITATION sentence. Ignores the hosting
+            template's ``callback_role``; the same sentence renders across
+            every template, producing a report-context baseline suitable as
+            a control condition.
+        TEMPLATE_AWARE: Post-4.5 composed CITATION sentence that interpolates
+            the hosting template's ``callback_role`` noun phrase. Default;
+            matches the behavior shipped since PR #121.
+
+    Example:
+        >>> from q_ai.ipi.models import CitationFrame
+        >>> CitationFrame.TEMPLATE_AWARE.value
+        'template-aware'
+    """
+
+    PLAIN = "plain"
+    TEMPLATE_AWARE = "template-aware"
+
+
 class HitConfidence(StrEnum):
     """Confidence level for callback hit authenticity.
 
@@ -510,6 +538,7 @@ class Hit:
 
 __all__ = [
     "Campaign",
+    "CitationFrame",
     "DocumentTemplate",
     "Format",
     "Hit",
