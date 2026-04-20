@@ -2,11 +2,12 @@
 {% block title %}q-ai — Launcher{% endblock %}
 
 {# ---- Reusable macro for target name field with collision check ---- #}
-{% macro target_name_field(wf_id, placeholder="my-mcp-server") %}
+{% macro target_name_field(wf_id, placeholder="my-mcp-server", initial_value="") %}
 <div class="form-control">
     <label class="label"><span class="label-text">Target name</span></label>
     <input type="text" name="target_name" required
            placeholder="{{ placeholder }}"
+           value="{{ initial_value }}"
            class="input input-bordered input-sm w-full"
            oninput="checkTargetName(this, '{{ wf_id }}')" />
     <div id="target-warn-{{ wf_id }}" class="text-xs mt-1 hidden" style="color: #fbbf24;">
@@ -229,7 +230,7 @@
 
                     {% elif wf.id == 'test_docs' %}
                     {# ---- TEST DOCS FORM ---- #}
-                    {{ target_name_field(wf.id, "doc-pipeline") }}
+                    {{ target_name_field(wf.id, "doc-pipeline", initial_value=(prefill.target_name or "")) }}
 
                     <div class="form-control" id="ipi-tunnel-toggle-control">
                         <label class="label cursor-pointer">
@@ -688,6 +689,17 @@
 .ipi-template-desc .badge { text-transform: uppercase; letter-spacing: 0.04em; }
 </style>
 
+{# Intel→launcher prefill init. |tojson emits a JS-safe literal with
+   `<` escaped as \u003C inside strings, so a crafted ?template=</script>
+   value cannot break out of this script block. loadIpiTemplates reads
+   window._testDocsPrefill.template at the end of hydration (after the
+   innerHTML rebuild clobbers the initial option). #}
+{% if prefill and prefill.template_id %}
+<script>
+  window._testDocsPrefill = {{ {'template': prefill.template_id} | tojson }};
+</script>
+{% endif %}
+
 <script>
 var _targetCheckTimers = {};
 var _URL_PLACEHOLDERS = {
@@ -809,6 +821,20 @@ async function loadIpiTemplates(wfId) {
             sel.value = 'generic';
         } else if (templates.length > 0) {
             sel.value = templates[0].id;
+        }
+        /* Intel→launcher prefill (Phase 4). window._testDocsPrefill is set
+           by a server-rendered <script> emitted via |tojson when the
+           /launcher query string carries a template id. The prefill lands
+           here, AFTER the innerHTML rebuild above, so it wins over the
+           GENERIC default. Unknown ids fall through to GENERIC (matches
+           the backend-contract-drift fallback a few lines up). Note that
+           _wireIpiFilters below may flash-reset format if the prefilled
+           template's formats exclude pdf — correct behavior per Phase 2's
+           filter design, not a regression. */
+        if (wfId === 'test_docs' && window._testDocsPrefill && window._testDocsPrefill.template) {
+            var prefillId = window._testDocsPrefill.template;
+            var known = templates.some(function(t) { return t.id === prefillId; });
+            if (known) sel.value = prefillId;
         }
         _wireIpiFilters(wfId);
         _updateIpiTemplateDescription(wfId);
@@ -1553,6 +1579,14 @@ document.addEventListener('DOMContentLoaded', function() {
             updateCliPreview(formId);
         }
     });
+
+    /* Intel→launcher prefill: auto-expand the test_docs row on page load
+       when prefill params are present so loadIpiTemplates fires and the
+       template prefill can land. Without this, hydration waits on user
+       click and the prefill never runs. */
+    if (window._testDocsPrefill && window._testDocsPrefill.template) {
+        toggleAccordion('test_docs');
+    }
 });
 </script>
 {% endblock %}
