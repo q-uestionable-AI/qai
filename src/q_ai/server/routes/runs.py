@@ -337,6 +337,7 @@ async def runs(
             return RedirectResponse(
                 url=(f"/intel/targets/{quote(wf_run.target_id)}#probe-run-{quote(wf_run.id)}"),
                 status_code=302,
+                headers={"Cache-Control": "no-store"},
             )
         ctx.update(run_ctx)
     else:
