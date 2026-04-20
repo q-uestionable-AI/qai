@@ -3,6 +3,50 @@ title: Changelog
 description: Release history for q-ai
 ---
 
+## v0.10.0
+
+Intel target-centric workspace, sweep subcommand, and target-aware generate.
+
+### New: Intel target-centric workspace
+
+The `/intel` page is now a target list landing; each target gets a detail page at
+`/intel/targets/<id>` with `#imports`, `#probe-runs`, and `#sweep-runs` sections,
+row anchors, and latest-run summaries.
+
+- Three launcher cards (Import Results, Probe Model, Sweep) all require a target,
+  with inline target creation via a shared modal.
+- **Generate** button under the Sweep Runs section surfaces the
+  `qai ipi generate --target` auto-select recommendation with fresh, stale-warn,
+  tie-refusal, stale-refusal, and no-findings states.
+- Synthetic `(Unbound historical intel)` target holds runs from before target
+  binding was required.
+- Probe and sweep launch endpoints accept API keys via `X-API-Key` request header
+  (body field tolerated for backward compatibility).
+
+### New: `qai ipi sweep`
+
+Native template × style sweep subcommand promoted from the
+`lab/scripts/template-sweep.py` prototype. Runs the cartesian product of selected
+templates and styles against a callback-enabled endpoint, records
+per-(template, style) compliance rates, and persists scored prompts importable via
+`qai import`.
+
+### New: `qai ipi generate --target <id>`
+
+When `--template` is omitted, `generate` auto-selects the highest-compliance
+template from the target's most recent completed sweep run. Refuses on ties within
+10 percentage points, warns between 7 and 30 days old, refuses past 30 days.
+Thresholds documented in the `<Note>` callout at
+`/ipi/cli#auto-select-from-sweep-findings`.
+
+### Other
+
+- Probe run deep links `/runs?run_id=<probe_id>` route through the target detail
+  page's `#probe-runs` section; the two-release redirect added in v0.9.x was
+  removed.
+- Mintlify documentation rewritten end-to-end to match the target-centric
+  workspace.
+
 ## v0.9.1
 
 Database management and admin page enhancements.
