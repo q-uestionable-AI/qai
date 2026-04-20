@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from q_ai.core.db import get_connection, get_target
+from q_ai.ipi.sweep_selection import SelectionResult, select_template_for_target
 from q_ai.server.routes._shared import (
     _get_db_path,
     _get_templates,
@@ -75,16 +76,21 @@ async def intel_target_detail(request: Request, target_id: str) -> HTMLResponse:
         TargetOverviewRow | None,
         list[SweepRunSummary],
         list[ProbeRunSummary],
+        SelectionResult | None,
     ]:
         with get_connection(db_path) as conn:
             row = query_target_overview_by_id(conn, target_id)
             if row is None:
-                return None, [], []
+                return None, [], [], None
             sweep_runs = query_target_sweep_runs(conn, target_id)
             probe_runs = query_target_probe_runs(conn, target_id)
-            return row, sweep_runs, probe_runs
+        # Evaluated on every GET. Per RFC-Intel-Target-Centric-Workspace-Design
+        # Decision 5 Semantic Note, no caching — a stale button is worse than
+        # re-running the selector (the helper opens its own connection).
+        selection = select_template_for_target(target_id, db_path=db_path)
+        return row, sweep_runs, probe_runs, selection
 
-    row, sweep_runs, probe_runs = await asyncio.to_thread(_load_detail)
+    row, sweep_runs, probe_runs, selection = await asyncio.to_thread(_load_detail)
     if row is None:
         return HTMLResponse(status_code=404, content="Target not found")
 
@@ -96,6 +102,8 @@ async def intel_target_detail(request: Request, target_id: str) -> HTMLResponse:
             "overview_row": row,
             "sweep_runs": sweep_runs,
             "probe_runs": probe_runs,
+            "selection": selection,
+            "selection_kind": type(selection).__name__ if selection is not None else None,
         },
     )
 

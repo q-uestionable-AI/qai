@@ -321,6 +321,252 @@ class TestIntelTargetDetailSweepRendering:
         assert 0 < latest_pos < mid_pos < earlier_pos
 
 
+class TestIntelTargetDetailGenerateAffordance:
+    """Generate button rendering across the five selection-result variants.
+
+    Mocks ``select_template_for_target`` at the detail-handler import site
+    so each variant can be exercised without seeding sweep data that
+    happens to land on the specific branch. A complementary no-cache
+    test below mutates real sweep state between two GETs.
+    """
+
+    def _make_target(self, tmp_db: Path) -> str:
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="generate-target")
+            conn.commit()
+        finally:
+            conn.close()
+        return target_id
+
+    def test_selected_template_fresh_renders_enabled_button(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        from datetime import UTC, datetime
+
+        from q_ai.ipi.models import DocumentTemplate
+        from q_ai.ipi.sweep_selection import SelectedTemplate
+
+        target_id = self._make_target(tmp_db)
+        result = SelectedTemplate(
+            template=DocumentTemplate.WHOIS,
+            run_id="run-123",
+            completed_at=datetime(2026, 4, 18, 12, 0, tzinfo=UTC),
+            compliance_rate=0.85,
+            age_days=2,
+            stale_warn=False,
+        )
+        with patch(
+            "q_ai.server.routes.intel.select_template_for_target",
+            return_value=result,
+        ):
+            resp = client.get(f"/intel/targets/{target_id}")
+
+        assert resp.status_code == 200
+        text = resp.text
+        assert 'href="/launcher?' in text
+        # Muted variant's class modifier is absent in the fresh path.
+        assert 'class="intel-generate-btn intel-generate-btn-muted"' not in text
+        assert "target_name=generate-target" in text
+        assert f"template={result.template.value}" in text
+        assert f"Generate with {result.template.value.upper()}" in text
+
+    def test_selected_template_stale_warn_renders_muted_button(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        from datetime import UTC, datetime
+
+        from q_ai.ipi.models import DocumentTemplate
+        from q_ai.ipi.sweep_selection import SelectedTemplate
+
+        target_id = self._make_target(tmp_db)
+        result = SelectedTemplate(
+            template=DocumentTemplate.WHOIS,
+            run_id="run-456",
+            completed_at=datetime(2026, 4, 1, 12, 0, tzinfo=UTC),
+            compliance_rate=0.72,
+            age_days=19,
+            stale_warn=True,
+        )
+        with patch(
+            "q_ai.server.routes.intel.select_template_for_target",
+            return_value=result,
+        ):
+            resp = client.get(f"/intel/targets/{target_id}")
+
+        assert resp.status_code == 200
+        text = resp.text
+        assert 'class="intel-generate-btn intel-generate-btn-muted"' in text
+        assert 'href="/launcher?' in text
+        assert f"template={result.template.value}" in text
+        assert "target_name=generate-target" in text
+        assert 'class="intel-generate-age"' in text
+
+    def test_tie_refusal_renders_note_without_button(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        from q_ai.ipi.models import DocumentTemplate
+        from q_ai.ipi.sweep_selection import TieRefusal
+
+        target_id = self._make_target(tmp_db)
+        result = TieRefusal(
+            candidates=[
+                (DocumentTemplate.WHOIS, 0.42),
+                (DocumentTemplate.REPORT, 0.40),
+                (DocumentTemplate.EMAIL, 0.38),
+            ],
+            run_id="run-tie",
+        )
+        with patch(
+            "q_ai.server.routes.intel.select_template_for_target",
+            return_value=result,
+        ):
+            resp = client.get(f"/intel/targets/{target_id}")
+
+        assert resp.status_code == 200
+        text = resp.text
+        assert 'href="/launcher?' not in text
+        assert "Near-tie across 3 templates" in text
+        assert "WHOIS" in text
+        assert "REPORT" in text
+
+    def test_stale_refusal_renders_note_without_button(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        from datetime import UTC, datetime
+
+        from q_ai.ipi.sweep_selection import StaleRefusal
+
+        target_id = self._make_target(tmp_db)
+        result = StaleRefusal(
+            run_id="run-stale",
+            completed_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+            age_days=109,
+        )
+        with patch(
+            "q_ai.server.routes.intel.select_template_for_target",
+            return_value=result,
+        ):
+            resp = client.get(f"/intel/targets/{target_id}")
+
+        assert resp.status_code == 200
+        text = resp.text
+        assert 'href="/launcher?' not in text
+        assert "109 days old" in text
+        assert "rerun" in text.lower()
+
+    def test_no_findings_renders_no_button(self, tmp_db: Path, client: TestClient) -> None:
+        from q_ai.ipi.sweep_selection import NoFindings
+
+        target_id = self._make_target(tmp_db)
+        result = NoFindings(target_id=target_id)
+        with patch(
+            "q_ai.server.routes.intel.select_template_for_target",
+            return_value=result,
+        ):
+            resp = client.get(f"/intel/targets/{target_id}")
+
+        assert resp.status_code == 200
+        # No generate button and no NoFindings-specific recommend-note (the
+        # Sweep Runs section's own empty-state already points at /intel#card-sweep
+        # when sweep_runs is empty; the NoFindings branch only paints an
+        # extra note when sweep_runs is non-empty).
+        assert 'href="/launcher?' not in resp.text
+        assert "/intel#card-sweep" in resp.text  # existing empty-state link
+
+    def test_url_encoding_on_button_href(self, tmp_db: Path, client: TestClient) -> None:
+        """Special characters in target name are URL-encoded in the href."""
+        from datetime import UTC, datetime
+
+        from q_ai.ipi.models import DocumentTemplate
+        from q_ai.ipi.sweep_selection import SelectedTemplate
+
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="weird name & spaces")
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = SelectedTemplate(
+            template=DocumentTemplate.WHOIS,
+            run_id="run-enc",
+            completed_at=datetime(2026, 4, 18, 12, 0, tzinfo=UTC),
+            compliance_rate=0.9,
+            age_days=1,
+            stale_warn=False,
+        )
+        with patch(
+            "q_ai.server.routes.intel.select_template_for_target",
+            return_value=result,
+        ):
+            resp = client.get(f"/intel/targets/{target_id}")
+
+        text = resp.text
+        # Jinja's urlencode filter produces 'weird+name+%26+spaces' or
+        # 'weird%20name%20%26%20spaces' depending on backend — either is
+        # a valid query-string encoding. Assert the raw ampersand is not
+        # in the href target_name slot (would break query-string parsing).
+        assert "target_name=weird name" not in text
+        assert "& spaces" not in text.split('href="/launcher?')[1].split('"')[0]
+
+
+class TestIntelTargetDetailSelectionNoCache:
+    """Per RFC Decision 5 Semantic Note: re-evaluated on every GET.
+
+    Mutating sweep state between two page loads produces a correspondingly
+    different rendering. Pins the "no module-level memoization" invariant.
+    """
+
+    def test_button_disappears_when_run_ages_past_refuse_threshold(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        """First GET: fresh run → generate button. Mutate to old → second GET: no button."""
+        from datetime import UTC, datetime, timedelta
+
+        from q_ai.ipi.models import DocumentTemplate
+        from q_ai.ipi.sweep_selection import SelectedTemplate, StaleRefusal
+
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="no-cache-target")
+            conn.commit()
+        finally:
+            conn.close()
+
+        # First GET: fresh selection → button present
+        fresh = SelectedTemplate(
+            template=DocumentTemplate.WHOIS,
+            run_id="run-fresh",
+            completed_at=datetime(2026, 4, 19, 12, 0, tzinfo=UTC),
+            compliance_rate=0.9,
+            age_days=1,
+            stale_warn=False,
+        )
+        with patch(
+            "q_ai.server.routes.intel.select_template_for_target",
+            return_value=fresh,
+        ):
+            first = client.get(f"/intel/targets/{target_id}")
+        assert first.status_code == 200
+        assert 'href="/launcher?' in first.text
+
+        # Second GET: same URL, different selection result → no button
+        stale = StaleRefusal(
+            run_id="run-fresh",
+            completed_at=datetime.now(UTC) - timedelta(days=99),
+            age_days=99,
+        )
+        with patch(
+            "q_ai.server.routes.intel.select_template_for_target",
+            return_value=stale,
+        ):
+            second = client.get(f"/intel/targets/{target_id}")
+        assert second.status_code == 200
+        assert 'href="/launcher?' not in second.text
+        assert "99 days old" in second.text
+
+
 def _seed_probe_run(
     conn: sqlite3.Connection,
     target_id: str,

@@ -100,8 +100,22 @@ def _load_launcher_db_context(db_path: Path | None) -> dict[str, Any]:
 
 @router.get("/launcher")
 async def launcher(request: Request) -> HTMLResponse:
-    """Render the workflow launcher page."""
+    """Render the workflow launcher page.
+
+    Accepts optional ``target_name`` and ``template`` query parameters
+    used by the Intel detail page's "Generate with recommended template"
+    affordance to prefill the test_docs form. Empty strings are treated
+    as absent. The launcher does not resolve template selection itself;
+    it consumes an already-resolved pair (per RFC Decision 5).
+    """
     templates = _get_templates(request)
+
+    prefill_target_name = request.query_params.get("target_name", "").strip() or None
+    prefill_template_id = request.query_params.get("template", "").strip() or None
+    prefill = {
+        "target_name": prefill_target_name,
+        "template_id": prefill_template_id,
+    }
 
     hero_workflow: dict[str, Any] | None = None
     workflows: list[dict[str, Any]] = []
@@ -161,6 +175,7 @@ async def launcher(request: Request) -> HTMLResponse:
             "cxp_formats": list_cxp_formats(),
             "active_managed_handle": active_managed_handle,
             "foreign_listener": foreign_listener,
+            "prefill": prefill,
         },
     )
 

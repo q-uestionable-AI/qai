@@ -165,6 +165,39 @@
                 </p>
             </div>
             {% endif %}
+
+            {# ── Recommended-template affordance (per RFC Decision 5) ──
+               Five variants keyed off select_template_for_target's return
+               shape. Button is a plain server-rendered <a> so the query
+               string is built at render time. #}
+            {% if selection_kind == "SelectedTemplate" %}
+            <div class="intel-sweep-generate" style="margin-top: 1rem;">
+                <a class="intel-generate-btn{% if selection.stale_warn %} intel-generate-btn-muted{% endif %}"
+                   href="/launcher?{{ {'target_name': target.name, 'template': selection.template.value} | urlencode }}">
+                    Generate with {{ selection.template.value | upper }}
+                    {%- if selection.stale_warn %}
+                    <span class="intel-generate-age">({{ selection.completed_at | format_age }} ago)</span>
+                    {%- endif %}
+                </a>
+            </div>
+            {% elif selection_kind == "TieRefusal" %}
+            <p class="intel-sweep-recommend-note" style="margin-top: 1rem;">
+                Near-tie across {{ selection.candidates | length }} templates
+                (top: {% for t, _ in selection.candidates[:2] %}{{ t.value | upper }}{% if not loop.last %}, {% endif %}{% endfor %}).
+                Rerun the sweep with more reps, or pick a template explicitly from the launcher.
+            </p>
+            {% elif selection_kind == "StaleRefusal" %}
+            <p class="intel-sweep-recommend-note" style="margin-top: 1rem;">
+                Latest sweep is {{ selection.age_days }} days old — rerun a fresh sweep
+                before generating.
+            </p>
+            {% elif selection_kind == "NoFindings" and sweep_runs %}
+            <p class="intel-sweep-recommend-note" style="margin-top: 1rem;">
+                No usable sweep findings yet.
+                <a href="/intel#card-sweep" style="color: #06b6d4;">Run a sweep</a>
+                to enable template recommendations.
+            </p>
+            {% endif %}
         </section>
 
     </div>
@@ -298,6 +331,42 @@
 .intel-probe-col-status {
     color: #94a3b8;
     text-align: right;
+}
+.intel-sweep-generate {
+    display: flex;
+    align-items: center;
+}
+.intel-generate-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.9rem;
+    border-radius: 8px;
+    background: rgba(139, 92, 246, 0.15);
+    border: 1px solid rgba(139, 92, 246, 0.45);
+    color: #c4b5fd;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.88rem;
+    text-decoration: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.intel-generate-btn:hover {
+    background: rgba(139, 92, 246, 0.25);
+    border-color: rgba(139, 92, 246, 0.7);
+}
+.intel-generate-btn-muted {
+    background: rgba(139, 92, 246, 0.06);
+    border-color: rgba(139, 92, 246, 0.2);
+    color: #94a3b8;
+}
+.intel-generate-age {
+    color: #64748b;
+    font-size: 0.8rem;
+}
+.intel-sweep-recommend-note {
+    color: #94a3b8;
+    font-size: 0.9rem;
+    margin: 0;
 }
 </style>
 {% endblock %}
