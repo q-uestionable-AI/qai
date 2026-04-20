@@ -62,6 +62,7 @@ def _seed_run(
     combinations: list[tuple[DocumentTemplate, PayloadStyle, float]],
     status: RunStatus = RunStatus.COMPLETED,
     run_id: str | None = None,
+    citation_frame: str | None = "template-aware",
 ) -> str:
     """Persist a synthetic sweep run with the given finish time + rates.
 
@@ -78,6 +79,11 @@ def _seed_run(
             [0.0, 1.0].
         status: Run status to persist (defaults to COMPLETED).
         run_id: Optional deterministic run ID.
+        citation_frame: Value to write into the metadata blob's
+            ``citation_frame`` field. Pass ``None`` to omit the field
+            entirely (simulates pre-v0.10.2 data). Defaults to
+            ``"template-aware"`` so tests that pre-date the frame
+            filter continue to produce eligible runs.
 
     Returns:
         The persisted run ID.
@@ -104,7 +110,7 @@ def _seed_run(
                 framework_ids={"ipi_sweep": f"{template.value}/{style.value}"},
                 source_ref=f"ipi-sweep/{template.value}/{style.value}",
             )
-        metadata = {
+        metadata: dict[str, object] = {
             "combination_summary": [
                 {
                     "template": t.value,
@@ -117,6 +123,8 @@ def _seed_run(
                 for t, s, r in combinations
             ],
         }
+        if citation_frame is not None:
+            metadata["citation_frame"] = citation_frame
         create_evidence(
             conn,
             type=METADATA_EVIDENCE_TYPE,
@@ -435,3 +443,106 @@ class TestDegenerateRuns:
         )
         result = select_template_for_target("t1", now=_FIXED_NOW, db_path=db_path)
         assert isinstance(result, NoFindings)
+
+
+# ---------------------------------------------------------------------------
+# citation_frame filter (v0.10.2)
+# ---------------------------------------------------------------------------
+
+
+class TestCitationFrameFilter:
+    """Auto-select considers only template-aware sweep runs.
+
+    Plain-frame runs are control-condition measurements for Campaign 1
+    Phase 4 Step 3. Allowing them to drive ``qai ipi generate --target``
+    would conflate baseline framing rates with production framing rates
+    — exactly the selection bug PR #134 introduced and this brief closes.
+    """
+
+    def test_single_template_aware_run_selects(self, db_path: Path) -> None:
+        """One template-aware run with a clear winner yields SelectedTemplate.
+
+        Regression guard: the filter must not exclude default-frame runs.
+        """
+        _seed_run(
+            db_path,
+            target_id="t1",
+            finished_at=_completed_at(1),
+            combinations=[
+                (DocumentTemplate.WHOIS, PayloadStyle.OBVIOUS, 0.80),
+                (DocumentTemplate.REPORT, PayloadStyle.OBVIOUS, 0.20),
+            ],
+            citation_frame="template-aware",
+        )
+        result = select_template_for_target("t1", now=_FIXED_NOW, db_path=db_path)
+        assert isinstance(result, SelectedTemplate)
+        assert result.template == DocumentTemplate.WHOIS
+
+    def test_newer_plain_run_is_skipped_for_older_template_aware(self, db_path: Path) -> None:
+        """Mixed history: the older template-aware run wins over the newer plain.
+
+        The plain run has higher compliance (would otherwise win on
+        recency + rate), proving the filter fires before ranking.
+        """
+        older_id = _seed_run(
+            db_path,
+            target_id="t1",
+            finished_at=_completed_at(5),
+            combinations=[
+                (DocumentTemplate.WHOIS, PayloadStyle.OBVIOUS, 0.60),
+                (DocumentTemplate.REPORT, PayloadStyle.OBVIOUS, 0.10),
+            ],
+            citation_frame="template-aware",
+            run_id="older-template-aware",
+        )
+        _seed_run(
+            db_path,
+            target_id="t1",
+            finished_at=_completed_at(1),
+            combinations=[
+                (DocumentTemplate.REPORT, PayloadStyle.OBVIOUS, 0.95),
+                (DocumentTemplate.WHOIS, PayloadStyle.OBVIOUS, 0.05),
+            ],
+            citation_frame="plain",
+            run_id="newer-plain",
+        )
+        result = select_template_for_target("t1", now=_FIXED_NOW, db_path=db_path)
+        assert isinstance(result, SelectedTemplate)
+        assert result.run_id == older_id
+        assert result.template == DocumentTemplate.WHOIS
+
+    def test_plain_only_history_returns_no_findings(self, db_path: Path) -> None:
+        """A target with only plain-frame runs returns NoFindings, not a selection."""
+        _seed_run(
+            db_path,
+            target_id="t1",
+            finished_at=_completed_at(1),
+            combinations=[
+                (DocumentTemplate.WHOIS, PayloadStyle.OBVIOUS, 0.80),
+                (DocumentTemplate.REPORT, PayloadStyle.OBVIOUS, 0.20),
+            ],
+            citation_frame="plain",
+        )
+        result = select_template_for_target("t1", now=_FIXED_NOW, db_path=db_path)
+        assert isinstance(result, NoFindings)
+
+    def test_legacy_run_with_no_frame_treated_as_template_aware(self, db_path: Path) -> None:
+        """Pre-v0.10.2 runs (no ``citation_frame`` key) remain eligible.
+
+        Passing ``citation_frame=None`` to the fixture omits the key
+        from the metadata blob entirely, simulating a run persisted
+        before the field existed.
+        """
+        _seed_run(
+            db_path,
+            target_id="t1",
+            finished_at=_completed_at(1),
+            combinations=[
+                (DocumentTemplate.WHOIS, PayloadStyle.OBVIOUS, 0.80),
+                (DocumentTemplate.REPORT, PayloadStyle.OBVIOUS, 0.20),
+            ],
+            citation_frame=None,
+        )
+        result = select_template_for_target("t1", now=_FIXED_NOW, db_path=db_path)
+        assert isinstance(result, SelectedTemplate)
+        assert result.template == DocumentTemplate.WHOIS

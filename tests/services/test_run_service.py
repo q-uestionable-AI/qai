@@ -356,9 +356,14 @@ def _seed_sweep_metadata(
     template_count: int,
     style_count: int,
     total_cases: int,
+    citation_frame: str | None = "template-aware",
 ) -> None:
-    """Seed a matching ipi_sweep_metadata evidence blob for a sweep run."""
-    blob = {
+    """Seed a matching ipi_sweep_metadata evidence blob for a sweep run.
+
+    Pass ``citation_frame=None`` to omit the field entirely — simulates
+    a pre-v0.10.2 blob so legacy-read defaulting can be exercised.
+    """
+    blob: dict[str, object] = {
         "total_cases": total_cases,
         "total_complied": 0,
         "overall_compliance_rate": 0.0,
@@ -373,6 +378,8 @@ def _seed_sweep_metadata(
         },
         "combination_summary": [],
     }
+    if citation_frame is not None:
+        blob["citation_frame"] = citation_frame
     import json
 
     create_evidence(
@@ -579,6 +586,95 @@ class TestExtractSweepRunSummary:
         summary = run_service.extract_sweep_run_summary(db, run)
         assert summary.metadata_available is True
         assert summary.reps is None
+
+    def test_citation_frame_plain_round_trips(self, db: sqlite3.Connection) -> None:
+        """Blob with ``citation_frame='plain'`` surfaces on the summary."""
+        target_id = create_target(db, type="server", name="plain-frame")
+        run_id = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_sweep_metadata(
+            db,
+            run_id,
+            template_count=1,
+            style_count=1,
+            total_cases=1,
+            citation_frame="plain",
+        )
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_sweep_run_summary(db, run)
+        assert summary.citation_frame == "plain"
+
+    def test_citation_frame_template_aware_round_trips(self, db: sqlite3.Connection) -> None:
+        """Blob with ``citation_frame='template-aware'`` surfaces on the summary."""
+        target_id = create_target(db, type="server", name="template-aware-frame")
+        run_id = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_sweep_metadata(
+            db,
+            run_id,
+            template_count=1,
+            style_count=1,
+            total_cases=1,
+            citation_frame="template-aware",
+        )
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_sweep_run_summary(db, run)
+        assert summary.citation_frame == "template-aware"
+
+    def test_missing_blob_defaults_frame_to_template_aware(self, db: sqlite3.Connection) -> None:
+        """No metadata row → summary still carries citation_frame='template-aware'.
+
+        This is the ``metadata_available=False`` branch; the Frame
+        column in the Intel detail template must render sensibly even
+        when aggregate metadata is missing.
+        """
+        target_id = create_target(db, type="server", name="no-blob-frame")
+        run_id = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_sweep_run_summary(db, run)
+        assert summary.metadata_available is False
+        assert summary.citation_frame == "template-aware"
+
+    def test_blob_without_citation_frame_key_defaults_to_template_aware(
+        self, db: sqlite3.Connection
+    ) -> None:
+        """Pre-v0.10.2 blob (no ``citation_frame`` field) reads as template-aware."""
+        target_id = create_target(db, type="server", name="legacy-blob-frame")
+        run_id = _completed_run(
+            db,
+            module="ipi-sweep",
+            target_id=target_id,
+            finished_at="2026-04-10T12:00:00+00:00",
+        )
+        _seed_sweep_metadata(
+            db,
+            run_id,
+            template_count=1,
+            style_count=1,
+            total_cases=1,
+            citation_frame=None,
+        )
+        run = run_service.get_run(db, run_id)
+        assert run is not None
+        summary = run_service.extract_sweep_run_summary(db, run)
+        assert summary.metadata_available is True
+        assert summary.citation_frame == "template-aware"
 
 
 # ---------------------------------------------------------------------------
