@@ -123,6 +123,92 @@ class TestMigrateUnboundRuns:
         finally:
             conn.close()
 
+    def test_preserves_config_bound_target_on_null_row(self, tmp_db: Path) -> None:
+        """Workflow parent runs store target_id in config, not runs.target_id.
+
+        The migration must first promote those rows using the config-bound
+        id before bucketing the remainder into Unbound — see PR #131 review
+        (CodeRabbit) and the two-step UPDATE in ``_migrate_unbound_runs``.
+        """
+        import json as _json
+
+        with get_connection(tmp_db) as conn:
+            real_target = create_target(conn, type="server", name="real-workflow-target")
+            # Parent workflow run shape: NULL runs.target_id, target_id in config.
+            workflow_run = create_run(
+                conn,
+                module="workflow",
+                name="assess",
+                config={"target_id": real_target, "other": "data"},
+            )
+            conn.commit()
+
+        _migrate_unbound_runs(tmp_db)
+
+        conn = _open_db(tmp_db)
+        try:
+            row = conn.execute(
+                "SELECT target_id, config FROM runs WHERE id = ?", (workflow_run,)
+            ).fetchone()
+            # Runs row was promoted to the real target — NOT the synthetic Unbound.
+            assert row["target_id"] == real_target
+            # config is untouched.
+            assert _json.loads(row["config"])["target_id"] == real_target
+        finally:
+            conn.close()
+
+    def test_null_config_target_still_reparents_to_unbound(self, tmp_db: Path) -> None:
+        """Runs with NULL target_id AND no config.target_id fall into Unbound.
+
+        Covers both the "config is NULL" shape and the "config exists but has
+        no target_id key" shape. Mirrors pre-Phase 5 import/probe/sweep rows
+        that lack any target binding at all.
+        """
+        with get_connection(tmp_db) as conn:
+            null_config_run = create_run(conn, module="import", name="no-config")
+            empty_config_run = create_run(
+                conn, module="import", name="empty-config", config={"other": "data"}
+            )
+            conn.commit()
+
+        _migrate_unbound_runs(tmp_db)
+
+        conn = _open_db(tmp_db)
+        try:
+            synthetic = _get_unbound_target(conn)
+            assert synthetic is not None
+            for rid in (null_config_run, empty_config_run):
+                r = conn.execute("SELECT target_id FROM runs WHERE id = ?", (rid,)).fetchone()
+                assert r["target_id"] == synthetic["id"]
+        finally:
+            conn.close()
+
+    def test_orphan_config_target_falls_through_to_unbound(self, tmp_db: Path) -> None:
+        """config.target_id pointing at a non-existent target falls to Unbound.
+
+        The backfill UPDATE guards with ``IN (SELECT id FROM targets)`` so a
+        stale / orphaned reference does not introduce a FK violation.
+        """
+        with get_connection(tmp_db) as conn:
+            orphan_run = create_run(
+                conn,
+                module="workflow",
+                name="orphan",
+                config={"target_id": "nonexistent-target-id"},
+            )
+            conn.commit()
+
+        _migrate_unbound_runs(tmp_db)
+
+        conn = _open_db(tmp_db)
+        try:
+            synthetic = _get_unbound_target(conn)
+            assert synthetic is not None
+            row = conn.execute("SELECT target_id FROM runs WHERE id = ?", (orphan_run,)).fetchone()
+            assert row["target_id"] == synthetic["id"]
+        finally:
+            conn.close()
+
     def test_does_not_retarget_runs_already_bound(self, tmp_db: Path) -> None:
         """Runs with a non-NULL target_id are not touched."""
         with get_connection(tmp_db) as conn:

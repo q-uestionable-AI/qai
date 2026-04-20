@@ -34,9 +34,18 @@ def _migrate_unbound_runs(db_path: Path | None) -> None:
       2. If absent, create one: ``type='virtual'``, name
          ``"(Unbound historical intel)"``, metadata
          ``{"kind": "synthetic-unbound"}``.
-      3. Reparent: ``UPDATE runs SET target_id = ? WHERE target_id IS
-         NULL`` — module-agnostic, all historically unbound runs bucket
-         into this target.
+      3. Config-aware backfill: parent workflow runs persist their
+         target binding in ``config['target_id']`` (see
+         :meth:`WorkflowRunner.start` — the runs row is created with
+         ``target_id`` NULL and the real id is stashed in the config
+         JSON blob). Before the catch-all below, promote those rows to
+         use their config-bound target where the id still exists.
+      4. Reparent: ``UPDATE runs SET target_id = ? WHERE target_id IS
+         NULL`` — module-agnostic, all remaining historically unbound
+         runs bucket into the synthetic Unbound target.
+
+    Both UPDATEs run inside one transaction so the backfill-then-bucket
+    split is atomic.
 
     Idempotent: on a second call the synthetic target already exists
     and zero NULL rows remain, so both steps are no-ops.
@@ -67,23 +76,43 @@ def _migrate_unbound_runs(db_path: Path | None) -> None:
             target_id = existing["id"]
             created = False
 
-        cursor = conn.execute(
+        # Step 1 — promote NULL-target_id runs whose config carries a
+        # valid target_id (e.g. workflow parent runs). Only accept the
+        # binding if the referenced target row still exists, so orphaned
+        # references fall through to the Unbound bucket below.
+        backfill_cursor = conn.execute(
+            """
+            UPDATE runs
+               SET target_id = json_extract(config, '$.target_id')
+             WHERE target_id IS NULL
+               AND json_extract(config, '$.target_id') IS NOT NULL
+               AND json_extract(config, '$.target_id') IN (SELECT id FROM targets)
+            """
+        )
+        backfilled = backfill_cursor.rowcount
+
+        # Step 2 — everything still unbound goes to the synthetic target.
+        reparent_cursor = conn.execute(
             "UPDATE runs SET target_id = ? WHERE target_id IS NULL",
             (target_id,),
         )
-        reparented = cursor.rowcount
+        reparented = reparent_cursor.rowcount
         conn.commit()
 
     if created:
         logger.info(
-            "Created synthetic Unbound target %s; reparented %d run(s)",
+            "Created synthetic Unbound target %s; "
+            "restored %d config-bound run(s); reparented %d run(s)",
             target_id,
+            backfilled,
             reparented,
         )
     else:
         logger.info(
-            "Synthetic Unbound target already exists (%s); %d NULL-target_id run(s) found",
+            "Synthetic Unbound target already exists (%s); "
+            "restored %d config-bound run(s); %d NULL-target_id run(s) found",
             target_id,
+            backfilled,
             reparented,
         )
 
