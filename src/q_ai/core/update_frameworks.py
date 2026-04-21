@@ -67,14 +67,9 @@ class FrameworkStatus:
 # ---------------------------------------------------------------------------
 
 
-def _get_qai_dir() -> Path:
-    """Return the ``~/.qai`` directory path."""
-    return Path.home() / ".qai"
-
-
 def _get_cache_path() -> Path:
     """Return path to the framework update cache file."""
-    return _get_qai_dir() / CACHE_DIR_NAME / CACHE_FILE_NAME
+    return Path.home() / ".qai" / CACHE_DIR_NAME / CACHE_FILE_NAME
 
 
 def _compute_invalidation_key(frameworks: dict) -> str:
@@ -156,7 +151,10 @@ def _save_cache(results: list[dict], invalidation_key: str) -> None:
         results: List of serialised ``FrameworkStatus`` dicts.
         invalidation_key: Current invalidation key.
     """
+    from q_ai.core.paths import ensure_qai_dir
+
     cache_path = _get_cache_path()
+    ensure_qai_dir(cache_path.parent.parent)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "cached_at": datetime.now(tz=UTC).isoformat(),

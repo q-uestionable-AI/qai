@@ -136,12 +136,20 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     from q_ai.core.db import get_connection
     from q_ai.core.models import RunStatus
+    from q_ai.core.paths import ensure_qai_dir
     from q_ai.services import run_service
     from q_ai.services.managed_listener import (
         MANAGER_CLI,
         detect_existing_listener,
         start_adopted_poller,
     )
+
+    # Harden the qai data directory permissions (0o700 on POSIX). Idempotent
+    # and cheap — runs every startup so previously wider modes get narrowed.
+    try:
+        await asyncio.to_thread(ensure_qai_dir, getattr(app.state, "qai_dir", None))
+    except Exception:
+        logger.exception("Failed to harden qai data directory; continuing startup")
 
     # Phase 5 — one-time idempotent migration that reparents historical
     # NULL-target_id runs to a synthetic Unbound target. Wrapped in
