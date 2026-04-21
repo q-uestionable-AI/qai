@@ -92,14 +92,22 @@ class WorkflowRunner:
     async def start(self) -> str:
         """Create parent workflow run in DB, set status RUNNING, emit event.
 
+        Sources ``target_id`` from ``config['target_id']`` when present so
+        parent workflow rows are born with their target binding set on the
+        column. Rows created without a ``target_id`` in config fall through
+        with NULL and are still caught by the ``_migrate_unbound_runs``
+        lifespan safety net.
+
         Returns:
             The parent run_id.
         """
+        target_id = self._config.get("target_id") if isinstance(self._config, dict) else None
         with get_connection(self._db_path) as conn:
             create_run(
                 conn,
                 module="workflow",
                 name=self._workflow_id,
+                target_id=target_id,
                 config=self._config,
                 run_id=self._run_id,
                 source=self._source,

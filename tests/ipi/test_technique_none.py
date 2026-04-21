@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from q_ai.ipi.cli import parse_techniques
+from q_ai.ipi.commands.generate import parse_techniques
 from q_ai.ipi.generators import TECHNIQUE_FORMATS, get_techniques_for_format
 from q_ai.ipi.generators.docx import create_docx
 from q_ai.ipi.generators.eml import create_eml

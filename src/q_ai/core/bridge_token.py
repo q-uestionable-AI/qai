@@ -28,13 +28,15 @@ def ensure_bridge_token(qai_dir: Path | None = None) -> str:
     Returns:
         The bridge token string (32 hex characters).
     """
+    from q_ai.core.paths import ensure_qai_dir
+
     qai_dir = qai_dir or Path.home() / ".qai"
     token_path = qai_dir / _TOKEN_FILE
 
     if token_path.exists():
         return token_path.read_text(encoding="utf-8").strip()
 
-    qai_dir.mkdir(parents=True, exist_ok=True)
+    ensure_qai_dir(qai_dir)
     token = secrets.token_hex(16)
 
     try:

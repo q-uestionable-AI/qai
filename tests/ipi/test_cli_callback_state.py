@@ -46,8 +46,8 @@ def _fake_state(
 class TestGenerateAutoDiscovery:
     """generate reads active-callback state when --callback is omitted."""
 
-    @patch("q_ai.ipi.cli.generate_documents")
-    @patch("q_ai.ipi.cli.persist_generate", create=True)
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    @patch("q_ai.ipi.mapper.persist_generate")
     def test_uses_state_when_callback_omitted(
         self,
         _mock_persist: object,
@@ -57,7 +57,7 @@ class TestGenerateAutoDiscovery:
         state = _fake_state()
 
         with patch(
-            "q_ai.ipi.cli.read_valid_state",
+            "q_ai.ipi.commands.generate.read_valid_state",
             return_value=(state, None),
         ):
             result = runner.invoke(
@@ -78,8 +78,8 @@ class TestGenerateAutoDiscovery:
         kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
         assert kwargs["callback_url"] == state.public_url
 
-    @patch("q_ai.ipi.cli.generate_documents")
-    @patch("q_ai.ipi.cli.persist_generate", create=True)
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    @patch("q_ai.ipi.mapper.persist_generate")
     def test_explicit_callback_flag_overrides_state(
         self,
         _mock_persist: object,
@@ -89,7 +89,7 @@ class TestGenerateAutoDiscovery:
         state = _fake_state(public_url="https://ignored.trycloudflare.com")
 
         with patch(
-            "q_ai.ipi.cli.read_valid_state",
+            "q_ai.ipi.commands.generate.read_valid_state",
             return_value=(state, None),
         ):
             result = runner.invoke(
@@ -111,8 +111,8 @@ class TestGenerateAutoDiscovery:
         kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
         assert kwargs["callback_url"] == "http://explicit:9000"
 
-    @patch("q_ai.ipi.cli.generate_documents")
-    @patch("q_ai.ipi.cli.persist_generate", create=True)
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    @patch("q_ai.ipi.mapper.persist_generate")
     def test_positional_callback_overrides_state(
         self,
         _mock_persist: object,
@@ -122,7 +122,7 @@ class TestGenerateAutoDiscovery:
         state = _fake_state(public_url="https://ignored.trycloudflare.com")
 
         with patch(
-            "q_ai.ipi.cli.read_valid_state",
+            "q_ai.ipi.commands.generate.read_valid_state",
             return_value=(state, None),
         ):
             result = runner.invoke(
@@ -142,8 +142,8 @@ class TestGenerateAutoDiscovery:
         kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
         assert kwargs["callback_url"] == "http://positional:7000"
 
-    @patch("q_ai.ipi.cli.generate_documents")
-    @patch("q_ai.ipi.cli.persist_generate", create=True)
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    @patch("q_ai.ipi.mapper.persist_generate")
     def test_positional_callback_skips_state_lookup_entirely(
         self,
         _mock_persist: object,
@@ -162,7 +162,7 @@ class TestGenerateAutoDiscovery:
         stale_warning = "Active-callback state references dead PID 999999; ignoring."
 
         with patch(
-            "q_ai.ipi.cli.read_valid_state",
+            "q_ai.ipi.commands.generate.read_valid_state",
             return_value=(None, stale_warning),
         ) as mock_read_state:
             result = runner.invoke(
@@ -184,8 +184,8 @@ class TestGenerateAutoDiscovery:
         kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
         assert kwargs["callback_url"] == "http://fallback:8080"
 
-    @patch("q_ai.ipi.cli.generate_documents")
-    @patch("q_ai.ipi.cli.persist_generate", create=True)
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    @patch("q_ai.ipi.mapper.persist_generate")
     def test_stale_state_displayed_when_no_explicit_callback(
         self,
         _mock_persist: object,
@@ -201,7 +201,7 @@ class TestGenerateAutoDiscovery:
         stale_warning = "Active-callback state references dead PID 999999; ignoring."
 
         with patch(
-            "q_ai.ipi.cli.read_valid_state",
+            "q_ai.ipi.commands.generate.read_valid_state",
             return_value=(None, stale_warning),
         ) as mock_read_state:
             # No callback, no TTY → prompt_or_fail exits. We expect exit code 1
@@ -249,10 +249,10 @@ class TestListenTunnelStateFile:
             deletes.append(object())
 
         with (
-            patch("q_ai.ipi.cli.get_tunnel_adapter", return_value=fake_adapter),
-            patch("q_ai.ipi.cli.start_server") as mock_start,
-            patch("q_ai.ipi.cli.write_state", side_effect=_capture_write) as mock_write,
-            patch("q_ai.ipi.cli.delete_state", side_effect=_capture_delete),
+            patch("q_ai.ipi.commands.listen.get_tunnel_adapter", return_value=fake_adapter),
+            patch("q_ai.ipi.commands.listen.start_server") as mock_start,
+            patch("q_ai.ipi.commands.listen.write_state", side_effect=_capture_write) as mock_write,
+            patch("q_ai.ipi.commands.listen.delete_state", side_effect=_capture_delete),
         ):
             result = runner.invoke(app, ["ipi", "listen", "--tunnel", "cloudflare"])
 
@@ -281,10 +281,10 @@ class TestListenTunnelStateFile:
             pass
 
         with (
-            patch("q_ai.ipi.cli.get_tunnel_adapter", return_value=fake_adapter),
-            patch("q_ai.ipi.cli.start_server", side_effect=_SomeError("boom")),
-            patch("q_ai.ipi.cli.write_state"),
-            patch("q_ai.ipi.cli.delete_state", side_effect=_capture_delete),
+            patch("q_ai.ipi.commands.listen.get_tunnel_adapter", return_value=fake_adapter),
+            patch("q_ai.ipi.commands.listen.start_server", side_effect=_SomeError("boom")),
+            patch("q_ai.ipi.commands.listen.write_state"),
+            patch("q_ai.ipi.commands.listen.delete_state", side_effect=_capture_delete),
         ):
             result = runner.invoke(app, ["ipi", "listen", "--tunnel", "cloudflare"])
 

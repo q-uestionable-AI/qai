@@ -40,7 +40,7 @@ class TestIpiGenerateCallbackArg:
         result = runner.invoke(app, ["ipi", "generate"])
         assert result.exit_code != 0
 
-    @patch("q_ai.ipi.cli.generate_documents")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
     def test_positional_callback(self, mock_gen: object) -> None:
         """Callback can be passed as first positional argument."""
         from q_ai.ipi.generate_service import GenerateResult
@@ -49,7 +49,7 @@ class TestIpiGenerateCallbackArg:
         result = runner.invoke(app, ["ipi", "generate", "http://localhost:8080"])
         assert result.exit_code == 0
 
-    @patch("q_ai.ipi.cli.generate_documents")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
     def test_callback_option_flag(self, mock_gen: object) -> None:
         """--callback flag still works for backward compatibility."""
         from q_ai.ipi.generate_service import GenerateResult
@@ -119,8 +119,8 @@ class TestIpiGenerateTargetAutoSelect:
         )
 
     @patch("q_ai.ipi.mapper.persist_generate")
-    @patch("q_ai.ipi.cli.generate_documents")
-    @patch("q_ai.ipi.cli.select_template_for_target")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    @patch("q_ai.ipi.commands.generate.select_template_for_target")
     def test_target_with_findings_emits_prefix_and_generates(
         self,
         mock_select: object,
@@ -145,8 +145,8 @@ class TestIpiGenerateTargetAutoSelect:
         assert call_kwargs["template"] == DocumentTemplate.WHOIS
 
     @patch("q_ai.ipi.mapper.persist_generate")
-    @patch("q_ai.ipi.cli.generate_documents")
-    @patch("q_ai.ipi.cli.select_template_for_target")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    @patch("q_ai.ipi.commands.generate.select_template_for_target")
     def test_explicit_template_bypasses_selection(
         self,
         mock_select: object,
@@ -176,8 +176,8 @@ class TestIpiGenerateTargetAutoSelect:
         assert call_kwargs["template"] == DocumentTemplate.REPORT
 
     @patch("q_ai.ipi.mapper.persist_generate")
-    @patch("q_ai.ipi.cli.generate_documents")
-    @patch("q_ai.ipi.cli.select_template_for_target")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    @patch("q_ai.ipi.commands.generate.select_template_for_target")
     def test_no_findings_exits_non_zero_with_guidance(
         self,
         mock_select: object,
@@ -199,8 +199,8 @@ class TestIpiGenerateTargetAutoSelect:
         mock_gen.assert_not_called()  # type: ignore[attr-defined]
 
     @patch("q_ai.ipi.mapper.persist_generate")
-    @patch("q_ai.ipi.cli.generate_documents")
-    @patch("q_ai.ipi.cli.select_template_for_target")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    @patch("q_ai.ipi.commands.generate.select_template_for_target")
     def test_tie_exits_non_zero_listing_candidates(
         self,
         mock_select: object,
@@ -229,8 +229,8 @@ class TestIpiGenerateTargetAutoSelect:
         mock_gen.assert_not_called()  # type: ignore[attr-defined]
 
     @patch("q_ai.ipi.mapper.persist_generate")
-    @patch("q_ai.ipi.cli.generate_documents")
-    @patch("q_ai.ipi.cli.select_template_for_target")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    @patch("q_ai.ipi.commands.generate.select_template_for_target")
     def test_stale_refuse_exits_non_zero_with_timestamp(
         self,
         mock_select: object,
@@ -257,8 +257,8 @@ class TestIpiGenerateTargetAutoSelect:
         mock_gen.assert_not_called()  # type: ignore[attr-defined]
 
     @patch("q_ai.ipi.mapper.persist_generate")
-    @patch("q_ai.ipi.cli.generate_documents")
-    @patch("q_ai.ipi.cli.select_template_for_target")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    @patch("q_ai.ipi.commands.generate.select_template_for_target")
     def test_stale_warn_appends_rerun_suggestion(
         self,
         mock_select: object,
@@ -284,8 +284,8 @@ class TestIpiGenerateTargetAutoSelect:
         assert "consider re-running sweep" in collapsed
 
     @patch("q_ai.ipi.mapper.persist_generate")
-    @patch("q_ai.ipi.cli.generate_documents")
-    @patch("q_ai.ipi.cli.select_template_for_target")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    @patch("q_ai.ipi.commands.generate.select_template_for_target")
     def test_no_target_preserves_existing_behavior(
         self,
         mock_select: object,

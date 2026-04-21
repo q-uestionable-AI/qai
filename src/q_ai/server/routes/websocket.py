@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from q_ai.server.routes._shared import logger
+from q_ai.server.routes._shared import logger, reject_unless_local_origin
 
 router = APIRouter()
 
@@ -44,6 +44,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     discarded. Oversize frames (>64 KB) close the connection since the
     client should never send anything that large on this endpoint.
     """
+    if not await reject_unless_local_origin(websocket):
+        return
     manager = websocket.app.state.ws_manager
     await manager.connect(websocket)
     try:
@@ -128,6 +130,8 @@ async def assist_websocket(websocket: WebSocket) -> None:
     Maintains per-connection conversation history (ephemeral, capped at
     ``_MAX_HISTORY`` entries).
     """
+    if not await reject_unless_local_origin(websocket):
+        return
     await websocket.accept()
     history: list[dict[str, str]] = []
     cap_flag: dict[str, bool] = {"logged": False}

@@ -14,6 +14,8 @@ from fastapi.testclient import TestClient
 from q_ai.core.db import create_run, create_target
 from q_ai.core.models import RunStatus
 
+_ASSIST_ORIGIN = {"origin": "http://localhost:8000"}
+
 # ---------------------------------------------------------------------------
 # Lightweight stub for q_ai.assist.service so WebSocket tests don't pull in
 # the heavy torch/transformers/sentence-transformers import chain.
@@ -208,7 +210,7 @@ class TestAssistWebSocket:
 
     def test_ws_assist_connects(self, client: TestClient) -> None:
         """WebSocket endpoint accepts connections."""
-        with client.websocket_connect("/ws/assist") as ws:
+        with client.websocket_connect("/ws/assist", headers=_ASSIST_ORIGIN) as ws:
             # Send empty query — should get error back
             ws.send_json({"type": "assist_query", "message": ""})
             data = ws.receive_json()
@@ -217,7 +219,7 @@ class TestAssistWebSocket:
 
     def test_ws_assist_invalid_json(self, client: TestClient) -> None:
         """Invalid JSON returns error message."""
-        with client.websocket_connect("/ws/assist") as ws:
+        with client.websocket_connect("/ws/assist", headers=_ASSIST_ORIGIN) as ws:
             ws.send_text("not json")
             data = ws.receive_json()
             assert data["type"] == "assist_error"
@@ -225,7 +227,7 @@ class TestAssistWebSocket:
 
     def test_ws_assist_ignores_unknown_type(self, client: TestClient) -> None:
         """Messages with unknown type are silently ignored."""
-        with client.websocket_connect("/ws/assist") as ws:
+        with client.websocket_connect("/ws/assist", headers=_ASSIST_ORIGIN) as ws:
             ws.send_json({"type": "unknown_type", "message": "hello"})
             # Send a valid message after to verify connection is still alive
             ws.send_json({"type": "assist_query", "message": ""})
@@ -243,7 +245,7 @@ class TestAssistWebSocket:
         original = stub.chat_stream  # type: ignore[union-attr]
         stub.chat_stream = _gen  # type: ignore[union-attr]
         try:
-            with client.websocket_connect("/ws/assist") as ws:
+            with client.websocket_connect("/ws/assist", headers=_ASSIST_ORIGIN) as ws:
                 ws.send_json({"type": "assist_query", "message": "hi"})
                 tokens = []
                 while True:
@@ -261,7 +263,7 @@ class TestAssistWebSocket:
 
     def test_ws_assist_reset_clears_history(self, client: TestClient) -> None:
         """assist_reset clears history and connection stays alive."""
-        with client.websocket_connect("/ws/assist") as ws:
+        with client.websocket_connect("/ws/assist", headers=_ASSIST_ORIGIN) as ws:
             ws.send_json({"type": "assist_reset"})
             data = ws.receive_json()
             assert data["type"] == "assist_reset_done"
@@ -285,7 +287,7 @@ class TestAssistWebSocket:
         original = stub.chat_stream  # type: ignore[union-attr]
         stub.chat_stream = _capture  # type: ignore[union-attr]
         try:
-            with client.websocket_connect("/ws/assist") as ws:
+            with client.websocket_connect("/ws/assist", headers=_ASSIST_ORIGIN) as ws:
                 ws.send_json(
                     {
                         "type": "assist_query",
@@ -315,7 +317,7 @@ class TestAssistWebSocket:
         stub.chat_stream = _fail  # type: ignore[union-attr]
         stub.AssistantNotConfiguredError = _StubNotConfiguredError  # type: ignore[union-attr]
         try:
-            with client.websocket_connect("/ws/assist") as ws:
+            with client.websocket_connect("/ws/assist", headers=_ASSIST_ORIGIN) as ws:
                 ws.send_json({"type": "assist_query", "message": "test"})
                 data = ws.receive_json()
                 assert data["type"] == "assist_error"

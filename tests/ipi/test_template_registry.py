@@ -306,7 +306,7 @@ class TestCLIIntegration:
         param_names = [p.name for p in generate.params]
         assert "template" in param_names
 
-    @patch("q_ai.ipi.cli.generate_documents")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
     def test_template_flag_threads_to_service(self, mock_gen: object) -> None:
         mock_gen.return_value = GenerateResult(campaigns=[], errors=[])  # type: ignore[attr-defined]
         result = runner.invoke(

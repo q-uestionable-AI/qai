@@ -25,6 +25,14 @@ If you discover a security vulnerability in {q-AI}, please report it responsibly
 
 Out of scope: vulnerabilities in third-party MCP servers or AI systems discovered *by* the tool — those should be reported to the relevant vendor.
 
+## Evidence at Rest
+
+{q-AI} stores run artifacts locally in plaintext under `~/.qai/`. The SQLite database at `~/.qai/qai.db` includes IPI callback hit bodies, headers, source IPs, user agents, sweep and probe scoring data, and other finding evidence. Payload documents, exports, and backups live alongside it under the same directory.
+
+Access control relies on filesystem permissions. On POSIX, `~/.qai/` is created with mode `0o700`; any pre-existing wider mode is narrowed on the next qai startup. On Windows the default user-profile ACLs apply — qai does not set additional ACL restrictions there.
+
+To purge or rotate evidence: `qai db reset` wipes the database entirely; `qai runs delete <run_id>` removes a specific run and its findings; `qai db backup` takes a timestamped snapshot before destructive operations.
+
 ## Supported Versions
 
 | Version | Supported |

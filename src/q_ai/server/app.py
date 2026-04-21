@@ -34,12 +34,14 @@ def _migrate_unbound_runs(db_path: Path | None) -> None:
       2. If absent, create one: ``type='virtual'``, name
          ``"(Unbound historical intel)"``, metadata
          ``{"kind": "synthetic-unbound"}``.
-      3. Config-aware backfill: parent workflow runs persist their
-         target binding in ``config['target_id']`` (see
-         :meth:`WorkflowRunner.start` — the runs row is created with
-         ``target_id`` NULL and the real id is stashed in the config
-         JSON blob). Before the catch-all below, promote those rows to
-         use their config-bound target where the id still exists.
+      3. Config-aware backfill: since v0.10.4,
+         :meth:`WorkflowRunner.start` populates ``runs.target_id``
+         directly from ``config['target_id']`` at row creation, so new
+         workflow rows are already bound. Historical rows from before
+         that change may have ``target_id`` NULL with the real id
+         stashed in the config JSON blob; before the catch-all below,
+         promote those rows to their config-bound target where the id
+         still exists.
       4. Reparent: ``UPDATE runs SET target_id = ? WHERE target_id IS
          NULL`` — module-agnostic, all remaining historically unbound
          runs bucket into the synthetic Unbound target.
@@ -136,12 +138,20 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     from q_ai.core.db import get_connection
     from q_ai.core.models import RunStatus
+    from q_ai.core.paths import ensure_qai_dir
     from q_ai.services import run_service
     from q_ai.services.managed_listener import (
         MANAGER_CLI,
         detect_existing_listener,
         start_adopted_poller,
     )
+
+    # Harden the qai data directory permissions (0o700 on POSIX). Idempotent
+    # and cheap — runs every startup so previously wider modes get narrowed.
+    try:
+        await asyncio.to_thread(ensure_qai_dir, getattr(app.state, "qai_dir", None))
+    except Exception:
+        logger.exception("Failed to harden qai data directory; continuing startup")
 
     # Phase 5 — one-time idempotent migration that reparents historical
     # NULL-target_id runs to a synthetic Unbound target. Wrapped in
