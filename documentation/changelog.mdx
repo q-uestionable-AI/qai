@@ -3,6 +3,54 @@ title: Changelog
 description: Release history for q-ai
 ---
 
+## v0.10.4
+
+Post-review hardening from the 2026-04-21 cross-AI repo review round.
+One feature branch, six discrete work areas.
+
+### Security: WebSocket Origin allowlist (CSWSH)
+
+- `/ws` and `/ws/assist` now validate the `Origin` header against
+  `http://127.0.0.1[:port]` and `http://localhost[:port]` before
+  accepting the handshake. Disallowed origins and missing-Origin
+  requests close with WebSocket code `1008` before any frame exchange.
+- Shared helper lives at `q_ai.server.routes._shared.reject_unless_local_origin`
+  so both endpoints apply identical policy.
+
+### Security: `~/.qai/` hardened to `0o700` on POSIX
+
+- New `q_ai.core.paths.ensure_qai_dir` helper centralises creation of
+  the qai data directory and enforces mode `0o700` on POSIX on every
+  call (narrowing any pre-existing wider mode).
+- Server startup, bridge-token creation, and framework-update cache
+  writes all route through the helper. Windows behaviour is mkdir-only
+  with default NTFS ACLs — see `SECURITY.md` → *Evidence at Rest*.
+
+### Fixed: parent workflow runs born with `target_id` bound
+
+- `WorkflowRunner.start()` now sources `target_id` from
+  `config['target_id']` and persists it on the `runs` row at creation.
+  The `_migrate_unbound_runs` lifespan hook stays in place unchanged
+  as a safety net for historical NULL rows.
+
+### Changed: `ipi/cli.py` decomposed into `ipi/commands/`
+
+- Pure move-and-rewire: `cli.py` shrinks from ~1800 lines to ~75 and
+  becomes a thin composition layer. Each subcommand lives in its own
+  module under `q_ai.ipi.commands`. Shared state (`app`, `console`,
+  format/technique constants, `validate_format`) lives in
+  `commands/_shared.py`.
+- `qai ipi --help` output is byte-identical to the v0.10.3 release.
+
+### Docs
+
+- `SECURITY.md` gains an *Evidence at Rest* section documenting the
+  plaintext contents of `~/.qai/qai.db`, the access boundary, and the
+  purge/rotate paths (`qai db reset`, `qai runs delete`, `qai db backup`).
+- Architecture overview and core docs: removed the stale `schema V10`
+  references (replaced with "auto-migrating schema") and corrected the
+  bare-`qai` UI-launch claim to `qai ui`.
+
 ## v0.10.3
 
 Cosmetic polish on the Intel target detail page.

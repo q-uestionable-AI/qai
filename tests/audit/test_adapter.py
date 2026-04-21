@@ -11,7 +11,7 @@ import pytest
 
 from q_ai.audit.adapter import AuditAdapter, AuditResult
 from q_ai.audit.orchestrator import ScanResult
-from q_ai.core.db import get_connection, get_run
+from q_ai.core.db import create_target, get_connection, get_run
 from q_ai.core.models import RunStatus
 from q_ai.core.schema import migrate
 from q_ai.mcp.models import ScanFinding, Severity
@@ -33,10 +33,12 @@ def db_path(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def runner(db_path: Path) -> WorkflowRunner:
-    """Create a WorkflowRunner with a temp database."""
+    """Create a WorkflowRunner with a temp database and a real target."""
+    with get_connection(db_path) as conn:
+        target_id = create_target(conn, type="server", name="test-target")
     return WorkflowRunner(
         workflow_id="assess",
-        config={"target_id": "t1"},
+        config={"target_id": target_id},
         db_path=db_path,
     )
 
