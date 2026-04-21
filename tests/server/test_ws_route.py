@@ -12,7 +12,7 @@ class TestWSEndpoint:
 
     def test_ws_endpoint_accepts_connection(self, client: TestClient) -> None:
         """The /ws endpoint accepts WebSocket connections."""
-        with client.websocket_connect("/ws") as ws:
+        with client.websocket_connect("/ws", headers={"origin": "http://localhost:8000"}) as ws:
             # Connection established — send a message to verify two-way
             ws.send_text("ping")
 
