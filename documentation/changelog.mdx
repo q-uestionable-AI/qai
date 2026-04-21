@@ -3,6 +3,24 @@ title: Changelog
 description: Release history for q-ai
 ---
 
+## v0.10.3
+
+Cosmetic polish on the Intel target detail page.
+
+### Fixed: pluralization at `count == 1`
+
+- Sweep summary renders `1 template × 1 style` (not `1 templates × 1 styles`).
+- Probe summary renders `1 probe across 1 category` (not `1 probes across 1 categories`).
+- Probe per-row counts render `1 probe / N cats` (not `1 probes / N cats`).
+
+### Changed: synthetic Unbound target copy
+
+The `(Unbound historical intel)` backstop target's detail page now
+renders distinct descriptive copy in the Imports, Probe Runs, and
+Sweep Runs sections — explaining what each section holds for the
+backstop target — instead of the action-prompt empty-state copy
+("Run a probe…", "Import findings…") that every other target shows.
+
 ## v0.10.2
 
 Persists the `citation_frame` selection from v0.10.1 so plain and

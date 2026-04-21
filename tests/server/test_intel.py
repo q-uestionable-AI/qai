@@ -857,6 +857,119 @@ class TestIntelTargetDetailProbeRendering:
         assert 0 < latest_pos < mid_pos < earlier_pos
 
 
+class TestIntelTargetDetailPolish:
+    """v0.10.3 polish: pluralization at count == 1 and Unbound target copy."""
+
+    def test_sweep_summary_pluralization_at_count_one(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        """Sweep summary singular renders ``1 template`` / ``1 style``."""
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="one-sweep-singular")
+            _seed_sweep_run(
+                conn,
+                target_id,
+                finished_at="2026-04-15T12:00:00+00:00",
+                template_count=1,
+                style_count=1,
+                total_cases=1,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert resp.status_code == 200
+        assert "1 template" in text
+        assert "1 templates" not in text
+        assert "1 style" in text
+        assert "1 styles" not in text
+
+    def test_probe_summary_pluralization_at_count_one(
+        self, tmp_db: Path, client: TestClient
+    ) -> None:
+        """Probe summary singular renders ``1 probe`` / ``1 category``."""
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="one-probe-singular")
+            _seed_probe_run(
+                conn,
+                target_id,
+                finished_at="2026-04-15T12:00:00+00:00",
+                total_probes=1,
+                categories=1,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert resp.status_code == 200
+        assert "1 probe" in text
+        assert "1 probes" not in text
+        assert "1 category" in text
+        assert "1 categories" not in text
+
+    def test_probe_row_pluralization_at_count_one(self, tmp_db: Path, client: TestClient) -> None:
+        """Probe per-row counts render ``1 probe / 1 cats`` at singular counts."""
+        conn = _open_db(tmp_db)
+        try:
+            target_id = create_target(conn, type="server", name="one-probe-row-singular")
+            run_id = _seed_probe_run(
+                conn,
+                target_id,
+                finished_at="2026-04-15T12:00:00+00:00",
+                total_probes=1,
+                categories=1,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert resp.status_code == 200
+        start = text.find(f'id="probe-run-{run_id}"')
+        assert start != -1
+        end = text.find("</a>", start)
+        assert end != -1
+        row = text[start:end]
+        assert "1 probe" in row
+        assert "1 probes" not in row
+
+    def test_unbound_target_renders_distinct_copy(self, tmp_db: Path, client: TestClient) -> None:
+        """Synthetic Unbound target detail page replaces action-prompt copy.
+
+        The synthetic Unbound target is created by the Phase 5 lifespan
+        migration (see :func:`_migrate_unbound_runs`) so it exists in
+        ``tmp_db`` without explicit seeding.
+        """
+        conn = _open_db(tmp_db)
+        try:
+            row = conn.execute(
+                "SELECT id FROM targets WHERE json_extract(metadata, '$.kind') = ?",
+                ("synthetic-unbound",),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "synthetic Unbound target should exist after lifespan migration"
+        target_id = row["id"]
+
+        resp = client.get(f"/intel/targets/{target_id}")
+        text = resp.text
+        assert resp.status_code == 200
+        assert "No imports yet." not in text
+        assert "No probe runs yet." not in text
+        assert "No sweep runs yet." not in text
+        assert "/intel#card-import" not in text
+        assert "/intel#card-probe" not in text
+        assert "/intel#card-sweep" not in text
+        assert "Run a " not in text
+
+
 class TestSweepLaunch:
     """POST /api/intel/sweep/launch validates and accepts."""
 
