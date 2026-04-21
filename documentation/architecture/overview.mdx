@@ -7,7 +7,7 @@ qai is a modular, layered system with seven security testing modules unified thr
 
 ## Architecture Layers
 
-**Web UI Layer** — FastAPI application server with HTMX for dynamic interactions, Jinja2 server-side rendering, and WebSocket channels for real-time run status and IPI hit notifications. Launched by running `qai` with no subcommand.
+**Web UI Layer** — FastAPI application server with HTMX for dynamic interactions, Jinja2 server-side rendering, and WebSocket channels for real-time run status and IPI hit notifications. Launched by running `qai ui`.
 
 **Orchestrator Layer** — Workflow registry, WorkflowRunner for background task execution, module adapters for lifecycle management. Manages parent/child run relationships and cross-module coordination.
 
@@ -15,7 +15,7 @@ qai is a modular, layered system with seven security testing modules unified thr
 
 **Module Layer** — Seven security modules (audit, proxy, inject, chain, ipi, cxp, rxp), each with a CLI subcommand (Typer), adapter class for orchestrator integration, and mapper for DB persistence.
 
-**Shared Core Layer** — SQLite database (WAL mode, schema V10), configuration management (YAML + keyring + DB settings), FrameworkResolver for OWASP MCP Top 10 / MITRE ATLAS / CWE / OWASP Agentic Top 10 mapping, MitigationResolver for structured finding guidance, RunGuidance for deployment playbooks, LLM provider abstraction via litellm.
+**Shared Core Layer** — SQLite database (WAL mode, auto-migrating schema), configuration management (YAML + keyring + DB settings), FrameworkResolver for OWASP MCP Top 10 / MITRE ATLAS / CWE / OWASP Agentic Top 10 mapping, MitigationResolver for structured finding guidance, RunGuidance for deployment playbooks, LLM provider abstraction via litellm.
 
 **MCP Layer** — Shared MCP connection utilities (`q_ai.mcp`) for stdio, SSE, and Streamable HTTP transports. Used by audit, proxy, and inject modules.
 
