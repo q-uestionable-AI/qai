@@ -47,7 +47,7 @@ class TestGenerateAutoDiscovery:
     """generate reads active-callback state when --callback is omitted."""
 
     @patch("q_ai.ipi.commands.generate.generate_documents")
-    @patch("q_ai.ipi.commands.generate.persist_generate", create=True)
+    @patch("q_ai.ipi.mapper.persist_generate")
     def test_uses_state_when_callback_omitted(
         self,
         _mock_persist: object,
@@ -79,7 +79,7 @@ class TestGenerateAutoDiscovery:
         assert kwargs["callback_url"] == state.public_url
 
     @patch("q_ai.ipi.commands.generate.generate_documents")
-    @patch("q_ai.ipi.commands.generate.persist_generate", create=True)
+    @patch("q_ai.ipi.mapper.persist_generate")
     def test_explicit_callback_flag_overrides_state(
         self,
         _mock_persist: object,
@@ -112,7 +112,7 @@ class TestGenerateAutoDiscovery:
         assert kwargs["callback_url"] == "http://explicit:9000"
 
     @patch("q_ai.ipi.commands.generate.generate_documents")
-    @patch("q_ai.ipi.commands.generate.persist_generate", create=True)
+    @patch("q_ai.ipi.mapper.persist_generate")
     def test_positional_callback_overrides_state(
         self,
         _mock_persist: object,
@@ -143,7 +143,7 @@ class TestGenerateAutoDiscovery:
         assert kwargs["callback_url"] == "http://positional:7000"
 
     @patch("q_ai.ipi.commands.generate.generate_documents")
-    @patch("q_ai.ipi.commands.generate.persist_generate", create=True)
+    @patch("q_ai.ipi.mapper.persist_generate")
     def test_positional_callback_skips_state_lookup_entirely(
         self,
         _mock_persist: object,
@@ -185,7 +185,7 @@ class TestGenerateAutoDiscovery:
         assert kwargs["callback_url"] == "http://fallback:8080"
 
     @patch("q_ai.ipi.commands.generate.generate_documents")
-    @patch("q_ai.ipi.commands.generate.persist_generate", create=True)
+    @patch("q_ai.ipi.mapper.persist_generate")
     def test_stale_state_displayed_when_no_explicit_callback(
         self,
         _mock_persist: object,

@@ -10,9 +10,10 @@ import typer
 
 from q_ai.ipi import db
 from q_ai.ipi.commands._shared import app, console
+from q_ai.ipi.models import Campaign, Hit
 
 
-def _build_ipi_interpret_prompt(campaigns: list, hits: list) -> str:
+def _build_ipi_interpret_prompt(campaigns: list[Campaign], hits: list[Hit]) -> str:
     """Assemble an AI-evaluation prompt from IPI export data.
 
     Args:
@@ -101,5 +102,5 @@ def export(
         ],
     }
 
-    output.write_text(json.dumps(data, indent=2))
+    output.write_text(json.dumps(data, indent=2), encoding="utf-8")
     console.print(f"[green]OK Exported to {output}[/green]")

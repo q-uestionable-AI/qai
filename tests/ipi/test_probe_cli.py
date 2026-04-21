@@ -99,11 +99,8 @@ class TestProbeApiKey:
     """Tests for API key resolution."""
 
     @patch("q_ai.ipi.probe_service.run_probes")
-    @patch("q_ai.ipi.commands.probe.persist_probe_run", create=True)
     @patch.dict("os.environ", {"QAI_PROBE_API_KEY": "env-key"})
-    def test_env_var_flows_to_run_probes(
-        self, _mock_persist: MagicMock, mock_run_probes: MagicMock
-    ) -> None:
+    def test_env_var_flows_to_run_probes(self, mock_run_probes: MagicMock) -> None:
         """QAI_PROBE_API_KEY env var is passed through to run_probes."""
         from q_ai.ipi.probe_service import ProbeRunResult
 
@@ -113,7 +110,9 @@ class TestProbeApiKey:
 
         mock_run_probes.side_effect = _fake_run
 
-        with patch("q_ai.ipi.commands.probe.persist_probe_run", return_value="fake-run-id"):
+        # persist_probe_run is imported lazily inside the command body, so the
+        # live-import binding points at q_ai.ipi.probe_service — patch there.
+        with patch("q_ai.ipi.probe_service.persist_probe_run", return_value="fake-run-id"):
             result = runner.invoke(
                 app,
                 ["ipi", "probe", "http://localhost/v1", "--model", "test"],

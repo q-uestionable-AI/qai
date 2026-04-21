@@ -235,11 +235,13 @@ class TestMigrateUnboundRuns:
             conn.close()
 
     def test_all_rows_bound_is_noop(self, tmp_db: Path) -> None:
-        """When every run has target_id set, the migration performs zero UPDATEs.
+        """When every run has target_id set, the migration leaves bindings intact.
 
         WA2 closes the forward path so new workflow runs are born with
         ``runs.target_id`` populated. This test locks in that scenario —
-        a DB where all rows are already bound — as a supported no-op.
+        a DB where all rows are already bound — as a supported no-op at
+        the end-state level: no NULL rows remain and every binding is
+        preserved.
         """
         with get_connection(tmp_db) as conn:
             t1 = create_target(conn, type="server", name="t1")

@@ -34,12 +34,14 @@ def _migrate_unbound_runs(db_path: Path | None) -> None:
       2. If absent, create one: ``type='virtual'``, name
          ``"(Unbound historical intel)"``, metadata
          ``{"kind": "synthetic-unbound"}``.
-      3. Config-aware backfill: parent workflow runs persist their
-         target binding in ``config['target_id']`` (see
-         :meth:`WorkflowRunner.start` — the runs row is created with
-         ``target_id`` NULL and the real id is stashed in the config
-         JSON blob). Before the catch-all below, promote those rows to
-         use their config-bound target where the id still exists.
+      3. Config-aware backfill: since v0.10.4,
+         :meth:`WorkflowRunner.start` populates ``runs.target_id``
+         directly from ``config['target_id']`` at row creation, so new
+         workflow rows are already bound. Historical rows from before
+         that change may have ``target_id`` NULL with the real id
+         stashed in the config JSON blob; before the catch-all below,
+         promote those rows to their config-bound target where the id
+         still exists.
       4. Reparent: ``UPDATE runs SET target_id = ? WHERE target_id IS
          NULL`` — module-agnostic, all remaining historically unbound
          runs bucket into the synthetic Unbound target.
