@@ -961,13 +961,15 @@ class TestIntelTargetDetailPolish:
         resp = client.get(f"/intel/targets/{target_id}")
         text = resp.text
         assert resp.status_code == 200
+        assert "Any historical imports that weren't bound" in text
+        assert "Historical probe runs that weren't bound" in text
+        assert "Historical sweep runs that weren't bound" in text
+        # Empty-state action prompts must not fire for the Unbound target.
         assert "No imports yet." not in text
         assert "No probe runs yet." not in text
         assert "No sweep runs yet." not in text
         assert "/intel#card-import" not in text
         assert "/intel#card-probe" not in text
-        assert "/intel#card-sweep" not in text
-        assert "Run a " not in text
 
 
 class TestSweepLaunch:
