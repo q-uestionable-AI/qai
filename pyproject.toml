@@ -49,6 +49,7 @@ dependencies = [
     "chromadb>=1.5,<2",
     "numpy>=1.26",
     "torch>=2.0",
+    "python-dotenv>=1.2.2",
 ]
 
 [project.scripts]
