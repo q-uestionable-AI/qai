@@ -48,6 +48,13 @@
                 </a>
                 {% endfor %}
             </div>
+            {% elif target.metadata and target.metadata.kind == "synthetic-unbound" %}
+            <div class="intel-section-body">
+                <p class="intel-card-desc" style="margin-bottom: 0;">
+                    Any historical imports that weren't bound to a specific target land here.
+                    New imports attach to the target you choose at import time.
+                </p>
+            </div>
             {% else %}
             <div class="intel-section-body">
                 <p class="intel-card-desc" style="margin-bottom: 0;">
@@ -75,8 +82,8 @@
                 {% elif latest_probe.metadata_available %}
                 <p class="intel-probe-summary">
                     Latest probe: {{ latest_probe.finished_at | format_age }} ago
-                    &mdash; {{ latest_probe.total_probes }} probes
-                    across {{ latest_probe.category_count }} categories,
+                    &mdash; {{ latest_probe.total_probes }} probe{{ "" if latest_probe.total_probes == 1 else "s" }}
+                    across {{ latest_probe.category_count }} categor{{ "y" if latest_probe.category_count == 1 else "ies" }},
                     {{ "%.0f" | format(latest_probe.overall_compliance_rate * 100) }}% compliance,
                     {{ latest_probe.overall_severity.name | lower }} severity,
                     {{ latest_probe.status.name | format_status | lower }}
@@ -95,7 +102,7 @@
                         <span class="intel-probe-col-age">{{ run.finished_at | format_age }}</span>
                         {% if run.metadata_available %}
                         <span class="intel-probe-col-counts">
-                            {{ run.total_probes }} probes / {{ run.category_count }} cats
+                            {{ run.total_probes }} probe{{ "" if run.total_probes == 1 else "s" }} / {{ run.category_count }} cats
                         </span>
                         <span class="intel-probe-col-rate">
                             {{ "%.0f" | format(run.overall_compliance_rate * 100) }}%
@@ -116,6 +123,13 @@
                     </a>
                     {% endfor %}
                 </div>
+            {% elif target.metadata and target.metadata.kind == "synthetic-unbound" %}
+            <div class="intel-section-body">
+                <p class="intel-card-desc" style="margin-bottom: 0;">
+                    Historical probe runs that weren't bound to a specific target land here.
+                    New probe runs bind to a target when launched.
+                </p>
+            </div>
             {% else %}
             <div class="intel-section-body">
                 <p class="intel-card-desc" style="margin-bottom: 0;">
@@ -143,8 +157,8 @@
                 {% elif latest.metadata_available and latest.reps is not none %}
                 <p class="intel-sweep-summary">
                     Latest sweep: {{ latest.finished_at | format_age }} ago
-                    &mdash; {{ latest.template_count }} templates
-                    &times; {{ latest.style_count }} styles,
+                    &mdash; {{ latest.template_count }} template{{ "" if latest.template_count == 1 else "s" }}
+                    &times; {{ latest.style_count }} style{{ "" if latest.style_count == 1 else "s" }},
                     N={{ latest.reps }},
                     {{ latest.status.name | format_status | lower }}
                 </p>
@@ -180,6 +194,13 @@
                     </a>
                     {% endfor %}
                 </div>
+            {% elif target.metadata and target.metadata.kind == "synthetic-unbound" %}
+            <div class="intel-section-body">
+                <p class="intel-card-desc" style="margin-bottom: 0;">
+                    Historical sweep runs that weren't bound to a specific target land here.
+                    New sweep runs bind to a target when launched.
+                </p>
+            </div>
             {% else %}
             <div class="intel-section-body">
                 <p class="intel-card-desc" style="margin-bottom: 0;">
