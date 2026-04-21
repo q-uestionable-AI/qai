@@ -31,7 +31,7 @@ class TestListenTunnelFlag:
         fake_adapter.install_instructions.return_value = "INSTALL_GUIDANCE_MARKER"
 
         with patch(
-            "q_ai.ipi.cli.get_tunnel_adapter",
+            "q_ai.ipi.commands.listen.get_tunnel_adapter",
             return_value=fake_adapter,
         ):
             result = runner.invoke(app, ["ipi", "listen", "--tunnel", "cloudflare"])
@@ -47,8 +47,8 @@ class TestListenTunnelFlag:
         fake_adapter.start.return_value = "https://happy-example.trycloudflare.com"
 
         with (
-            patch("q_ai.ipi.cli.get_tunnel_adapter", return_value=fake_adapter),
-            patch("q_ai.ipi.cli.start_server") as mock_start,
+            patch("q_ai.ipi.commands.listen.get_tunnel_adapter", return_value=fake_adapter),
+            patch("q_ai.ipi.commands.listen.start_server") as mock_start,
         ):
             result = runner.invoke(app, ["ipi", "listen", "--tunnel", "cloudflare"])
 
@@ -71,8 +71,8 @@ class TestListenTunnelFlag:
         fake_adapter.start.side_effect = TunnelStartupError("cloudflared exited")
 
         with (
-            patch("q_ai.ipi.cli.get_tunnel_adapter", return_value=fake_adapter),
-            patch("q_ai.ipi.cli.start_server") as mock_start,
+            patch("q_ai.ipi.commands.listen.get_tunnel_adapter", return_value=fake_adapter),
+            patch("q_ai.ipi.commands.listen.start_server") as mock_start,
         ):
             result = runner.invoke(app, ["ipi", "listen", "--tunnel", "cloudflare"])
 
@@ -84,8 +84,8 @@ class TestListenTunnelFlag:
     def test_no_tunnel_flag_preserves_legacy_behavior(self) -> None:
         """Without --tunnel, the adapter is never touched."""
         with (
-            patch("q_ai.ipi.cli.get_tunnel_adapter") as mock_factory,
-            patch("q_ai.ipi.cli.start_server") as mock_start,
+            patch("q_ai.ipi.commands.listen.get_tunnel_adapter") as mock_factory,
+            patch("q_ai.ipi.commands.listen.start_server") as mock_start,
         ):
             result = runner.invoke(app, ["ipi", "listen"])
 

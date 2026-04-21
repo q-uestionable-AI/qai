@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from q_ai.ipi.cli import _build_ipi_interpret_prompt
+from q_ai.ipi.commands.export import _build_ipi_interpret_prompt
 
 
 class TestBuildIpiInterpretPrompt:

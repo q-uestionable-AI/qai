@@ -1,7 +1,7 @@
 import inspect
 import unittest
 
-from q_ai.ipi.cli import listen
+from q_ai.ipi.commands.listen import listen
 from q_ai.ipi.server import start_server
 
 
