@@ -233,3 +233,32 @@ class TestMigrateUnboundRuns:
             assert null_row["target_id"] == synthetic["id"]
         finally:
             conn.close()
+
+    def test_all_rows_bound_is_noop(self, tmp_db: Path) -> None:
+        """When every run has target_id set, the migration performs zero UPDATEs.
+
+        WA2 closes the forward path so new workflow runs are born with
+        ``runs.target_id`` populated. This test locks in that scenario —
+        a DB where all rows are already bound — as a supported no-op.
+        """
+        with get_connection(tmp_db) as conn:
+            t1 = create_target(conn, type="server", name="t1")
+            t2 = create_target(conn, type="server", name="t2")
+            create_run(conn, module="workflow", name="w1", target_id=t1)
+            create_run(conn, module="import", name="i1", target_id=t2)
+            conn.commit()
+
+        _migrate_unbound_runs(tmp_db)
+
+        conn = _open_db(tmp_db)
+        try:
+            null_rows = conn.execute(
+                "SELECT COUNT(*) AS n FROM runs WHERE target_id IS NULL"
+            ).fetchone()
+            assert null_rows["n"] == 0
+            bound_rows = conn.execute(
+                "SELECT target_id FROM runs WHERE module IN ('workflow', 'import')"
+            ).fetchall()
+            assert {r["target_id"] for r in bound_rows} == {t1, t2}
+        finally:
+            conn.close()

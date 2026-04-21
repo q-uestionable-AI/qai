@@ -45,6 +45,13 @@ def db_path(tmp_path: Path) -> Path:
     return path
 
 
+@pytest.fixture
+def target_id(db_path: Path) -> str:
+    """Create a real target so runner.start() can persist its FK reference."""
+    with get_connection(db_path) as conn:
+        return create_target(conn, type="server", name="test-target")
+
+
 # ---------------------------------------------------------------------------
 # Bug #1: Duplicate target name creates distinct runs
 # ---------------------------------------------------------------------------
@@ -120,7 +127,7 @@ class TestDuplicateTargetName:
 class TestTerminalStateEvent:
     """runner.complete() must emit a run_status event with terminal status."""
 
-    async def test_complete_emits_terminal_event(self, db_path: Path) -> None:
+    async def test_complete_emits_terminal_event(self, db_path: Path, target_id: str) -> None:
         """complete() emits run_status with correct fields for WebSocket consumers."""
         events: list[dict] = []
         ws_manager = AsyncMock()
@@ -128,7 +135,7 @@ class TestTerminalStateEvent:
 
         runner = WorkflowRunner(
             workflow_id="assess",
-            config={"target_id": "t1"},
+            config={"target_id": target_id},
             ws_manager=ws_manager,
             db_path=db_path,
         )
@@ -147,7 +154,7 @@ class TestTerminalStateEvent:
         assert event["module"] == "workflow"
         assert event["status"] == int(RunStatus.COMPLETED)
 
-    async def test_complete_emits_after_db_write(self, db_path: Path) -> None:
+    async def test_complete_emits_after_db_write(self, db_path: Path, target_id: str) -> None:
         """DB status is terminal BEFORE the event is broadcast."""
         db_status_at_broadcast: list[RunStatus | None] = []
 
@@ -165,7 +172,7 @@ class TestTerminalStateEvent:
 
         runner = WorkflowRunner(
             workflow_id="assess",
-            config={"target_id": "t1"},
+            config={"target_id": target_id},
             ws_manager=ws_manager,
             db_path=db_path,
         )
@@ -174,7 +181,7 @@ class TestTerminalStateEvent:
 
         assert db_status_at_broadcast == [RunStatus.COMPLETED]
 
-    async def test_partial_status_emits_terminal_event(self, db_path: Path) -> None:
+    async def test_partial_status_emits_terminal_event(self, db_path: Path, target_id: str) -> None:
         """complete(PARTIAL) emits a terminal event recognized by the frontend."""
         events: list[dict] = []
         ws_manager = AsyncMock()
@@ -182,7 +189,7 @@ class TestTerminalStateEvent:
 
         runner = WorkflowRunner(
             workflow_id="assess",
-            config={"target_id": "t1"},
+            config={"target_id": target_id},
             ws_manager=ws_manager,
             db_path=db_path,
         )
@@ -205,11 +212,11 @@ class TestTerminalStateEvent:
 class TestElapsedTimerTimestamps:
     """DB timestamps must be set correctly for timer calculations."""
 
-    async def test_started_at_set_on_create(self, db_path: Path) -> None:
+    async def test_started_at_set_on_create(self, db_path: Path, target_id: str) -> None:
         """Run has started_at set when created."""
         runner = WorkflowRunner(
             workflow_id="assess",
-            config={"target_id": "t1"},
+            config={"target_id": target_id},
             db_path=db_path,
         )
         run_id = await runner.start()
@@ -218,11 +225,11 @@ class TestElapsedTimerTimestamps:
         assert run is not None
         assert run.started_at is not None
 
-    async def test_finished_at_set_on_complete(self, db_path: Path) -> None:
+    async def test_finished_at_set_on_complete(self, db_path: Path, target_id: str) -> None:
         """Run has finished_at set when completed."""
         runner = WorkflowRunner(
             workflow_id="assess",
-            config={"target_id": "t1"},
+            config={"target_id": target_id},
             db_path=db_path,
         )
         run_id = await runner.start()
@@ -232,11 +239,11 @@ class TestElapsedTimerTimestamps:
         assert run is not None
         assert run.finished_at is not None
 
-    async def test_finished_at_after_started_at(self, db_path: Path) -> None:
+    async def test_finished_at_after_started_at(self, db_path: Path, target_id: str) -> None:
         """finished_at >= started_at for a completed run."""
         runner = WorkflowRunner(
             workflow_id="assess",
-            config={"target_id": "t1"},
+            config={"target_id": target_id},
             db_path=db_path,
         )
         run_id = await runner.start()
@@ -248,11 +255,11 @@ class TestElapsedTimerTimestamps:
         assert run.finished_at is not None
         assert run.finished_at >= run.started_at
 
-    async def test_finished_at_not_set_while_running(self, db_path: Path) -> None:
+    async def test_finished_at_not_set_while_running(self, db_path: Path, target_id: str) -> None:
         """finished_at is None while the run is still RUNNING."""
         runner = WorkflowRunner(
             workflow_id="assess",
-            config={"target_id": "t1"},
+            config={"target_id": target_id},
             db_path=db_path,
         )
         run_id = await runner.start()
@@ -309,3 +316,54 @@ class TestProgressSeparateFromWorkflowName:
         resp = client.get("/operations")
         assert resp.status_code == 200
         assert "Run History" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# WA2: WorkflowRunner.start() persists target_id on the runs row
+# ---------------------------------------------------------------------------
+
+
+class TestWorkflowRunnerTargetBinding:
+    """``WorkflowRunner.start()`` must persist ``config['target_id']`` on the row.
+
+    Before this fix the parent runs row was created with ``target_id`` NULL
+    and only the ``_migrate_unbound_runs`` lifespan hook would reconcile it
+    from ``json_extract(config, '$.target_id')``. That reconciliation still
+    runs as a safety net for historical rows, but new rows are now born
+    correctly bound.
+    """
+
+    async def test_target_id_in_config_persists_on_row(self, db_path: Path) -> None:
+        """A workflow run with target_id in config has it on the runs row at start."""
+        with get_connection(db_path) as conn:
+            target_id = create_target(conn, type="server", name="test-target")
+            conn.commit()
+
+        runner = WorkflowRunner(
+            workflow_id="assess",
+            config={"target_id": target_id, "extra": "data"},
+            db_path=db_path,
+        )
+        run_id = await runner.start()
+
+        with get_connection(db_path) as conn:
+            run = get_run(conn, run_id)
+        assert run is not None
+        assert run.target_id == target_id
+
+    async def test_missing_target_id_leaves_row_null(self, db_path: Path) -> None:
+        """A workflow run with no target_id in config leaves runs.target_id NULL.
+
+        Preserves the path the lifespan migration is still responsible for.
+        """
+        runner = WorkflowRunner(
+            workflow_id="assess",
+            config={"other": "data"},
+            db_path=db_path,
+        )
+        run_id = await runner.start()
+
+        with get_connection(db_path) as conn:
+            run = get_run(conn, run_id)
+        assert run is not None
+        assert run.target_id is None
