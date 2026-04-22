@@ -11,8 +11,8 @@ import typer
 from rich.table import Table
 
 from q_ai.core.cli.prompt import build_teaching_tip, is_tty, prompt_or_fail
-from q_ai.ipi.commands._shared import app, console
-from q_ai.ipi.models import CitationFrame, DocumentTemplate, PayloadStyle, PayloadType
+from q_ai.ipi.commands._shared import _parse_citation_frame, app, console
+from q_ai.ipi.models import DocumentTemplate, PayloadStyle, PayloadType
 
 if TYPE_CHECKING:
     from q_ai.ipi.sweep_service import SweepCase, SweepRunResult
@@ -96,27 +96,6 @@ def _parse_sweep_payload_type(value: str) -> PayloadType:
             " Non-callback sweep is out of scope — see the IPI sweep brief."
         )
     return PayloadType.CALLBACK
-
-
-def _parse_citation_frame(value: str) -> CitationFrame:
-    """Parse --citation-frame. Accepts the two CitationFrame values.
-
-    Args:
-        value: Frame name. One of ``"plain"`` or ``"template-aware"``
-            (case-insensitive). Leading/trailing whitespace is tolerated.
-
-    Returns:
-        The resolved :class:`CitationFrame` enum.
-
-    Raises:
-        typer.BadParameter: If ``value`` is not a known frame.
-    """
-    normalized = value.strip().lower()
-    for frame in CitationFrame:
-        if frame.value == normalized:
-            return frame
-    valid = ", ".join(f"'{f.value}'" for f in CitationFrame)
-    raise typer.BadParameter(f"--citation-frame must be one of {valid} (got {value!r}).")
 
 
 def _display_sweep_dry_run(cases: list[SweepCase], reps: int) -> None:

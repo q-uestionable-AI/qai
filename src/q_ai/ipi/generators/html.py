@@ -27,7 +27,15 @@ import uuid
 from html import escape as _html_escape
 from pathlib import Path
 
-from q_ai.ipi.models import Campaign, DocumentTemplate, Format, PayloadStyle, PayloadType, Technique
+from q_ai.ipi.models import (
+    Campaign,
+    CitationFrame,
+    DocumentTemplate,
+    Format,
+    PayloadStyle,
+    PayloadType,
+    Technique,
+)
 
 from . import create_campaign_ids, generate_payload
 
@@ -222,6 +230,7 @@ def create_html(
     top_instruction: str = "",
     context_template: str = "",
     template: DocumentTemplate = DocumentTemplate.GENERIC,
+    citation_frame: CitationFrame = CitationFrame.TEMPLATE_AWARE,
 ) -> Campaign:
     """Generate an HTML file with hidden prompt injection payload.
 
@@ -244,6 +253,9 @@ def create_html(
             can interpolate the template's ``callback_role``. ``GENERIC``
             (default) preserves legacy behavior for OBVIOUS and
             non-CALLBACK payloads.
+        citation_frame: Forwarded to :func:`generate_payload` (see its
+            docstring). ``TEMPLATE_AWARE`` (default) preserves legacy
+            behavior.
 
     Returns:
         Campaign object with UUID and metadata.
@@ -272,6 +284,7 @@ def create_html(
         token=token,
         encoding=encoding,
         template=template,
+        citation_frame=citation_frame,
     )
 
     # Create base content
@@ -335,6 +348,7 @@ def create_all_html_variants(
     top_instruction: str = "",
     context_template: str = "",
     template: DocumentTemplate = DocumentTemplate.GENERIC,
+    citation_frame: CitationFrame = CitationFrame.TEMPLATE_AWARE,
 ) -> list[Campaign]:
     """Generate HTML files using multiple techniques.
 
@@ -351,6 +365,8 @@ def create_all_html_variants(
         template: Document context template forwarded to each
             ``create_html`` call so CALLBACK style bodies can interpolate
             the template's ``callback_role``.
+        citation_frame: Forwarded to each ``create_html`` call (see
+            :func:`generate_payload` for semantics).
 
     Returns:
         List of Campaign objects.
@@ -385,6 +401,7 @@ def create_all_html_variants(
             top_instruction=top_instruction,
             context_template=context_template,
             template=template,
+            citation_frame=citation_frame,
         )
         campaigns.append(campaign)
 

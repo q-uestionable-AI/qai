@@ -18,7 +18,7 @@ from q_ai.ipi.generators.ics import ICS_TECHNIQUES as ICS_TECHNIQUE_LIST
 from q_ai.ipi.generators.image import IMAGE_TECHNIQUES as IMAGE_TECHNIQUE_LIST
 from q_ai.ipi.generators.markdown import MARKDOWN_TECHNIQUES as MARKDOWN_TECHNIQUE_LIST
 from q_ai.ipi.generators.pdf import PDF_PHASE1_TECHNIQUES, PDF_PHASE2_TECHNIQUES
-from q_ai.ipi.models import Format
+from q_ai.ipi.models import CitationFrame, Format
 
 SUPPORTED_TUNNEL_PROVIDERS = ("cloudflare",)
 """Tunnel providers accepted by the ``--tunnel`` flag on ``listen``."""
@@ -161,6 +161,31 @@ _TECHNIQUE_SECTIONS: list[tuple[str, str, list[str], dict[str, str]]] = [
         },
     ),
 ]
+
+
+def _parse_citation_frame(value: str) -> CitationFrame:
+    """Parse --citation-frame. Accepts the two CitationFrame values.
+
+    Shared by both ``qai ipi sweep`` and ``qai ipi generate`` so the flag
+    has identical semantics on both commands (case-insensitive, whitespace
+    tolerated, and ``typer.BadParameter`` on unknown values).
+
+    Args:
+        value: Frame name. One of ``"plain"`` or ``"template-aware"``
+            (case-insensitive). Leading/trailing whitespace is tolerated.
+
+    Returns:
+        The resolved :class:`CitationFrame` enum.
+
+    Raises:
+        typer.BadParameter: If ``value`` is not a known frame.
+    """
+    normalized = value.strip().lower()
+    for frame in CitationFrame:
+        if frame.value == normalized:
+            return frame
+    valid = ", ".join(f"'{f.value}'" for f in CitationFrame)
+    raise typer.BadParameter(f"--citation-frame must be one of {valid} (got {value!r}).")
 
 
 def validate_format(format_name: str) -> Format:

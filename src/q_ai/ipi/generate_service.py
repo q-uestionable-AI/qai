@@ -32,6 +32,7 @@ from pathlib import Path
 from q_ai.ipi import db
 from q_ai.ipi.models import (
     Campaign,
+    CitationFrame,
     DocumentTemplate,
     Format,
     PayloadStyle,
@@ -213,6 +214,7 @@ def generate_documents(
     seed: int | None = None,
     encoding: str = "none",
     template: DocumentTemplate = DocumentTemplate.GENERIC,
+    citation_frame: CitationFrame = CitationFrame.TEMPLATE_AWARE,
 ) -> GenerateResult:
     """Generate payload documents and persist campaigns to the database.
 
@@ -242,6 +244,14 @@ def generate_documents(
             :func:`q_ai.ipi.generators.generate_payload`). Non-GENERIC
             values must list ``format_name`` in their compatible formats;
             otherwise a ``ValueError`` is raised.
+        citation_frame: Forwarded to every format generator (and therefore
+            to :func:`~q_ai.ipi.generators.generate_payload`). When
+            :attr:`CitationFrame.PLAIN` AND the case is
+            ``(CITATION, CALLBACK)``, the pre-PR-#121 hardcoded CITATION
+            sentence is emitted verbatim instead of the template-aware
+            composition. ``TEMPLATE_AWARE`` (default) preserves current
+            behavior. No effect on other ``(style, payload_type)``
+            combinations.
 
     Returns:
         GenerateResult with campaigns, skip count, and any errors.
@@ -290,6 +300,7 @@ def generate_documents(
             top_instruction=top_instruction,
             context_template=context_template,
             template=template,
+            citation_frame=citation_frame,
         )
 
         for campaign in campaigns:
@@ -316,6 +327,7 @@ def generate_documents(
             top_instruction=top_instruction,
             context_template=context_template,
             template=template,
+            citation_frame=citation_frame,
         )
         _finalize_campaign(campaign, file_path, template)
 

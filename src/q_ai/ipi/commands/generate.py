@@ -13,6 +13,7 @@ from q_ai.ipi.callback_state import read_valid_state
 from q_ai.ipi.commands._shared import (
     PHASE1_TECHNIQUES,
     PHASE2_TECHNIQUES,
+    _parse_citation_frame,
     app,
     console,
     validate_format,
@@ -20,6 +21,7 @@ from q_ai.ipi.commands._shared import (
 from q_ai.ipi.generate_service import GenerateResult, generate_documents
 from q_ai.ipi.generators import ENCODING_CHOICES, get_techniques_for_format
 from q_ai.ipi.models import (
+    CitationFrame,
     DocumentTemplate,
     Format,
     PayloadStyle,
@@ -458,6 +460,18 @@ def generate(  # noqa: PLR0913 — CLI entry point, one parameter per Typer opti
             case_sensitive=False,
         ),
     ] = DocumentTemplate.GENERIC,
+    citation_frame_value: Annotated[
+        str,
+        typer.Option(
+            "--citation-frame",
+            help=(
+                "Citation-style callback rendering: 'plain' uses pre-4.5 hardcoded"
+                " text (report-context baseline); 'template-aware' (default) uses"
+                " per-template callback rationale. No-op unless --payload-style is"
+                " 'citation' AND --payload-type is 'callback'."
+            ),
+        ),
+    ] = "template-aware",
     target: Annotated[
         str | None,
         typer.Option(
@@ -512,6 +526,7 @@ def generate(  # noqa: PLR0913 — CLI entry point, one parameter per Typer opti
     techniques = _resolve_techniques(technique, format_name)
 
     template = _resolve_template_for_target(ctx, target, template)
+    citation_frame_enum: CitationFrame = _parse_citation_frame(citation_frame_value)
 
     result = generate_documents(
         callback_url=callback_url,
@@ -524,6 +539,7 @@ def generate(  # noqa: PLR0913 — CLI entry point, one parameter per Typer opti
         seed=seed,
         encoding=encoding,
         template=template,
+        citation_frame=citation_frame_enum,
     )
 
     from q_ai.ipi.mapper import persist_generate

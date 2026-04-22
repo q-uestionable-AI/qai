@@ -23,7 +23,15 @@ from reportlab.lib.colors import black, white
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-from q_ai.ipi.models import Campaign, DocumentTemplate, Format, PayloadStyle, PayloadType, Technique
+from q_ai.ipi.models import (
+    Campaign,
+    CitationFrame,
+    DocumentTemplate,
+    Format,
+    PayloadStyle,
+    PayloadType,
+    Technique,
+)
 
 from . import create_campaign_ids, encode_payload, generate_payload
 
@@ -344,6 +352,7 @@ def create_pdf(
     top_instruction: str = "",
     context_template: str = "",
     template: DocumentTemplate = DocumentTemplate.GENERIC,
+    citation_frame: CitationFrame = CitationFrame.TEMPLATE_AWARE,
 ) -> Campaign:
     """Generate a PDF with hidden prompt injection payload.
 
@@ -370,6 +379,9 @@ def create_pdf(
             can interpolate the template's ``callback_role``. ``GENERIC``
             (default) preserves legacy behavior for OBVIOUS and
             non-CALLBACK payloads.
+        citation_frame: Forwarded to :func:`generate_payload` (see its
+            docstring). ``TEMPLATE_AWARE`` (default) preserves legacy
+            behavior.
 
     Returns:
         Campaign object with UUID and metadata.
@@ -386,6 +398,7 @@ def create_pdf(
         token=token,
         encoding=encoding,
         template=template,
+        citation_frame=citation_frame,
     )
 
     base_url = callback_url if callback_url.endswith("/") else callback_url + "/"
@@ -459,6 +472,7 @@ def create_all_variants(
     top_instruction: str = "",
     context_template: str = "",
     template: DocumentTemplate = DocumentTemplate.GENERIC,
+    citation_frame: CitationFrame = CitationFrame.TEMPLATE_AWARE,
 ) -> list[Campaign]:
     """Generate PDFs using multiple techniques.
 
@@ -478,6 +492,8 @@ def create_all_variants(
         template: Document context template forwarded to each
             ``create_pdf`` call so CALLBACK style bodies can interpolate
             the template's ``callback_role``.
+        citation_frame: Forwarded to each ``create_pdf`` call (see
+            :func:`generate_payload` for semantics).
 
     Returns:
         List of Campaign objects.
@@ -503,6 +519,7 @@ def create_all_variants(
             top_instruction=top_instruction,
             context_template=context_template,
             template=template,
+            citation_frame=citation_frame,
         )
         campaigns.append(campaign)
 
