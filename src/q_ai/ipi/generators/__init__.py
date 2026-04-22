@@ -837,7 +837,6 @@ def create_campaign_ids(seed: int | None = None, sequence: int = 0) -> tuple[str
 __all__ = [
     "ENCODING_CHOICES",
     "TECHNIQUE_FORMATS",
-    "_PLAIN_CITATION_CALLBACK_TEMPLATE",
     "create_campaign_ids",
     "encode_payload",
     "generate_payload",

@@ -227,15 +227,34 @@ class TestCitationFrameForwarding:
 
         assert seen["citation_frame"] == CitationFrame.PLAIN
 
-    @pytest.mark.usefixtures("stub_dispatch", "_no_persist")
-    def test_default_is_template_aware(self, tmp_path: Path) -> None:
-        """Omitting citation_frame preserves the TEMPLATE_AWARE default."""
-        # Stubs don't capture kwargs, but the call must succeed — a missing
-        # default would break parameter propagation before reaching the stub.
-        result = generate_documents(
+    @pytest.mark.usefixtures("_no_persist")
+    def test_default_is_template_aware(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Omitting citation_frame forwards the TEMPLATE_AWARE default."""
+        seen: dict[str, Any] = {}
+
+        def capture_single(
+            file_path: Path,
+            tech: Technique,
+            *args: Any,
+            **kwargs: Any,
+        ) -> Campaign:
+            del args
+            seen.update(kwargs)
+            return _stub_campaign(filename=file_path.name, technique=tech.value)
+
+        patched = dict(generate_service._FORMAT_DISPATCH)
+        patched[Format.MARKDOWN] = (capture_single, _stub_batch)
+        monkeypatch.setattr(generate_service, "_FORMAT_DISPATCH", patched)
+
+        generate_documents(
             callback_url="http://localhost:8080",
             output=tmp_path,
             format_name=Format.MARKDOWN,
             techniques=[Technique.HTML_COMMENT],
         )
-        assert len(result.campaigns) == 1
+
+        assert seen["citation_frame"] == CitationFrame.TEMPLATE_AWARE
