@@ -296,6 +296,7 @@ def sweep(  # noqa: PLR0913 — CLI entry point, one parameter per Typer option
     ENDPOINT_URL is the API base URL (e.g. http://localhost:8000/v1);
     the service appends /chat/completions automatically.
     """
+    from q_ai.core.db import now_iso
     from q_ai.ipi.sweep_service import (
         build_sweep_cases,
         export_scored_prompts,
@@ -340,6 +341,7 @@ def sweep(  # noqa: PLR0913 — CLI entry point, one parameter per Typer option
         f" {resolved_endpoint}...[/bold]"
     )
 
+    started_at = now_iso()
     run_result = asyncio.run(
         run_sweep(
             endpoint=resolved_endpoint,
@@ -358,6 +360,7 @@ def sweep(  # noqa: PLR0913 — CLI entry point, one parameter per Typer option
         model=resolved_model,
         endpoint=resolved_endpoint,
         target_id=target,
+        started_at=started_at,
     )
 
     if export:

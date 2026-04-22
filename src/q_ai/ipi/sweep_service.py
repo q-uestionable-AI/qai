@@ -728,6 +728,7 @@ def persist_sweep_run(
     endpoint: str,
     target_id: str | None = None,
     db_path: Path | None = None,
+    started_at: str | None = None,
 ) -> str:
     """Persist sweep results to the qai database.
 
@@ -741,6 +742,10 @@ def persist_sweep_run(
         endpoint: API endpoint URL.
         target_id: Optional target ID association.
         db_path: Override database path (for testing).
+        started_at: Optional ISO-8601 timestamp captured before the sweep
+            work began. Forwarded to :func:`create_run` so stored duration
+            reflects wall-clock duration rather than persistence latency.
+            When ``None`` the INSERT uses :func:`now_iso`.
 
     Returns:
         The run ID.
@@ -752,6 +757,7 @@ def persist_sweep_run(
             name=f"ipi-sweep-{model}",
             target_id=target_id,
             source="cli",
+            started_at=started_at,
             config={
                 "model": model,
                 "endpoint": endpoint,

@@ -148,13 +148,13 @@ Rows link to `/runs?run_id=<run_id>` — the standard Runs detail view for impor
 
 Lists every probe run (`module = ipi-probe`) bound to the target. A summary line under the section header describes the latest probe — `Latest probe: <age> ago — N probes across C categories, X% compliance, <severity> severity, <status>`. Each row shows the finished-at age, probes × categories, overall compliance, severity, and status.
 
-Rows link to `/runs?run_id=<probe_run_id>`. As of Phase 6 this URL returns 200 directly (the old Intel redirect was removed).
+Rows link to `/runs?run_id=<probe_run_id>`. Bookmarked Run History deep links of that shape redirect (302) here to `#probe-run-<probe_run_id>`, keeping intelligence surfaces on the Intel target page rather than the Run History view.
 
 ### Sweep Runs section
 
 Lists every sweep run (`module = ipi-sweep`) bound to the target. The summary line describes the latest sweep — `Latest sweep: <age> ago — T templates × S styles, N=<reps>, <status>`. Each row shows the finished-at age, the template × style combo count, the rep count, and status.
 
-Rows link to `/runs?run_id=<sweep_run_id>` and carry the `#sweep-run-<id>` anchor for deep-linking.
+Rows link to `/runs?run_id=<sweep_run_id>` and carry the `#sweep-run-<id>` anchor for deep-linking. Bookmarked Run History deep links of that shape redirect (302) to the same anchor.
 
 ### Generate button
 

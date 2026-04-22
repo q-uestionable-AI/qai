@@ -8,9 +8,10 @@ import datetime as _dt
 import json as _json
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Query, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 from q_ai.audit.reporting.csv_report import generate_csv_report
 from q_ai.audit.reporting.ndjson_report import generate_ndjson_report
@@ -44,6 +45,14 @@ _SEV_MAP = {4: "Critical", 3: "High", 2: "Medium", 1: "Low", 0: "Info"}
 _ARTIFACTS_BASE = Path.home() / ".qai" / "artifacts"
 
 _MAX_BULK_RUNS = 50
+
+# Intel run-type → anchor-prefix on the target detail page. Used by the
+# /runs?run_id=... redirect to surface a bookmarked probe/sweep run on its
+# owning target's Intel page instead of the workflow-shaped render path.
+_INTEL_RUN_ANCHOR_PREFIX: dict[str, str] = {
+    "ipi-probe": "probe-run",
+    "ipi-sweep": "sweep-run",
+}
 
 
 def _count_findings_by_severity(findings: list[Any]) -> dict[str, int]:
@@ -274,6 +283,19 @@ async def runs(
     ``run_id`` the view shows the run history list, filtered by the
     optional ``workflow``, ``target_id``, and ``status`` query params.
     ``group_by_target`` toggles the grouped history rendering.
+
+    Intel-surface redirect: if ``run_id`` resolves to an ``ipi-probe`` or
+    ``ipi-sweep`` run that is bound to a target (``target_id`` set), the
+    handler returns a 302 redirect to
+    ``/intel/targets/<target_id>#<probe|sweep>-run-<run_id>`` so that
+    bookmarked Run History deep links land on the Intel target detail
+    page, which is the authoritative surface for per-target intelligence.
+    Both URL components are fed through :func:`urllib.parse.quote` and
+    sourced from the DB-authoritative ``workflow_run`` object (never
+    from the raw query parameter) to keep CodeQL's ``py/url-redirection``
+    clean. ``Cache-Control: no-store`` is set on the redirect response.
+    Unbound probe/sweep runs (no ``target_id``) continue to render
+    through the existing workflow-shaped path.
     """
     from q_ai.server.routes.assist import _get_suggested_prompts
 
@@ -311,6 +333,17 @@ async def runs(
     if run_id:
         run_ctx = await asyncio.to_thread(_build_runs_context, db_path, run_id)
         ctx.update(run_ctx)
+        wf_run = ctx.get("workflow_run")
+        if wf_run is not None and wf_run.module in _INTEL_RUN_ANCHOR_PREFIX and wf_run.target_id:
+            anchor_prefix = _INTEL_RUN_ANCHOR_PREFIX[wf_run.module]
+            location = (
+                f"/intel/targets/{quote(wf_run.target_id)}#{anchor_prefix}-{quote(wf_run.id)}"
+            )
+            return RedirectResponse(
+                url=location,
+                status_code=302,
+                headers={"Cache-Control": "no-store"},
+            )
     else:
         do_group = group_by_target in ("1", "true", "on")
         history_ctx = await asyncio.to_thread(

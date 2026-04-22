@@ -230,7 +230,7 @@ def _as_utc(value: datetime.datetime) -> datetime.datetime:
     """Coerce a datetime to UTC-aware.
 
     Naive datetimes are assumed to already be UTC (matches how
-    :func:`q_ai.core.db._now_iso` writes timestamps).
+    :func:`q_ai.core.db.now_iso` writes timestamps).
 
     Args:
         value: Datetime to coerce.

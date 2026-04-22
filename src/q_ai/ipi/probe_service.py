@@ -493,6 +493,7 @@ def persist_probe_run(
     endpoint: str,
     target_id: str | None = None,
     db_path: Path | None = None,
+    started_at: str | None = None,
 ) -> str:
     """Persist probe results to the qai database.
 
@@ -505,6 +506,10 @@ def persist_probe_run(
         endpoint: API endpoint URL.
         target_id: Optional target ID association.
         db_path: Override database path (for testing).
+        started_at: Optional ISO-8601 timestamp captured before the probe
+            work began. Forwarded to :func:`create_run` so stored duration
+            reflects wall-clock duration rather than persistence latency.
+            When ``None`` the INSERT uses :func:`now_iso`.
 
     Returns:
         The run ID.
@@ -516,6 +521,7 @@ def persist_probe_run(
             name=f"ipi-probe-{model}",
             target_id=target_id,
             source="cli",
+            started_at=started_at,
             config={
                 "model": model,
                 "endpoint": endpoint,
