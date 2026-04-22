@@ -14,6 +14,7 @@ from q_ai.ipi import generate_service
 from q_ai.ipi.generate_service import generate_documents
 from q_ai.ipi.models import (
     Campaign,
+    CitationFrame,
     DocumentTemplate,
     Format,
     PayloadStyle,
@@ -145,3 +146,115 @@ class TestTemplateIdStamping:
             )
 
         assert seen == ["whois"]
+
+
+class TestCitationFrameForwarding:
+    """generate_documents forwards citation_frame to single- and batch-path generators."""
+
+    @pytest.mark.usefixtures("_no_persist")
+    def test_single_technique_forwards_citation_frame(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Single-path single_fn receives the explicit citation_frame kwarg."""
+        seen: dict[str, Any] = {}
+
+        def capture_single(
+            file_path: Path,
+            tech: Technique,
+            *args: Any,
+            **kwargs: Any,
+        ) -> Campaign:
+            del args
+            seen.update(kwargs)
+            return _stub_campaign(filename=file_path.name, technique=tech.value)
+
+        patched = dict(generate_service._FORMAT_DISPATCH)
+        patched[Format.MARKDOWN] = (capture_single, _stub_batch)
+        monkeypatch.setattr(generate_service, "_FORMAT_DISPATCH", patched)
+
+        generate_documents(
+            callback_url="http://localhost:8080",
+            output=tmp_path,
+            format_name=Format.MARKDOWN,
+            techniques=[Technique.HTML_COMMENT],
+            payload_style=PayloadStyle.CITATION,
+            payload_type=PayloadType.CALLBACK,
+            citation_frame=CitationFrame.PLAIN,
+        )
+
+        assert seen["citation_frame"] == CitationFrame.PLAIN
+
+    @pytest.mark.usefixtures("_no_persist")
+    def test_batch_forwards_citation_frame(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Batch-path batch_fn receives the explicit citation_frame kwarg."""
+        seen: dict[str, Any] = {}
+
+        def capture_batch(
+            output_dir: Path,
+            callback_url: str,
+            base_name: str,
+            payload_style: PayloadStyle,
+            payload_type: PayloadType,
+            techniques: Iterable[Technique],
+            **kwargs: Any,
+        ) -> list[Campaign]:
+            del callback_url, payload_style, payload_type, output_dir, base_name
+            seen.update(kwargs)
+            return [
+                _stub_campaign(filename=f"report_{t.value}.md", technique=t.value)
+                for t in techniques
+            ]
+
+        patched = dict(generate_service._FORMAT_DISPATCH)
+        patched[Format.MARKDOWN] = (_stub_single, capture_batch)
+        monkeypatch.setattr(generate_service, "_FORMAT_DISPATCH", patched)
+
+        generate_documents(
+            callback_url="http://localhost:8080",
+            output=tmp_path,
+            format_name=Format.MARKDOWN,
+            techniques=[Technique.HTML_COMMENT, Technique.ZERO_WIDTH],
+            payload_style=PayloadStyle.CITATION,
+            payload_type=PayloadType.CALLBACK,
+            citation_frame=CitationFrame.PLAIN,
+        )
+
+        assert seen["citation_frame"] == CitationFrame.PLAIN
+
+    @pytest.mark.usefixtures("_no_persist")
+    def test_default_is_template_aware(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Omitting citation_frame forwards the TEMPLATE_AWARE default."""
+        seen: dict[str, Any] = {}
+
+        def capture_single(
+            file_path: Path,
+            tech: Technique,
+            *args: Any,
+            **kwargs: Any,
+        ) -> Campaign:
+            del args
+            seen.update(kwargs)
+            return _stub_campaign(filename=file_path.name, technique=tech.value)
+
+        patched = dict(generate_service._FORMAT_DISPATCH)
+        patched[Format.MARKDOWN] = (capture_single, _stub_batch)
+        monkeypatch.setattr(generate_service, "_FORMAT_DISPATCH", patched)
+
+        generate_documents(
+            callback_url="http://localhost:8080",
+            output=tmp_path,
+            format_name=Format.MARKDOWN,
+            techniques=[Technique.HTML_COMMENT],
+        )
+
+        assert seen["citation_frame"] == CitationFrame.TEMPLATE_AWARE

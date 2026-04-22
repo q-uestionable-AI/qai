@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 from q_ai.cli import app
 from q_ai.ipi.generate_service import GenerateResult
-from q_ai.ipi.models import DocumentTemplate
+from q_ai.ipi.models import CitationFrame, DocumentTemplate
 from q_ai.ipi.sweep_selection import (
     NoFindings,
     SelectedTemplate,
@@ -302,3 +302,107 @@ class TestIpiGenerateTargetAutoSelect:
         assert "Auto-selected template" not in result.output
         call_kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
         assert call_kwargs["template"] == DocumentTemplate.GENERIC
+
+
+class TestIpiGenerateCitationFrame:
+    """Tests for the `qai ipi generate --citation-frame` flag."""
+
+    def test_help_lists_citation_frame(self) -> None:
+        """PR #123-style drift guard: --citation-frame surfaces in --help."""
+        result = runner.invoke(app, ["ipi", "generate", "--help"])
+        assert result.exit_code == 0
+        assert "citation-frame" in result.output
+
+    @patch("q_ai.ipi.mapper.persist_generate")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    def test_default_flag_forwards_template_aware(
+        self,
+        mock_gen: object,
+        _mock_persist: object,
+    ) -> None:
+        """No --citation-frame -> generate_documents receives TEMPLATE_AWARE."""
+        mock_gen.return_value = GenerateResult(campaigns=[], errors=[])  # type: ignore[attr-defined]
+        result = runner.invoke(app, ["ipi", "generate", "http://localhost:8080"])
+
+        assert result.exit_code == 0, result.output
+        call_kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
+        assert call_kwargs["citation_frame"] == CitationFrame.TEMPLATE_AWARE
+
+    @patch("q_ai.ipi.mapper.persist_generate")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    def test_plain_value_forwards_plain_enum(
+        self,
+        mock_gen: object,
+        _mock_persist: object,
+    ) -> None:
+        """--citation-frame plain -> generate_documents receives PLAIN."""
+        mock_gen.return_value = GenerateResult(campaigns=[], errors=[])  # type: ignore[attr-defined]
+        result = runner.invoke(
+            app,
+            [
+                "ipi",
+                "generate",
+                "http://localhost:8080",
+                "--citation-frame",
+                "plain",
+                "--payload-style",
+                "citation",
+                "--payload-type",
+                "callback",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        call_kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
+        assert call_kwargs["citation_frame"] == CitationFrame.PLAIN
+
+    @patch("q_ai.ipi.mapper.persist_generate")
+    @patch("q_ai.ipi.commands.generate.generate_documents")
+    def test_template_aware_value_forwards_enum(
+        self,
+        mock_gen: object,
+        _mock_persist: object,
+    ) -> None:
+        """--citation-frame template-aware -> TEMPLATE_AWARE forwarded explicitly."""
+        mock_gen.return_value = GenerateResult(campaigns=[], errors=[])  # type: ignore[attr-defined]
+        result = runner.invoke(
+            app,
+            [
+                "ipi",
+                "generate",
+                "http://localhost:8080",
+                "--citation-frame",
+                "template-aware",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        call_kwargs = mock_gen.call_args.kwargs  # type: ignore[attr-defined]
+        assert call_kwargs["citation_frame"] == CitationFrame.TEMPLATE_AWARE
+
+    def test_invalid_value_exits_non_zero(self) -> None:
+        """--citation-frame bogus exits non-zero with the parser's error."""
+        result = runner.invoke(
+            app,
+            ["ipi", "generate", "http://localhost:8080", "--citation-frame", "bogus"],
+        )
+        assert result.exit_code != 0
+        assert "bogus" in result.output
+
+    def test_sweep_citation_frame_still_parses(self) -> None:
+        """Hoisting _parse_citation_frame to _shared did not break sweep-side parsing."""
+        result = runner.invoke(
+            app,
+            [
+                "ipi",
+                "sweep",
+                "--dry-run",
+                "--templates",
+                "whois",
+                "--styles",
+                "citation",
+                "--citation-frame",
+                "plain",
+            ],
+        )
+        assert result.exit_code == 0, result.output
