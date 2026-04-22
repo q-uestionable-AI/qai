@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from q_ai.core.db import create_target, get_connection, get_target
+from q_ai.core.db import create_target, get_connection, get_target, now_iso
 from q_ai.ipi.sweep_selection import SelectionResult, select_template_for_target
 from q_ai.server.routes._shared import (
     _get_db_path,
@@ -581,6 +581,7 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
 
     async def _run_probe_task() -> None:
         try:
+            started_at = now_iso()
             run_result = await run_probes(**probe_kwargs)
             await asyncio.to_thread(
                 persist_probe_run,
@@ -589,6 +590,7 @@ async def intel_probe_launch(request: Request) -> JSONResponse:
                 endpoint=endpoint,
                 target_id=target_id,
                 db_path=db_path,
+                started_at=started_at,
             )
         except Exception:
             logger.error(
@@ -853,6 +855,7 @@ async def intel_sweep_launch(request: Request) -> JSONResponse:
 
     async def _run_sweep_task() -> None:
         try:
+            started_at = now_iso()
             run_result = await run_sweep(**sweep_kwargs)
             await asyncio.to_thread(
                 persist_sweep_run,
@@ -861,6 +864,7 @@ async def intel_sweep_launch(request: Request) -> JSONResponse:
                 endpoint=endpoint,
                 target_id=target_id,
                 db_path=db_path,
+                started_at=started_at,
             )
         except Exception:
             logger.error("IPI sweep background task failed")

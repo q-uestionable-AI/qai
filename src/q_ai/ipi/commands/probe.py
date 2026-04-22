@@ -152,6 +152,7 @@ def probe(  # noqa: PLR0913 — CLI entry point, one parameter per Typer option
     ENDPOINT_URL is the API base URL (e.g. http://localhost:8000/v1);
     the service appends /chat/completions automatically.
     """
+    from q_ai.core.db import now_iso
     from q_ai.ipi.probe_service import (
         export_scored_prompts,
         load_probes,
@@ -190,6 +191,7 @@ def probe(  # noqa: PLR0913 — CLI entry point, one parameter per Typer option
         f"[bold]Running {len(probes)} probes against {resolved_model}"
         f" at {resolved_endpoint}...[/bold]"
     )
+    started_at = now_iso()
     run_result = asyncio.run(
         run_probes(
             endpoint=resolved_endpoint,
@@ -206,6 +208,7 @@ def probe(  # noqa: PLR0913 — CLI entry point, one parameter per Typer option
         model=resolved_model,
         endpoint=resolved_endpoint,
         target_id=target,
+        started_at=started_at,
     )
 
     if export:

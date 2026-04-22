@@ -2135,3 +2135,90 @@ class TestApiKeyHeaderHelper:
 
         req = self._make_request([(b"x-api-key", b"   ")])
         assert _read_api_key_header(req) is None
+
+
+class TestLauncherStartedAtCapture:
+    """Web UI sweep/probe launchers capture ``started_at`` before the
+    async work begins and forward it to ``persist_*_run``.
+
+    Leak 3 fix: without this, the persisted run has
+    ``finished_at == started_at`` (both stamped at persistence time) and
+    stored duration is always zero. The capture point is inside the task
+    closure, not at handler time (Risk #3 — handler may return 202 many
+    minutes before the task begins executing under load).
+    """
+
+    _VALID_SWEEP_BODY: ClassVar[dict[str, Any]] = {
+        "endpoint": "http://localhost:8000/v1",
+        "model": "gpt-4o-mini",
+        "templates": ["whois"],
+        "styles": ["obvious"],
+        "payload_types": ["exfil_url"],
+    }
+
+    _VALID_PROBE_BODY: ClassVar[dict[str, Any]] = {
+        "endpoint": "http://localhost:8000/v1",
+        "model": "gpt-4o-mini",
+    }
+
+    def _wait_for_call(self, mock: MagicMock, timeout: float = 5.0) -> None:
+        """Poll ``mock.called`` until the background task fires it.
+
+        The sweep/probe launcher schedules an ``asyncio.create_task`` and
+        returns 202 immediately. ``persist_*_run`` is invoked via
+        ``asyncio.to_thread`` on the app's worker loop, so the test must
+        wait briefly for the call to land before asserting kwargs.
+        """
+        import time as _time
+
+        deadline = _time.monotonic() + timeout
+        while _time.monotonic() < deadline:
+            if mock.called:
+                return
+            _time.sleep(0.01)
+        raise AssertionError("background task did not invoke persist_*_run in time")
+
+    def test_sweep_launcher_forwards_started_at_to_persist(self, client: TestClient) -> None:
+        persist_mock = MagicMock()
+        with (
+            patch(
+                "q_ai.server.routes.intel.now_iso",
+                return_value="2026-04-22T12:00:00+00:00",
+            ),
+            patch(
+                "q_ai.ipi.sweep_service.run_sweep",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+            patch("q_ai.ipi.sweep_service.persist_sweep_run", persist_mock),
+        ):
+            resp = client.post("/api/intel/sweep/launch", json=self._VALID_SWEEP_BODY)
+            assert resp.status_code == 202
+            self._wait_for_call(persist_mock)
+
+        assert persist_mock.call_args is not None
+        kwargs = persist_mock.call_args.kwargs
+        assert kwargs.get("started_at") == "2026-04-22T12:00:00+00:00"
+
+    def test_probe_launcher_forwards_started_at_to_persist(self, client: TestClient) -> None:
+        persist_mock = MagicMock()
+        with (
+            patch(
+                "q_ai.server.routes.intel.now_iso",
+                return_value="2026-04-22T12:00:00+00:00",
+            ),
+            patch("q_ai.ipi.probe_service.load_probes", return_value=[MagicMock()]),
+            patch(
+                "q_ai.ipi.probe_service.run_probes",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+            patch("q_ai.ipi.probe_service.persist_probe_run", persist_mock),
+        ):
+            resp = client.post("/api/intel/probe/launch", json=self._VALID_PROBE_BODY)
+            assert resp.status_code == 202
+            self._wait_for_call(persist_mock)
+
+        assert persist_mock.call_args is not None
+        kwargs = persist_mock.call_args.kwargs
+        assert kwargs.get("started_at") == "2026-04-22T12:00:00+00:00"

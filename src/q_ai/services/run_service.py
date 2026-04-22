@@ -291,6 +291,28 @@ def _effective_target_id(run: Run) -> str | None:
     return run.target_id or (run.config or {}).get("target_id")
 
 
+def _history_eligible_target_ids(
+    parent_runs: list[Run],
+    import_runs: list[Run],
+) -> set[str]:
+    """Target IDs represented by at least one workflow or import run.
+
+    Used to scope the Run History target-filter dropdown so that
+    targets existing only in the Intel surface (sweep/probe-only)
+    drop out. Mirrors the :func:`_effective_target_id` precedent for
+    workflow runs that store ``target_id`` only in their ``config``.
+    """
+    eligible: set[str] = set()
+    for run in parent_runs:
+        eff = _effective_target_id(run)
+        if eff:
+            eligible.add(eff)
+    for run in import_runs:
+        if run.target_id:
+            eligible.add(run.target_id)
+    return eligible
+
+
 def load_module_data(
     conn: sqlite3.Connection,
     child_by_module: dict[str, Run],
@@ -569,9 +591,16 @@ def query_history_runs(
         get_prior_run_counts_by_target(conn, target_ids_on_page) if target_ids_on_page else {}
     )
 
+    # Scope the filter dropdown to targets that actually appear in Run
+    # History. Targets surfaced only via Intel (sweep/probe-only runs)
+    # would otherwise render as empty-result options, signalling
+    # "broken" UX. In-memory filter is fine at lab scale.
+    eligible_target_ids = _history_eligible_target_ids(parent_runs, import_runs)
+    filtered_targets = [t for t in targets if t.id in eligible_target_ids]
+
     return HistoryQueryResult(
         history_runs=history_runs,
-        targets=targets,
+        targets=filtered_targets,
         prior_run_counts=prior_run_counts,
     )
 
@@ -618,7 +647,7 @@ def _as_utc(value: _dt.datetime) -> _dt.datetime:
     """Coerce a datetime to UTC-aware.
 
     Naive datetimes are assumed to already be UTC (matches how
-    :func:`q_ai.core.db._now_iso` writes timestamps).
+    :func:`q_ai.core.db.now_iso` writes timestamps).
 
     Args:
         value: Datetime to coerce.

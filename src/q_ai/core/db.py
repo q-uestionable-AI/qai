@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_DB_PATH = Path.home() / ".qai" / "qai.db"
 
 
-def _now_iso() -> str:
+def now_iso() -> str:
     """Return current UTC time as ISO string."""
     return datetime.datetime.now(datetime.UTC).isoformat()
 
@@ -83,6 +83,7 @@ def create_run(
     config: dict | None = None,
     run_id: str | None = None,
     source: str | None = None,
+    started_at: str | None = None,
 ) -> str:
     """Insert a new run and return its ID.
 
@@ -95,6 +96,11 @@ def create_run(
         config: Optional configuration dict.
         run_id: Optional pre-generated run ID. If None, a new UUID is generated.
         source: Optional provenance tag (e.g. "web", "cli").
+        started_at: Optional ISO-8601 timestamp for the run's wall-clock start.
+            When ``None`` (the default), the current UTC time is stamped at
+            INSERT. Callers that do async work before persisting (e.g. IPI
+            sweep/probe) should capture the timestamp before the work begins
+            and pass it here so stored duration reflects wall-clock duration.
 
     Returns:
         The hex UUID of the newly created run.
@@ -115,7 +121,7 @@ def create_run(
             parent_run_id,
             _dump_json(config),
             int(RunStatus.PENDING),
-            _now_iso(),
+            started_at or now_iso(),
             source,
         ),
     )
@@ -146,7 +152,7 @@ def update_run_status(
         RunStatus.PARTIAL,
     }
     if finished_at is None and status in terminal:
-        finished_at = _now_iso()
+        finished_at = now_iso()
     conn.execute(
         "UPDATE runs SET status = ?, finished_at = ? WHERE id = ?",
         (int(status), finished_at, run_id),
@@ -689,7 +695,7 @@ def create_target(
             name,
             uri,
             _dump_json(metadata),
-            _now_iso(),
+            now_iso(),
         ),
     )
     return target_id
@@ -781,7 +787,7 @@ def create_finding(
             _dump_json(framework_ids),
             _dump_json(mitigation),
             source_ref,
-            _now_iso(),
+            now_iso(),
         ),
     )
     return finding_id
@@ -1018,7 +1024,7 @@ def create_evidence(
             storage,
             content,
             path,
-            _now_iso(),
+            now_iso(),
         ),
     )
     return evidence_id
@@ -1107,7 +1113,7 @@ def set_setting(
             SET value = excluded.value,
                 updated_at = excluded.updated_at
         """,
-        (key, value, _now_iso()),
+        (key, value, now_iso()),
     )
 
 

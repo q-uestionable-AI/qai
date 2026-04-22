@@ -106,6 +106,28 @@ class TestRunCRUD:
             )
             assert len(run_id) == 32
 
+    def test_create_run_respects_explicit_started_at(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "qai.db"
+        fixed = "2026-01-01T00:00:00+00:00"
+        with get_connection(db_path) as conn:
+            run_id = create_run(
+                conn,
+                module="ipi-sweep",
+                started_at=fixed,
+            )
+            row = conn.execute("SELECT started_at FROM runs WHERE id = ?", (run_id,)).fetchone()
+            assert row["started_at"] == fixed
+
+    def test_create_run_default_started_at_is_stamped(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "qai.db"
+        with get_connection(db_path) as conn:
+            run_id = create_run(conn, module="audit")
+            row = conn.execute("SELECT started_at FROM runs WHERE id = ?", (run_id,)).fetchone()
+            # Default path populates started_at via now_iso() — value
+            # must be a non-empty ISO string.
+            assert isinstance(row["started_at"], str)
+            assert row["started_at"]
+
     def test_create_child_run(self, tmp_path: Path) -> None:
         db_path = tmp_path / "qai.db"
         with get_connection(db_path) as conn:

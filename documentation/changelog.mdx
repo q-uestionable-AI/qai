@@ -3,6 +3,47 @@ title: Changelog
 description: Release history for q-ai
 ---
 
+## v0.10.6
+
+Enforces the Intel / Run History boundary for IPI sweep and probe runs,
+re-closing three leaks that let intel-surface runs bleed into the
+workflow-focused Run History view. Product decision Option A
+(2026-04-22): Intel owns per-target intelligence (sweeps, probes);
+Run History owns workflow executions. These do not overlap.
+
+### Fixed: target-bound probe and sweep deep links redirect into Intel
+
+- `GET /runs?run_id=<probe_or_sweep_run>` returns a 302 redirect to
+  `/intel/targets/<target_id>#probe-run-<run_id>` or
+  `#sweep-run-<run_id>` when the run is bound to a target, so
+  bookmarked deep links land on the Intel target detail page — the
+  authoritative surface for per-target intelligence — rather than the
+  workflow-shaped Runs view that rendered only overview metadata.
+- URL components are URL-encoded (`urllib.parse.quote`) and sourced
+  from the DB-authoritative run object, not from the raw query
+  parameter. `Cache-Control: no-store` is set on the 302 response.
+- Unbound probe/sweep runs (rare; pre-dating target-binding) continue
+  to render in place on `/runs`.
+
+### Fixed: Run History target filter scoped to workflow/import-bearing targets
+
+- The target filter dropdown on `/runs` no longer lists targets whose
+  only history is a sweep or probe run. Selecting such a target used
+  to produce an empty-result list — a broken UX signal. The filter now
+  matches the set of targets actually represented in Run History.
+
+### Fixed: accurate wall-clock duration on IPI sweep and probe runs
+
+- `persist_sweep_run` and `persist_probe_run` now accept a
+  `started_at` parameter, forwarded to `create_run`, capturing the
+  wall-clock timestamp *before* the async sweep/probe work begins.
+  Previously both functions INSERTed `started_at` at persistence time
+  (after the work finished), producing `started_at == finished_at`
+  and a stored duration of 0. The CLI launchers and Web UI background
+  tasks capture the timestamp at the correct point; Web UI capture
+  happens inside the task closure so duration reflects time-from-task-
+  start, not time-from-handler-return.
+
 ## v0.10.5
 
 Propagates the `citation_frame` selection to the generate pipeline so

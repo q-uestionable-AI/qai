@@ -576,7 +576,7 @@ class TestContentSanitization:
 
 
 # ---------------------------------------------------------------------------
-# Phase 3: two-release redirect on /runs for target-bound probe runs
+# Intel / Run History separation: /runs redirects target-bound IPI runs
 # ---------------------------------------------------------------------------
 
 
@@ -598,41 +598,38 @@ def _make_probe_run(tmp_db: Path, *, with_target: bool) -> tuple[str, str | None
 
 
 class TestRunsProbeTargetBound:
-    """GET /runs renders target-bound probe runs in the runs view.
+    """GET /runs redirects target-bound probe/sweep runs into Intel.
 
-    Phase 6 removed the two-release redirect to the Intel detail page;
-    every probe run — bound or unbound — now renders the single-run
-    results view directly. The ``intel`` query parameter is also gone
-    from the handler signature but is silently ignored by Starlette
-    when passed, per the Phase 6 brief's tolerance guarantee.
+    Target-bound ``ipi-probe`` and ``ipi-sweep`` runs are intelligence
+    surfaces and belong on the Intel target detail page; the ``/runs``
+    handler returns a 302 to ``/intel/targets/<id>#<anchor>-run-<rid>``
+    with ``Cache-Control: no-store``. Unbound runs and non-IPI runs
+    continue to render through the existing single-run view.
     """
 
-    def test_target_bound_probe_renders_runs_view(self, client: TestClient, tmp_db: Path) -> None:
+    def test_target_bound_probe_redirects_to_intel(self, client: TestClient, tmp_db: Path) -> None:
         run_id, target_id = _make_probe_run(tmp_db, with_target=True)
         assert target_id is not None
 
         resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
-        assert resp.status_code == 200
-        # runs.html renders a results-mode view for the single run —
-        # the run_id appears in the rendered body. Matches the shape
-        # used by ``test_null_target_probe_renders`` below.
-        assert run_id in resp.text
+        assert resp.status_code == 302
+        assert resp.headers["location"] == f"/intel/targets/{target_id}#probe-run-{run_id}"
+        assert resp.headers["cache-control"] == "no-store"
 
-    def test_intel_query_param_is_silently_ignored(self, client: TestClient, tmp_db: Path) -> None:
-        run_id, _ = _make_probe_run(tmp_db, with_target=True)
+    def test_intel_query_param_does_not_bypass_redirect(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        run_id, target_id = _make_probe_run(tmp_db, with_target=True)
         resp = client.get(f"/runs?run_id={run_id}&intel=1", follow_redirects=False)
-        assert resp.status_code == 200
-        # A plain 200 could also be the history view if ``run_id`` were
-        # silently dropped. Asserting the id in the body pins down
-        # single-run rendering under the tolerance guarantee.
-        assert run_id in resp.text
+        assert resp.status_code == 302
+        assert resp.headers["location"] == f"/intel/targets/{target_id}#probe-run-{run_id}"
 
     def test_null_target_probe_renders(self, client: TestClient, tmp_db: Path) -> None:
         run_id, _ = _make_probe_run(tmp_db, with_target=False)
         resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
         assert resp.status_code == 200
 
-    def test_sweep_run_renders(self, client: TestClient, tmp_db: Path) -> None:
+    def test_target_bound_sweep_redirects_to_intel(self, client: TestClient, tmp_db: Path) -> None:
         conn = sqlite3.connect(str(tmp_db))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
@@ -644,7 +641,9 @@ class TestRunsProbeTargetBound:
         finally:
             conn.close()
         resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
-        assert resp.status_code == 200
+        assert resp.status_code == 302
+        assert resp.headers["location"] == f"/intel/targets/{target_id}#sweep-run-{run_id}"
+        assert resp.headers["cache-control"] == "no-store"
 
     def test_workflow_run_renders(self, client: TestClient, tmp_db: Path) -> None:
         parent_id, _, _ = _setup_completed_assess_run(tmp_db)
@@ -684,12 +683,17 @@ class TestRunsStatusBarRefreshLink:
         finally:
             conn.close()
 
-    def test_refresh_link_has_no_intel_suffix_bound(self, client: TestClient, tmp_db: Path) -> None:
-        run_id, _ = self._make_running_probe(tmp_db, with_target=True)
+    def test_bound_probe_redirects_before_rendering_refresh_link(
+        self, client: TestClient, tmp_db: Path
+    ) -> None:
+        # Target-bound probe runs now redirect into Intel before runs.html
+        # is rendered, so there is no refresh link to inspect — assert the
+        # redirect instead. Keeps the class honest about the bound path.
+        run_id, target_id = self._make_running_probe(tmp_db, with_target=True)
+        assert target_id is not None
         resp = client.get(f"/runs?run_id={run_id}", follow_redirects=False)
-        assert resp.status_code == 200
-        assert f'href="/runs?run_id={run_id}"' in resp.text
-        assert "intel=1" not in resp.text
+        assert resp.status_code == 302
+        assert resp.headers["location"] == f"/intel/targets/{target_id}#probe-run-{run_id}"
 
     def test_refresh_link_has_no_intel_suffix_unbound(
         self, client: TestClient, tmp_db: Path

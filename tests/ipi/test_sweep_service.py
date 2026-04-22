@@ -647,6 +647,50 @@ class TestPersistSweepRun:
             assert "ipi_sweep_raw" in types
             assert "ipi_sweep_metadata" in types
 
+    def test_persist_forwards_started_at(self, tmp_path: Path) -> None:
+        """``started_at`` parameter is written to the runs row."""
+        db_path = tmp_path / "test.db"
+        run_result = _make_run_result()
+        fixed = "2025-01-01T00:00:00+00:00"
+
+        run_id = persist_sweep_run(
+            run_result=run_result,
+            model="test-model",
+            endpoint="http://test/v1",
+            db_path=db_path,
+            started_at=fixed,
+        )
+
+        with get_connection(db_path) as conn:
+            row = conn.execute("SELECT started_at FROM runs WHERE id = ?", (run_id,)).fetchone()
+            assert row["started_at"] == fixed
+
+    def test_persist_with_explicit_started_at_yields_nonzero_duration(self, tmp_path: Path) -> None:
+        """An old ``started_at`` paired with terminal status yields a
+        ``finished_at`` strictly later than ``started_at`` — proving the
+        wall-clock duration fix for Leak 3. Uses a fixed past timestamp
+        rather than wall-clock to stay deterministic on Windows CI.
+        """
+        db_path = tmp_path / "test.db"
+        run_result = _make_run_result()
+        fixed = "2025-01-01T00:00:00+00:00"
+
+        run_id = persist_sweep_run(
+            run_result=run_result,
+            model="test-model",
+            endpoint="http://test/v1",
+            db_path=db_path,
+            started_at=fixed,
+        )
+
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT started_at, finished_at FROM runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            assert row["started_at"] == fixed
+            assert row["finished_at"] is not None
+            assert row["finished_at"] > row["started_at"]
+
 
 # ---------------------------------------------------------------------------
 # Export and import round-trip
