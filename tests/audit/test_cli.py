@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from typer.testing import CliRunner
 
 from q_ai.cli import app
 
 runner = CliRunner()
+
+# Rich ANSI codes can leak into CliRunner output on some platforms (macOS CI
+# in particular), splitting "Connection failed" across escape sequences. The
+# backward-compat tests assert on that exact substring, so they use this
+# color-stripped runner locally to keep the assertion stable.
+_NO_COLOR_ENV = {"NO_COLOR": "1", "FORCE_COLOR": None, "TERM": "dumb"}
 
 
 class TestListChecks:
@@ -73,14 +79,27 @@ class TestAuditScanPositionalTarget:
         result = runner.invoke(app, ["audit", "scan"])
         assert result.exit_code != 0
 
-    def test_backward_compat_explicit_flags(self) -> None:
-        """--transport stdio --command still works (triggers connection error, not arg error)."""
-        result = runner.invoke(
+    @patch("q_ai.audit.cli.MCPConnection")
+    def test_backward_compat_explicit_flags(self, mock_mcp_cls: MagicMock) -> None:
+        """--transport stdio --command still parses and reaches the connection attempt.
+
+        The MCP connection is mocked to raise ConnectionError on entry, so no
+        subprocess is spawned. This verifies flag parsing (backward compat) and
+        the CLI's connection-error surface without exercising the real stdio
+        client — which on Py3.13 can hit an anyio cross-task cancel-scope race
+        when a misbehaving server writes non-JSONRPC output. Tracked separately.
+        """
+        mock_conn = MagicMock()
+        mock_conn.__aenter__ = AsyncMock(side_effect=ConnectionError("mocked failure"))
+        mock_mcp_cls.stdio.return_value = mock_conn
+
+        local_runner = CliRunner(env=_NO_COLOR_ENV)
+        result = local_runner.invoke(
             app,
-            ["audit", "scan", "--transport", "stdio", "--command", "echo hello"],
+            ["audit", "scan", "--transport", "stdio", "--command", "not-a-real-server"],
         )
-        # Will fail at connection (not argument parsing)
-        assert "Connection failed" in result.output or result.exit_code != 0
+        assert result.exit_code != 0
+        assert "Connection failed" in result.output
 
 
 class TestAuditEnumeratePositionalTarget:
@@ -96,11 +115,21 @@ class TestAuditEnumeratePositionalTarget:
         result = runner.invoke(app, ["audit", "enumerate"])
         assert result.exit_code != 0
 
-    def test_backward_compat_explicit_flags(self) -> None:
-        """--transport stdio --command still works."""
-        result = runner.invoke(
+    @patch("q_ai.audit.cli.MCPConnection")
+    def test_backward_compat_explicit_flags(self, mock_mcp_cls: MagicMock) -> None:
+        """--transport stdio --command still parses and reaches the connection attempt.
+
+        See the sibling scan test for the rationale behind mocking the MCP
+        connection rather than launching a real subprocess.
+        """
+        mock_conn = MagicMock()
+        mock_conn.__aenter__ = AsyncMock(side_effect=ConnectionError("mocked failure"))
+        mock_mcp_cls.stdio.return_value = mock_conn
+
+        local_runner = CliRunner(env=_NO_COLOR_ENV)
+        result = local_runner.invoke(
             app,
-            ["audit", "enumerate", "--transport", "stdio", "--command", "echo hello"],
+            ["audit", "enumerate", "--transport", "stdio", "--command", "not-a-real-server"],
         )
-        # Will fail at connection, not argument parsing
-        assert "Connection failed" in result.output or result.exit_code != 0
+        assert result.exit_code != 0
+        assert "Connection failed" in result.output
