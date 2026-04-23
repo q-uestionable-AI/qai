@@ -1,0 +1,24 @@
+# Dependabot configuration for qai.
+#
+# Scope: GitHub Actions only.
+#
+# Python dependencies are intentionally excluded. CVE coverage is already
+# provided by (1) Dependabot security updates opening PRs for patched vulns,
+# and (2) pip-audit running on every PR in ci.yml. Proactive minor/patch
+# bumps would conflict with the release-aligned workflow (main = latest
+# released tag) by forcing a release per merged bump. Revisit if the
+# security/velocity tradeoff shifts.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
