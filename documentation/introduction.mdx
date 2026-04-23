@@ -35,6 +35,14 @@ See [Import Overview](/imports/overview) for supported formats and [Inject Campa
 | **cxp**    | Builds poisoned instruction files for coding assistants, validates whether models comply               |
 | **rxp**    | Measures whether adversarial documents appear in top-k retrieval results across embedding models           |
 
+## Research
+
+qai's research program studies **Capability Trust Propagation Failure** — how trust properties (provenance, integrity, authorization scope, intended audience) fail to propagate across capability boundaries in multi-step AI systems. It shows up across existing OWASP MCP Top 10 and OWASP Agentic Top 10 categories rather than needing a new one.
+
+Findings carry execution-level proof. Authenticated callbacks confirm that an attack ran end-to-end through a real agentic system — not that a model was convinced to write attacker-supplied text.
+
+Coding assistant context-file poisoning (the `cxp` module) targets real products directly. Positive findings can be filed as CVEs, creating a path to CVE-attributed research rather than research that only lives in published form.
+
 ## Quick start
 
 Install via pip (requires Python 3.11+):
