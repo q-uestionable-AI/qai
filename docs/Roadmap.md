@@ -47,19 +47,6 @@ Three-tier trust boundary model: trusted product docs, semi-trusted user knowled
 scan-derived content. CLI (interactive, single-shot, piped input) and web UI (full-page chat,
 contextual run results panel). Shipped in PRs #81–#83.
 
-### Remaining Workflows
-
-Five workflows are visible in the launcher and will be implemented after Phase 6.
-Module adapters for all five already exist (Phase 5e).
-
-| Workflow | Modules | Notes |
-|----------|---------|-------|
-| Test Document Ingestion | ipi, rxp | Generate payloads, validate retrieval rank pre-deployment. RXP is optional pre-validation. |
-| Test a Coding Assistant | cxp | Build poisoned repo, guided manual steps, record results |
-| Trace an Attack Path | chain | Execute chain fail_fast, step-by-step evidence across trust boundaries |
-| Measure Blast Radius | chain | Analysis-only, depends on chain execution results |
-| Manage Research | all | Cross-module research view — largely functional from Phase 3 |
-
 ### Phase 6: Public Launch
 
 **Goal:** The repo is public, the package is on PyPI, and old repos are transitioned.
@@ -76,21 +63,66 @@ Module adapters for all five already exist (Phase 5e).
 
 **Done when:** `pip install q-uestionable-ai` works, repo is public, old repos redirect.
 
-### Phase 7: Remaining Workflows
+### Phase 7: Workflow Completion (reduced scope)
 
-Five workflows are stubbed in the launcher but not implemented. Adapters exist for all modules.
+Two workflows promoted to v1.0 completion — those that serve hero-module research and the
+publication pipeline. Three others deferred or removed.
 
 | Workflow | Modules | Notes |
 |----------|---------|-------|
-| Test Document Ingestion | ipi, rxp | Generate payloads, validate retrieval before deployment |
-| Test a Coding Assistant | cxp | Build poisoned repo, guided manual steps, record results |
-| Trace an Attack Path | chain | Execute chain, fail_fast, step-by-step evidence |
-| Measure Blast Radius | chain | Analysis-only, depends on chain execution results |
-| Manage Research | all | Cross-module research view — largely functional from Phase 3 |
+| Test Document Ingestion | ipi, rxp | Generate payloads, validate retrieval before deployment. Serves Campaign 1 publication. |
+| Test a Coding Assistant | cxp | Build poisoned repo, guided manual steps, record results. Serves CXP CVE lane. |
 
-**Done when:** All five workflows launchable from the browser with correct module orchestration.
+**Deferred to post-1.0:**
 
-### Phase 8: Research Validation and v1.0
+- **Trace an Attack Path** and **Measure Blast Radius** (both `chain`-based) — pending
+  `chain` hero-tier decision from Campaign 3.
+- **Manage Research** — removed from the workflow list. Cross-module research view is
+  already functional from Phase 3 without a workflow wrapper.
+
+**Done when:** Both remaining workflows launchable from the browser with correct module orchestration.
+
+### Phase 8: Scenario Format v0
+
+**Goal:** Ship a portable unit of attack knowledge. Scenarios are `ipi`-shaped YAML with
+explicit extension points, reverse-engineered from real Campaign 1 output rather than
+designed in advance. Nuclei has templates, Garak has probes, Metasploit has modules — qai
+needs the equivalent.
+
+**Deliverables:**
+
+- Scenario format v0 specification (RFC)
+- Reference implementation — loader, runner, exporter
+- `qai scenario run <path|url>`, `qai scenario validate`, `qai scenario export`
+- `ipi` producing and consuming scenarios end-to-end against live campaign payloads
+- At least one reference scenario shipped with the platform
+
+Extension to `cxp` and `audit` happens only after `ipi` integration is proven in real use.
+
+**Done when:** A scenario from another researcher loads and runs against an operator's target
+with a single command and produces reproducible indicators.
+
+### Phase 9: Publication Pipeline (Agent Security Index)
+
+**Goal:** Publish the Agent Security Index as a numbered publication series. Each campaign's
+existing Publishable Outputs constitute a Publication. Publication 1 ships during Campaign 1
+Phase 6 Evidence Assembly.
+
+**Deliverables:**
+
+- Methodology doc — written during Campaign 1 Phase 6, reviewed by an external reader capable
+  of pushing back on selection bias and disclosure timing
+- Publication 1 — Campaign 1 findings, evidence bundle, and reproduction pack that an external
+  researcher can rerun
+- Publication surface on mlsecopslab.io with stable URL scheme
+- Announcement post on richardspicer.io at Publication 1
+- Annual cadence commitment by default; more frequent only after the Campaign 1 pipeline proves
+  light enough to sustain it
+
+**Done when:** Publication 1 shipped with validated reproduction pack. Subsequent campaign
+publications inherit the pipeline without reinventing it.
+
+### Phase 10: Research Validation and v1.0
 
 **Goal:** Interface stability commitment backed by real research evidence.
 
@@ -112,9 +144,13 @@ The API is a versioned `/api/v1/` JSON surface backed by a shared service layer 
 **RFC:** `Plans/api-mcp-server-rfc.md`
 **Concept:** `Plans/api-mcp-server-concept.md`
 
+## Deferred
+
 ### Desktop Application Packaging
 
-Package qai as a double-clickable desktop app on Windows, macOS, and Linux. pywebview native window + PyInstaller. No terminal, proper lifecycle management, single-instance behavior, localhost session hardening.
+Packaging qai as a double-clickable desktop app (pywebview + PyInstaller) across Windows, macOS,
+and Linux. Deferred in favor of the research-platform direction: scenario format and publication
+pipeline take priority over packaging breadth. Re-evaluate post-1.0 based on adoption signals.
 
 **Plan:** `Plans/desktop-packaging-plan.md`
 **RFC:** `Plans/desktop-packaging-rfc.md`
@@ -142,6 +178,14 @@ commands, report formats, data models, or YAML schemas require a major version b
 
 - ≥1 publishable finding from inject, chain, ipi, or cxp campaigns (finding ID in Findings/)
 - OWASP MCP Top 10 mapping validated against real scan results
+- Publication 1 of the Agent Security Index shipped with validated reproduction pack
+- Methodology doc reviewed by an external reader capable of pushing back on selection bias and disclosure timing
+
+### Scenario Format
+
+- Scenario format v0 spec shipped
+- At least one reference scenario per confirmed hero module
+- Scenario format spec frozen at 1.0; breaking changes require major version bump
 
 ### Interface Stability
 
@@ -160,6 +204,7 @@ template schema. Breaking changes require major version bump after 1.0.
 
 - ~~Proxy client-facing HTTP adapters (proxy as standalone network service)~~ shipped in PR #94
 - Chain `blast-radius` and `detect` command implementations (stubs ship at v1.0)
+- Trace an Attack Path and Measure Blast Radius workflows — pending `chain` hero-tier decision from Campaign 3
 - Multi-model comparison in RXP
 - Detection rule export automation
 
@@ -190,7 +235,7 @@ Framework mappings are maintained in `src/q_ai/core/data/frameworks.yaml` and ke
 ## Out of Scope (for now)
 
 - **Cloud-hosted version.** {q-AI} is a local lab tool. No SaaS, no multi-tenant, no hosted scanning.
-- **GUI installer.** ~~Target audience is security researchers comfortable with Python tooling.~~ Desktop application packaging is now a planned direction — see `Plans/desktop-packaging-plan.md`.
+- **GUI installer.** ~~Target audience is security researchers comfortable with Python tooling.~~ Desktop application packaging was a planned direction but is now deferred in favor of scenario format and publication pipeline work — see `Plans/desktop-packaging-plan.md`.
 - **Real-time collaboration.** Single-operator tool. Research sharing happens via exported findings and published reports.
 - **LLM output testing.** That's Garak's problem. {q-AI} tests infrastructure and agent behaviour, not model outputs.
 
