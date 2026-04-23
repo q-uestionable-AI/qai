@@ -9,18 +9,26 @@
 
 **Security testing for agentic AI**
 
+A research program testing whether MCP and agentic AI vulnerabilities are exploitable end-to-end, with execution-level proof.
+
+Model-layer tests like Garak, PyRIT, or BIPIA can tell you "this model follows injected instructions." An audit scan can tell you "this MCP server has a vulnerable tool." A qai finding connects the two: the model weakness was exploitable end-to-end through a real agentic system. Authenticated callbacks confirm execution, not just compliance.
+
+The **Intel workspace** is the operator surface. A target-centric view where scan results, probe runs, and sweep findings accrue per target and drive payload generation for the end-to-end tests.
+
+Capabilities:
+
 - Audit MCP servers
 - Intercept agent traffic
 - Test tool poisoning and prompt injection
 - Execute multi-step attack chains
-- Generate IPI payloads
+- Generate IPI payloads (adversarial documents with authenticated callbacks)
 - Poison coding assistant context files
 - Measure RAG retrieval rank
 
 Local web UI orchestrates multi-module workflows.
 All findings stored in a SQLite database.
 
-> Research program by [Richard Spicer](https://richardspicer.io) · [{q-AI}](https://q-uestionable.ai)
+> By [Richard Spicer](https://richardspicer.io) · [{q-AI}](https://q-uestionable.ai)
 
 ---
 
@@ -42,12 +50,13 @@ qai ui
 
 ## Bring What You Have
 
-Already running [Garak](https://github.com/NVIDIA/garak) or [PyRIT](https://github.com/Azure/PyRIT)? Import their results and let qai prove whether the weaknesses they found are exploitable in real agentic systems.
+Already running [Garak](https://github.com/NVIDIA/garak) or [PyRIT](https://github.com/Azure/PyRIT), or working from [BIPIA](https://github.com/microsoft/BIPIA) benchmarks? Import their results and let qai prove whether the weaknesses they found are exploitable in real agentic systems.
 
 ```bash
 qai targets add "My Server" http://localhost:3000/sse
 qai import report.jsonl --format garak --target <target-id>
 qai import conversations.json --format pyrit --target <target-id>
+qai import bipia.csv --format bipia --target <target-id>
 ```
 
 Imported findings drive qai's native modules — inject payloads are prioritized based on compliance patterns your tools already discovered. Also supports SARIF from any tool.
