@@ -3,6 +3,48 @@ title: Changelog
 description: Release history for q-ai
 ---
 
+## v0.10.8
+
+Aligns `documentation/introduction.mdx` and `docs/Roadmap.md` with the
+research-program positioning that landed in the README at v0.10.7, and
+revises the Roadmap to reflect the reposition's priority shifts. No
+functional changes.
+
+### Changed: introduction.mdx
+
+- Paragraph 1 gains a sentence naming execution-level proof as the
+  distinguishing output.
+- The model-layer-vs-audit-vs-qai comparison paragraph now names
+  Garak, PyRIT, and BIPIA together on the model-layer side, matching
+  the README.
+- Import code block gains a third example:
+  `qai import bipia.csv --format bipia --target my-server`.
+
+### Changed: Roadmap
+
+- Two new pre-1.0 phases added:
+  - **Phase 8: Scenario Format v0** — portable `ipi`-shaped YAML
+    schema, loader/runner/exporter, `qai scenario run|validate|export`,
+    `ipi` reference integration.
+  - **Phase 9: Publication Pipeline (Agent Security Index)** —
+    methodology doc, Publication 1 with validated reproduction pack,
+    mlsecopslab.io publication surface, annual cadence commitment.
+- Phase 7 reduced in scope. Two workflows retained for v1.0
+  (Test Document Ingestion, Test a Coding Assistant — serve hero
+  modules and the publication pipeline). Three others deferred:
+  Trace an Attack Path and Measure Blast Radius (both `chain`-based,
+  pending hero-tier decision from Campaign 3), and Manage Research
+  (already functional from Phase 3, removed from the workflow list).
+- Old Phase 8 renumbered to Phase 10.
+- Duplicate "Remaining Workflows" summary before Phase 6 removed.
+- Desktop Application Packaging moved from "Planned Directions
+  (Post-v1.0)" to a new "Deferred" section with rationale.
+- v1.0 Exit Criteria: Research Validation gains Publication 1 and
+  methodology-review requirements; new Scenario Format sub-section
+  added covering v0 spec shipment and post-1.0 freeze.
+- "Out of Scope (for now)" GUI installer line updated to reflect
+  desktop packaging's move to Deferred.
+
 ## v0.10.7
 
 Rewrites the README first screen for research-program positioning.

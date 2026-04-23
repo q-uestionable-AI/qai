@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "q-uestionable-ai"
-version = "0.10.7"
+version = "0.10.8"
 description = "Security testing for agentic AI"
 readme = "README.md"
 license = "Apache-2.0"
