@@ -30,9 +30,7 @@ MANIPULATED_TRACE_NAME = "manipulated/session.json"
 MANIPULATED_SINK_NAME = "manipulated/sink.json"
 MANIPULATED_MEMO_NAME = "manipulated/memo.json"
 REQUIRED_TRACE_NAMES = frozenset({BASELINE_TRACE_NAME, MANIPULATED_TRACE_NAME})
-REQUIRED_CASCADE_ARTIFACTS = frozenset(
-    {BASELINE_TRACE_NAME, MANIPULATED_TRACE_NAME, MANIPULATED_MEMO_NAME, MANIPULATED_SINK_NAME}
-)
+REQUIRED_CONFIRMED_CASCADE_ARTIFACTS = frozenset({MANIPULATED_MEMO_NAME, MANIPULATED_SINK_NAME})
 
 
 class PromotionResult(StrEnum):
@@ -710,19 +708,24 @@ def _prepare_cascade_artifacts(
     result: TrustTransition,
     artifacts: dict[str, Path],
 ) -> list[tuple[str, Path]]:
-    """Validate cascade bundle destination and required artifact names."""
+    """Validate cascade bundle destination and required artifact names.
+
+    Session traces are always required. Memo/sink effect files are required
+    only for ``CONFIRMED`` results (clean/partial runs may only have traces).
+    """
     if output_dir.exists():
         raise FileExistsError(f"evidence bundle destination already exists: {output_dir}")
     if not artifacts:
         raise ValueError("evidence bundle requires raw artifacts")
-    missing = REQUIRED_CASCADE_ARTIFACTS.difference(artifacts)
-    if missing:
-        raise ValueError(f"cascade bundle missing required artifacts: {', '.join(sorted(missing))}")
-    if (
-        result.promotion_result == PromotionResult.CONFIRMED
-        and MANIPULATED_SINK_NAME not in artifacts
-    ):
-        raise ValueError(f"confirmed cascade result requires {MANIPULATED_SINK_NAME}")
+    missing_traces = REQUIRED_TRACE_NAMES.difference(artifacts)
+    if missing_traces:
+        missing = ", ".join(sorted(missing_traces))
+        raise ValueError(f"cascade bundle missing required traces: {missing}")
+    if result.promotion_result == PromotionResult.CONFIRMED:
+        missing_confirmed = REQUIRED_CONFIRMED_CASCADE_ARTIFACTS.difference(artifacts)
+        if missing_confirmed:
+            missing = ", ".join(sorted(missing_confirmed))
+            raise ValueError(f"confirmed cascade result requires {missing}")
     return _normalize_artifact_list(artifacts)
 
 

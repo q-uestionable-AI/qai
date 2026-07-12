@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from q_ai.ctpf import (
     BASELINE_TRACE_NAME,
     CONDITION_BASELINE,
@@ -163,20 +165,25 @@ class TestCompareCascade:
         assert transition.promotion_result == PromotionResult.NOT_OBSERVED
 
 
+def _session_trace_files(tmp_path: Path) -> tuple[Path, Path]:
+    inputs = tmp_path / "inputs"
+    (inputs / "baseline").mkdir(parents=True)
+    (inputs / "manipulated").mkdir(parents=True)
+    baseline_session = inputs / "baseline" / "session.json"
+    manip_session = inputs / "manipulated" / "session.json"
+    baseline_session.write_text('{"arm":"baseline"}\n', encoding="utf-8")
+    manip_session.write_text('{"arm":"manipulated"}\n', encoding="utf-8")
+    return baseline_session, manip_session
+
+
 class TestCascadeEvidenceBundle:
     def test_writes_hashes_and_manifest(self, tmp_path: Path) -> None:
         baseline = _clean_arm()
         manipulated = _promoted_arm()
         transition = compare_cascade_baseline_manipulated(baseline, manipulated)
-        inputs = tmp_path / "inputs"
-        (inputs / "baseline").mkdir(parents=True)
-        (inputs / "manipulated").mkdir(parents=True)
-        baseline_session = inputs / "baseline" / "session.json"
-        manip_session = inputs / "manipulated" / "session.json"
-        memo = inputs / "manipulated" / "memo.json"
-        sink = inputs / "manipulated" / "sink.json"
-        baseline_session.write_text('{"arm":"baseline"}\n', encoding="utf-8")
-        manip_session.write_text('{"arm":"manipulated"}\n', encoding="utf-8")
+        baseline_session, manip_session = _session_trace_files(tmp_path)
+        memo = tmp_path / "inputs" / "manipulated" / "memo.json"
+        sink = tmp_path / "inputs" / "manipulated" / "sink.json"
         memo.write_text(
             json.dumps({"effect": "memo_written", "run_id": "c-m01"}) + "\n",
             encoding="utf-8",
@@ -217,3 +224,59 @@ class TestCascadeEvidenceBundle:
         assert manifest["promotion_result"] == "CONFIRMED"
         assert manifest["scenario"]["scenario_id"] == "cascade_memo"
         assert f"artifacts/{MANIPULATED_MEMO_NAME}" in bundle.artifact_hashes
+
+    def test_not_observed_allows_trace_only_bundle(self, tmp_path: Path) -> None:
+        baseline = _clean_arm()
+        manipulated = CascadeArmObservation(
+            condition=CONDITION_MANIPULATED,
+            hop1_persist_invocation=None,
+            hop1_persist_arguments=None,
+            hop1_memo_effect=_effect(present=False, reason="memo_missing"),
+            hop2_action_invocation=None,
+            hop2_action_arguments=None,
+            hop2_sink_effect=_effect(present=False, reason="sink_missing"),
+        )
+        transition = compare_cascade_baseline_manipulated(baseline, manipulated)
+        assert transition.promotion_result == PromotionResult.NOT_OBSERVED
+        baseline_session, manip_session = _session_trace_files(tmp_path)
+        experiment = CascadeExperimentContext(
+            baseline=baseline,
+            manipulated=manipulated,
+            pins=PINS,
+            scenario=CascadeMemoScenario(),
+        )
+        bundle = write_cascade_evidence_bundle(
+            tmp_path / "bundle",
+            result=transition,
+            experiment=experiment,
+            artifacts={
+                BASELINE_TRACE_NAME: baseline_session,
+                MANIPULATED_TRACE_NAME: manip_session,
+            },
+        )
+        manifest = json.loads(bundle.manifest_path.read_text(encoding="utf-8"))
+        assert manifest["promotion_result"] == "NOT_OBSERVED"
+        assert f"artifacts/{MANIPULATED_MEMO_NAME}" not in bundle.artifact_hashes
+        assert f"artifacts/{MANIPULATED_SINK_NAME}" not in bundle.artifact_hashes
+
+    def test_confirmed_requires_memo_and_sink_artifacts(self, tmp_path: Path) -> None:
+        baseline = _clean_arm()
+        manipulated = _promoted_arm()
+        transition = compare_cascade_baseline_manipulated(baseline, manipulated)
+        baseline_session, manip_session = _session_trace_files(tmp_path)
+        experiment = CascadeExperimentContext(
+            baseline=baseline,
+            manipulated=manipulated,
+            pins=PINS,
+            scenario=CascadeMemoScenario(),
+        )
+        with pytest.raises(ValueError, match="confirmed cascade result requires"):
+            write_cascade_evidence_bundle(
+                tmp_path / "bundle",
+                result=transition,
+                experiment=experiment,
+                artifacts={
+                    BASELINE_TRACE_NAME: baseline_session,
+                    MANIPULATED_TRACE_NAME: manip_session,
+                },
+            )
