@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any
 import pytest
 
 _FIXTURE_PATH = Path(__file__).resolve().parent / "pattern2_preflight.py"
+_EXPECTED_MCP_TOOLS = frozenset({"read_status", "apply_change", "read_sink"})
 
 
 def _load_fixture(monkeypatch: pytest.MonkeyPatch, **env: str) -> Any:
@@ -89,5 +91,7 @@ def test_reset_sink_not_mcp_tool(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     """Oracle reset stays operator/env-only — not an agent-visible MCP tool."""
     monkeypatch.setenv("TEMP", str(tmp_path))
     mod = _load_fixture(monkeypatch)
-    assert not hasattr(mod, "reset_sink")
+    tool_names = {tool.name for tool in asyncio.run(mod.mcp.list_tools())}
+    assert tool_names == _EXPECTED_MCP_TOOLS
+    assert "reset_sink" not in tool_names
     assert callable(mod.reset_active_sink)
