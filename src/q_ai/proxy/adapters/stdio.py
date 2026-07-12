@@ -20,6 +20,8 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.server.stdio import stdio_server
 from mcp.shared.message import SessionMessage
 
+from q_ai.mcp.transport import TransportClosedError
+
 logger = logging.getLogger(__name__)
 
 # Sentinel pushed into the read queue when the SDK stream ends
@@ -102,10 +104,10 @@ class StdioServerAdapter:
             RuntimeError: If the adapter has been closed.
         """
         if self._closed:
-            raise RuntimeError("StdioServerAdapter is closed")
+            raise TransportClosedError("StdioServerAdapter is closed")
         item = await self._read_queue.get()
         if item is _STREAM_CLOSED:
-            raise RuntimeError("StdioServerAdapter is closed")
+            raise TransportClosedError("StdioServerAdapter is closed")
         return item  # type: ignore[return-value]
 
     async def write(self, message: SessionMessage) -> None:
@@ -118,7 +120,7 @@ class StdioServerAdapter:
             RuntimeError: If the adapter has been closed.
         """
         if self._closed:
-            raise RuntimeError("StdioServerAdapter is closed")
+            raise TransportClosedError("StdioServerAdapter is closed")
         await self._write_queue.put(message)
 
     async def close(self) -> None:
@@ -241,10 +243,10 @@ class StdioClientAdapter:
             RuntimeError: If the adapter has been closed.
         """
         if self._closed:
-            raise RuntimeError("StdioClientAdapter is closed")
+            raise TransportClosedError("StdioClientAdapter is closed")
         item = await self._read_queue.get()
         if item is _STREAM_CLOSED:
-            raise RuntimeError("StdioClientAdapter is closed")
+            raise TransportClosedError("StdioClientAdapter is closed")
         return item  # type: ignore[return-value]
 
     async def write(self, message: SessionMessage) -> None:
@@ -257,7 +259,7 @@ class StdioClientAdapter:
             RuntimeError: If the adapter has been closed.
         """
         if self._closed:
-            raise RuntimeError("StdioClientAdapter is closed")
+            raise TransportClosedError("StdioClientAdapter is closed")
         await self._write_queue.put(message)
 
     async def close(self) -> None:
