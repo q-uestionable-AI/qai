@@ -73,7 +73,7 @@ The callback listener records incoming HTTP requests and assigns a **confidence 
 - **MEDIUM** — No token, but User-Agent indicates a programmatic HTTP client (python-requests, httpx, curl, etc.). Likely automated execution.
 - **LOW** — No token and browser/scanner User-Agent. May be incidental traffic or scanner noise, not definitive proof.
 
-All hits are stored in the database and accessible via `qai ipi status` or the web dashboard.
+All hits are stored in the database and accessible via `python -m q_ai.ipi status`.
 
 ## Retrieval pre-validation (removed)
 
@@ -93,15 +93,14 @@ The callback listener returns a spoofed HTTP 404 response to avoid alerting the 
 
 ## Key Components
 
-- **CLI** (`qai ipi` commands) — Generate payloads, manage campaigns, monitor hits
+- **Library CLI** (`python -m q_ai.ipi`) — Generate payloads, manage campaigns, monitor hits
 - **Callback Server** — FastAPI listener that receives and logs execution confirmations
 - **Database** — Stores campaigns, hits, and campaign metadata
-- **Web UI** — IPI tab in run results with live hit feed and deployment playbook (when running through the web UI)
 - **Guidance Builder** — Generates deployment workflows and trigger prompts tailored to your format and target platform
 
 ## Next Steps
 
-- [CLI Reference](/ipi/cli) — All `qai ipi` commands and options
+- [CLI Reference](/ipi/cli) — Library CLI commands and options (`python -m q_ai.ipi`)
 - [Techniques](/ipi/techniques) — Detailed breakdown of all hiding techniques by format
 - [Formats](/ipi/formats) — Implementation status and format-specific capabilities
 - [Templates](/ipi/templates) — Document context templates that frame payloads in realistic content
