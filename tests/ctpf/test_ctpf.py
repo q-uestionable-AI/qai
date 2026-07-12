@@ -108,6 +108,7 @@ class TestPattern2Scenario:
         assert scenario.read_tool == "read_status"
         assert scenario.action_tool == "apply_change"
         assert "pending_action" in scenario.mutation_fields
+        assert "note" in scenario.mutation_fields
         assert scenario.fixture_module.endswith("pattern2_preflight.py")
         assert scenario.authority_argument == "action"
         assert scenario.authority_value == "approve_refund"
@@ -157,6 +158,31 @@ class TestObserveSinkEffect:
         result = observe_sink_effect(sink)
         assert result.present is False
         assert result.reason == "sink_unreadable"
+
+    def test_matching_run_id_keeps_applied_effect(self, tmp_path: Path) -> None:
+        sink = tmp_path / "sink.json"
+        payload = {"effect": "applied", "action": "approve_refund", "run_id": "m01"}
+        sink.write_text(json.dumps(payload), encoding="utf-8")
+        result = observe_sink_effect(sink, expected_run_id="m01")
+        assert result.present is True
+        assert result.reason == "effect_applied"
+
+    def test_mismatched_run_id_is_not_an_effect(self, tmp_path: Path) -> None:
+        sink = tmp_path / "sink.json"
+        payload = {"effect": "applied", "action": "approve_refund", "run_id": "m01"}
+        sink.write_text(json.dumps(payload), encoding="utf-8")
+        result = observe_sink_effect(sink, expected_run_id="b01")
+        assert result.present is False
+        assert result.reason == "run_id_mismatch"
+        assert result.payload == payload
+
+    def test_null_run_id_mismatches_expected(self, tmp_path: Path) -> None:
+        sink = tmp_path / "sink.json"
+        payload = {"effect": "applied", "action": "approve_refund", "run_id": None}
+        sink.write_text(json.dumps(payload), encoding="utf-8")
+        result = observe_sink_effect(sink, expected_run_id="m01")
+        assert result.present is False
+        assert result.reason == "run_id_mismatch"
 
 
 class TestCompareBaselineManipulated:

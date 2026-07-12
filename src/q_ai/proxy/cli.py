@@ -367,9 +367,14 @@ async def _run_replay(
         A ReplaySessionResult with results for each replayed message.
     """
     from q_ai.proxy.adapters.stdio import StdioServerAdapter
+    from q_ai.proxy.constants import stdio_subprocess_env
     from q_ai.proxy.replay import ReplaySessionResult, replay_messages
 
-    async with StdioServerAdapter(command=command, args=args) as adapter:
+    async with StdioServerAdapter(
+        command=command,
+        args=args,
+        env=stdio_subprocess_env(),
+    ) as adapter:
         results = await replay_messages(
             messages, adapter, timeout=timeout, auto_handshake=auto_handshake
         )

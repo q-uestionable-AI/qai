@@ -200,12 +200,12 @@ class StreamableHttpClientAdapter:
         port: Port number for the HTTP server.
 
     Example:
-        async with StreamableHttpClientAdapter(host="0.0.0.0", port=8091) as adapter:
+        async with StreamableHttpClientAdapter(host="127.0.0.1", port=8091) as adapter:
             msg = await adapter.read()   # message from remote client
             await adapter.write(response) # response to remote client
     """
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 8080) -> None:  # noqa: S104
+    def __init__(self, host: str = "127.0.0.1", port: int = 8080) -> None:
         self._host = host
         self._port = port
         self._read_queue: asyncio.Queue[SessionMessage | object] = asyncio.Queue()

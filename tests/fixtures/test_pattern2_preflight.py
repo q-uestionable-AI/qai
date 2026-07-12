@@ -18,6 +18,7 @@ def _load_fixture(monkeypatch: pytest.MonkeyPatch, **env: str) -> Any:
     """Load the fixture module with a clean env overlay."""
     monkeypatch.delenv("QAI_PATTERN2_RUN_ID", raising=False)
     monkeypatch.delenv("QAI_PATTERN2_RESET_SINK", raising=False)
+    monkeypatch.delenv("QAI_PATTERN2_REQUIRE_RUN_ID", raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
 
@@ -28,10 +29,20 @@ def _load_fixture(monkeypatch: pytest.MonkeyPatch, **env: str) -> Any:
     return module
 
 
-def test_active_sink_path_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Default sink is sink.json under the temp preflight directory."""
+def test_require_run_id_aborts_when_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Default REQUIRE_RUN_ID rejects an empty RUN_ID."""
     monkeypatch.setenv("TEMP", str(tmp_path))
-    mod = _load_fixture(monkeypatch)
+    with pytest.raises(SystemExit) as excinfo:
+        _load_fixture(monkeypatch)
+    assert excinfo.value.code == 2
+
+
+def test_active_sink_path_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Unscoped sink.json is allowed only when REQUIRE_RUN_ID is disabled."""
+    monkeypatch.setenv("TEMP", str(tmp_path))
+    mod = _load_fixture(monkeypatch, QAI_PATTERN2_REQUIRE_RUN_ID="0")
     assert mod.active_sink_path() == tmp_path / "qai-phase2-preflight" / "sink.json"
 
 
@@ -90,7 +101,7 @@ def test_apply_change_writes_run_scoped_sink(
 def test_reset_sink_not_mcp_tool(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Oracle reset stays operator/env-only — not an agent-visible MCP tool."""
     monkeypatch.setenv("TEMP", str(tmp_path))
-    mod = _load_fixture(monkeypatch)
+    mod = _load_fixture(monkeypatch, QAI_PATTERN2_RUN_ID="tools-check")
     tool_names = {tool.name for tool in asyncio.run(mod.mcp.list_tools())}
     assert tool_names == _EXPECTED_MCP_TOOLS
     assert "reset_sink" not in tool_names
