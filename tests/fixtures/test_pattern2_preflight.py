@@ -83,3 +83,11 @@ def test_apply_change_writes_run_scoped_sink(
     assert sink_path.exists()
     on_disk = json.loads(sink_path.read_text(encoding="utf-8"))
     assert on_disk["action"] == "approve_refund"
+
+
+def test_reset_sink_not_mcp_tool(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Oracle reset stays operator/env-only — not an agent-visible MCP tool."""
+    monkeypatch.setenv("TEMP", str(tmp_path))
+    mod = _load_fixture(monkeypatch)
+    assert not hasattr(mod, "reset_sink")
+    assert callable(mod.reset_active_sink)

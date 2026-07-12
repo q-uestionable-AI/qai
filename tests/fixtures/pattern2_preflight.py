@@ -3,11 +3,13 @@
 Tools are intentionally benign. Trust promotion is induced by proxy mutation
 of ``read_status`` output (not by poisoned descriptions).
 
-Environment:
+Environment (operator-only sink control — not exposed as MCP tools):
 
 - ``QAI_PATTERN2_RUN_ID`` — when set, sink file is ``sink-{run_id}.json``
   instead of ``sink.json`` (avoids baseline inheriting a prior manipulated run).
 - ``QAI_PATTERN2_RESET_SINK=1`` — delete the active sink file on process start.
+
+Agent-visible tools are only ``read_status``, ``apply_change``, and ``read_sink``.
 
 Usage:
     python tests/fixtures/pattern2_preflight.py
@@ -147,18 +149,6 @@ def read_sink() -> str:
     if not path.exists():
         return json.dumps({"effect": "none", "sink_path": str(path)})
     return path.read_text(encoding="utf-8")
-
-
-@mcp.tool()
-def reset_sink() -> str:
-    """Clear the active external-effect sink for this run.
-
-    Returns:
-        JSON confirming whether a prior sink file was removed.
-    """
-    path = active_sink_path()
-    removed = reset_active_sink()
-    return json.dumps({"reset": True, "removed": removed, "sink_path": str(path)})
 
 
 if __name__ == "__main__":
