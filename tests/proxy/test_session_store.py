@@ -153,6 +153,14 @@ class TestSerialization:
         session = store.to_proxy_session()
         assert session.messages == []
 
+    def test_finish_sets_end_time_once(self) -> None:
+        store = SessionStore(session_id="s1", transport=Transport.STDIO)
+        first = datetime(2026, 7, 12, 12, 0, tzinfo=UTC)
+        later = datetime(2026, 7, 12, 13, 0, tzinfo=UTC)
+        store.finish(first)
+        store.finish(later)
+        assert store.to_proxy_session().ended_at == first
+
     def test_roundtrip_json(self) -> None:
         store = SessionStore(
             session_id="s1",
@@ -202,6 +210,16 @@ class TestSaveLoad:
         assert messages[1].correlated_id == "req-1"
         assert messages[2].jsonrpc_id is None
         assert messages[2].method == "notifications/initialized"
+
+    def test_completed_time_round_trips(self, tmp_path: Path) -> None:
+        ended_at = datetime(2026, 7, 12, 12, 0, tzinfo=UTC)
+        store = SessionStore(session_id="s1", transport=Transport.STDIO)
+        store.finish(ended_at)
+        file_path = tmp_path / "completed.json"
+        store.save(file_path)
+
+        loaded = SessionStore.load(file_path)
+        assert loaded.to_proxy_session().ended_at == ended_at
 
     def test_save_creates_parent_dirs(self, tmp_path: Path) -> None:
         store = SessionStore(session_id="s1", transport=Transport.STDIO)

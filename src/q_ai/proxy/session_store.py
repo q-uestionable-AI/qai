@@ -26,6 +26,7 @@ class SessionStore:
         server_url: For SSE/HTTP sessions, the server endpoint URL.
         metadata: Arbitrary session metadata.
         started_at: Optional session start time (defaults to now).
+        ended_at: Optional session completion time.
         chain_run_id: Optional chain execution run ID for correlation.
         chain_step_id: Optional chain step ID for correlation.
 
@@ -43,6 +44,7 @@ class SessionStore:
         server_url: str | None = None,
         metadata: dict[str, Any] | None = None,
         started_at: datetime | None = None,
+        ended_at: datetime | None = None,
         chain_run_id: str | None = None,
         chain_step_id: str | None = None,
     ) -> None:
@@ -52,6 +54,7 @@ class SessionStore:
         self.server_url = server_url
         self.metadata = metadata or {}
         self.started_at = started_at or datetime.now(tz=UTC)
+        self.ended_at = ended_at
         self.chain_run_id = chain_run_id
         self.chain_step_id = chain_step_id
         self._messages: list[ProxyMessage] = []
@@ -69,6 +72,15 @@ class SessionStore:
     def get_by_id(self, proxy_id: str) -> ProxyMessage | None:
         """Look up a message by its proxy-assigned ID."""
         return self._index.get(proxy_id)
+
+    def finish(self, ended_at: datetime | None = None) -> None:
+        """Mark the session complete without changing an existing end time.
+
+        Args:
+            ended_at: Completion time. Defaults to the current UTC time.
+        """
+        if self.ended_at is None:
+            self.ended_at = ended_at or datetime.now(tz=UTC)
 
     def to_proxy_session(self) -> ProxySession:
         """Convert to a ProxySession Pydantic model for serialization."""
@@ -101,7 +113,7 @@ class SessionStore:
         return ProxySession(
             id=self.session_id,
             started_at=self.started_at,
-            ended_at=None,
+            ended_at=self.ended_at,
             transport=self.transport,
             server_command=self.server_command,
             server_url=self.server_url,
@@ -130,6 +142,7 @@ class SessionStore:
             server_url=session.server_url,
             metadata=metadata,
             started_at=session.started_at,
+            ended_at=session.ended_at,
             chain_run_id=chain_run_id,
             chain_step_id=chain_step_id,
         )

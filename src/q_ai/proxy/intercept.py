@@ -8,6 +8,8 @@ MODIFY, or DROP each held message.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from mcp.types import JSONRPCMessage
 
@@ -20,11 +22,42 @@ from q_ai.proxy.models import (
 )
 
 
+def _validate_decision(
+    action: InterceptAction,
+    modified_raw: JSONRPCMessage | None,
+) -> None:
+    if action == InterceptAction.MODIFY and modified_raw is None:
+        raise ValueError("MODIFY decisions require a modified JSON-RPC message")
+    if action != InterceptAction.MODIFY and modified_raw is not None:
+        raise ValueError("Only MODIFY decisions may include a modified JSON-RPC message")
+
+
+@dataclass(frozen=True)
+class InterceptDecision:
+    """Validated programmatic decision for one intercepted message.
+
+    Args:
+        action: FORWARD, DROP, or MODIFY.
+        modified_raw: Replacement JSON-RPC message for MODIFY decisions.
+    """
+
+    action: InterceptAction
+    modified_raw: JSONRPCMessage | None = None
+
+    def __post_init__(self) -> None:
+        """Reject incomplete or internally inconsistent decisions."""
+        _validate_decision(self.action, self.modified_raw)
+
+
+InterceptRule = Callable[[ProxyMessage], InterceptDecision | None]
+
+
 class InterceptEngine:
     """Controls whether messages are held for inspection or passed through.
 
     Args:
         mode: Initial intercept mode. Defaults to PASSTHROUGH.
+        rule: Optional programmatic decision rule. Exceptions propagate.
 
     Example:
         >>> engine = InterceptEngine(mode=InterceptMode.INTERCEPT)
@@ -33,8 +66,13 @@ class InterceptEngine:
         ...     await held.release.wait()
     """
 
-    def __init__(self, mode: InterceptMode = InterceptMode.PASSTHROUGH) -> None:
+    def __init__(
+        self,
+        mode: InterceptMode = InterceptMode.PASSTHROUGH,
+        rule: InterceptRule | None = None,
+    ) -> None:
         self._mode = mode
+        self._rule = rule
         self._held: list[HeldMessage] = []
 
     @property
@@ -64,6 +102,22 @@ class InterceptEngine:
             True if the engine is in INTERCEPT mode.
         """
         return self._mode == InterceptMode.INTERCEPT
+
+    def decide(self, message: ProxyMessage) -> InterceptDecision | None:
+        """Return the programmatic decision for a message, if configured.
+
+        Rule exceptions intentionally propagate so malformed or uncertain
+        mutations stop the pipeline instead of forwarding data.
+
+        Args:
+            message: The proxy message to evaluate.
+
+        Returns:
+            A validated decision, or None to use interactive mode behavior.
+        """
+        if self._rule is None:
+            return None
+        return self._rule(message)
 
     def hold(self, message: ProxyMessage) -> HeldMessage:
         """Hold a message for user inspection.
@@ -96,6 +150,7 @@ class InterceptEngine:
             action: FORWARD, DROP, or MODIFY.
             modified_raw: If action is MODIFY, the edited JSON-RPC message.
         """
+        _validate_decision(action, modified_raw)
         held.action = action
         held.modified_raw = modified_raw
         held.release.set()
@@ -109,6 +164,11 @@ class InterceptEngine:
             List of HeldMessage objects awaiting user action.
         """
         return list(self._held)
+
+    def drop_held(self) -> None:
+        """Release all held messages with DROP so waiters unblock."""
+        for held in list(self._held):
+            self.release(held, InterceptAction.DROP)
 
     def get_state(self) -> InterceptState:
         """Return a snapshot of the current intercept state.

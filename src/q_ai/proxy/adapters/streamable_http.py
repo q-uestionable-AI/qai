@@ -27,6 +27,7 @@ from mcp.shared.message import SessionMessage
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
+from q_ai.mcp.transport import TransportClosedError
 from q_ai.proxy.constants import LISTEN_HOST
 
 logger = logging.getLogger(__name__)
@@ -108,10 +109,10 @@ class StreamableHttpServerAdapter:
             RuntimeError: If the adapter has been closed.
         """
         if self._closed:
-            raise RuntimeError("StreamableHttpServerAdapter is closed")
+            raise TransportClosedError("StreamableHttpServerAdapter is closed")
         item = await self._read_queue.get()
         if item is _STREAM_CLOSED:
-            raise RuntimeError("StreamableHttpServerAdapter is closed")
+            raise TransportClosedError("StreamableHttpServerAdapter is closed")
         return item  # type: ignore[return-value]
 
     async def write(self, message: SessionMessage) -> None:
@@ -124,7 +125,7 @@ class StreamableHttpServerAdapter:
             RuntimeError: If the adapter has been closed.
         """
         if self._closed:
-            raise RuntimeError("StreamableHttpServerAdapter is closed")
+            raise TransportClosedError("StreamableHttpServerAdapter is closed")
         await self._write_queue.put(message)
 
     async def close(self) -> None:
@@ -318,10 +319,10 @@ class StreamableHttpClientAdapter:
             RuntimeError: If the adapter has been closed.
         """
         if self._closed:
-            raise RuntimeError("StreamableHttpClientAdapter is closed")
+            raise TransportClosedError("StreamableHttpClientAdapter is closed")
         item = await self._read_queue.get()
         if item is _STREAM_CLOSED:
-            raise RuntimeError("StreamableHttpClientAdapter is closed")
+            raise TransportClosedError("StreamableHttpClientAdapter is closed")
         return item  # type: ignore[return-value]
 
     async def write(self, message: SessionMessage) -> None:
@@ -334,7 +335,7 @@ class StreamableHttpClientAdapter:
             RuntimeError: If the adapter has been closed.
         """
         if self._closed:
-            raise RuntimeError("StreamableHttpClientAdapter is closed")
+            raise TransportClosedError("StreamableHttpClientAdapter is closed")
         await self._write_queue.put(message)
 
     async def close(self) -> None:

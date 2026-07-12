@@ -28,6 +28,7 @@ from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, JSONRPCNotification, JSONRPCRequest
 
 from q_ai.mcp.models import Direction, Transport
+from q_ai.mcp.transport import TransportClosedError
 from q_ai.proxy.adapters.stdio import StdioServerAdapter
 from q_ai.proxy.intercept import InterceptEngine
 from q_ai.proxy.models import (
@@ -82,11 +83,11 @@ class IntegrationClientAdapter:
             The next SessionMessage from the read queue.
 
         Raises:
-            RuntimeError: When the close sentinel is received.
+            TransportClosedError: When the close sentinel is received.
         """
         item = await self.read_queue.get()
         if item is None:
-            raise RuntimeError("IntegrationClientAdapter closed")
+            raise TransportClosedError("IntegrationClientAdapter closed")
         return item
 
     async def write(self, message: SessionMessage) -> None:

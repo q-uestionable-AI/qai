@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
+import pytest
 from mcp.types import JSONRPCMessage, JSONRPCRequest
 
 from q_ai.mcp.models import Direction, Transport
-from q_ai.proxy.intercept import InterceptEngine
+from q_ai.proxy.intercept import InterceptDecision, InterceptEngine
 from q_ai.proxy.models import (
     HeldMessage,
     InterceptAction,
@@ -89,6 +90,13 @@ class TestRelease:
         assert held.modified_raw is None
         assert len(engine.get_held()) == 0
 
+    def test_release_modify_requires_payload(self) -> None:
+        engine = InterceptEngine(mode=InterceptMode.INTERCEPT)
+        held = engine.hold(_make_proxy_message())
+        with pytest.raises(ValueError, match="MODIFY decisions require"):
+            engine.release(held, InterceptAction.MODIFY)
+        assert not held.release.is_set()
+
     def test_release_drop(self) -> None:
         engine = InterceptEngine(mode=InterceptMode.INTERCEPT)
         msg = _make_proxy_message()
@@ -107,6 +115,39 @@ class TestRelease:
         assert held.action == InterceptAction.MODIFY
         assert held.modified_raw is modified_raw
         assert held.release.is_set()
+        assert len(engine.get_held()) == 0
+
+
+class TestProgrammaticDecision:
+    """InterceptDecision and rule validation."""
+
+    def test_modify_requires_payload(self) -> None:
+        with pytest.raises(ValueError, match="MODIFY decisions require"):
+            InterceptDecision(InterceptAction.MODIFY)
+
+    def test_forward_rejects_payload(self) -> None:
+        raw = _make_proxy_message().raw
+        with pytest.raises(ValueError, match="Only MODIFY decisions"):
+            InterceptDecision(InterceptAction.FORWARD, modified_raw=raw)
+
+    def test_engine_returns_rule_decision(self) -> None:
+        expected = InterceptDecision(InterceptAction.DROP)
+        engine = InterceptEngine(rule=lambda _message: expected)
+        assert engine.decide(_make_proxy_message()) is expected
+
+
+class TestDropHeld:
+    """InterceptEngine.drop_held() unblocks all waiters with DROP."""
+
+    def test_drop_held_releases_all_with_drop(self) -> None:
+        engine = InterceptEngine(mode=InterceptMode.INTERCEPT)
+        held1 = engine.hold(_make_proxy_message(sequence=1))
+        held2 = engine.hold(_make_proxy_message(sequence=2))
+        engine.drop_held()
+        assert held1.release.is_set()
+        assert held1.action == InterceptAction.DROP
+        assert held2.release.is_set()
+        assert held2.action == InterceptAction.DROP
         assert len(engine.get_held()) == 0
 
 

@@ -10,6 +10,10 @@ from typing import Protocol
 from mcp.shared.message import SessionMessage
 
 
+class TransportClosedError(RuntimeError):
+    """Signal an expected transport disconnection or shutdown."""
+
+
 class TransportAdapter(Protocol):
     """Interface for transport adapters.
 

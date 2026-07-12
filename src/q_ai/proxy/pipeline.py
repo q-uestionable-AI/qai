@@ -19,14 +19,14 @@ from datetime import UTC, datetime
 from mcp.shared.message import SessionMessage
 
 from q_ai.mcp.models import Direction, Transport
-from q_ai.mcp.transport import TransportAdapter
+from q_ai.mcp.transport import TransportAdapter, TransportClosedError
 from q_ai.proxy.correlation import (
     extract_jsonrpc_id,
     extract_method,
     is_request,
     is_response,
 )
-from q_ai.proxy.intercept import InterceptEngine
+from q_ai.proxy.intercept import InterceptDecision, InterceptEngine
 from q_ai.proxy.models import (
     HeldMessage,
     InterceptAction,
@@ -98,9 +98,8 @@ async def run_pipeline(
                     correlation_map=correlation_map,
                 )
             )
-    except* Exception as eg:
-        # One or both forward loops raised (adapter closed).
-        # This is normal shutdown — both loops stop when either side disconnects.
+    except* TransportClosedError as eg:
+        # Expected shutdown: both loops stop when either transport disconnects.
         for exc in eg.exceptions:
             logger.debug("Pipeline forward loop exited: %s", exc)
 
@@ -156,28 +155,60 @@ async def _forward_loop(
         if session.on_message is not None:
             session.on_message(proxy_msg)
 
-        # Intercept check
-        if session.intercept_engine.should_hold(proxy_msg):
-            held = session.intercept_engine.hold(proxy_msg)
-            if session.on_held is not None:
-                session.on_held(held)
-            await held.release.wait()
-
-            if held.action == InterceptAction.DROP:
-                continue
-
-            if held.action == InterceptAction.MODIFY and held.modified_raw is not None:
-                proxy_msg.original_raw = proxy_msg.raw
-                proxy_msg.raw = held.modified_raw
-                proxy_msg.modified = True
-                session_message = SessionMessage(message=held.modified_raw)
+        forwarded_message = await _intercept_message(proxy_msg, session_message, session)
+        if forwarded_message is None:
+            continue
 
         # Forward
-        await destination.write(session_message)
+        await destination.write(forwarded_message)
 
         # Notify forwarded
         if session.on_forwarded is not None:
             session.on_forwarded(proxy_msg)
+
+
+async def _intercept_message(
+    proxy_msg: ProxyMessage,
+    session_message: SessionMessage,
+    session: PipelineSession,
+) -> SessionMessage | None:
+    """Apply a programmatic or interactive intercept decision."""
+    decision = session.intercept_engine.decide(proxy_msg)
+    if decision is None and session.intercept_engine.should_hold(proxy_msg):
+        decision = await _wait_for_interactive_decision(proxy_msg, session)
+    return _apply_decision(proxy_msg, session_message, decision)
+
+
+async def _wait_for_interactive_decision(
+    proxy_msg: ProxyMessage,
+    session: PipelineSession,
+) -> InterceptDecision:
+    """Hold a message until the interactive controller releases it."""
+    held = session.intercept_engine.hold(proxy_msg)
+    if session.on_held is not None:
+        session.on_held(held)
+    await held.release.wait()
+    if held.action is None:
+        raise RuntimeError("Held message released without an intercept action")
+    return InterceptDecision(action=held.action, modified_raw=held.modified_raw)
+
+
+def _apply_decision(
+    proxy_msg: ProxyMessage,
+    session_message: SessionMessage,
+    decision: InterceptDecision | None,
+) -> SessionMessage | None:
+    """Apply a validated decision and preserve the original payload."""
+    if decision is None or decision.action == InterceptAction.FORWARD:
+        return session_message
+    if decision.action == InterceptAction.DROP:
+        return None
+    if decision.modified_raw is None:  # Defensive: InterceptDecision validates this.
+        raise ValueError("MODIFY decision is missing a replacement message")
+    proxy_msg.original_raw = proxy_msg.raw
+    proxy_msg.raw = decision.modified_raw
+    proxy_msg.modified = True
+    return SessionMessage(message=decision.modified_raw)
 
 
 def _wrap_message(

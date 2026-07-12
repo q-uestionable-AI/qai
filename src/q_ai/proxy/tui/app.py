@@ -32,8 +32,9 @@ from q_ai.proxy.models import (
     InterceptMode,
     ProxyMessage,
 )
-from q_ai.proxy.pipeline import PipelineSession, run_pipeline
+from q_ai.proxy.pipeline import PipelineSession
 from q_ai.proxy.replay import ReplayResult, replay_messages
+from q_ai.proxy.runtime import ProxyRuntime, ProxyRuntimeConfig
 from q_ai.proxy.session_store import SessionStore
 from q_ai.proxy.tui.messages import (
     MessageForwarded,
@@ -105,6 +106,7 @@ class ProxyApp(App[None]):
         self.session_file = session_file
         self._run_pipeline_on_mount = run_pipeline_on_mount
         self._pipeline_worker: Worker[None] | None = None
+        self._runtime: ProxyRuntime | None = None
 
         # Edit mode state
         self._editing: bool = False
@@ -170,160 +172,35 @@ class ProxyApp(App[None]):
         )
 
     def _launch_pipeline(self) -> None:
-        """Build adapters and start the pipeline worker."""
-        if self.listen_transport:
-            self._pipeline_worker = self.run_worker(
-                self._run_proxy_network(),
-                name="pipeline",
-                exclusive=True,
-            )
-        elif self.transport == Transport.STDIO:
-            self._pipeline_worker = self.run_worker(
-                self._run_proxy_stdio(),
-                name="pipeline",
-                exclusive=True,
-            )
-        elif self.transport in (Transport.SSE, Transport.STREAMABLE_HTTP):
-            self._pipeline_worker = self.run_worker(
-                self._run_proxy_http(),
-                name="pipeline",
-                exclusive=True,
-            )
-        else:
-            self.notify(f"Unknown transport: {self.transport.value}", severity="error")
-
-    async def _run_proxy_stdio(self) -> None:
-        """Pipeline worker for stdio transport.
-
-        Builds StdioServerAdapter and StdioClientAdapter, enters their
-        contexts, and runs the pipeline until either side disconnects.
-        """
-        from q_ai.proxy.adapters.stdio import StdioClientAdapter, StdioServerAdapter
-        from q_ai.proxy.constants import stdio_subprocess_env
-
-        if not self.server_command:
-            self.post_message(PipelineError(ValueError("No server command")))
-            return
-
-        # Parse command into executable + args (shlex handles quoting)
-        parts = shlex.split(self.server_command)
-        command = parts[0]
-        args = parts[1:] if len(parts) > 1 else []
-
-        try:
-            async with (
-                StdioServerAdapter(
-                    command=command,
-                    args=args,
-                    env=stdio_subprocess_env(),
-                ) as server_adapter,
-                StdioClientAdapter() as client_adapter,
-            ):
-                session = self._build_pipeline_session()
-                await run_pipeline(client_adapter, server_adapter, session)
-        except Exception as exc:
-            logger.error("Pipeline error: %s", exc, exc_info=True)
-            self.post_message(PipelineError(exc))
-        finally:
-            self.post_message(PipelineStopped())
-
-    async def _run_proxy_http(self) -> None:
-        """Pipeline worker for SSE and Streamable HTTP transports.
-
-        Builds the appropriate server-facing adapter for the remote
-        MCP server and uses StdioClientAdapter for the local client
-        (proxy runs as a subprocess of the MCP client).
-        """
-        from q_ai.proxy.adapters.sse import SseServerAdapter
-        from q_ai.proxy.adapters.stdio import StdioClientAdapter
-        from q_ai.proxy.adapters.streamable_http import StreamableHttpServerAdapter
-
-        if not self.server_url:
-            self.post_message(PipelineError(ValueError("No server URL")))
-            return
-
-        try:
-            server_adapter_cm: SseServerAdapter | StreamableHttpServerAdapter
-            if self.transport == Transport.SSE:
-                server_adapter_cm = SseServerAdapter(url=self.server_url)
-            else:
-                server_adapter_cm = StreamableHttpServerAdapter(url=self.server_url)
-
-            async with (
-                server_adapter_cm as server_adapter,
-                StdioClientAdapter() as client_adapter,
-            ):
-                session = self._build_pipeline_session()
-                await run_pipeline(client_adapter, server_adapter, session)
-        except Exception as exc:
-            logger.error("Pipeline error: %s", exc, exc_info=True)
-            self.post_message(PipelineError(exc))
-        finally:
-            self.post_message(PipelineStopped())
-
-    async def _run_proxy_network(self) -> None:
-        """Pipeline worker for network client-facing transports.
-
-        Builds a network client adapter (SSE or Streamable HTTP) based on
-        ``listen_transport``, pairs it with the appropriate server adapter
-        based on ``transport``, and runs the pipeline.
-        """
-        from q_ai.proxy.adapters.sse import SseClientAdapter, SseServerAdapter
-        from q_ai.proxy.adapters.stdio import StdioServerAdapter
-        from q_ai.proxy.adapters.streamable_http import (
-            StreamableHttpClientAdapter,
-            StreamableHttpServerAdapter,
+        """Start the shared programmable proxy runtime."""
+        self._pipeline_worker = self.run_worker(
+            self._run_proxy(),
+            name="pipeline",
+            exclusive=True,
         )
-        from q_ai.proxy.constants import LISTEN_HOST, stdio_subprocess_env
 
-        # Build client-facing adapter
-        client_adapter_cm: SseClientAdapter | StreamableHttpClientAdapter
-        if self.listen_transport == "sse":
-            client_adapter_cm = SseClientAdapter(
-                host=LISTEN_HOST,
-                port=self.listen_port,
-            )
-        else:
-            client_adapter_cm = StreamableHttpClientAdapter(
-                host=LISTEN_HOST,
-                port=self.listen_port,
-            )
-
-        # Build server-facing adapter
-        server_adapter_cm: StdioServerAdapter | SseServerAdapter | StreamableHttpServerAdapter
-        if self.transport == Transport.STDIO:
-            if not self.server_command:
-                self.post_message(PipelineError(ValueError("No server command")))
-                return
-            parts = shlex.split(self.server_command)
-            server_adapter_cm = StdioServerAdapter(
-                command=parts[0],
-                args=parts[1:] if len(parts) > 1 else [],
-                env=stdio_subprocess_env(),
-            )
-        elif self.transport == Transport.SSE:
-            if not self.server_url:
-                self.post_message(PipelineError(ValueError("No server URL")))
-                return
-            server_adapter_cm = SseServerAdapter(url=self.server_url)
-        else:
-            if not self.server_url:
-                self.post_message(PipelineError(ValueError("No server URL")))
-                return
-            server_adapter_cm = StreamableHttpServerAdapter(url=self.server_url)
-
+    async def _run_proxy(self) -> None:
+        """Run the configured proxy and translate failures into TUI events."""
         try:
-            async with (
-                client_adapter_cm as client_adapter,
-                server_adapter_cm as server_adapter,
-            ):
-                session = self._build_pipeline_session()
-                await run_pipeline(client_adapter, server_adapter, session)
+            self._runtime = ProxyRuntime(self._build_pipeline_session())
+            await self._runtime.run(self._build_runtime_config())
         except Exception as exc:
             logger.error("Pipeline error: %s", exc, exc_info=True)
             self.post_message(PipelineError(exc))
         finally:
+            self._runtime = None
             self.post_message(PipelineStopped())
+
+    def _build_runtime_config(self) -> ProxyRuntimeConfig:
+        """Build validated runtime configuration from TUI options."""
+        listen_transport = Transport(self.listen_transport) if self.listen_transport else None
+        return ProxyRuntimeConfig(
+            transport=self.transport,
+            server_command=self.server_command,
+            server_url=self.server_url,
+            listen_transport=listen_transport,
+            listen_port=self.listen_port,
+        )
 
     async def _run_proxy_with_adapters(
         self,
@@ -337,12 +214,13 @@ class ProxyApp(App[None]):
             server_adapter: The server-facing adapter.
         """
         try:
-            session = self._build_pipeline_session()
-            await run_pipeline(client_adapter, server_adapter, session)
+            self._runtime = ProxyRuntime(self._build_pipeline_session())
+            await self._runtime.run_with_adapters(client_adapter, server_adapter)
         except Exception as exc:
             logger.error("Pipeline error: %s", exc, exc_info=True)
             self.post_message(PipelineError(exc))
         finally:
+            self._runtime = None
             self.post_message(PipelineStopped())
 
     def _build_pipeline_session(self) -> PipelineSession:

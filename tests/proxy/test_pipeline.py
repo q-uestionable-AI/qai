@@ -6,6 +6,7 @@ import asyncio
 import uuid
 from typing import Any
 
+import pytest
 from mcp.shared.message import SessionMessage
 from mcp.types import (
     JSONRPCMessage,
@@ -15,7 +16,8 @@ from mcp.types import (
 )
 
 from q_ai.mcp.models import Direction, Transport
-from q_ai.proxy.intercept import InterceptEngine
+from q_ai.mcp.transport import TransportClosedError
+from q_ai.proxy.intercept import InterceptDecision, InterceptEngine
 from q_ai.proxy.models import (
     HeldMessage,
     InterceptAction,
@@ -46,7 +48,7 @@ class MockAdapter:
         """Return next message, or raise when None (signals close)."""
         item = await self.read_queue.get()
         if item is None:
-            raise ConnectionError("Connection closed")
+            raise TransportClosedError("Connection closed")
         return item
 
     async def write(self, message: SessionMessage) -> None:
@@ -379,6 +381,68 @@ class TestInterceptModify:
         assert modified_msg.modified is True
         assert modified_msg.original_raw is not None
         assert modified_msg.raw == modified_raw
+
+
+class TestProgrammaticIntercept:
+    """Programmatic rules apply validated decisions without a held-message callback."""
+
+    async def test_rule_modifies_and_preserves_original(self) -> None:
+        client = MockAdapter()
+        server = MockAdapter()
+        client.enqueue(_make_request("tools/list", msg_id=1))
+        server.enqueue()
+        modified_raw = JSONRPCMessage(JSONRPCRequest(jsonrpc="2.0", id=1, method="tools/call"))
+        engine = InterceptEngine(
+            rule=lambda _message: InterceptDecision(
+                InterceptAction.MODIFY,
+                modified_raw=modified_raw,
+            )
+        )
+
+        session = _make_pipeline_session(intercept_engine=engine)
+        await run_pipeline(client, server, session)
+
+        forwarded = server.write_queue.get_nowait()
+        assert forwarded.message == modified_raw
+        captured = session.session_store.get_messages()[0]
+        assert captured.original_raw is not None
+        assert captured.raw == modified_raw
+
+    async def test_rule_failure_propagates(self) -> None:
+        client = MockAdapter()
+        server = MockAdapter()
+        client.enqueue(_make_request())
+        server.enqueue()
+
+        def fail_closed(_message: ProxyMessage) -> InterceptDecision | None:
+            raise ValueError("unexpected response schema")
+
+        session = _make_pipeline_session(
+            intercept_engine=InterceptEngine(rule=fail_closed),
+        )
+        with pytest.raises(ExceptionGroup) as exc_info:
+            await run_pipeline(client, server, session)
+
+        assert any("unexpected response schema" in str(exc) for exc in exc_info.value.exceptions)
+
+
+class TestPipelineFailures:
+    """Unexpected adapter failures propagate while transport closure remains normal."""
+
+    async def test_write_failure_propagates(self) -> None:
+        class FailingWriteAdapter(MockAdapter):
+            async def write(self, message: SessionMessage) -> None:
+                raise OSError("target write failed")
+
+        client = MockAdapter()
+        server = FailingWriteAdapter()
+        client.enqueue(_make_request())
+        server.enqueue()
+
+        with pytest.raises(ExceptionGroup) as exc_info:
+            await run_pipeline(client, server, _make_pipeline_session())
+
+        assert any("target write failed" in str(exc) for exc in exc_info.value.exceptions)
 
 
 # ---------------------------------------------------------------------------
