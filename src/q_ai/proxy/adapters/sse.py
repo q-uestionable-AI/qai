@@ -24,6 +24,8 @@ from mcp.shared.message import SessionMessage
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
+from q_ai.proxy.constants import LISTEN_HOST
+
 logger = logging.getLogger(__name__)
 
 # Sentinel pushed into the read queue when the SDK stream ends
@@ -203,12 +205,12 @@ class SseClientAdapter:
         port: Port number for the HTTP server.
 
     Example:
-        async with SseClientAdapter(host="127.0.0.1", port=8090) as adapter:
+        async with SseClientAdapter(host=LISTEN_HOST, port=8090) as adapter:
             msg = await adapter.read()   # message from remote client
             await adapter.write(response) # response to remote client
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 8080) -> None:
+    def __init__(self, host: str = LISTEN_HOST, port: int = 8080) -> None:
         self._host = host
         self._port = port
         self._read_queue: asyncio.Queue[SessionMessage | object] = asyncio.Queue()

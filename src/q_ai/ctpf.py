@@ -448,10 +448,13 @@ def _influence_summary(
 
 def _effect_payload(effect: ExternalEffect) -> dict[str, Any] | None:
     """Serialize oracle state for the trust-transition external_effect field."""
-    if effect.payload is not None:
-        return dict(effect.payload)
     if not effect.present and effect.reason == "sink_missing":
         return None
+    # Rejected applied sinks must not surface as external_effect=applied.
+    if not effect.present and effect.reason == "run_id_mismatch":
+        return {"present": False, "reason": effect.reason}
+    if effect.payload is not None:
+        return dict(effect.payload)
     return {"present": effect.present, "reason": effect.reason}
 
 

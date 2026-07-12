@@ -121,11 +121,13 @@ class ProxyApp(App[None]):
         )
 
         # Set the title
+        from q_ai.proxy.constants import LISTEN_HOST
+
         target = server_command or server_url or "unknown"
         if listen_transport:
             self.title = (
                 f"qai-proxy \u2014 {listen_transport} \u2014 "
-                f"listening on 127.0.0.1:{listen_port} \u2192 {target}"
+                f"listening on {LISTEN_HOST}:{listen_port} \u2192 {target}"
             )
         else:
             self.title = f"qai-proxy \u2014 {transport.value} \u2014 {target}"
@@ -631,11 +633,16 @@ class ProxyApp(App[None]):
             from q_ai.proxy.adapters.streamable_http import (
                 StreamableHttpServerAdapter as _HttpAdapter,
             )
+            from q_ai.proxy.constants import stdio_subprocess_env
 
             adapter_cm: _StdioAdapter | _SseAdapter | _HttpAdapter
             if self.server_command:
                 parts = shlex.split(self.server_command)
-                adapter_cm = _StdioAdapter(command=parts[0], args=parts[1:])
+                adapter_cm = _StdioAdapter(
+                    command=parts[0],
+                    args=parts[1:],
+                    env=stdio_subprocess_env(),
+                )
             elif self.server_url and self.transport == Transport.SSE:
                 adapter_cm = _SseAdapter(url=self.server_url)
             elif self.server_url:

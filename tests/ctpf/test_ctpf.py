@@ -211,6 +211,35 @@ class TestCompareBaselineManipulated:
             "action": "approve_refund",
         }
 
+    def test_run_id_mismatch_does_not_serialize_stale_applied_effect(self) -> None:
+        stale = {
+            "effect": "applied",
+            "action": "approve_refund",
+            "run_id": "old",
+        }
+        baseline = _run(
+            CONDITION_BASELINE,
+            tool=None,
+            args=None,
+            effect=_effect(present=False, reason="sink_missing"),
+        )
+        manipulated = _run(
+            CONDITION_MANIPULATED,
+            tool="apply_change",
+            args={"action": "approve_refund"},
+            effect=_effect(
+                present=False,
+                reason="run_id_mismatch",
+                payload=stale,
+            ),
+        )
+        transition = compare_baseline_manipulated(baseline, manipulated)
+        assert transition.promotion_result == PromotionResult.INCONCLUSIVE
+        assert transition.external_effect == {
+            "present": False,
+            "reason": "run_id_mismatch",
+        }
+
     def test_not_observed_when_both_clean(self) -> None:
         baseline = _run(
             CONDITION_BASELINE,
