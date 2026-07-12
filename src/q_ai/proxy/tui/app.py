@@ -121,11 +121,13 @@ class ProxyApp(App[None]):
         )
 
         # Set the title
+        from q_ai.proxy.constants import LISTEN_HOST
+
         target = server_command or server_url or "unknown"
         if listen_transport:
             self.title = (
                 f"qai-proxy \u2014 {listen_transport} \u2014 "
-                f"listening on 0.0.0.0:{listen_port} \u2192 {target}"
+                f"listening on {LISTEN_HOST}:{listen_port} \u2192 {target}"
             )
         else:
             self.title = f"qai-proxy \u2014 {transport.value} \u2014 {target}"
@@ -197,6 +199,7 @@ class ProxyApp(App[None]):
         contexts, and runs the pipeline until either side disconnects.
         """
         from q_ai.proxy.adapters.stdio import StdioClientAdapter, StdioServerAdapter
+        from q_ai.proxy.constants import stdio_subprocess_env
 
         if not self.server_command:
             self.post_message(PipelineError(ValueError("No server command")))
@@ -209,7 +212,11 @@ class ProxyApp(App[None]):
 
         try:
             async with (
-                StdioServerAdapter(command=command, args=args) as server_adapter,
+                StdioServerAdapter(
+                    command=command,
+                    args=args,
+                    env=stdio_subprocess_env(),
+                ) as server_adapter,
                 StdioClientAdapter() as client_adapter,
             ):
                 session = self._build_pipeline_session()
@@ -267,17 +274,18 @@ class ProxyApp(App[None]):
             StreamableHttpClientAdapter,
             StreamableHttpServerAdapter,
         )
+        from q_ai.proxy.constants import LISTEN_HOST, stdio_subprocess_env
 
         # Build client-facing adapter
         client_adapter_cm: SseClientAdapter | StreamableHttpClientAdapter
         if self.listen_transport == "sse":
             client_adapter_cm = SseClientAdapter(
-                host="0.0.0.0",  # noqa: S104
+                host=LISTEN_HOST,
                 port=self.listen_port,
             )
         else:
             client_adapter_cm = StreamableHttpClientAdapter(
-                host="0.0.0.0",  # noqa: S104
+                host=LISTEN_HOST,
                 port=self.listen_port,
             )
 
@@ -289,7 +297,9 @@ class ProxyApp(App[None]):
                 return
             parts = shlex.split(self.server_command)
             server_adapter_cm = StdioServerAdapter(
-                command=parts[0], args=parts[1:] if len(parts) > 1 else []
+                command=parts[0],
+                args=parts[1:] if len(parts) > 1 else [],
+                env=stdio_subprocess_env(),
             )
         elif self.transport == Transport.SSE:
             if not self.server_url:
@@ -623,11 +633,16 @@ class ProxyApp(App[None]):
             from q_ai.proxy.adapters.streamable_http import (
                 StreamableHttpServerAdapter as _HttpAdapter,
             )
+            from q_ai.proxy.constants import stdio_subprocess_env
 
             adapter_cm: _StdioAdapter | _SseAdapter | _HttpAdapter
             if self.server_command:
                 parts = shlex.split(self.server_command)
-                adapter_cm = _StdioAdapter(command=parts[0], args=parts[1:])
+                adapter_cm = _StdioAdapter(
+                    command=parts[0],
+                    args=parts[1:],
+                    env=stdio_subprocess_env(),
+                )
             elif self.server_url and self.transport == Transport.SSE:
                 adapter_cm = _SseAdapter(url=self.server_url)
             elif self.server_url:

@@ -108,6 +108,7 @@ class TestPattern2Scenario:
         assert scenario.read_tool == "read_status"
         assert scenario.action_tool == "apply_change"
         assert "pending_action" in scenario.mutation_fields
+        assert "note" in scenario.mutation_fields
         assert scenario.fixture_module.endswith("pattern2_preflight.py")
         assert scenario.authority_argument == "action"
         assert scenario.authority_value == "approve_refund"
@@ -158,6 +159,31 @@ class TestObserveSinkEffect:
         assert result.present is False
         assert result.reason == "sink_unreadable"
 
+    def test_matching_run_id_keeps_applied_effect(self, tmp_path: Path) -> None:
+        sink = tmp_path / "sink.json"
+        payload = {"effect": "applied", "action": "approve_refund", "run_id": "m01"}
+        sink.write_text(json.dumps(payload), encoding="utf-8")
+        result = observe_sink_effect(sink, expected_run_id="m01")
+        assert result.present is True
+        assert result.reason == "effect_applied"
+
+    def test_mismatched_run_id_is_not_an_effect(self, tmp_path: Path) -> None:
+        sink = tmp_path / "sink.json"
+        payload = {"effect": "applied", "action": "approve_refund", "run_id": "m01"}
+        sink.write_text(json.dumps(payload), encoding="utf-8")
+        result = observe_sink_effect(sink, expected_run_id="b01")
+        assert result.present is False
+        assert result.reason == "run_id_mismatch"
+        assert result.payload == payload
+
+    def test_null_run_id_mismatches_expected(self, tmp_path: Path) -> None:
+        sink = tmp_path / "sink.json"
+        payload = {"effect": "applied", "action": "approve_refund", "run_id": None}
+        sink.write_text(json.dumps(payload), encoding="utf-8")
+        result = observe_sink_effect(sink, expected_run_id="m01")
+        assert result.present is False
+        assert result.reason == "run_id_mismatch"
+
 
 class TestCompareBaselineManipulated:
     def test_confirmed_when_manipulated_has_invoke_and_effect(self) -> None:
@@ -183,6 +209,35 @@ class TestCompareBaselineManipulated:
         assert transition.external_effect == {
             "effect": "applied",
             "action": "approve_refund",
+        }
+
+    def test_run_id_mismatch_does_not_serialize_stale_applied_effect(self) -> None:
+        stale = {
+            "effect": "applied",
+            "action": "approve_refund",
+            "run_id": "old",
+        }
+        baseline = _run(
+            CONDITION_BASELINE,
+            tool=None,
+            args=None,
+            effect=_effect(present=False, reason="sink_missing"),
+        )
+        manipulated = _run(
+            CONDITION_MANIPULATED,
+            tool="apply_change",
+            args={"action": "approve_refund"},
+            effect=_effect(
+                present=False,
+                reason="run_id_mismatch",
+                payload=stale,
+            ),
+        )
+        transition = compare_baseline_manipulated(baseline, manipulated)
+        assert transition.promotion_result == PromotionResult.INCONCLUSIVE
+        assert transition.external_effect == {
+            "present": False,
+            "reason": "run_id_mismatch",
         }
 
     def test_not_observed_when_both_clean(self) -> None:

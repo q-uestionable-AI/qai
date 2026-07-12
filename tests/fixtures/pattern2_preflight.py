@@ -5,34 +5,41 @@ of ``read_status`` output (not by poisoned descriptions).
 
 Environment (operator-only sink control — not exposed as MCP tools):
 
-- ``QAI_PATTERN2_RUN_ID`` — when set, sink file is ``sink-{run_id}.json``
-  instead of ``sink.json`` (avoids baseline inheriting a prior manipulated run).
+- ``QAI_PATTERN2_RUN_ID`` — **required by default**; sink file is
+  ``sink-{run_id}.json`` (avoids baseline inheriting a prior manipulated run).
+- ``QAI_PATTERN2_REQUIRE_RUN_ID`` — default ``1``; set ``0`` to allow unscoped
+  ``sink.json`` (legacy/smoke only).
 - ``QAI_PATTERN2_RESET_SINK=1`` — delete the active sink file on process start.
 
 Agent-visible tools are only ``read_status``, ``apply_change``, and ``read_sink``.
 
 Usage:
+    set QAI_PATTERN2_RUN_ID=b01
+    set QAI_PATTERN2_RESET_SINK=1
     python tests/fixtures/pattern2_preflight.py
-    uv run python tests/fixtures/pattern2_preflight.py
 
-Proxy (listen mode for Cursor / Inspector)::
+Proxy (listen mode for Cursor / Inspector) — set RUN_ID in the **same** shell
+as ``qai proxy start`` (the proxy forwards ``QAI_PATTERN2_*`` into the stdio
+child; MCP's default env whitelist does not inherit those vars otherwise)::
 
     uv run qai proxy start --transport stdio \\
       --target-command "python tests/fixtures/pattern2_preflight.py" \\
       --listen-transport streamable-http --listen-port 8765 --intercept \\
-      --session-file %TEMP%/qai-phase2-preflight/session.json
+      --session-file %TEMP%/qai-phase4-pattern2/session-<RUN_ID>.json
 """
 
 from __future__ import annotations
 
 import json
 import os
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
 _TRUEISH = frozenset({"1", "true", "yes", "on"})
+_FALSISH = frozenset({"0", "false", "no", "off"})
 
 
 def sink_dir() -> Path:
@@ -61,6 +68,25 @@ def reset_active_sink() -> bool:
     return True
 
 
+def _require_run_id_enabled() -> bool:
+    """Return whether an empty ``QAI_PATTERN2_RUN_ID`` should abort startup."""
+    raw = os.environ.get("QAI_PATTERN2_REQUIRE_RUN_ID", "1").strip().lower()
+    return raw not in _FALSISH
+
+
+def _enforce_run_id_requirement() -> None:
+    """Abort when run-scoped sinks are required but RUN_ID is missing."""
+    if not _require_run_id_enabled():
+        return
+    if os.environ.get("QAI_PATTERN2_RUN_ID", "").strip():
+        return
+    sys.stderr.write(
+        "QAI_PATTERN2_RUN_ID is required for Pattern 2 trials "
+        "(set QAI_PATTERN2_REQUIRE_RUN_ID=0 to allow unscoped sink.json).\n"
+    )
+    raise SystemExit(2)
+
+
 def _maybe_reset_on_start() -> None:
     """Clear the active sink when ``QAI_PATTERN2_RESET_SINK`` is truthy."""
     flag = os.environ.get("QAI_PATTERN2_RESET_SINK", "").strip().lower()
@@ -84,6 +110,7 @@ def _write_sink(record: dict[str, object]) -> Path:
     return path
 
 
+_enforce_run_id_requirement()
 _maybe_reset_on_start()
 
 mcp = FastMCP(
