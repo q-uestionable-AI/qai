@@ -46,15 +46,18 @@ These are product invariants, not preferences.
 - Never create files in: `plans/*`, `design_docs/*`, `*/.plan`, `docs/superpowers/*`
 - Only write files to standard repo locations (`src/`, `tests/`, `docs/`) or paths named
   in the task brief.
-- Do not recreate `CLAUDE.md` as a second agent-instruction file.
+- Do not restore removed legacy product packages (`server`, `assist`, `rxp`, `chain`,
+  `orchestrator`, `imports`) without explicit instruction.
+- Keep `inject` fixtures-only (`build_server` + payloads); do not restore campaign
+  orchestration without explicit instruction.
 
 ## Do Not Modify Unless Explicitly Instructed
 
 - `pyproject.toml` version, dependencies, or build config
 - `.github/workflows/`
 - `DEVELOPMENT_WORKFLOW.md`
-- module/repo structure or module names (except when an approved reconnect tranche
-  explicitly removes or freezes named modules)
+- module/repo structure or module names (except when an approved change explicitly removes
+  or freezes named modules)
 - intentional offensive security research behavior
 
 ## Tech Stack
@@ -68,9 +71,6 @@ These are product invariants, not preferences.
 - Type check: mypy
 - Tests: pytest + pytest-asyncio + pytest-timeout
 - Cross-platform: Windows, macOS, Linux
-- Removed in Phase 1a: `server/` (Web UI), `assist/`, `rxp/`
-- Removed in Phase 1b: `chain/`, `orchestrator/`, `imports/`; inject is
-  fixtures-only (`build_server` + payloads; campaign path stripped)
 
 ## Code Quality Rules
 
@@ -118,8 +118,8 @@ src/q_ai/
 tests/
 ```
 
-After approved reconnect tranches, treat removed packages as gone — do not restore them
-without explicit instruction.
+After an approved change removes packages, treat them as gone — do not restore them without
+explicit instruction.
 
 ## Core Commands
 
