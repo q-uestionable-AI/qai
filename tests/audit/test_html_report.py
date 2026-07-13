@@ -123,7 +123,7 @@ class TestHtmlReportCreatesFile:
         assert "<!DOCTYPE html>" in content
         assert "<html" in content
         assert "</html>" in content
-        assert "q-ai Scan Report" in content
+        assert "CTPF Research Harness Scan Report" in content
         assert "test-server" in content
 
     def test_creates_parent_directories(self, tmp_path: Path) -> None:
@@ -265,7 +265,7 @@ class TestHtmlReportContent:
         content = out.read_text(encoding="utf-8")
 
         # Header
-        assert "q-ai Scan Report" in content
+        assert "CTPF Research Harness Scan Report" in content
         assert "test-server" in content
         assert "2024-11-05" in content
 
@@ -282,7 +282,7 @@ class TestHtmlReportContent:
         assert "finding-card" in content
 
         # Footer
-        assert "q-uestionable-AI/qai" in content
+        assert "q-uestionable-AI/CTPF" in content
 
     def test_findings_sorted_by_severity(
         self,

@@ -1,9 +1,10 @@
 ---
 title: MCP Transport Types
-description: Configure how qai connects to MCP servers
+description: Configure how CTPF Research Harness connects to MCP servers
 ---
 
-qai supports three MCP transport types for connecting to target servers. The transport determines how messages are exchanged between qai and the server under test.
+CTPF Research Harness supports three MCP transport types for connecting to target servers. The
+transport determines how messages are exchanged between the harness and the server under test.
 
 ## Transport Types
 
@@ -24,13 +25,14 @@ The most common transport. qai spawns the server as a child process and communic
 qai audit scan --transport stdio --command "npx @modelcontextprotocol/server-memory"
 
 # Proxy a local server
-qai proxy start --transport stdio --target-command "python my_server.py"
+ctpf proxy start --transport stdio --target-command "python my_server.py"
 
 # Inject with a local target
 qai inject serve --transport stdio
 ```
 
-The `--command` flag specifies the shell command to start the server. qai handles process lifecycle (spawn, communicate, terminate).
+The `--command` flag specifies the shell command to start the server. The harness handles process
+lifecycle (spawn, communicate, terminate).
 
 **When to use:** Local development, testing npm or Python MCP servers, CI pipelines where the server runs on the same machine.
 
@@ -43,7 +45,7 @@ Server-Sent Events over HTTP. Connect to a remote MCP server that implements the
 ```bash
 qai audit scan --transport sse --url "https://mcp-server.example.com/sse"
 
-qai proxy start --transport sse --target-url "https://mcp-server.example.com/sse"
+ctpf proxy start --transport sse --target-url "https://mcp-server.example.com/sse"
 ```
 
 The `--url` flag specifies the server's SSE endpoint.
@@ -59,7 +61,7 @@ Bidirectional HTTP streaming. Connect to a remote MCP server implementing the cu
 ```bash
 qai audit scan --transport streamable-http --url "https://mcp-server.example.com/mcp"
 
-qai proxy start --transport streamable-http --target-url "https://mcp-server.example.com/mcp"
+ctpf proxy start --transport streamable-http --target-url "https://mcp-server.example.com/mcp"
 ```
 
 **When to use:** Modern MCP servers, cloud deployments, servers requiring bidirectional communication.
@@ -74,7 +76,7 @@ CLI commands always require an explicit `--transport` flag — there is no globa
 
 **Audit:** Uses `--transport`, `--command` (stdio), and `--url` (SSE/HTTP) flags on `qai audit scan` and `qai audit enumerate`.
 
-**Proxy:** Uses `--transport`, `--target-command` (stdio), and `--target-url` (SSE/HTTP) flags on `qai proxy start` and `qai proxy replay`.
+**Proxy:** Uses `--transport`, `--target-command` (stdio), and `--target-url` (SSE/HTTP) flags on `ctpf proxy start` and `ctpf proxy replay`.
 
 **Inject:** The inject server (`qai inject serve`) uses `--transport` to control how the malicious MCP server is exposed. Campaigns use the litellm backend (not MCP transport) to communicate with LLM providers.
 

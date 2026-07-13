@@ -1,15 +1,15 @@
-# q-AI — Architecture
+# CTPF Research Harness — Architecture
 
 ## Purpose
 
-This document records durable architectural invariants for q-AI after the CTPF
+This document records durable architectural invariants for CTPF Research Harness after the CTPF
 Reconnect Phase 1 shape cut. It describes system shape, boundaries, and
 operating model — not route inventories or file-by-file ownership.
 
 ## System Shape
 
-q-AI is a local Python **CTPF research harness** with one public operator entry
-point: the `qai` CLI.
+CTPF Research Harness is a local Python harness with one preferred public operator entry point:
+the `ctpf` CLI. The former `qai` executable remains a compatibility alias.
 
 **Centered substrate:**
 
@@ -73,7 +73,7 @@ agent counterfactual replay is not assumed.
 
 `cli.py` is the only public product surface. Library Typer apps (for example
 `python -m q_ai.ipi`, `python -m q_ai.inject`) may remain for fixture workflows
-but are not root `qai` pillars.
+but are not root `ctpf` pillars.
 
 ## LLM Boundary
 

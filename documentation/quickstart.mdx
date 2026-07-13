@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: Install q-AI and start MCP observation with the proxy CLI
+description: Install CTPF Research Harness and start MCP observation with the proxy CLI
 ---
 
 ## Prerequisites
@@ -9,7 +9,7 @@ description: Install q-AI and start MCP observation with the proxy CLI
 - **[uv](https://docs.astral.sh/uv/)** (recommended) or pip
 - **Node.js / npm** (optional) — Useful if your MCP target is an npm package you spawn locally
 - **LLM provider API key** (optional) — Only needed if a library workflow or fixture uses a model.
-  Store credentials in the OS keyring via `qai config set-credential`. See
+  Store credentials in the OS keyring via `ctpf config set-credential`. See
   [Configure a provider](#configure-a-provider-optional).
 
 ## Install
@@ -20,8 +20,8 @@ pip install q-uestionable-ai
 ```
 
 ```bash uv (from source)
-git clone https://github.com/q-uestionable-AI/qai.git
-cd qai
+git clone https://github.com/q-uestionable-AI/CTPF.git
+cd CTPF
 uv sync --group dev
 ```
 </CodeGroup>
@@ -29,9 +29,11 @@ uv sync --group dev
 Confirm the CLI:
 
 ```bash
-qai --help
-qai --version
+ctpf --help
+ctpf --version
 ```
+
+The former `qai` executable remains available as a compatibility alias for `ctpf`.
 
 ## Configure a provider (optional)
 
@@ -40,21 +42,21 @@ fixture needs a model, store the API key in the OS keyring (never in config file
 
 <CodeGroup>
 ```bash Anthropic
-qai config set-credential anthropic
+ctpf config set-credential anthropic
 # Prompts for your API key (masked input)
 ```
 
 ```bash OpenAI
-qai config set-credential openai
+ctpf config set-credential openai
 ```
 
 ```bash Other providers
-qai config set-credential <provider-name>
+ctpf config set-credential <provider-name>
 ```
 </CodeGroup>
 
 ```bash
-qai config list-providers
+ctpf config list-providers
 ```
 
 When selecting a model elsewhere, use the `provider/model` format
@@ -64,11 +66,11 @@ When selecting a model elsewhere, use the `provider/model` format
 
 <Steps>
   <Step title="Register an MCP target">
-    Point q-AI at a server you are authorized to test:
+    Point CTPF Research Harness at a server you are authorized to test:
 
     ```bash
-    qai targets add "My Server" http://localhost:3000/sse
-    qai targets list
+    ctpf targets add "My Server" http://localhost:3000/sse
+    ctpf targets list
     ```
 
     Transports include stdio (command string), SSE, and Streamable HTTP. See
@@ -80,7 +82,7 @@ When selecting a model elsewhere, use the `provider/model` format
     (forward / modify / drop), and session export:
 
     ```bash
-    qai proxy --help
+    ctpf proxy --help
     ```
 
     Configure the MCP client **you control** to connect through the proxy instead of
@@ -91,16 +93,16 @@ When selecting a model elsewhere, use the `provider/model` format
     Runs and findings live in SQLite (`~/.qai/qai.db`):
 
     ```bash
-    qai runs list
-    qai findings list
-    qai db --help
+    ctpf runs list
+    ctpf findings list
+    ctpf db --help
     ```
   </Step>
 </Steps>
 
 ## Library tooling (not root CLI pillars)
 
-Audit, inject, IPI, and CXP are **libraries / research fixtures**, not public `qai`
+Audit, inject, IPI, and CXP are **libraries / research fixtures**, not public `ctpf`
 subcommands after Phase 1.
 
 Examples:
@@ -112,7 +114,7 @@ python -m q_ai.inject serve --transport stdio
 # IPI headless callback listener / generators
 python -m q_ai.ipi --help
 
-# Audit as a library (import or module entry — not `qai audit`)
+# Audit as a library (import or module entry — not `ctpf audit`)
 python -c "import q_ai.audit; print('audit library available')"
 ```
 

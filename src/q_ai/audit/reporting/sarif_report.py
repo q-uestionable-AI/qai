@@ -15,7 +15,7 @@ from q_ai import __version__
 from q_ai.audit.reporting.prompt import build_audit_interpret_prompt
 from q_ai.mcp.models import ScanFinding, Severity
 
-_REPO_URL = "https://github.com/q-uestionable-AI/qai"
+_REPO_URL = "https://github.com/q-uestionable-AI/CTPF"
 _FRAMEWORK_COVERAGE_PATH = "blob/main/documentation/audit/framework-coverage.mdx"
 
 # SARIF severity mapping: ScanFinding.severity → (SARIF level, security-severity score)

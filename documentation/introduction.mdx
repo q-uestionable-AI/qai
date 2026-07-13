@@ -1,11 +1,12 @@
 ---
 title: "Introduction"
-description: "CTPF research harness for MCP observation and controlled fixtures"
+description: "Trust-boundary testing for agentic systems"
 ---
 
-## What is q-AI?
+## What is CTPF Research Harness?
 
-q-AI is a local **Capability Trust Propagation Failure (CTPF)** research harness.
+CTPF Research Harness is a local harness for studying **Capability Trust Propagation Failure
+(CTPF)**.
 It investigates whether low-trust data — for example an MCP tool result — is silently
 promoted into higher-authority actions when provenance, integrity, authorization scope,
 or intended audience are not preserved.
@@ -15,15 +16,19 @@ mutation via the **proxy**, with local SQLite persistence for targets, runs, fin
 and evidence. Individual experiments **confirm** or **fail to observe** promotion under
 pinned conditions — they do not “falsify CTPF” as a class.
 
-## Public CLI (transitional)
+## Public CLI
 
 | Command | Role |
 |---------|------|
-| `qai proxy` | Intercept, inspect, modify, and export MCP traffic (Textual TUI) |
-| `qai targets` | Register MCP targets |
-| `qai runs` / `qai findings` | Inspect stored runs and findings |
-| `qai config` / `qai db` | Settings and local database maintenance |
-| `qai --version` | Package version |
+| `ctpf proxy` | Intercept, inspect, modify, and export MCP traffic (Textual TUI) |
+| `ctpf experiment` | Run controlled CTPF experiments |
+| `ctpf targets` | Register MCP targets |
+| `ctpf runs` / `ctpf findings` | Inspect stored runs and findings |
+| `ctpf config` / `ctpf db` | Settings and local database maintenance |
+| `ctpf --version` | Package version |
+
+The former `qai` executable remains a compatibility alias and invokes the same application and
+local state. See [Identity Compatibility](/identity-compatibility) for the retained names.
 
 New verbs such as `inspect` / `evidence` are deferred until a CTPF experiment defines
 a real interface.
@@ -31,7 +36,7 @@ a real interface.
 ## Libraries (not root CLI pillars)
 
 These packages remain in-tree as research fixtures and library tooling. They are **not**
-equal product modules on the public `qai` CLI:
+equal product modules on the public `ctpf` CLI:
 
 | Library | Role |
 |---------|------|
@@ -58,8 +63,8 @@ MITRE ATLAS, and CWE. See [Framework Coverage](/audit/framework-coverage).
 
 ```bash
 pip install q-uestionable-ai
-qai proxy --help
-qai targets add "My Server" http://localhost:3000/sse
+ctpf proxy --help
+ctpf targets add "My Server" http://localhost:3000/sse
 ```
 
 ## Learn more
@@ -68,4 +73,4 @@ qai targets add "My Server" http://localhost:3000/sse
 - [Core Concepts](/concepts) — MCP threat model, CTPF framing, libraries vs CLI
 - [Proxy Overview](/proxy/overview) — Observation and controlled mutation
 - [Responsible Use](/responsible-use) — Authorization and disclosure
-- [GitHub](https://github.com/q-uestionable-AI/qai)
+- [GitHub](https://github.com/q-uestionable-AI/CTPF)

@@ -1,15 +1,15 @@
-# {q-AI}
+# CTPF Research Harness
 
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
-[![CI](https://github.com/q-uestionable-AI/qai/actions/workflows/ci.yml/badge.svg)](https://github.com/q-uestionable-AI/qai/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/q-uestionable-AI/qai/actions/workflows/codeql.yml/badge.svg)](https://github.com/q-uestionable-AI/qai/actions/workflows/codeql.yml)
+[![CI](https://github.com/q-uestionable-AI/CTPF/actions/workflows/ci.yml/badge.svg)](https://github.com/q-uestionable-AI/CTPF/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/q-uestionable-AI/CTPF/actions/workflows/codeql.yml/badge.svg)](https://github.com/q-uestionable-AI/CTPF/actions/workflows/codeql.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Docs](https://img.shields.io/badge/docs-q--uestionable.ai-8b5cf6)](https://docs.q-uestionable.ai)
+[![Docs](https://img.shields.io/badge/docs-ctpf.q--uestionable.ai-8b5cf6)](https://ctpf.q-uestionable.ai)
 
-**CTPF research harness — MCP observation, controlled fixtures, and evidence**
+**Trust-boundary testing for agentic systems**
 
-q-AI investigates **Capability Trust Propagation Failure (CTPF)**: whether low-trust data
+CTPF Research Harness investigates **Capability Trust Propagation Failure (CTPF)**: whether low-trust data
 (for example a tool result) is silently promoted into higher-authority actions when
 provenance, integrity, authorization scope, or intended audience are not preserved.
 
@@ -17,15 +17,18 @@ The product shape is a small local CLI: capture MCP traffic, mutate it under con
 proxy, and keep runs/findings/evidence in SQLite. Individual experiments **confirm** or
 **fail to observe** promotion under pinned conditions — they do not “falsify CTPF” as a class.
 
-### Public CLI (transitional)
+### Public CLI
 
 | Command | Role |
 |---------|------|
-| `qai proxy` | Intercept, inspect, modify, and export MCP traffic (Textual TUI) |
-| `qai targets` | Register MCP targets |
-| `qai runs` / `qai findings` | Inspect stored runs and findings |
-| `qai config` / `qai db` | Settings and local database maintenance |
-| `qai --version` | Package version |
+| `ctpf proxy` | Intercept, inspect, modify, and export MCP traffic (Textual TUI) |
+| `ctpf experiment` | Run controlled CTPF experiments |
+| `ctpf targets` | Register MCP targets |
+| `ctpf runs` / `ctpf findings` | Inspect stored runs and findings |
+| `ctpf config` / `ctpf db` | Settings and local database maintenance |
+| `ctpf --version` | Package version |
+
+The former `qai` command remains a compatibility alias for `ctpf` during the identity transition.
 
 ### Libraries (not root CLI pillars)
 
@@ -33,7 +36,7 @@ IPI document generators + headless callback, inject malicious MCP fixture server
 context generators, and audit enumeration/SARIF export remain in-tree as libraries for
 research fixtures. They are not equal product modules on the public CLI.
 
-> By [Richard Spicer](https://richardspicer.io) · [{q-AI}](https://q-uestionable.ai)
+> By [Richard Spicer](https://richardspicer.io) · [q-uestionable-AI](https://q-uestionable.ai)
 
 ---
 
@@ -42,14 +45,14 @@ research fixtures. They are not equal product modules on the public CLI.
 ```bash
 pip install q-uestionable-ai
 # or from source:
-git clone https://github.com/q-uestionable-AI/qai.git
-cd qai
+git clone https://github.com/q-uestionable-AI/CTPF.git
+cd CTPF
 uv sync --group dev
 ```
 
 ```bash
-qai proxy --help
-qai targets add "My Server" http://localhost:3000/sse
+ctpf proxy --help
+ctpf targets add "My Server" http://localhost:3000/sse
 ```
 
 ---
@@ -68,7 +71,7 @@ When using the audit library, findings can map to:
 ---
 
 Architecture notes: [docs/Architecture.md](docs/Architecture.md).
-Published docs: [docs.q-uestionable.ai](https://docs.q-uestionable.ai) (Mintlify may still describe removed surfaces until a follow-up prune).
+Published docs: [ctpf.q-uestionable.ai](https://ctpf.q-uestionable.ai).
 
 ---
 

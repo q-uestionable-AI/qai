@@ -1,104 +1,65 @@
-# {q-AI} Documentation
-> Security testing for agentic AI
+# CTPF Research Harness Documentation
 
-## Pages
+> Trust-boundary testing for agentic systems.
 
-### Getting Started
+Canonical documentation: https://ctpf.q-uestionable.ai
+Repository: https://github.com/q-uestionable-AI/CTPF
+Preferred CLI: `ctpf` (`qai` remains a compatibility alias)
 
-- [Introduction](https://docs.q-uestionable.ai/introduction): Security testing for agentic AI
-- [Quickstart](https://docs.q-uestionable.ai/quickstart): Install q-ai and run your first MCP server security assessment
-- [Core Concepts](https://docs.q-uestionable.ai/concepts): MCP protocol, OWASP mapping, module methodologies, and threat model
-- [Responsible Use](https://docs.q-uestionable.ai/responsible-use): Authorized use requirements and responsible disclosure
-- [Changelog](https://docs.q-uestionable.ai/changelog): Release history for q-ai
+## Getting Started
 
-### Web UI
+- [Introduction](https://ctpf.q-uestionable.ai/introduction): Purpose and current product shape
+- [Quickstart](https://ctpf.q-uestionable.ai/quickstart): Install the distribution and use `ctpf`
+- [Identity Compatibility](https://ctpf.q-uestionable.ai/identity-compatibility): Retained legacy names
+- [Core Concepts](https://ctpf.q-uestionable.ai/concepts): CTPF framing and MCP trust boundaries
+- [Responsible Use](https://ctpf.q-uestionable.ai/responsible-use): Authorization and disclosure
+- [Changelog](https://ctpf.q-uestionable.ai/changelog): Append-only release history
 
-- [Web UI Overview](https://docs.q-uestionable.ai/web-ui/overview): Browser-based interface for managing workflows, viewing results, and configuring qai
-- [Launcher](https://docs.q-uestionable.ai/web-ui/launcher): Interactive workflow forms for running assessments and tests
-- [Runs](https://docs.q-uestionable.ai/web-ui/runs): View workflow results, findings, and historical runs
-- [Settings](https://docs.q-uestionable.ai/web-ui/settings): Configure providers, defaults, and MCP infrastructure
+## Proxy
 
-### Audit
+- [Overview](https://ctpf.q-uestionable.ai/proxy/overview): Observe and control MCP traffic
+- [CLI](https://ctpf.q-uestionable.ai/proxy/cli): Proxy command reference
+- [Live Interception](https://ctpf.q-uestionable.ai/proxy/intercept): Forward, modify, or drop messages
+- [Replay](https://ctpf.q-uestionable.ai/proxy/replay): Replay captured MCP messages
+- [Session Export](https://ctpf.q-uestionable.ai/proxy/session-export): Session evidence structure
 
-- [Overview](https://docs.q-uestionable.ai/audit/overview): Automated MCP server security scanning mapped to OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10
-- [Audit CLI Reference](https://docs.q-uestionable.ai/audit/cli): Command reference for qai audit
-- [Scanner Catalog](https://docs.q-uestionable.ai/audit/scanners): Security scanners mapped to OWASP MCP Top 10 categories
-- [Framework Coverage](https://docs.q-uestionable.ai/audit/framework-coverage): How q-ai findings map to OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, and CWE
-- [SARIF Output](https://docs.q-uestionable.ai/audit/sarif-output): SARIF 2.1.0 report format and GitHub Code Scanning integration
-- [Test Fixtures](https://docs.q-uestionable.ai/audit/fixtures): Intentionally vulnerable MCP servers for scanner validation and testing
+## Database and Targets
 
-### Inject
+- [Database](https://ctpf.q-uestionable.ai/cli/db): Local database maintenance
+- [Targets](https://ctpf.q-uestionable.ai/cli/targets): MCP target registration
+- [Runs](https://ctpf.q-uestionable.ai/cli/runs): Stored run inspection
+- [Findings](https://ctpf.q-uestionable.ai/cli/findings): Stored finding inspection
 
-- [Overview](https://docs.q-uestionable.ai/inject/overview): Tool poisoning and prompt injection testing against LLM-powered agents
-- [Inject CLI Reference](https://docs.q-uestionable.ai/inject/cli): Commands for tool poisoning and injection campaigns
-- [Payload Catalog](https://docs.q-uestionable.ai/inject/payloads): Injection payload templates and format reference
-- [Campaign Execution](https://docs.q-uestionable.ai/inject/campaigns): Running and analyzing injection campaigns against LLM models
+## Configuration
 
-### Proxy
+- [Providers](https://ctpf.q-uestionable.ai/config/providers): Provider settings and keyring credentials
+- [Transports](https://ctpf.q-uestionable.ai/config/transports): MCP transport configuration
+- [Callback Server](https://ctpf.q-uestionable.ai/config/callback-server): IPI callback configuration
+- [Dangerous Payloads](https://ctpf.q-uestionable.ai/config/dangerous-payloads): High-risk fixture controls
+- [Environment Variables](https://ctpf.q-uestionable.ai/config/environment-variables): Retained `QAI_*` variables
 
-- [Proxy Overview](https://docs.q-uestionable.ai/proxy/overview): Intercept, inspect, and replay MCP traffic for security testing and regression analysis
-- [Proxy CLI Commands](https://docs.q-uestionable.ai/proxy/cli): Command reference for starting, replaying, exporting, and inspecting MCP sessions
-- [Live Interception](https://docs.q-uestionable.ai/proxy/intercept): Pause, inspect, and modify MCP messages in flight using intercept mode
-- [Session Replay](https://docs.q-uestionable.ai/proxy/replay): Re-send captured MCP messages against a live server for testing and validation
-- [Session Export & Structure](https://docs.q-uestionable.ai/proxy/session-export): Understand session file format and export captured MCP traffic
+## Research Libraries and Fixtures
 
-### Chain
+- [Audit Overview](https://ctpf.q-uestionable.ai/audit/overview): Capability enumeration and scanners
+- [Inject Overview](https://ctpf.q-uestionable.ai/inject/overview): Malicious MCP fixture servers
+- [IPI Overview](https://ctpf.q-uestionable.ai/ipi/overview): Document generators and callbacks
+- [CXP Overview](https://ctpf.q-uestionable.ai/cxp/overview): Coding-assistant context fixtures
 
-- [Chain Overview](https://docs.q-uestionable.ai/chain/overview): Compose multi-step attack chains to test complex vulnerabilities across agent architectures
-- [Chain CLI Commands](https://docs.q-uestionable.ai/chain/cli): Run, validate, and analyze attack chains from the command line
-- [Chain Templates & YAML Format](https://docs.q-uestionable.ai/chain/templates): Define attack chains in YAML and use built-in templates
+## Exports and Integrations
 
-### IPI — Indirect Prompt Injection
+- [JSON Schema](https://ctpf.q-uestionable.ai/exports/json-schema): Run bundle schema
+- [SARIF](https://ctpf.q-uestionable.ai/exports/sarif): SARIF 2.1.0 output
+- [NDJSON](https://ctpf.q-uestionable.ai/exports/ndjson): Streaming-friendly export
+- [CSV](https://ctpf.q-uestionable.ai/exports/csv): Flat finding export
+- [DefectDojo](https://ctpf.q-uestionable.ai/integrations/defectdojo): Findings import guidance
+- [GitHub Security](https://ctpf.q-uestionable.ai/integrations/github-security): Code scanning integration
 
-- [Overview](https://docs.q-uestionable.ai/ipi/overview): Test AI agent indirect prompt injection vulnerabilities through document poisoning and callback tracking
-- [IPI CLI Reference](https://docs.q-uestionable.ai/ipi/cli): Command reference for qai ipi
-- [Hiding Techniques](https://docs.q-uestionable.ai/ipi/techniques): 34 document hiding techniques across 7 formats
-- [Document Formats](https://docs.q-uestionable.ai/ipi/formats): PDF, Image, Markdown, HTML, DOCX, ICS, and EML payload generation
-- [Payload Styles & Types](https://docs.q-uestionable.ai/ipi/payloads): 7 payload styles x 7 payload types — callback, exfil, SSRF, and more
-- [Callback Verification](https://docs.q-uestionable.ai/ipi/callbacks): Authenticated callbacks with confidence scoring for proof of execution
-- [Deployment Playbook](https://docs.q-uestionable.ai/ipi/deployment-playbook): Guided workflow from payload generation through campaign monitoring
+## Architecture
 
-### CXP — Context File Poisoning
-
-- [CXP Overview](https://docs.q-uestionable.ai/cxp/overview): Understand coding assistant instruction poisoning and how to test for vulnerabilities
-- [CXP CLI Reference](https://docs.q-uestionable.ai/cxp/cli): Command-line interface for coding assistant poisoning tests
-- [CXP Objectives](https://docs.q-uestionable.ai/cxp/objectives): Test scenarios for coding assistant instruction poisoning
-- [Assistant Formats](https://docs.q-uestionable.ai/cxp/assistant-formats): Supported coding assistant instruction file formats
-- [CXP Validation](https://docs.q-uestionable.ai/cxp/validation): Validate whether generated code contains injected instructions
-- [CXP Deployment Playbook](https://docs.q-uestionable.ai/cxp/deployment-playbook): Guided workflow for deploying and interpreting context file poisoning tests
-
-### RXP — RAG Retrieval Poisoning
-
-- [RXP Overview](https://docs.q-uestionable.ai/rxp/overview): Measure and validate RAG retrieval poisoning vulnerabilities
-- [RXP CLI Reference](https://docs.q-uestionable.ai/rxp/cli): Command-line interface for RAG retrieval poisoning validation
-- [Models and Profiles](https://docs.q-uestionable.ai/rxp/models-profiles): Embedding models and domain profiles for retrieval poisoning validation
-- [Interpretive Bands](https://docs.q-uestionable.ai/rxp/interpretive-bands): Severity thresholds for retrieval poisoning results
-
-### Exports & Integrations
-
-- [JSON Bundle Export](https://docs.q-uestionable.ai/exports/json-schema): Complete run export in the run-bundle-v1 schema
-- [SARIF Export](https://docs.q-uestionable.ai/exports/sarif): SARIF 2.1.0 output for GitHub Code Scanning and CI/CD integration
-- [NDJSON Export](https://docs.q-uestionable.ai/exports/ndjson): Newline-delimited JSON for streaming processing and log aggregation
-- [CSV Export](https://docs.q-uestionable.ai/exports/csv): Flat spreadsheet export with one row per finding
-- [DefectDojo Integration](https://docs.q-uestionable.ai/integrations/defectdojo): Import qai audit findings into DefectDojo for centralized vulnerability management
-- [GitHub Security Integration](https://docs.q-uestionable.ai/integrations/github-security): Surface qai findings in GitHub Code Scanning via SARIF upload
-
-### Configuration
-
-- [LLM Provider Configuration](https://docs.q-uestionable.ai/config/providers): Configure LLM providers and credentials for injection campaigns and chain execution
-- [MCP Transport Types](https://docs.q-uestionable.ai/config/transports): Configure how qai connects to MCP servers
-- [Callback Server Configuration](https://docs.q-uestionable.ai/config/callback-server): Configure IPI callback listener and bridge token authentication
-- [Dangerous Payloads Configuration](https://docs.q-uestionable.ai/config/dangerous-payloads): Control access to high-risk payload injection types with the --dangerous flag
-- [Environment Variables](https://docs.q-uestionable.ai/config/environment-variables): Environment variables recognized by qai
-
-### Architecture
-
-- [Architecture Overview](https://docs.q-uestionable.ai/architecture/overview): Architectural design and module organization of qai
-- [Core Infrastructure](https://docs.q-uestionable.ai/architecture/core): Database schema, configuration system, and shared data models
-- [Audit Module Architecture](https://docs.q-uestionable.ai/architecture/audit-module): Scanner pipeline, MCP connection, and multi-format reporting
-- [Proxy Module Architecture](https://docs.q-uestionable.ai/architecture/proxy-module): MCP traffic interception, session recording, and replay
-- [Inject Module Architecture](https://docs.q-uestionable.ai/architecture/inject-module): Multi-provider campaign execution, response normalization, and scoring
-- [Chain Module Architecture](https://docs.q-uestionable.ai/architecture/chain-module): Attack chain definitions, execution, blast radius, and detection rules
-- [IPI Module Architecture](https://docs.q-uestionable.ai/architecture/ipi-module): Document generation, callback tracking, and deployment playbooks
-- [CXP Module Architecture](https://docs.q-uestionable.ai/architecture/cxp-module): Context file poisoning for coding assistants
-- [RXP Module Architecture](https://docs.q-uestionable.ai/architecture/rxp-module): RAG retrieval poisoning measurement and validation
+- [Overview](https://ctpf.q-uestionable.ai/architecture/overview): Current system shape
+- [Core](https://ctpf.q-uestionable.ai/architecture/core): Shared database and configuration
+- [Proxy](https://ctpf.q-uestionable.ai/architecture/proxy-module): Traffic observation and control
+- [Audit](https://ctpf.q-uestionable.ai/architecture/audit-module): Scanner library
+- [Inject](https://ctpf.q-uestionable.ai/architecture/inject-module): Fixture server library
+- [IPI](https://ctpf.q-uestionable.ai/architecture/ipi-module): Document and callback library
+- [CXP](https://ctpf.q-uestionable.ai/architecture/cxp-module): Context-fixture library

@@ -1,4 +1,4 @@
-"""Shared service-layer helpers for the q-AI research harness.
+"""Shared service-layer helpers for CTPF Research Harness.
 
 Retains database management helpers used by the core CLI
 (:mod:`q_ai.services.db_service`). Workflow, run, finding, audit,

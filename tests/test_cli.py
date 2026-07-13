@@ -1,23 +1,31 @@
-"""Tests for the q-ai root CLI."""
+"""Tests for the CTPF Research Harness root CLI."""
 
 from __future__ import annotations
 
+import tomllib
+from pathlib import Path
+
+import pytest
 from typer.testing import CliRunner
 
 from q_ai.cli import app
 
 runner = CliRunner()
 
-_TAGLINE = "CTPF research harness"
+_COMMAND_NAMES = ("ctpf", "qai")
+_DISPLAY_NAME = "CTPF Research Harness"
+_SUBTITLE = "Trust-boundary testing for agentic systems"
 
 
 class TestCLIHelp:
-    """qai --help shows help text."""
+    """Root help shows the CTPF identity and transitional commands."""
 
-    def test_help_exits_zero(self) -> None:
-        result = runner.invoke(app, ["--help"])
+    @pytest.mark.parametrize("command_name", _COMMAND_NAMES)
+    def test_help_exits_zero(self, command_name: str) -> None:
+        result = runner.invoke(app, ["--help"], prog_name=command_name)
         assert result.exit_code == 0
-        assert _TAGLINE in result.output
+        assert _DISPLAY_NAME in result.output
+        assert _SUBTITLE in result.output
 
     def test_help_shows_transitional_commands(self) -> None:
         result = runner.invoke(app, ["--help"])
@@ -46,33 +54,38 @@ class TestCLIHelp:
 
 
 class TestCLIVersion:
-    """qai --version shows version string."""
+    """Version output reflects the invoked compatibility entry point."""
 
-    def test_version_exits_zero(self) -> None:
+    @pytest.mark.parametrize("command_name", _COMMAND_NAMES)
+    def test_version_exits_zero(self, command_name: str) -> None:
         from q_ai import __version__
 
-        result = runner.invoke(app, ["--version"])
+        result = runner.invoke(app, ["--version"], prog_name=command_name)
         assert result.exit_code == 0
-        assert f"qai {__version__}" in result.output
+        assert f"{command_name} {__version__}" in result.output
 
-    def test_version_short_flag(self) -> None:
+    @pytest.mark.parametrize("command_name", _COMMAND_NAMES)
+    def test_version_short_flag(self, command_name: str) -> None:
         from q_ai import __version__
 
-        result = runner.invoke(app, ["-V"])
+        result = runner.invoke(app, ["-V"], prog_name=command_name)
         assert result.exit_code == 0
-        assert f"qai {__version__}" in result.output
+        assert f"{command_name} {__version__}" in result.output
 
 
-class TestBareQai:
-    """Bare `qai` prints help screen."""
+class TestBareCLI:
+    """Bare `ctpf` and `qai` invocations print matching help screens."""
 
-    def test_no_args_prints_help(self) -> None:
-        result = runner.invoke(app, [])
+    @pytest.mark.parametrize("command_name", _COMMAND_NAMES)
+    def test_no_args_prints_invocation_aware_help(self, command_name: str) -> None:
+        result = runner.invoke(app, [], prog_name=command_name)
         assert result.exit_code == 0
+        normalized_output = " ".join(result.output.split())
         assert "Quick Start" in result.output
-        assert _TAGLINE in result.output
-        assert "qai proxy" in result.output
-        assert "qai targets" in result.output
+        assert _DISPLAY_NAME in result.output
+        assert _SUBTITLE in normalized_output
+        assert f"{command_name} proxy" in result.output
+        assert f"{command_name} targets" in result.output
 
     def test_no_args_has_no_ui_hint(self) -> None:
         result = runner.invoke(app, [])
@@ -115,3 +128,13 @@ class TestGroupedHelp:
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
         assert "Modules" not in result.output
+
+
+def test_distribution_exposes_preferred_and_compatibility_entry_points() -> None:
+    """Project metadata maps both executable names to the same Typer app."""
+    project_root = Path(__file__).resolve().parents[1]
+    pyproject = tomllib.loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
+
+    scripts = pyproject["project"]["scripts"]
+    assert scripts["ctpf"] == "q_ai.cli:app"
+    assert scripts["qai"] == scripts["ctpf"]

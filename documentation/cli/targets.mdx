@@ -1,5 +1,5 @@
 ---
-title: "qai targets"
+title: "ctpf targets"
 description: "Manage scan targets"
 ---
 
@@ -7,24 +7,24 @@ Create, list, and delete scan targets — the MCP servers, platforms, or endpoin
 
 ## Commands
 
-### `qai targets list`
+### `ctpf targets list`
 
 List all configured targets.
 
 ```bash
-qai targets list
+ctpf targets list
 ```
 
 Displays a table with Name, Type, URI, and ID for each target.
 
 ---
 
-### `qai targets create`
+### `ctpf targets create`
 
 Create a new scan target.
 
 ```bash
-qai targets create --name <NAME> --type <TYPE> [--uri <URI>]
+ctpf targets create --name <NAME> --type <TYPE> [--uri <URI>]
 ```
 
 **Options:**
@@ -37,12 +37,12 @@ qai targets create --name <NAME> --type <TYPE> [--uri <URI>]
 
 ---
 
-### `qai targets delete`
+### `ctpf targets delete`
 
 Delete a scan target.
 
 ```bash
-qai targets delete <ID> [--yes]
+ctpf targets delete <ID> [--yes]
 ```
 
 **Arguments:**
@@ -67,19 +67,19 @@ qai targets delete <ID> [--yes]
 
 ```bash
 # Delete with confirmation
-qai targets delete a1b2c3d4
+ctpf targets delete a1b2c3d4
 # Output:
 # Delete target 'My Test Server'? Associated runs will be unlinked. [y/N]: y
 # Deleted target 'My Test Server'. 2 runs unlinked.
 
 # Delete without confirmation
-qai targets delete a1b2c3d4 --yes
+ctpf targets delete a1b2c3d4 --yes
 # Output:
 # Deleted target 'My Test Server'. 0 runs unlinked.
 
 # Using partial ID (8+ characters)
-qai targets delete a1b2c3d4e5f6 --yes
-# Works with just: qai targets delete a1b2c3d4 --yes
+ctpf targets delete a1b2c3d4e5f6 --yes
+# Works with just: ctpf targets delete a1b2c3d4 --yes
 ```
 
 <Note>

@@ -1,10 +1,10 @@
-# Contributing to {q-AI}
+# Contributing to CTPF Research Harness
 
 ## Development Setup
 
 ```bash
-git clone https://github.com/q-uestionable-AI/qai.git
-cd qai
+git clone https://github.com/q-uestionable-AI/CTPF.git
+cd CTPF
 uv sync --group dev
 uv run pre-commit install
 ```
@@ -25,7 +25,7 @@ git push -u origin feature/your-description
 1. **Tests pass:** `uv run pytest -q`
 2. **Lint clean:** `uv run ruff check .`
 3. **Types clean:** `uv run mypy src/`
-4. **CLI works:** `uv run qai --help`
+4. **CLI works:** `uv run ctpf --help` and `uv run qai --help`
 
 Pre-commit hooks enforce linting, formatting, type checking, and secrets detection automatically on each commit.
 

@@ -7,7 +7,7 @@ The core layer (`q_ai.core`) provides shared services: persistent data storage, 
 
 ## SQLite Database
 
-qai uses SQLite with WAL mode for concurrent access and foreign key enforcement. The database lives at `~/.qai/qai.db` and auto-initializes with schema migrations on first access.
+CTPF Research Harness uses SQLite with WAL mode for concurrent access and foreign key enforcement. The database lives at `~/.qai/qai.db` and auto-initializes with schema migrations on first access.
 
 <Note>
 WAL mode requires the `.db`, `-wal`, and `-shm` files to remain in the same directory.
@@ -92,11 +92,11 @@ Configuration merges from multiple sources with precedence ordering:
 
 1. **CLI flags** (highest)
 2. **Environment variables**
-3. **Database settings** (SQLite `settings` table, managed via Settings UI or `qai config set`)
+3. **Database settings** (SQLite `settings` table, managed via `ctpf config set`)
 4. **YAML config file** (`~/.qai/config.yaml`)
 5. **Built-in defaults** (lowest)
 
-Use `qai config get <key>` to see the resolved value and its source for any setting.
+Use `ctpf config get <key>` to see the resolved value and its source for any setting.
 
 ## Credential Management
 
@@ -106,10 +106,10 @@ Resolution order for credentials: environment variable (`{PROVIDER}_API_KEY`) �
 
 CLI commands for credential management:
 
-- `qai config set-credential <provider>` — prompts for key with masked input
-- `qai config delete-credential <provider>` — removes key from keyring
-- `qai config list-providers` — shows credential status for known providers
-- `qai config import-legacy-credentials` — one-time migration from plaintext `config.yaml` to keyring
+- `ctpf config set-credential <provider>` — prompts for key with masked input
+- `ctpf config delete-credential <provider>` — removes key from keyring
+- `ctpf config list-providers` — shows credential status for known providers
+- `ctpf config import-legacy-credentials` — one-time migration from plaintext `config.yaml` to keyring
 
 ## FrameworkResolver
 

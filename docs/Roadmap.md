@@ -1,7 +1,7 @@
 # {q-AI} — Roadmap
 
 > **Superseded for product direction (2026-07-11):** sequencing lives in the active lab-vault plan.
-> Live plan: lab vault `qai/Plans/CTPF Reconnect Plan.md`. In-repo shape: README +
+> Live plan: lab vault `CTPF/Plans/CTPF Reconnect Plan.md`. In-repo shape: README +
 > `docs/Architecture.md`. Historical phases below describe the pre-strip platform and
 > should not steer new work.
 

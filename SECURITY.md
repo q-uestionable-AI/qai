@@ -2,9 +2,9 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in {q-AI}, please report it responsibly.
+If you discover a security vulnerability in CTPF Research Harness, please report it responsibly.
 
-**Preferred:** Use [GitHub Private Vulnerability Reporting](https://github.com/q-uestionable-AI/qai/security/advisories/new) — click "Report a vulnerability" in the Security tab. This keeps coordination on-platform and follows the [OpenSSF Vulnerability Disclosure Guide](https://github.com/ossf/oss-vulnerability-guide).
+**Preferred:** Use [GitHub Private Vulnerability Reporting](https://github.com/q-uestionable-AI/CTPF/security/advisories/new) — click "Report a vulnerability" in the Security tab. This keeps coordination on-platform and follows the [OpenSSF Vulnerability Disclosure Guide](https://github.com/ossf/oss-vulnerability-guide).
 
 **Alternative:** Email **security@q-uestionable.ai** with a description of the vulnerability, steps to reproduce, and potential impact assessment.
 
@@ -14,7 +14,7 @@ If you discover a security vulnerability in {q-AI}, please report it responsibly
 
 ## Scope
 
-{q-AI} is a security testing tool. Vulnerabilities in the tool itself (not in targets being tested) are in scope:
+CTPF Research Harness is a security testing tool. Vulnerabilities in the tool itself (not in targets being tested) are in scope:
 
 - Command injection in CLI argument handling
 - Credential leakage in reports, logs, or local artifacts
@@ -27,11 +27,11 @@ Out of scope: vulnerabilities in third-party MCP servers or AI systems discovere
 
 ## Evidence at Rest
 
-{q-AI} stores run artifacts locally in plaintext under `~/.qai/`. The SQLite database at `~/.qai/qai.db` includes IPI callback hit bodies, headers, source IPs, user agents, proxy session data, and other finding evidence. Payload documents, exports, and backups live alongside it under the same directory.
+CTPF Research Harness stores run artifacts locally in plaintext under `~/.qai/`. The SQLite database at `~/.qai/qai.db` includes IPI callback hit bodies, headers, source IPs, user agents, proxy session data, and other finding evidence. Payload documents, exports, and backups live alongside it under the same directory.
 
-Access control relies on filesystem permissions. On POSIX, `~/.qai/` is created with mode `0o700`; any pre-existing wider mode is narrowed on the next qai startup. On Windows the default user-profile ACLs apply — qai does not set additional ACL restrictions there.
+Access control relies on filesystem permissions. On POSIX, `~/.qai/` is created with mode `0o700`; any pre-existing wider mode is narrowed on the next harness startup. On Windows the default user-profile ACLs apply — the harness does not set additional ACL restrictions there.
 
-To purge or rotate evidence: `qai db reset` wipes the database entirely; `qai runs delete <run_id>` removes a specific run and its findings; `qai db backup` takes a timestamped snapshot before destructive operations.
+To purge or rotate evidence: `ctpf db reset` wipes the database entirely; `ctpf runs delete <run_id>` removes a specific run and its findings; `ctpf db backup` takes a timestamped snapshot before destructive operations. The `qai` compatibility alias performs the same operations.
 
 ## Supported Versions
 

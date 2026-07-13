@@ -1,5 +1,5 @@
 ---
-title: "qai runs"
+title: "ctpf runs"
 description: "Manage scan runs"
 ---
 
@@ -7,12 +7,12 @@ List, inspect, and delete scan runs.
 
 ## Commands
 
-### `qai runs list`
+### `ctpf runs list`
 
 List recent runs.
 
 ```bash
-qai runs list [--limit N]
+ctpf runs list [--limit N]
 ```
 
 **Options:**
@@ -25,24 +25,24 @@ Displays a table with ID, Module, Target, Status, and timestamp for each run.
 
 ---
 
-### `qai runs show`
+### `ctpf runs show`
 
 Show details for a specific run.
 
 ```bash
-qai runs show <ID>
+ctpf runs show <ID>
 ```
 
 Displays run metadata, configuration, and summary of findings.
 
 ---
 
-### `qai runs delete`
+### `ctpf runs delete`
 
 Delete a run and all associated data.
 
 ```bash
-qai runs delete <ID> [--yes]
+ctpf runs delete <ID> [--yes]
 ```
 
 **Arguments:**
@@ -69,7 +69,7 @@ Deleting a run also deletes:
 
 ```bash
 # Delete with confirmation showing impact
-qai runs delete f9e8d7c6
+ctpf runs delete f9e8d7c6
 # Output:
 # Delete run 'audit-2025-04-10'?
 # This will also delete 12 findings and 3 evidence items.
@@ -77,7 +77,7 @@ qai runs delete f9e8d7c6
 # Deleted run with 12 findings and 3 evidence items.
 
 # Delete without confirmation
-qai runs delete f9e8d7c6 --yes
+ctpf runs delete f9e8d7c6 --yes
 ```
 
 <Warning>

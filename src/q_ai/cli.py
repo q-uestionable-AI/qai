@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from rich.console import Console
 
@@ -14,9 +16,13 @@ from q_ai.core.cli.targets import app as targets_app
 from q_ai.experiment import app as experiment_app
 from q_ai.proxy.cli import app as proxy_app
 
+_DEFAULT_COMMAND_NAME = "ctpf"
+_DISPLAY_NAME = "CTPF Research Harness"
+_SUBTITLE = "Trust-boundary testing for agentic systems"
+
 app = typer.Typer(
-    name="qai",
-    help="CTPF research harness — MCP observation, controlled fixtures, and evidence.",
+    name=_DEFAULT_COMMAND_NAME,
+    help=f"{_DISPLAY_NAME} — {_SUBTITLE}.",
     no_args_is_help=False,
     rich_markup_mode="rich",
 )
@@ -26,44 +32,57 @@ console = Console()
 # Help screen content
 # ---------------------------------------------------------------------------
 
-_QUICK_START = """\
+
+def _invocation_name(ctx: typer.Context) -> str:
+    """Return the normalized executable name for the current invocation."""
+    if not ctx.info_name:
+        return _DEFAULT_COMMAND_NAME
+    return Path(ctx.info_name).stem
+
+
+def _quick_start(command_name: str) -> str:
+    """Build quick-start examples for the invoked console entry point."""
+    return f"""\
 [bold]Quick Start[/bold]
-  qai proxy start ...                      Intercept MCP traffic
-  qai experiment run cascade-memo ...      Run the demonstrated CTPF workflow
-  qai targets add "My Server" http://...   Register a target
+  {command_name} proxy start ...                      Intercept MCP traffic
+  {command_name} experiment run cascade-memo ...      Run the demonstrated CTPF workflow
+  {command_name} targets add "My Server" http://...   Register a target
 """
 
-_HINT_NO_TARGETS = (
-    "[yellow]No targets found yet[/yellow] — run [bold]qai targets add[/bold] to get started."
-)
 
-
-def _print_help_screen() -> None:
-    """Print the grouped help screen with quick-start examples."""
-    console.print(
-        f"\n[bold]qai[/bold] v{__version__} — CTPF research harness — "
-        "MCP observation, controlled fixtures, and evidence.\n"
+def _hint_no_targets(command_name: str) -> str:
+    """Build the no-targets hint for the invoked console entry point."""
+    return (
+        "[yellow]No targets found yet[/yellow] — run "
+        f"[bold]{command_name} targets add[/bold] to get started."
     )
-    console.print(_QUICK_START)
+
+
+def _print_help_screen(command_name: str) -> None:
+    """Print the grouped help screen with invocation-aware examples."""
+    console.print(
+        f"\n[bold]{command_name}[/bold] v{__version__} — {_DISPLAY_NAME} — {_SUBTITLE}.\n"
+    )
+    console.print(_quick_start(command_name))
+    hint_no_targets = _hint_no_targets(command_name)
 
     # Contextual hint: check if any targets exist
     try:
-        from pathlib import Path
-
         from q_ai.core.db import _DEFAULT_DB_PATH, get_connection, list_targets
 
         if not Path(_DEFAULT_DB_PATH).exists():
-            console.print(f"  {_HINT_NO_TARGETS}\n")
+            console.print(f"  {hint_no_targets}\n")
         else:
             with get_connection() as conn:
                 targets = list_targets(conn)
             if not targets:
-                console.print(f"  {_HINT_NO_TARGETS}\n")
+                console.print(f"  {hint_no_targets}\n")
     except Exception:  # noqa: S110
         pass  # DB may not exist yet on first run
 
     console.print(
-        "[dim]Run qai --help for full command list, or qai <command> --help for details.[/dim]"
+        f"[dim]Run {command_name} --help for the full command list, or "
+        f"{command_name} <command> --help for details.[/dim]"
     )
 
 
@@ -72,15 +91,15 @@ def _print_help_screen() -> None:
 # ---------------------------------------------------------------------------
 
 
-def version_callback(value: bool) -> None:
+def version_callback(ctx: typer.Context, value: bool) -> None:
     """Print version and exit."""
     if value:
-        typer.echo(f"qai {__version__}")
+        typer.echo(f"{_invocation_name(ctx)} {__version__}")
         raise typer.Exit()
 
 
 # ---------------------------------------------------------------------------
-# Root callback: bare `qai` prints help, subcommands pass through
+# Root callback: a bare `ctpf` or `qai` prints help, subcommands pass through
 # ---------------------------------------------------------------------------
 
 
@@ -105,7 +124,7 @@ def main(
     if ctx.invoked_subcommand is not None:
         return
 
-    _print_help_screen()
+    _print_help_screen(_invocation_name(ctx))
 
 
 # ---------------------------------------------------------------------------
