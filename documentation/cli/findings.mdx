@@ -1,5 +1,5 @@
 ---
-title: "qai findings"
+title: "ctpf findings"
 description: "List stored security findings"
 ---
 
@@ -7,12 +7,12 @@ List findings persisted in the local SQLite database (`~/.qai/qai.db`).
 
 ## Commands
 
-### `qai findings list`
+### `ctpf findings list`
 
 List security findings with optional filters.
 
 ```bash
-qai findings list [OPTIONS]
+ctpf findings list [OPTIONS]
 ```
 
 **Options:**
@@ -30,7 +30,7 @@ Displays a table with ID, Module, Category, Severity, Title, and Created timesta
 **Examples:**
 
 ```bash
-qai findings list
-qai findings list --severity HIGH --limit 50
-qai findings list --module proxy --target a1b2c3d4
+ctpf findings list
+ctpf findings list --severity HIGH --limit 50
+ctpf findings list --module proxy --target a1b2c3d4
 ```

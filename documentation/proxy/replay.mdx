@@ -10,7 +10,7 @@ Session replay sends previously captured client-to-server messages against a liv
 1. **Capture** a session:
 
 ```bash
-qai proxy start \
+ctpf proxy start \
   --transport stdio \
   --target-command "python my_server.py" \
   --session-file session.json
@@ -21,7 +21,7 @@ Interact with your agent or client normally. The proxy saves all messages to `se
 2. **Replay** the captured messages:
 
 ```bash
-qai proxy replay \
+ctpf proxy replay \
   --session-file session.json \
   --target-command "python my_server.py" \
   --output results.json
@@ -32,7 +32,7 @@ The replay engine resends client-to-server messages and captures new responses.
 ## Replay Command Reference
 
 ```bash
-qai proxy replay --session-file FILE [OPTIONS]
+ctpf proxy replay --session-file FILE [OPTIONS]
 ```
 
 **Options:**
@@ -147,7 +147,7 @@ Replay results are written to JSON with a detailed record of each message:
 Use `--timeout` to adjust the per-message timeout:
 
 ```bash
-qai proxy replay \
+ctpf proxy replay \
   --session-file session.json \
   --target-command "python slow_server.py" \
   --timeout 30.0 \
@@ -172,13 +172,13 @@ Capture a vulnerable interaction, then replay it to confirm the finding:
 
 ```bash
 # 1. Capture the attack sequence
-qai proxy start \
+ctpf proxy start \
   --transport stdio \
   --target-command "python app.py" \
   --session-file attack.json
 
 # 2. Replay against the target to confirm
-qai proxy replay \
+ctpf proxy replay \
   --session-file attack.json \
   --target-command "python app.py" \
   --output confirmation.json
@@ -192,7 +192,7 @@ Verify a new server version behaves the same as the old:
 
 ```bash
 # Replay sessions against new server
-qai proxy replay \
+ctpf proxy replay \
   --session-file v1_capture.json \
   --target-command "python server_v2.py" \
   --output v2_results.json
@@ -205,12 +205,12 @@ qai proxy replay \
 Capture a failing interaction, then replay it repeatedly:
 
 ```bash
-qai proxy replay \
+ctpf proxy replay \
   --session-file failing_session.json \
   --target-command "python server.py" \
   --output replay_1.json
 
-qai proxy replay \
+ctpf proxy replay \
   --session-file failing_session.json \
   --target-command "python server.py" \
   --output replay_2.json

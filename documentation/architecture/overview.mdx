@@ -3,9 +3,10 @@ title: Architecture Overview
 description: Post–Phase 1 CTPF research harness shape
 ---
 
-q-AI is a local Python **CTPF research harness** with one public operator entry point:
-the `qai` CLI. This page matches the durable invariants in the repo
-[`docs/Architecture.md`](https://github.com/q-uestionable-AI/qai/blob/main/docs/Architecture.md)
+CTPF Research Harness is a local Python harness with one preferred public operator entry point:
+the `ctpf` CLI. The former `qai` executable remains a compatibility alias. This page matches the
+durable invariants in the repository
+[`docs/Architecture.md`](https://github.com/q-uestionable-AI/CTPF/blob/main/docs/Architecture.md)
 after the Phase 1 shape cut.
 
 ## System shape
@@ -34,20 +35,21 @@ inject campaign/scoring path.
 ## Public CLI (transitional)
 
 ```
-qai proxy          # Intercept / modify / export MCP traffic
-qai targets        # Register MCP targets
-qai runs           # Inspect stored runs
-qai findings       # Inspect stored findings
-qai config         # Settings and OS-keyring credentials
-qai db             # Local database maintenance
-qai --version
+ctpf proxy          # Intercept / modify / export MCP traffic
+ctpf experiment     # Run controlled CTPF experiments
+ctpf targets        # Register MCP targets
+ctpf runs           # Inspect stored runs
+ctpf findings       # Inspect stored findings
+ctpf config         # Settings and OS-keyring credentials
+ctpf db             # Local database maintenance
+ctpf --version
 ```
 
 New verbs such as `inspect` / `evidence` are deferred until a CTPF experiment
 defines a real interface.
 
 Library Typer apps may remain for fixture workflows
-(`python -m q_ai.ipi`, `python -m q_ai.inject`) but are not root `qai` pillars.
+(`python -m q_ai.ipi`, `python -m q_ai.inject`) but are not root `ctpf` pillars.
 
 ## Shared backbone
 
@@ -107,7 +109,7 @@ consume that boundary rather than embedding provider SDKs directly.
 ```
 CLI flags (highest priority)
   → Environment variables
-    → Database settings (qai config)
+    → Database settings (ctpf config)
       → YAML config file (~/.qai/config.yaml)
         → Built-in defaults (lowest priority)
 ```

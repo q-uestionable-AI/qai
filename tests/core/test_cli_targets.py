@@ -1,4 +1,4 @@
-"""Tests for qai targets CLI commands."""
+"""Tests for CTPF target CLI commands."""
 
 from __future__ import annotations
 
@@ -11,6 +11,15 @@ from q_ai.cli import app
 from q_ai.core.db import get_connection
 
 runner = CliRunner()
+
+
+def test_add_help_uses_preferred_ctpf_name() -> None:
+    """Target help presents the preferred CLI name in its examples."""
+    result = runner.invoke(app, ["targets", "add", "--help"], prog_name="ctpf")
+
+    assert result.exit_code == 0
+    assert "ctpf targets add" in result.output
+    assert "qai targets add" not in result.output
 
 
 class TestTargetsList:

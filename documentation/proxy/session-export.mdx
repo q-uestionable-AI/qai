@@ -109,7 +109,7 @@ A session file contains a `ProxySession` object with metadata and an ordered lis
 Use `--session-file` to automatically save when the proxy exits:
 
 ```bash
-qai proxy start \
+ctpf proxy start \
   --transport stdio \
   --target-command "python my_server.py" \
   --session-file session.json
@@ -124,7 +124,7 @@ Press `s` in the TUI at any time to save the current session to disk.
 Export a saved session to a new file:
 
 ```bash
-qai proxy export \
+ctpf proxy export \
   --session-file session.json \
   --output report.json \
   --output-format json
@@ -137,7 +137,7 @@ qai proxy export \
 Print session contents to stdout:
 
 ```bash
-qai proxy inspect --session-file session.json
+ctpf proxy inspect --session-file session.json
 ```
 
 **Output:**
@@ -162,7 +162,7 @@ Messages: 12
 Include full JSON payloads:
 
 ```bash
-qai proxy inspect --session-file session.json -v
+ctpf proxy inspect --session-file session.json -v
 ```
 
 ## Message Modification Recording
@@ -209,7 +209,7 @@ The `original_payload` field is only present when `modified` is `true`, preservi
 Attach the session file when reporting a vulnerability to provide complete evidence:
 
 ```bash
-qai proxy export \
+ctpf proxy export \
   --session-file vulnerable_interaction.json \
   --output vulnerability_evidence.json
 ```
@@ -220,13 +220,13 @@ Store sessions from successful interactions and replay them against new versions
 
 ```bash
 # Save baseline
-qai proxy start \
+ctpf proxy start \
   --transport stdio \
   --target-command "python server_v1.py" \
   --session-file baseline_v1.json
 
 # Replay against v2
-qai proxy replay \
+ctpf proxy replay \
   --session-file baseline_v1.json \
   --target-command "python server_v2.py" \
   --output v2_results.json
@@ -238,7 +238,7 @@ Export sessions with metadata for compliance documentation:
 
 ```bash
 # Session with audit notes
-qai proxy export \
+ctpf proxy export \
   --session-file security_test.json \
   --output audit_evidence.json
 ```

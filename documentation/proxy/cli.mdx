@@ -3,12 +3,12 @@ title: "Proxy CLI Commands"
 description: "Command reference for starting, replaying, exporting, and inspecting MCP sessions"
 ---
 
-## qai proxy
+## ctpf proxy
 
 Intercept and replay MCP traffic for inspection, testing, and analysis.
 
 ```bash
-qai proxy [COMMAND] [OPTIONS]
+ctpf proxy [COMMAND] [OPTIONS]
 ```
 
 ## Commands
@@ -18,7 +18,7 @@ qai proxy [COMMAND] [OPTIONS]
 Start the proxy with an interactive TUI.
 
 ```bash
-qai proxy start --transport TRANSPORT [OPTIONS]
+ctpf proxy start --transport TRANSPORT [OPTIONS]
 ```
 
 **Options:**
@@ -35,14 +35,14 @@ qai proxy start --transport TRANSPORT [OPTIONS]
 
 <CodeGroup>
 ```bash stdio
-qai proxy start \
+ctpf proxy start \
   --transport stdio \
   --target-command "python my_server.py" \
   --intercept
 ```
 
 ```bash HTTP
-qai proxy start \
+ctpf proxy start \
   --transport sse \
   --target-url "http://localhost:3000" \
   --session-file session.json
@@ -58,7 +58,7 @@ Use passthrough mode (default) for passive capture of complete interactions. Use
 Replay captured messages against a live server.
 
 ```bash
-qai proxy replay --session-file FILE [OPTIONS]
+ctpf proxy replay --session-file FILE [OPTIONS]
 ```
 
 **Options:**
@@ -78,14 +78,14 @@ qai proxy replay --session-file FILE [OPTIONS]
 
 <CodeGroup>
 ```bash stdio
-qai proxy replay \
+ctpf proxy replay \
   --session-file session.json \
   --target-command "python my_server.py" \
   --output results.json
 ```
 
 ```bash HTTP with timeout
-qai proxy replay \
+ctpf proxy replay \
   --session-file session.json \
   --target-url "http://localhost:3000" \
   --timeout 30.0 \
@@ -102,7 +102,7 @@ By default, the replay engine sends a synthetic `initialize` handshake before re
 Export a session to JSON.
 
 ```bash
-qai proxy export --session-file FILE --output OUTPUT [OPTIONS]
+ctpf proxy export --session-file FILE --output OUTPUT [OPTIONS]
 ```
 
 **Options:**
@@ -116,7 +116,7 @@ qai proxy export --session-file FILE --output OUTPUT [OPTIONS]
 **Example:**
 
 ```bash
-qai proxy export \
+ctpf proxy export \
   --session-file session.json \
   --output report.json
 ```
@@ -126,7 +126,7 @@ qai proxy export \
 Print session contents to stdout for review.
 
 ```bash
-qai proxy inspect --session-file FILE [OPTIONS]
+ctpf proxy inspect --session-file FILE [OPTIONS]
 ```
 
 **Options:**
@@ -139,7 +139,7 @@ qai proxy inspect --session-file FILE [OPTIONS]
 **Example:**
 
 ```bash
-qai proxy inspect --session-file session.json -v
+ctpf proxy inspect --session-file session.json -v
 ```
 
 **Output format:**

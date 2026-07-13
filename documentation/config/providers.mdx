@@ -3,13 +3,14 @@ title: LLM Provider Configuration
 description: Configure LLM providers and credentials for injection campaigns and chain execution
 ---
 
-qai uses LLM providers for injection campaigns (`qai inject campaign`) and chain execution (`qai chain run`). Other modules (audit, proxy, ipi, cxp, rxp) do not require LLM providers.
+CTPF Research Harness uses LLM providers for model-backed research workflows. Core proxy and local
+state operations do not require a provider.
 
 Provider support is powered by [litellm](https://docs.litellm.ai/), giving access to 100+ providers and models.
 
 ## Provider/Model Format
 
-All model references in qai use the `provider/model` format:
+All model references use the `provider/model` format:
 
 ```
 anthropic/claude-sonnet-4-20250514
@@ -22,10 +23,10 @@ Bare model names without a provider prefix are treated as Anthropic (e.g., `clau
 
 ## Storing Credentials (CLI)
 
-Store API keys in the OS keyring using `qai config set-credential`. The command prompts for the key with masked input — the key is never passed as a command-line argument.
+Store API keys in the OS keyring using `ctpf config set-credential`. The command prompts for the key with masked input — the key is never passed as a command-line argument.
 
 ```bash
-qai config set-credential anthropic
+ctpf config set-credential anthropic
 # Prompts: "API key for anthropic:" (masked input)
 # Credential for anthropic saved to OS keyring.
 ```
@@ -42,7 +43,7 @@ On headless Linux without a keyring daemon, the keyring backend falls back to in
 ### View configured providers
 
 ```bash
-qai config list-providers
+ctpf config list-providers
 ```
 
 Displays a table showing each known provider and whether a credential is configured, in the environment, or not set.
@@ -50,7 +51,7 @@ Displays a table showing each known provider and whether a credential is configu
 ### Delete credentials
 
 ```bash
-qai config delete-credential anthropic
+ctpf config delete-credential anthropic
 ```
 
 ### Migrate legacy plaintext credentials
@@ -58,7 +59,7 @@ qai config delete-credential anthropic
 If you have API keys in `~/.qai/config.yaml` from an older version:
 
 ```bash
-qai config import-legacy-credentials
+ctpf config import-legacy-credentials
 ```
 
 This moves keys from the YAML file to the OS keyring and removes them from the config file. The original file is backed up as `config.yaml.bak`.
@@ -85,10 +86,10 @@ The naming convention is `{PROVIDER_NAME}_API_KEY` (uppercase). See [Environment
 
 ## Credential Resolution
 
-When a command needs a provider credential, qai checks in this order:
+When a command needs a provider credential, the harness checks in this order:
 
 1. **Environment variable** (e.g., `ANTHROPIC_API_KEY`)
-2. **OS keyring** (stored via `qai config set-credential`)
+2. **OS keyring** (stored via `ctpf config set-credential`)
 3. **Error** if neither is found
 
 ## Settings UI

@@ -1,5 +1,5 @@
 ---
-title: "qai db"
+title: "ctpf db"
 description: "Database management commands"
 ---
 
@@ -7,12 +7,12 @@ Database backup and reset operations.
 
 ## Commands
 
-### `qai db backup`
+### `ctpf db backup`
 
 Create a backup of the database.
 
 ```bash
-qai db backup [PATH]
+ctpf db backup [PATH]
 ```
 
 **Arguments:**
@@ -27,11 +27,11 @@ qai db backup [PATH]
 
 ```bash
 # Backup to default location
-qai db backup
+ctpf db backup
 # Output: Backup created: /home/user/.qai/backups/qai-2025-04-10-143052.db
 
 # Backup to custom path
-qai db backup /tmp/my-backup.db
+ctpf db backup /tmp/my-backup.db
 # Output: Backup created: /tmp/my-backup.db
 ```
 
@@ -41,12 +41,12 @@ Run backups before destructive operations like reset, or before upgrading q-ai v
 
 ---
 
-### `qai db reset`
+### `ctpf db reset`
 
 Reset the database to a clean state. Creates an automatic backup before deletion.
 
 ```bash
-qai db reset [--yes]
+ctpf db reset [--yes]
 ```
 
 **Options:**
@@ -71,7 +71,7 @@ qai db reset [--yes]
 
 ```bash
 # Interactive reset with confirmation
-qai db reset
+ctpf db reset
 # Output:
 # ⚠️  This will delete all targets, runs, findings, and evidence.
 # Settings and credentials will be preserved.
@@ -80,7 +80,7 @@ qai db reset
 # Database reset complete.
 
 # Non-interactive reset
-qai db reset --yes
+ctpf db reset --yes
 ```
 
 <Warning>

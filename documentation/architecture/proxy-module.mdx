@@ -29,7 +29,7 @@ proxy/
 
 ## How It Works
 
-`qai proxy start` launches the TUI. The proxy:
+`ctpf proxy start` launches the TUI. The proxy:
 
 1. Spawns the target MCP server (stdio) or connects to it (SSE/HTTP)
 2. Presents itself as the server to the client
@@ -54,7 +54,7 @@ Sessions persist as JSON files via `SessionStore`.
 
 ## Replay
 
-`qai proxy replay` replays recorded client-to-server messages against a live server:
+`ctpf proxy replay` replays recorded client-to-server messages against a live server:
 
 - Loads a saved session file
 - Optionally sends a synthetic `initialize` handshake
@@ -78,4 +78,4 @@ The Textual-based TUI provides:
 
 ## Export
 
-`qai proxy export` serializes a session to JSON. `qai proxy inspect` prints session contents to stdout with optional `--verbose` for full JSON payloads.
+`ctpf proxy export` serializes a session to JSON. `ctpf proxy inspect` prints session contents to stdout with optional `--verbose` for full JSON payloads.

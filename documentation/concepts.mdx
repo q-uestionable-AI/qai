@@ -80,7 +80,7 @@ See [Transport Types](/config/transports) for configuration details.
 
 ## Threat model
 
-q-AI tests **agent infrastructure** — the servers, tools, and trust boundaries that AI agents interact with — not just model outputs. The assumption is that MCP servers and tool results are untrusted components: they may leak secrets, execute injected commands, poison tool descriptions, or over-share context across sessions.
+CTPF Research Harness tests **agent infrastructure** — the servers, tools, and trust boundaries that AI agents interact with — not just model outputs. The assumption is that MCP servers and tool results are untrusted components: they may leak secrets, execute injected commands, poison tool descriptions, or over-share context across sessions.
 
 Proxy observation asks what happens when that untrusted content crosses into a higher-trust action path without preserved provenance or scope.
 

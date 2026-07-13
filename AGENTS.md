@@ -1,12 +1,13 @@
-# q-AI — Agent Context
+# CTPF Research Harness — Agent Context
 
 **Repository-local instructions for coding agents.** Do not create a parallel `CLAUDE.md`
 or other second agent-instruction file.
 
-q-AI (`q-uestionable-ai` on PyPI, CLI `qai`) is a security research tool for agentic AI
-and a lean research harness for Capability Trust Propagation Failure (CTPF). Durable program
-guidance lives in the lab vault `qai/Project Instructions.md`; current sequence and progress
-live in the active plan and boards. Do not invent a parallel roadmap inside the repo.
+CTPF Research Harness (`q-uestionable-ai` on PyPI, preferred CLI `ctpf`, temporary alias `qai`)
+is a security research tool for agentic AI and a lean research harness for Capability Trust
+Propagation Failure (CTPF). Durable program guidance lives in the lab vault
+`CTPF/Project Instructions.md`; current sequence and progress live in the active plan and boards.
+Do not invent a parallel roadmap inside the repo.
 
 ## Critical Context
 
@@ -132,6 +133,7 @@ uv run pytest
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 uv run mypy src/q_ai/
+ctpf --help
 qai --help
 ```
 
@@ -163,6 +165,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy src/q_ai/ && 
 Smoke test the CLI after changes:
 
 ```bash
+ctpf --help
 qai --help
 ```
 
