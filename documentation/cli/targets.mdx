@@ -19,21 +19,36 @@ Displays a table with Name, Type, URI, and ID for each target.
 
 ---
 
-### `ctpf targets create`
+### `ctpf targets add`
 
-Create a new scan target.
+Add a new scan target. Supply the name and URI as positional arguments, or omit both to use
+interactive prompts in a terminal.
 
 ```bash
-ctpf targets create --name <NAME> --type <TYPE> [--uri <URI>]
+ctpf targets add <NAME> <URI> [--type <TYPE>] [--meta KEY=VALUE]
+ctpf targets add
 ```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `NAME` | Human-readable target name. Prompted interactively if omitted. |
+| `URI` | Connection endpoint. Prompted interactively if omitted. |
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
-| `--name` | Human-readable name for the target. |
-| `--type` | Target type: `server` (MCP server) or `platform` (agentic platform). |
-| `--uri` | Connection endpoint (optional). |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--type`, `-t` | `server` | Target type, such as `server` or `endpoint`. |
+| `--meta KEY=VALUE` | — | Target metadata. Repeat the option to add multiple values. |
+
+**Examples:**
+
+```bash
+ctpf targets add "My Server" http://localhost:3000/sse
+ctpf targets add "Local MCP" http://localhost:8080 --meta transport=sse
+```
 
 ---
 

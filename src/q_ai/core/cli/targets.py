@@ -47,9 +47,9 @@ def list_cmd(
     "add",
     epilog=(
         "Examples:\n"
-        '  qai targets add "My Server" http://localhost:3000/sse\n'
-        '  qai targets add "Local MCP" http://localhost:8080 --meta transport=sse\n'
-        "  qai targets add  (interactive — prompts for name and URI)\n"
+        '  ctpf targets add "My Server" http://localhost:3000/sse\n'
+        '  ctpf targets add "Local MCP" http://localhost:8080 --meta transport=sse\n'
+        "  ctpf targets add  (interactive — prompts for name and URI)\n"
         "\n"
         "Common --meta keys: transport, environment, owner, notes"
     ),
@@ -112,7 +112,7 @@ def add_cmd(
     console.print(f"Created target {tid[:8]}")
 
     if not all_provided and is_tty():
-        tip = build_teaching_tip("qai targets add", [name, uri])
+        tip = build_teaching_tip("ctpf targets add", [name, uri])
         console.print(f"[dim]{tip}[/dim]")
 
 
