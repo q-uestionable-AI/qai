@@ -43,12 +43,15 @@ research fixtures. They are not equal product modules on the public CLI.
 ## Quick Start
 
 ```bash
-pip install q-uestionable-ai
+pip install ctpf
 # or from source:
 git clone https://github.com/q-uestionable-AI/CTPF.git
 cd CTPF
 uv sync --group dev
 ```
+
+Starting with v0.12.0, the former `q-uestionable-ai` distribution is a compatibility package
+that installs the same-version `ctpf` distribution.
 
 ```bash
 ctpf proxy --help

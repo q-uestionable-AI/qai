@@ -59,14 +59,15 @@ contextual run results panel). Shipped in PRs #81–#83.
 **Sequence:**
 1. Final repo review — README rewrite, SECURITY.md, responsible use policy, CI green
 2. Flip `q-uestionable-AI/qai` to public
-3. Publish `q-uestionable-ai` to PyPI (first release)
+3. Publish `ctpf` to PyPI, followed by the `q-uestionable-ai` compatibility distribution
 4. Deprecation releases for `counteragent` and `countersignal` — CLI warning + README banner
 5. Transfer `q-uestionable-AI/counteragent` → `richardspicer/counteragent`, same for countersignal
 6. Unified Mintlify docs at `docs.q-uestionable.ai`
 7. q-uestionable.ai site update
 8. Announcement post on richardspicer.io
 
-**Done when:** `pip install q-uestionable-ai` works, repo is public, old repos redirect.
+**Done when:** `pip install ctpf` works, the compatibility distribution resolves to `ctpf`, the
+repo is public, and old repositories redirect.
 
 ### Phase 7: Workflow Completion (reduced scope)
 

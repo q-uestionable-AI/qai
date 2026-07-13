@@ -3,7 +3,8 @@
 **Repository-local instructions for coding agents.** Do not create a parallel `CLAUDE.md`
 or other second agent-instruction file.
 
-CTPF Research Harness (`q-uestionable-ai` on PyPI, preferred CLI `ctpf`, temporary alias `qai`)
+CTPF Research Harness (`ctpf` on PyPI from v0.12.0, `q-uestionable-ai` compatibility
+distribution, preferred CLI `ctpf`, temporary alias `qai`)
 is a security research tool for agentic AI and a lean research harness for Capability Trust
 Propagation Failure (CTPF). Durable program guidance lives in the lab vault
 `CTPF/Project Instructions.md`; current sequence and progress live in the active plan and boards.
