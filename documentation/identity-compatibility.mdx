@@ -16,7 +16,8 @@ not imply that every other name changes at the same time.
 | Repository | `q-uestionable-AI/CTPF` |
 | Documentation | `ctpf.q-uestionable.ai` is canonical; `docs.q-uestionable.ai` is transitional |
 | CLI | Prefer `ctpf`; `qai` remains a functional alias |
-| PyPI distribution | Retain `q-uestionable-ai` |
+| Primary PyPI distribution | `ctpf` from v0.12.0 |
+| Compatibility distribution | `q-uestionable-ai` requires the exact same-version `ctpf` |
 | Python imports | Retain `q_ai` |
 | User state and database | Retain `~/.qai/qai.db` |
 | Environment variables | Retain `QAI_*` |
@@ -32,6 +33,9 @@ Both console entry points invoke the same Typer application and use the same loc
 ctpf --version
 qai --version
 ```
+
+Existing installers can continue with `pip install q-uestionable-ai`; from v0.12.0 that project
+contains no duplicate import package and delegates installation to `ctpf`.
 
 Historical traces, bundles, captured commands, release notes, and research artifacts keep the
 names recorded when they were produced. They are reconciled through this mapping rather than

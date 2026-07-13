@@ -2,4 +2,4 @@
 
 from importlib.metadata import version
 
-__version__ = version("q-uestionable-ai")
+__version__ = version("ctpf")
