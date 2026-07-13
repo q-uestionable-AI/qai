@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ctpf"
-version = "0.11.0"
+version = "0.12.0"
 description = "Trust-boundary testing for agentic systems"
 readme = "README.md"
 license = "Apache-2.0"

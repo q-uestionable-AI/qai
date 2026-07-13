@@ -6,7 +6,7 @@ import asyncio
 import json
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import sys
 import uuid
 from collections.abc import Iterator
@@ -374,7 +374,8 @@ def _run_console_session_process(
     options: CascadeExperimentOptions,
 ) -> None:
     # Command arguments come only from validated internal session state.
-    completed = subprocess.run(_session_worker_command(spec, options), check=False)  # noqa: S603
+    command = _session_worker_command(spec, options)
+    completed = subprocess.run(command, check=False)  # noqa: S603  # nosec B603
     if completed.returncode != 0:
         raise ExperimentError(
             f"isolated {spec.condition.value} session {spec.name} failed "
