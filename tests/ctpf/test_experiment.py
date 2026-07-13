@@ -28,6 +28,12 @@ from q_ai.ctpf import (
 from q_ai.mcp.models import Direction, Transport
 from q_ai.proxy.models import ProxyMessage
 
+# Disable Rich ANSI so substring assertions on --help stay stable. With color
+# enabled, option names like `--model` can render as ANSI-split spans and break
+# literal matches (same pattern as tests/ipi/test_sweep_cli.py).
+_NO_COLOR_ENV = {"NO_COLOR": "1", "FORCE_COLOR": None, "TERM": "dumb"}
+_cli_runner = CliRunner(env=_NO_COLOR_ENV)
+
 MEMO_BODY = json.dumps(
     {
         "pending_action": "approve_refund",
@@ -358,12 +364,12 @@ class TestExperimentCli:
     """Only the approved cascade command is exposed."""
 
     def test_root_help_lists_experiment(self) -> None:
-        result = CliRunner().invoke(root_app, ["--help"])
+        result = _cli_runner.invoke(root_app, ["--help"])
         assert result.exit_code == 0
         assert "experiment" in result.output
 
     def test_nested_cascade_help(self) -> None:
-        result = CliRunner().invoke(
+        result = _cli_runner.invoke(
             root_app,
             ["experiment", "run", "cascade-memo", "--help"],
         )
@@ -372,7 +378,7 @@ class TestExperimentCli:
         assert "--output-root" in result.output
 
     def test_repo_output_is_rejected_before_live_run(self) -> None:
-        result = CliRunner().invoke(
+        result = _cli_runner.invoke(
             root_app,
             [
                 "experiment",
