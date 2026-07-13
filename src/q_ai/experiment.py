@@ -7,7 +7,6 @@ import json
 import os
 import shutil
 import sys
-import tempfile
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -166,7 +165,7 @@ def run_cascade_memo_cli(
     options = CascadeExperimentOptions(model, output_root, listen_port)
     try:
         result = asyncio.run(run_cascade_memo(options))
-    except (ExperimentError, OSError, ValueError) as exc:
+    except (ExperimentError, OSError, RuntimeError, ValueError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"Series complete: {result.root}")
@@ -629,8 +628,18 @@ def _condition_files(
     )
 
 
+def _fixture_work_dir() -> Path:
+    """Return the cascade fixture work directory.
+
+    Matches ``tests/fixtures/pattern_cascade_memo.work_dir`` so TEMP/TMP win
+    over TMPDIR (which ``tempfile.gettempdir`` would otherwise honor).
+    """
+    # Match fixture fallback; intentional shared /tmp path for local research.
+    return Path(os.environ.get("TEMP", os.environ.get("TMP", "/tmp"))) / _FIXTURE_WORK_DIRNAME  # noqa: S108
+
+
 def _fixture_artifact_paths(run_id: str) -> tuple[Path, Path]:
-    root = Path(tempfile.gettempdir()) / _FIXTURE_WORK_DIRNAME
+    root = _fixture_work_dir()
     return root / f"memo-{run_id}.json", root / f"sink-{run_id}.json"
 
 

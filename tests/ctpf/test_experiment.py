@@ -392,3 +392,56 @@ class TestExperimentCli:
         )
         assert result.exit_code == 1
         assert "outside a Git checkout" in result.output
+
+    def test_runtime_error_is_reported_cleanly(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        async def _boom(_options: experiment.CascadeExperimentOptions) -> None:
+            raise RuntimeError("Uvicorn failed to start on 127.0.0.1:8765")
+
+        monkeypatch.setattr(experiment, "run_cascade_memo", _boom)
+        result = _cli_runner.invoke(
+            root_app,
+            [
+                "experiment",
+                "run",
+                "cascade-memo",
+                "--model",
+                "Composer 2.5",
+                "--output-root",
+                str(tmp_path / "research-output"),
+            ],
+        )
+        assert result.exit_code == 1
+        assert "Uvicorn failed to start" in result.output
+        assert "Traceback" not in result.output
+
+
+class TestFixtureArtifactPaths:
+    """Director must locate artifacts where the cascade fixture writes them."""
+
+    def test_prefers_temp_over_tmpdir(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        temp_root = tmp_path / "temp-win"
+        tmpdir_root = tmp_path / "tmpdir-unix"
+        monkeypatch.setenv("TEMP", str(temp_root))
+        monkeypatch.setenv("TMPDIR", str(tmpdir_root))
+        monkeypatch.delenv("TMP", raising=False)
+        memo, sink = experiment._fixture_artifact_paths("run-1")
+        assert memo == temp_root / "qai-cascade-memo" / "memo-run-1.json"
+        assert sink == temp_root / "qai-cascade-memo" / "sink-run-1.json"
+
+    def test_defaults_to_tmp_when_temp_vars_unset(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("TEMP", raising=False)
+        monkeypatch.delenv("TMP", raising=False)
+        monkeypatch.setenv("TMPDIR", "/var/tmp")
+        memo, _sink = experiment._fixture_artifact_paths("run-2")
+        assert memo == Path("/tmp/qai-cascade-memo/memo-run-2.json")
