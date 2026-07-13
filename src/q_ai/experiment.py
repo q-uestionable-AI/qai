@@ -635,7 +635,10 @@ def _fixture_work_dir() -> Path:
     over TMPDIR (which ``tempfile.gettempdir`` would otherwise honor).
     """
     # Match fixture fallback; intentional shared /tmp path for local research.
-    return Path(os.environ.get("TEMP", os.environ.get("TMP", "/tmp"))) / _FIXTURE_WORK_DIRNAME  # noqa: S108
+    return (
+        Path(os.environ.get("TEMP", os.environ.get("TMP", "/tmp")))  # noqa: S108  # nosec B108
+        / _FIXTURE_WORK_DIRNAME
+    )
 
 
 def _fixture_artifact_paths(run_id: str) -> tuple[Path, Path]:
