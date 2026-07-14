@@ -568,6 +568,7 @@ class TestExperimentCli:
         assert result.exit_code == 0
         assert "--model" in result.output
         assert "--target" in result.output
+        assert "--trials" in result.output
         assert "--output-root" in result.output
         assert "driver=openai-compatible" in result.output
 
