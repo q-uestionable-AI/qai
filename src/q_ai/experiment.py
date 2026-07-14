@@ -70,6 +70,10 @@ _LISTENER_RESTART_COOLDOWN = 5.0
 _RUNTIME_START_TIMEOUT = 10.0
 _TARGET_PROFILE_NAME = "target-profile.json"
 _HARDENED_TRANSITION_NAME = "hardened/trust-transition.json"
+_MATRIX_MANIFEST_NAME = "series-manifest.json"
+_MIN_MATRIX_TARGETS = 2
+_MIN_MATRIX_TRIALS = 3
+_MAX_MATRIX_TRIALS = 5
 
 
 class ExperimentError(RuntimeError):
@@ -80,6 +84,9 @@ class _Condition(StrEnum):
     BASELINE = "baseline"
     MANIPULATED = "manipulated"
     HARDENED = "hardened"
+
+
+_DEFAULT_CONDITION_ORDER = tuple(_Condition)
 
 
 @dataclass(frozen=True)
@@ -109,6 +116,50 @@ class CascadeExperimentResult:
     bundle: EvidenceBundle
     primary: TrustTransition
     hardened: TrustTransition
+
+
+@dataclass(frozen=True)
+class CascadeMatrixOptions:
+    """Inputs for one driven multi-model exploratory matrix.
+
+    Args:
+        targets: Distinct inference target ID references.
+        trials_per_model: Exploratory triad repetitions for each target.
+        output_root: External directory that will contain the matrix series.
+        listen_port: Loopback Streamable HTTP port used by the experiment proxy.
+        db_path: Optional database path override for tests.
+    """
+
+    targets: tuple[str, ...]
+    trials_per_model: int
+    output_root: Path
+    listen_port: int = DEFAULT_LISTEN_PORT
+    db_path: Path | None = None
+
+
+@dataclass(frozen=True)
+class CascadeMatrixResult:
+    """Completed matrix paths and per-trial results.
+
+    Args:
+        root: Matrix series directory.
+        manifest_path: Top-level matrix series manifest.
+        trials: Completed per-target trial results in execution order.
+    """
+
+    root: Path
+    manifest_path: Path
+    trials: tuple[CascadeExperimentResult, ...]
+
+
+@dataclass(frozen=True)
+class _MatrixTrialSpec:
+    target_id: str
+    target_name: str
+    model: str
+    trial: int
+    series_id: str
+    condition_order: tuple[_Condition, ...]
 
 
 @dataclass(frozen=True)
@@ -202,7 +253,8 @@ class _DrivenOperator:
         "Driven setup: ctpf targets add NAME API_BASE --type inference "
         "--meta driver=openai-compatible --meta model=MODEL "
         "--meta credential=KEYRING_NAME\n"
-        "Store the key with: ctpf config set-credential KEYRING_NAME"
+        "Store the key with: ctpf config set-credential KEYRING_NAME\n"
+        "Matrix: repeat --target for at least two profiles and set --trials from 3 to 5"
     ),
 )
 def run_cascade_memo_cli(
@@ -215,9 +267,13 @@ def run_cascade_memo_cli(
         typer.Option(help="Exact model label selected in Cursor manual mode."),
     ] = None,
     target: Annotated[
-        str | None,
-        typer.Option(help="Inference target ID prefix for OpenAI-compatible driven mode."),
+        list[str] | None,
+        typer.Option(help="Inference target ID prefix; repeat for a driven multi-model matrix."),
     ] = None,
+    trials: Annotated[
+        int,
+        typer.Option(help="Exploratory trials per model; matrix mode requires 3-5."),
+    ] = 1,
     listen_port: Annotated[
         int,
         typer.Option(help="Loopback Streamable HTTP port used by the experiment proxy."),
@@ -225,8 +281,27 @@ def run_cascade_memo_cli(
     db_path: Annotated[Path | None, typer.Option(hidden=True)] = None,
 ) -> None:
     """Run the baseline, manipulated, and hardened cascade conditions."""
-    options = CascadeExperimentOptions(model, output_root, listen_port, target, db_path)
+    targets = tuple(target or ())
     try:
+        if _matrix_requested(targets, trials):
+            _validate_matrix_cli_model(model)
+            matrix = asyncio.run(
+                run_cascade_matrix(
+                    CascadeMatrixOptions(targets, trials, output_root, listen_port, db_path)
+                )
+            )
+            typer.echo(f"Matrix complete: {matrix.root}")
+            typer.echo(f"Trials complete: {len(matrix.trials)}")
+            typer.echo(f"Series manifest: {matrix.manifest_path}")
+            return
+        selected_target = targets[0] if targets else None
+        options = CascadeExperimentOptions(
+            model,
+            output_root,
+            listen_port,
+            selected_target,
+            db_path,
+        )
         result = asyncio.run(run_cascade_memo(options))
     except (ExperimentError, OSError, RuntimeError, ValueError) as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -286,12 +361,16 @@ async def run_cascade_memo(
     options: CascadeExperimentOptions,
     *,
     operator: _Operator | None = None,
+    series_id: str | None = None,
+    condition_order: tuple[_Condition, ...] | None = None,
 ) -> CascadeExperimentResult:
     """Run one isolated baseline/manipulated/hardened cascade series.
 
     Args:
         options: Model, output, and loopback listener settings.
         operator: Completion seam for the external Cursor agent runtime.
+        series_id: Optional preallocated child ID for matrix orchestration.
+        condition_order: Optional complete permutation of cascade conditions.
 
     Returns:
         Completed paths and causal results.
@@ -300,7 +379,8 @@ async def run_cascade_memo(
     profile = _load_target_profile(options)
     options = _resolved_options(options, profile)
     fixture_command = _fixture_command()
-    series_id = _new_series_id()
+    series_id = series_id or _new_series_id()
+    selected_order = _validated_condition_order(condition_order)
     series_root = output_root / series_id
     series_root.mkdir()
     manifest_path = series_root / "run-manifest.json"
@@ -308,9 +388,17 @@ async def run_cascade_memo(
     results: dict[_Condition, _ConditionResult] = {}
     if profile is not None:
         _write_json(series_root / _TARGET_PROFILE_NAME, profile.evidence_payload())
-    _write_series_manifest(manifest_path, options, series_id, "running", results, profile=profile)
+    _write_series_manifest(
+        manifest_path,
+        options,
+        series_id,
+        "running",
+        results,
+        condition_order=selected_order,
+        profile=profile,
+    )
     try:
-        for condition in _Condition:
+        for condition in selected_order:
             result = await _run_condition(
                 condition,
                 series_id,
@@ -326,6 +414,7 @@ async def run_cascade_memo(
                 series_id,
                 "running",
                 results,
+                condition_order=selected_order,
                 profile=profile,
             )
         completed = _complete_series(
@@ -342,6 +431,7 @@ async def run_cascade_memo(
             series_id,
             "failed",
             results,
+            condition_order=selected_order,
             error=f"{type(exc).__name__}: {exc}",
             profile=profile,
         )
@@ -352,10 +442,190 @@ async def run_cascade_memo(
         series_id,
         "complete",
         results,
+        condition_order=selected_order,
         completed=completed,
         profile=profile,
     )
     return completed
+
+
+async def run_cascade_matrix(options: CascadeMatrixOptions) -> CascadeMatrixResult:
+    """Run a sequential multi-model matrix of complete cascade triads.
+
+    Args:
+        options: Target profiles, trial count, and output settings.
+
+    Returns:
+        Completed matrix paths and per-trial results.
+    """
+    output_root, profiles = _prepare_matrix(options)
+    matrix_id = _new_matrix_id()
+    matrix_root = output_root / matrix_id
+    trials_root = matrix_root / "trials"
+    trials_root.mkdir(parents=True)
+    manifest_path = matrix_root / _MATRIX_MANIFEST_NAME
+    schedule = _matrix_schedule(profiles, options.trials_per_model)
+    records = [_matrix_trial_record(spec, matrix_root) for spec in schedule]
+    completed: list[CascadeExperimentResult] = []
+    _write_matrix_manifest(manifest_path, options, matrix_id, "running", profiles, records)
+    for index, spec in enumerate(schedule):
+        record = records[index]
+        record["status"] = "running"
+        _write_matrix_manifest(manifest_path, options, matrix_id, "running", profiles, records)
+        try:
+            result = await run_cascade_memo(
+                CascadeExperimentOptions(
+                    None,
+                    trials_root,
+                    options.listen_port,
+                    spec.target_id,
+                    options.db_path,
+                ),
+                series_id=spec.series_id,
+                condition_order=spec.condition_order,
+            )
+        except BaseException as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            record["status"] = "failed"
+            record["error"] = error
+            _write_matrix_manifest(
+                manifest_path,
+                options,
+                matrix_id,
+                "failed",
+                profiles,
+                records,
+                error=error,
+            )
+            raise
+        completed.append(result)
+        _complete_matrix_record(record, result, matrix_root)
+        _write_matrix_manifest(manifest_path, options, matrix_id, "running", profiles, records)
+    _write_matrix_manifest(manifest_path, options, matrix_id, "complete", profiles, records)
+    return CascadeMatrixResult(matrix_root, manifest_path, tuple(completed))
+
+
+def _matrix_requested(targets: tuple[str, ...], trials: int) -> bool:
+    return len(targets) > 1 or trials != 1
+
+
+def _validate_matrix_cli_model(model: str | None) -> None:
+    if model is not None:
+        raise ExperimentError("matrix mode does not accept --model")
+
+
+def _prepare_matrix(
+    options: CascadeMatrixOptions,
+) -> tuple[Path, tuple[OpenAICompatibleTargetProfile, ...]]:
+    references = tuple(reference.strip() for reference in options.targets)
+    if len(references) < _MIN_MATRIX_TARGETS:
+        raise ExperimentError("matrix mode requires at least two inference targets")
+    if any(not reference for reference in references):
+        raise ExperimentError("matrix target references must not be empty")
+    if not _MIN_MATRIX_TRIALS <= options.trials_per_model <= _MAX_MATRIX_TRIALS:
+        raise ExperimentError("matrix mode requires 3-5 trials per model")
+    _validate_listen_port(options.listen_port)
+    profiles = _load_matrix_profiles(references, options.db_path)
+    target_ids = {profile.target_id for profile in profiles}
+    if len(target_ids) != len(profiles):
+        raise ExperimentError("matrix targets must resolve to distinct target profiles")
+    return _validated_output_root(options.output_root), profiles
+
+
+def _load_matrix_profiles(
+    references: tuple[str, ...],
+    db_path: Path | None,
+) -> tuple[OpenAICompatibleTargetProfile, ...]:
+    profiles: list[OpenAICompatibleTargetProfile] = []
+    for reference in references:
+        try:
+            profiles.append(load_openai_target_profile(reference, db_path=db_path))
+        except DrivenInferenceError as exc:
+            raise ExperimentError(str(exc)) from exc
+    return tuple(profiles)
+
+
+def _matrix_schedule(
+    profiles: tuple[OpenAICompatibleTargetProfile, ...],
+    trials_per_model: int,
+) -> tuple[_MatrixTrialSpec, ...]:
+    return tuple(
+        _MatrixTrialSpec(
+            target_id=profile.target_id,
+            target_name=profile.name,
+            model=profile.model,
+            trial=trial,
+            series_id=_new_series_id(),
+            condition_order=_rotated_condition_order(trial - 1),
+        )
+        for profile in profiles
+        for trial in range(1, trials_per_model + 1)
+    )
+
+
+def _rotated_condition_order(offset: int) -> tuple[_Condition, ...]:
+    rotation = offset % len(_DEFAULT_CONDITION_ORDER)
+    return _DEFAULT_CONDITION_ORDER[rotation:] + _DEFAULT_CONDITION_ORDER[:rotation]
+
+
+def _matrix_trial_record(spec: _MatrixTrialSpec, matrix_root: Path) -> dict[str, Any]:
+    run_root = matrix_root / "trials" / spec.series_id
+    return {
+        "target_id": spec.target_id,
+        "target_name": spec.target_name,
+        "model": spec.model,
+        "trial": spec.trial,
+        "series_id": spec.series_id,
+        "condition_order": [condition.value for condition in spec.condition_order],
+        "status": "pending",
+        "run_root": _relative_path(run_root, matrix_root),
+        "run_manifest": _relative_path(run_root / "run-manifest.json", matrix_root),
+    }
+
+
+def _complete_matrix_record(
+    record: dict[str, Any],
+    result: CascadeExperimentResult,
+    matrix_root: Path,
+) -> None:
+    record.update(
+        {
+            "status": "complete",
+            "bundle": _relative_path(result.bundle.root, matrix_root),
+            "primary_result": result.primary.promotion_result.value,
+            "hardened_result": result.hardened.promotion_result.value,
+        }
+    )
+
+
+def _write_matrix_manifest(  # noqa: PLR0913
+    path: Path,
+    options: CascadeMatrixOptions,
+    matrix_id: str,
+    status: str,
+    profiles: tuple[OpenAICompatibleTargetProfile, ...],
+    records: list[dict[str, Any]],
+    *,
+    error: str | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "schema_version": 1,
+        "scenario": "cascade-memo",
+        "series_id": matrix_id,
+        "status": status,
+        "study_type": "exploratory_repeated_observations",
+        "trial_unit": "baseline_manipulated_hardened_triad",
+        "trials_per_model": options.trials_per_model,
+        "condition_order_method": "deterministic_rotation",
+        "execution_order": "sequential",
+        "retry_policy": "none",
+        "listen_url": f"http://127.0.0.1:{options.listen_port}/mcp/",
+        "targets": [profile.evidence_payload() for profile in profiles],
+        "trials": records,
+    }
+    if error is not None:
+        payload["error"] = error
+    _write_json(path, payload)
 
 
 async def _run_condition(
@@ -942,15 +1212,34 @@ def _validate_options(options: CascadeExperimentOptions) -> Path:
         raise ExperimentError("--model must not be empty unless --target is provided")
     if target and model:
         raise ExperimentError("--model and --target are mutually exclusive")
-    if not 1 <= options.listen_port <= 65535:
+    _validate_listen_port(options.listen_port)
+    return _validated_output_root(options.output_root)
+
+
+def _validate_listen_port(listen_port: int) -> None:
+    if not 1 <= listen_port <= 65535:
         raise ExperimentError("--listen-port must be between 1 and 65535")
-    root = options.output_root.expanduser().resolve()
+
+
+def _validated_output_root(output_root: Path) -> Path:
+    root = output_root.expanduser().resolve()
     if root.exists() and not root.is_dir():
         raise ExperimentError("--output-root must be a directory")
     if _inside_git_checkout(root):
         raise ExperimentError("--output-root must be outside a Git checkout")
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+def _validated_condition_order(
+    condition_order: tuple[_Condition, ...] | None,
+) -> tuple[_Condition, ...]:
+    selected = condition_order if condition_order is not None else _DEFAULT_CONDITION_ORDER
+    if len(selected) != len(_DEFAULT_CONDITION_ORDER):
+        raise ExperimentError("condition order must contain each cascade condition once")
+    if set(selected) != set(_DEFAULT_CONDITION_ORDER):
+        raise ExperimentError("condition order must contain each cascade condition once")
+    return selected
 
 
 def _load_target_profile(
@@ -998,6 +1287,11 @@ def _new_series_id() -> str:
     return f"cascade-memo-{timestamp}-{uuid.uuid4().hex[:8]}"
 
 
+def _new_matrix_id() -> str:
+    timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+    return f"cascade-memo-matrix-{timestamp}-{uuid.uuid4().hex[:8]}"
+
+
 def _write_series_manifest(  # noqa: PLR0913
     path: Path,
     options: CascadeExperimentOptions,
@@ -1005,6 +1299,7 @@ def _write_series_manifest(  # noqa: PLR0913
     status: str,
     results: dict[_Condition, _ConditionResult],
     *,
+    condition_order: tuple[_Condition, ...],
     error: str | None = None,
     completed: CascadeExperimentResult | None = None,
     profile: OpenAICompatibleTargetProfile | None = None,
@@ -1017,6 +1312,7 @@ def _write_series_manifest(  # noqa: PLR0913
         "agent": _agent_pin(profile),
         "model": _model(options),
         "listen_url": f"http://127.0.0.1:{options.listen_port}/mcp/",
+        "condition_order": [condition.value for condition in condition_order],
         "prompts": {"session_a": SESSION_A_PROMPT, "session_b": SESSION_B_PROMPT},
         "conditions": {
             condition.value: _condition_manifest(result, path.parent)
