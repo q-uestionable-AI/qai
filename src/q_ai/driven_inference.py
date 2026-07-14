@@ -19,7 +19,7 @@ _DRIVER_NAME = "openai-compatible"
 _DEFAULT_MAX_TOKENS = 1024
 _DEFAULT_MAX_ROUNDS = 12
 _MCP_CONNECT_TIMEOUT_SECONDS = 10.0
-_REASONING_EFFORTS = frozenset({"none", "low", "medium", "high"})
+_REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh", "max"})
 
 
 class DrivenInferenceError(RuntimeError):

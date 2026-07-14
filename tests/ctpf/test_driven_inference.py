@@ -117,7 +117,15 @@ def _patch_connection(monkeypatch: pytest.MonkeyPatch, session: _FakeSession) ->
 class TestTargetProfile:
     """Existing target rows provide the narrow Phase 5b profile store."""
 
-    def test_loads_and_coerces_flat_metadata(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize(
+        "reasoning_effort",
+        ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+    )
+    def test_loads_and_coerces_flat_metadata(
+        self,
+        tmp_path: Path,
+        reasoning_effort: str,
+    ) -> None:
         db_path = tmp_path / "qai.db"
         with get_connection(db_path) as conn:
             target_id = create_target(
@@ -132,7 +140,7 @@ class TestTargetProfile:
                     "max_tokens": "512",
                     "temperature": "0",
                     "seed": "42",
-                    "reasoning_effort": "none",
+                    "reasoning_effort": reasoning_effort,
                 },
             )
 
@@ -144,7 +152,7 @@ class TestTargetProfile:
         assert profile.generation_parameters() == {
             "temperature": 0.0,
             "seed": 42,
-            "reasoning_effort": "none",
+            "reasoning_effort": reasoning_effort,
         }
 
     def test_rejects_malformed_numeric_metadata(self, tmp_path: Path) -> None:
