@@ -4,12 +4,31 @@ description: Automated MCP server security scanning mapped to OWASP MCP Top 10, 
 ---
 
 <Note>
-**Library / research fixture (Phase 1).** Audit is not a root `qai` CLI pillar
-after the CTPF reconnect shape cut. Use package imports or module entry points —
-not `qai audit`. The public CLI center is [`qai proxy`](/proxy/overview).
+**Library capability.** Audit is not mounted on the root `ctpf` CLI. Use the
+Python package API—not `ctpf audit`. The public CLI center is
+[`ctpf proxy`](/proxy/overview).
 </Note>
 
 The audit module scans MCP servers by enumerating exposed tools, resources, and prompts, then running security checks mapped to the OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10. It produces structured findings with severity ratings and remediation guidance.
+
+## Minimal library use
+
+```python
+import asyncio
+
+from ctpf.audit.orchestrator import run_scan
+from ctpf.audit.reporting.json_report import generate_json_report
+from ctpf.mcp.connection import MCPConnection
+
+
+async def main() -> None:
+    async with MCPConnection.stdio("python", ["my_server.py"]) as connection:
+        result = await run_scan(connection)
+    generate_json_report(result, "results/scan.json")
+
+
+asyncio.run(main())
+```
 
 ## What It Tests
 
@@ -72,7 +91,6 @@ Audit scanning is automated once invoked as a library: select scanners (or run a
 
 ## Next Steps
 
-- [Audit CLI](/audit/cli) — Scan commands, flags, and options
 - [Scanner Catalog](/audit/scanners) — Detailed description of each scanner
 - [Framework Coverage](/audit/framework-coverage) — Mapping tables for OWASP, MITRE, and CWE
 - [SARIF Output](/exports/sarif) — Report format and CI integration

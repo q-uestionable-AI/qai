@@ -1,4 +1,4 @@
-"""Tests for q_ai.proxy.adapters.stdio -- StdioServerAdapter and StdioClientAdapter.
+"""Tests for ctpf.proxy.adapters.stdio -- StdioServerAdapter and StdioClientAdapter.
 
 Uses mocked SDK functions (stdio_client, stdio_server) with real anyio
 memory object streams. No subprocess spawning.
@@ -15,7 +15,7 @@ from unittest.mock import patch
 import anyio
 from mcp.shared.message import SessionMessage
 
-from q_ai.proxy.adapters.stdio import StdioClientAdapter, StdioServerAdapter
+from ctpf.proxy.adapters.stdio import StdioClientAdapter, StdioServerAdapter
 
 from .conftest import make_response_message, make_session_message, mock_sdk_streams
 
@@ -36,7 +36,7 @@ class TestStdioServerAdapterRead:
             async with mock_sdk_streams(inbound=[msg]) as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.stdio.stdio_client", fake_stdio_client):
+        with patch("ctpf.proxy.adapters.stdio.stdio_client", fake_stdio_client):
             async with StdioServerAdapter(command="fake", args=[]) as adapter:
                 result = await adapter.read()
 
@@ -53,7 +53,7 @@ class TestStdioServerAdapterRead:
                 yield r, w
 
         with (
-            patch("q_ai.proxy.adapters.stdio.stdio_client", fake_stdio_client),
+            patch("ctpf.proxy.adapters.stdio.stdio_client", fake_stdio_client),
             caplog.at_level(logging.WARNING),
         ):
             async with StdioServerAdapter(command="fake", args=[]) as adapter:
@@ -87,7 +87,7 @@ class TestStdioServerAdapterWrite:
             write_send.close()
             write_recv.close()
 
-        with patch("q_ai.proxy.adapters.stdio.stdio_client", fake_stdio_client):
+        with patch("ctpf.proxy.adapters.stdio.stdio_client", fake_stdio_client):
             async with StdioServerAdapter(command="fake", args=[]) as adapter:
                 await adapter.write(msg)
                 # Give writer task a chance to forward the message
@@ -108,7 +108,7 @@ class TestStdioServerAdapterClose:
             async with mock_sdk_streams() as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.stdio.stdio_client", fake_stdio_client):
+        with patch("ctpf.proxy.adapters.stdio.stdio_client", fake_stdio_client):
             async with StdioServerAdapter(command="fake", args=[]) as adapter:
                 await adapter.close()
                 await adapter.close()  # should not raise
@@ -121,7 +121,7 @@ class TestStdioServerAdapterClose:
             async with mock_sdk_streams() as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.stdio.stdio_client", fake_stdio_client):
+        with patch("ctpf.proxy.adapters.stdio.stdio_client", fake_stdio_client):
             async with StdioServerAdapter(command="fake", args=[]) as adapter:
                 await adapter.close()
                 try:
@@ -139,7 +139,7 @@ class TestStdioServerAdapterClose:
             async with mock_sdk_streams() as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.stdio.stdio_client", fake_stdio_client):
+        with patch("ctpf.proxy.adapters.stdio.stdio_client", fake_stdio_client):
             async with StdioServerAdapter(command="fake", args=[]) as adapter:
                 await adapter.close()
                 try:
@@ -156,7 +156,7 @@ class TestStdioServerAdapterClose:
             async with mock_sdk_streams() as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.stdio.stdio_client", fake_stdio_client):
+        with patch("ctpf.proxy.adapters.stdio.stdio_client", fake_stdio_client):
             async with StdioServerAdapter(command="fake", args=[]) as adapter:
                 assert adapter is not None
             # After exit, adapter should be closed
@@ -180,7 +180,7 @@ class TestStdioClientAdapterRead:
             async with mock_sdk_streams(inbound=[msg]) as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.stdio.stdio_server", fake_stdio_server):
+        with patch("ctpf.proxy.adapters.stdio.stdio_server", fake_stdio_server):
             async with StdioClientAdapter() as adapter:
                 result = await adapter.read()
 
@@ -197,7 +197,7 @@ class TestStdioClientAdapterRead:
                 yield r, w
 
         with (
-            patch("q_ai.proxy.adapters.stdio.stdio_server", fake_stdio_server),
+            patch("ctpf.proxy.adapters.stdio.stdio_server", fake_stdio_server),
             caplog.at_level(logging.WARNING),
         ):
             async with StdioClientAdapter() as adapter:
@@ -230,7 +230,7 @@ class TestStdioClientAdapterWrite:
             write_send.close()
             write_recv.close()
 
-        with patch("q_ai.proxy.adapters.stdio.stdio_server", fake_stdio_server):
+        with patch("ctpf.proxy.adapters.stdio.stdio_server", fake_stdio_server):
             async with StdioClientAdapter() as adapter:
                 await adapter.write(msg)
                 await asyncio.sleep(0.05)
@@ -249,7 +249,7 @@ class TestStdioClientAdapterClose:
             async with mock_sdk_streams() as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.stdio.stdio_server", fake_stdio_server):
+        with patch("ctpf.proxy.adapters.stdio.stdio_server", fake_stdio_server):
             async with StdioClientAdapter() as adapter:
                 await adapter.close()
                 await adapter.close()  # should not raise
@@ -262,7 +262,7 @@ class TestStdioClientAdapterClose:
             async with mock_sdk_streams() as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.stdio.stdio_server", fake_stdio_server):
+        with patch("ctpf.proxy.adapters.stdio.stdio_server", fake_stdio_server):
             async with StdioClientAdapter() as adapter:
                 await adapter.close()
                 try:
@@ -280,7 +280,7 @@ class TestStdioClientAdapterClose:
             async with mock_sdk_streams() as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.stdio.stdio_server", fake_stdio_server):
+        with patch("ctpf.proxy.adapters.stdio.stdio_server", fake_stdio_server):
             async with StdioClientAdapter() as adapter:
                 await adapter.close()
                 try:
@@ -297,7 +297,7 @@ class TestStdioClientAdapterClose:
             async with mock_sdk_streams() as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.stdio.stdio_server", fake_stdio_server):
+        with patch("ctpf.proxy.adapters.stdio.stdio_server", fake_stdio_server):
             async with StdioClientAdapter() as adapter:
                 assert adapter is not None
             assert adapter._closed

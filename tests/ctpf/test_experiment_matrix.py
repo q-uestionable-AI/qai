@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from q_ai import experiment
-from q_ai.cli import app as root_app
-from q_ai.ctpf import EvidenceBundle, PromotionResult, TrustTransition
-from q_ai.driven_inference import OpenAICompatibleTargetProfile
+from ctpf import experiment
+from ctpf.cli import app as root_app
+from ctpf.driven_inference import OpenAICompatibleTargetProfile
+from ctpf.kernel import EvidenceBundle, PromotionResult, TrustTransition
 
 _NO_COLOR_ENV = {"NO_COLOR": "1", "FORCE_COLOR": None, "TERM": "dumb"}
 _cli_runner = CliRunner(env=_NO_COLOR_ENV)

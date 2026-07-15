@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 import typer
 
-from q_ai.core.cli.prompt import (
+from ctpf.core.cli.prompt import (
     build_teaching_tip,
     infer_transport,
     is_tty,
@@ -21,12 +21,12 @@ from q_ai.core.cli.prompt import (
 class TestIsTty:
     """Tests for the is_tty helper."""
 
-    @patch("q_ai.core.cli.prompt.sys.stdin")
+    @patch("ctpf.core.cli.prompt.sys.stdin")
     def test_returns_true_when_tty(self, mock_stdin: object) -> None:
         mock_stdin.isatty = lambda: True  # type: ignore[attr-defined]
         assert is_tty() is True
 
-    @patch("q_ai.core.cli.prompt.sys.stdin")
+    @patch("ctpf.core.cli.prompt.sys.stdin")
     def test_returns_false_when_not_tty(self, mock_stdin: object) -> None:
         mock_stdin.isatty = lambda: False  # type: ignore[attr-defined]
         assert is_tty() is False
@@ -38,13 +38,13 @@ class TestPromptOrFail:
     def test_returns_value_when_provided(self) -> None:
         assert prompt_or_fail("NAME", "my-value", "Enter name") == "my-value"
 
-    @patch("q_ai.core.cli.prompt.is_tty", return_value=False)
+    @patch("ctpf.core.cli.prompt.is_tty", return_value=False)
     def test_exits_when_no_tty_and_missing(self, _mock: object) -> None:
         with pytest.raises(typer.Exit):
             prompt_or_fail("NAME", None, "Enter name")
 
-    @patch("q_ai.core.cli.prompt.typer.prompt", return_value="prompted-val")
-    @patch("q_ai.core.cli.prompt.is_tty", return_value=True)
+    @patch("ctpf.core.cli.prompt.typer.prompt", return_value="prompted-val")
+    @patch("ctpf.core.cli.prompt.is_tty", return_value=True)
     def test_prompts_when_tty_and_missing(self, _tty: object, _prompt: object) -> None:
         result = prompt_or_fail("NAME", None, "Enter name")
         assert result == "prompted-val"
@@ -62,7 +62,7 @@ class TestPromptOrFailMultiple:
         )
         assert result == ["val-a", "val-b"]
 
-    @patch("q_ai.core.cli.prompt.is_tty", return_value=False)
+    @patch("ctpf.core.cli.prompt.is_tty", return_value=False)
     def test_exits_listing_all_missing_non_tty(self, _mock: object) -> None:
         with pytest.raises(typer.Exit):
             prompt_or_fail_multiple(
@@ -77,11 +77,11 @@ class TestBuildTeachingTip:
     """Tests for build_teaching_tip."""
 
     def test_simple_args(self) -> None:
-        tip = build_teaching_tip("qai targets add", ["myserver", "http://example.com"])
-        assert tip == "Tip: next time, run: qai targets add myserver http://example.com"
+        tip = build_teaching_tip("ctpf targets add", ["myserver", "http://example.com"])
+        assert tip == "Tip: next time, run: ctpf targets add myserver http://example.com"
 
     def test_quotes_args_with_spaces(self) -> None:
-        tip = build_teaching_tip("qai targets add", ["My Server", "http://example.com"])
+        tip = build_teaching_tip("ctpf targets add", ["My Server", "http://example.com"])
         assert '"My Server"' in tip
 
 
@@ -127,18 +127,18 @@ class TestInferTransport:
 class TestPromptTransport:
     """Tests for prompt_transport."""
 
-    @patch("q_ai.core.cli.prompt.is_tty", return_value=True)
+    @patch("ctpf.core.cli.prompt.is_tty", return_value=True)
     def test_high_confidence_no_prompt(self, _mock: object) -> None:
         result = prompt_transport("http://localhost:3000/sse")
         assert result == "sse"
 
-    @patch("q_ai.core.cli.prompt.is_tty", return_value=False)
+    @patch("ctpf.core.cli.prompt.is_tty", return_value=False)
     def test_low_confidence_no_tty_exits(self, _mock: object) -> None:
         with pytest.raises(typer.Exit):
             prompt_transport("http://localhost:3000")
 
-    @patch("q_ai.core.cli.prompt.typer.prompt", return_value="streamable-http")
-    @patch("q_ai.core.cli.prompt.is_tty", return_value=True)
+    @patch("ctpf.core.cli.prompt.typer.prompt", return_value="streamable-http")
+    @patch("ctpf.core.cli.prompt.is_tty", return_value=True)
     def test_low_confidence_tty_prompts(self, _tty: object, _prompt: object) -> None:
         result = prompt_transport("http://localhost:3000")
         assert result == "streamable-http"

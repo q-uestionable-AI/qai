@@ -11,14 +11,14 @@ from typing import Any
 
 import pytest
 
-from q_ai.audit.reporting.json_report import (
+from ctpf.audit.reporting.json_report import (
     dict_to_finding,
     finding_to_dict,
     generate_json_report,
 )
-from q_ai.audit.reporting.sarif_report import generate_sarif_report
-from q_ai.audit.reporting.severity import severity_from_cvss
-from q_ai.mcp.models import ScanFinding, Severity
+from ctpf.audit.reporting.sarif_report import generate_sarif_report
+from ctpf.audit.reporting.severity import severity_from_cvss
+from ctpf.mcp.models import ScanFinding, Severity
 
 
 def _make_finding(**kwargs: Any) -> ScanFinding:
@@ -98,7 +98,7 @@ class TestFindingSerialization:
 
     def test_finding_to_dict_includes_mitigation(self) -> None:
         """Verify mitigation is serialized in finding dict."""
-        from q_ai.core.mitigation import (
+        from ctpf.core.mitigation import (
             GuidanceSection,
             MitigationGuidance,
             SectionKind,
@@ -130,7 +130,7 @@ class TestFindingSerialization:
 
     def test_roundtrip_with_mitigation(self) -> None:
         """Verify finding roundtrip preserves mitigation data."""
-        from q_ai.core.mitigation import (
+        from ctpf.core.mitigation import (
             GuidanceSection,
             MitigationGuidance,
             SectionKind,
@@ -216,7 +216,7 @@ class TestSarifReport:
 
             run = data["runs"][0]
             driver = run["tool"]["driver"]
-            assert driver["name"] == "q-ai"
+            assert driver["name"] == "CTPF"
             assert "counteragent" not in driver["name"]
             assert len(driver["rules"]) == 1
             assert driver["rules"][0]["id"] == "MCP05-001"
@@ -245,7 +245,7 @@ class TestSarifReport:
 
     def test_sarif_result_includes_mitigation(self) -> None:
         """Verify SARIF result properties include mitigation when present."""
-        from q_ai.core.mitigation import (
+        from ctpf.core.mitigation import (
             GuidanceSection,
             MitigationGuidance,
             SectionKind,
@@ -295,8 +295,8 @@ class TestHtmlReport:
 
     def test_html_report_contains_mitigation_section(self) -> None:
         """Verify HTML report renders mitigation guidance."""
-        from q_ai.audit.reporting.html_report import generate_html_report
-        from q_ai.core.mitigation import (
+        from ctpf.audit.reporting.html_report import generate_html_report
+        from ctpf.core.mitigation import (
             GuidanceSection,
             MitigationGuidance,
             SectionKind,
@@ -335,7 +335,7 @@ class TestHtmlReport:
 
     def test_html_report_legacy_finding_shows_not_available(self) -> None:
         """Verify legacy findings show 'not available' message."""
-        from q_ai.audit.reporting.html_report import generate_html_report
+        from ctpf.audit.reporting.html_report import generate_html_report
 
         finding = _make_finding(mitigation=None)
         scan_result = FakeScanResult(

@@ -1,4 +1,4 @@
-"""Tests for q_ai.proxy.pipeline — run_pipeline and _forward_loop."""
+"""Tests for ctpf.proxy.pipeline — run_pipeline and _forward_loop."""
 
 from __future__ import annotations
 
@@ -15,17 +15,17 @@ from mcp.types import (
     JSONRPCResponse,
 )
 
-from q_ai.mcp.models import Direction, Transport
-from q_ai.mcp.transport import TransportClosedError
-from q_ai.proxy.intercept import InterceptDecision, InterceptEngine
-from q_ai.proxy.models import (
+from ctpf.mcp.models import Direction, Transport
+from ctpf.mcp.transport import TransportClosedError
+from ctpf.proxy.intercept import InterceptDecision, InterceptEngine
+from ctpf.proxy.models import (
     HeldMessage,
     InterceptAction,
     InterceptMode,
     ProxyMessage,
 )
-from q_ai.proxy.pipeline import PipelineSession, run_pipeline
-from q_ai.proxy.session_store import SessionStore
+from ctpf.proxy.pipeline import PipelineSession, run_pipeline
+from ctpf.proxy.session_store import SessionStore
 
 # ---------------------------------------------------------------------------
 # Mock adapter

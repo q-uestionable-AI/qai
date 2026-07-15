@@ -4,13 +4,12 @@
 
 Canonical documentation: https://ctpf.q-uestionable.ai
 Repository: https://github.com/q-uestionable-AI/CTPF
-Preferred CLI: `ctpf` (`qai` remains a compatibility alias)
+CLI: `ctpf`
 
 ## Getting Started
 
 - [Introduction](https://ctpf.q-uestionable.ai/introduction): Purpose and current product shape
 - [Quickstart](https://ctpf.q-uestionable.ai/quickstart): Install the distribution and use `ctpf`
-- [Identity Compatibility](https://ctpf.q-uestionable.ai/identity-compatibility): Retained legacy names
 - [Core Concepts](https://ctpf.q-uestionable.ai/concepts): CTPF framing and MCP trust boundaries
 - [Responsible Use](https://ctpf.q-uestionable.ai/responsible-use): Authorization and disclosure
 - [Changelog](https://ctpf.q-uestionable.ai/changelog): Append-only release history

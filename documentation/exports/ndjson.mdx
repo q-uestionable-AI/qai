@@ -7,20 +7,15 @@ NDJSON (Newline Delimited JSON) exports one finding per line as a self-contained
 
 ## Generating NDJSON
 
-**CLI:**
+Generate NDJSON from the `ScanResult` returned by `run_scan()`:
 
-```bash
-qai audit scan --transport stdio --command "npx @modelcontextprotocol/server-memory" \
-  --format ndjson --output results.ndjson
+```python
+from ctpf.audit.reporting.ndjson_report import generate_ndjson_report
+
+generate_ndjson_report(result, "results.ndjson")
 ```
 
-Or convert an existing scan:
-
-```bash
-qai audit report --input results/scan.json --format ndjson --output results.ndjson
-```
-
-**Web UI:** NDJSON is available through the audit CLI report command. The web UI Export JSON button produces the full JSON bundle instead.
+See [Audit Overview](/audit/overview) for the complete connection and scan example.
 
 ## Record Format
 

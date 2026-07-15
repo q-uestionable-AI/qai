@@ -9,7 +9,7 @@ Integration tests requiring fixture servers are skipped.
 
 import pytest
 
-from q_ai.audit.scanner.shadow_servers import (
+from ctpf.audit.scanner.shadow_servers import (
     ShadowServersScanner,
     _has_dev_description,
     _has_dev_indicator,
@@ -17,7 +17,7 @@ from q_ai.audit.scanner.shadow_servers import (
     _is_debug_tool,
     _match_known_dev_tool,
 )
-from q_ai.mcp.models import ScanContext, Severity
+from ctpf.mcp.models import ScanContext, Severity
 
 
 @pytest.mark.skip(reason="requires fixture server")
@@ -54,11 +54,11 @@ class TestShadowServersIntegration:
 
 
 class TestDevIndicators:
-    """Synthetic tests for QAI-SHADOW-001: Development server indicators."""
+    """Synthetic tests for CTPF-SHADOW-001: Development server indicators."""
 
     @pytest.mark.asyncio
     async def test_dev_in_name(self):
-        """Server named 'my-dev-server' triggers QAI-SHADOW-001."""
+        """Server named 'my-dev-server' triggers CTPF-SHADOW-001."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "my-dev-server", "version": "1.0.0"},
@@ -66,13 +66,13 @@ class TestDevIndicators:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        dev_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-001"]
+        dev_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-001"]
         assert len(dev_findings) >= 1
         assert any(f.metadata.get("matched_pattern") == "dev" for f in dev_findings)
 
     @pytest.mark.asyncio
     async def test_staging_in_name(self):
-        """Server named 'staging-api' triggers QAI-SHADOW-001."""
+        """Server named 'staging-api' triggers CTPF-SHADOW-001."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "staging-api", "version": "1.0.0"},
@@ -80,12 +80,12 @@ class TestDevIndicators:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        dev_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-001"]
+        dev_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-001"]
         assert len(dev_findings) >= 1
 
     @pytest.mark.asyncio
     async def test_production_name_no_finding(self):
-        """Server named 'production-api' does not trigger QAI-SHADOW-001."""
+        """Server named 'production-api' does not trigger CTPF-SHADOW-001."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "production-api", "version": "1.0.0"},
@@ -93,12 +93,12 @@ class TestDevIndicators:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        dev_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-001"]
+        dev_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-001"]
         assert len(dev_findings) == 0
 
     @pytest.mark.asyncio
     async def test_myapp_name_no_finding(self):
-        """Server named 'MyApp' does not trigger QAI-SHADOW-001."""
+        """Server named 'MyApp' does not trigger CTPF-SHADOW-001."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "MyApp", "version": "2.0.0"},
@@ -106,12 +106,12 @@ class TestDevIndicators:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        dev_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-001"]
+        dev_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-001"]
         assert len(dev_findings) == 0
 
     @pytest.mark.asyncio
     async def test_case_insensitive_debug(self):
-        """'DEBUG-Server' triggers QAI-SHADOW-001 (case-insensitive)."""
+        """'DEBUG-Server' triggers CTPF-SHADOW-001 (case-insensitive)."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "DEBUG-Server", "version": "1.0.0"},
@@ -119,12 +119,12 @@ class TestDevIndicators:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        dev_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-001"]
+        dev_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-001"]
         assert len(dev_findings) >= 1
 
     @pytest.mark.asyncio
     async def test_dev_in_version_only(self):
-        """Dev indicator in version but not name triggers QAI-SHADOW-001."""
+        """Dev indicator in version but not name triggers CTPF-SHADOW-001."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "my-api", "version": "1.0.0-dev"},
@@ -132,13 +132,13 @@ class TestDevIndicators:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        dev_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-001"]
+        dev_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-001"]
         assert len(dev_findings) >= 1
         assert any(f.metadata.get("field") == "version" for f in dev_findings)
 
     @pytest.mark.asyncio
     async def test_severity_is_low(self):
-        """QAI-SHADOW-001 findings have LOW severity."""
+        """CTPF-SHADOW-001 findings have LOW severity."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "dev-server", "version": "1.0.0"},
@@ -146,16 +146,16 @@ class TestDevIndicators:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        dev_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-001"]
+        dev_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-001"]
         assert all(f.severity == Severity.LOW for f in dev_findings)
 
 
 class TestKnownDevTools:
-    """Synthetic tests for QAI-SHADOW-002: Known development tool fingerprint."""
+    """Synthetic tests for CTPF-SHADOW-002: Known development tool fingerprint."""
 
     @pytest.mark.asyncio
     async def test_mcp_inspector(self):
-        """Server named 'MCP Inspector' triggers QAI-SHADOW-002."""
+        """Server named 'MCP Inspector' triggers CTPF-SHADOW-002."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "MCP Inspector", "version": "0.13.0"},
@@ -163,13 +163,13 @@ class TestKnownDevTools:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        dev_tool_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-002"]
+        dev_tool_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-002"]
         assert len(dev_tool_findings) >= 1
         assert dev_tool_findings[0].severity in (Severity.MEDIUM, Severity.HIGH)
 
     @pytest.mark.asyncio
     async def test_mcp_server_template(self):
-        """Server named 'mcp-server-template' triggers QAI-SHADOW-002."""
+        """Server named 'mcp-server-template' triggers CTPF-SHADOW-002."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "mcp-server-template", "version": "1.0.0"},
@@ -177,12 +177,12 @@ class TestKnownDevTools:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        dev_tool_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-002"]
+        dev_tool_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-002"]
         assert len(dev_tool_findings) >= 1
 
     @pytest.mark.asyncio
     async def test_company_api_no_finding(self):
-        """Server named 'my-company-api' does not trigger QAI-SHADOW-002."""
+        """Server named 'my-company-api' does not trigger CTPF-SHADOW-002."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "my-company-api", "version": "2.0.0"},
@@ -190,12 +190,12 @@ class TestKnownDevTools:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        dev_tool_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-002"]
+        dev_tool_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-002"]
         assert len(dev_tool_findings) == 0
 
     @pytest.mark.asyncio
     async def test_fastmcp_stable_no_finding(self):
-        """FastMCP with stable version does not trigger QAI-SHADOW-002."""
+        """FastMCP with stable version does not trigger CTPF-SHADOW-002."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "FastMCP", "version": "2.0.0"},
@@ -203,12 +203,12 @@ class TestKnownDevTools:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        dev_tool_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-002"]
+        dev_tool_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-002"]
         assert len(dev_tool_findings) == 0
 
     @pytest.mark.asyncio
     async def test_empty_name_no_finding(self):
-        """Empty server name does not trigger QAI-SHADOW-002."""
+        """Empty server name does not trigger CTPF-SHADOW-002."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "", "version": "0.13.0"},
@@ -216,16 +216,16 @@ class TestKnownDevTools:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        dev_tool_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-002"]
+        dev_tool_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-002"]
         assert len(dev_tool_findings) == 0
 
 
 class TestDebugTools:
-    """Synthetic tests for QAI-SHADOW-003: Debug/test tool exposure."""
+    """Synthetic tests for CTPF-SHADOW-003: Debug/test tool exposure."""
 
     @pytest.mark.asyncio
     async def test_debug_prefix(self):
-        """Tool with debug_ prefix triggers QAI-SHADOW-003."""
+        """Tool with debug_ prefix triggers CTPF-SHADOW-003."""
         ctx = ScanContext(
             tools=[{"name": "debug_dump", "description": ""}],
             server_info={"name": "my-server", "version": "1.0.0"},
@@ -234,13 +234,13 @@ class TestDebugTools:
         findings = await scanner.scan(ctx)
 
         debug_findings = [
-            f for f in findings if f.rule_id == "QAI-SHADOW-003" and f.tool_name == "debug_dump"
+            f for f in findings if f.rule_id == "CTPF-SHADOW-003" and f.tool_name == "debug_dump"
         ]
         assert len(debug_findings) >= 1
 
     @pytest.mark.asyncio
     async def test_test_prefix(self):
-        """Tool with test_ prefix triggers QAI-SHADOW-003."""
+        """Tool with test_ prefix triggers CTPF-SHADOW-003."""
         ctx = ScanContext(
             tools=[{"name": "test_connection", "description": ""}],
             server_info={"name": "my-server", "version": "1.0.0"},
@@ -251,7 +251,7 @@ class TestDebugTools:
         debug_findings = [
             f
             for f in findings
-            if f.rule_id == "QAI-SHADOW-003" and f.tool_name == "test_connection"
+            if f.rule_id == "CTPF-SHADOW-003" and f.tool_name == "test_connection"
         ]
         assert len(debug_findings) >= 1
 
@@ -269,13 +269,13 @@ class TestDebugTools:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        summary = [f for f in findings if f.rule_id == "QAI-SHADOW-003" and "Multiple" in f.title]
+        summary = [f for f in findings if f.rule_id == "CTPF-SHADOW-003" and "Multiple" in f.title]
         assert len(summary) == 1
         assert summary[0].severity == Severity.MEDIUM
 
     @pytest.mark.asyncio
     async def test_normal_tools_no_finding(self):
-        """Normal tools do not trigger QAI-SHADOW-003."""
+        """Normal tools do not trigger CTPF-SHADOW-003."""
         ctx = ScanContext(
             tools=[
                 {"name": "get_data", "description": "Retrieve data from API"},
@@ -286,16 +286,16 @@ class TestDebugTools:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        debug_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-003"]
+        debug_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-003"]
         assert len(debug_findings) == 0
 
 
 class TestGovernanceGap:
-    """Synthetic tests for QAI-SHADOW-004: Governance metadata gap."""
+    """Synthetic tests for CTPF-SHADOW-004: Governance metadata gap."""
 
     @pytest.mark.asyncio
     async def test_no_description_five_tools(self):
-        """No description + 5 tools triggers QAI-SHADOW-004."""
+        """No description + 5 tools triggers CTPF-SHADOW-004."""
         ctx = ScanContext(
             tools=[{"name": f"tool_{i}"} for i in range(5)],
             server_info={"name": "my-server", "version": "1.0.0"},
@@ -303,7 +303,7 @@ class TestGovernanceGap:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        gov_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-004"]
+        gov_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-004"]
         assert len(gov_findings) == 1
 
     @pytest.mark.asyncio
@@ -316,7 +316,7 @@ class TestGovernanceGap:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        gov_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-004"]
+        gov_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-004"]
         assert len(gov_findings) == 0
 
     @pytest.mark.asyncio
@@ -333,16 +333,16 @@ class TestGovernanceGap:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        gov_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-004"]
+        gov_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-004"]
         assert len(gov_findings) == 0
 
 
 class TestEphemeralMarkers:
-    """Synthetic tests for QAI-SHADOW-005: Ephemeral deployment markers."""
+    """Synthetic tests for CTPF-SHADOW-005: Ephemeral deployment markers."""
 
     @pytest.mark.asyncio
     async def test_uuid_server_name(self):
-        """UUID server name triggers QAI-SHADOW-005."""
+        """UUID server name triggers CTPF-SHADOW-005."""
         ctx = ScanContext(
             tools=[],
             server_info={
@@ -353,12 +353,12 @@ class TestEphemeralMarkers:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        eph_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-005"]
+        eph_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-005"]
         assert len(eph_findings) >= 1
 
     @pytest.mark.asyncio
     async def test_version_zero_zero_zero(self):
-        """Version '0.0.0' triggers QAI-SHADOW-005."""
+        """Version '0.0.0' triggers CTPF-SHADOW-005."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "my-server", "version": "0.0.0"},
@@ -366,12 +366,12 @@ class TestEphemeralMarkers:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        eph_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-005"]
+        eph_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-005"]
         assert len(eph_findings) >= 1
 
     @pytest.mark.asyncio
     async def test_normal_name_no_finding(self):
-        """Normal name 'my-api-server' does not trigger QAI-SHADOW-005."""
+        """Normal name 'my-api-server' does not trigger CTPF-SHADOW-005."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "my-api-server", "version": "2.1.0"},
@@ -379,12 +379,12 @@ class TestEphemeralMarkers:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        eph_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-005"]
+        eph_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-005"]
         assert len(eph_findings) == 0
 
     @pytest.mark.asyncio
     async def test_severity_is_info(self):
-        """QAI-SHADOW-005 findings have INFORMATIONAL severity."""
+        """CTPF-SHADOW-005 findings have INFORMATIONAL severity."""
         ctx = ScanContext(
             tools=[],
             server_info={"name": "abc123def456", "version": "1.0.0"},
@@ -392,7 +392,7 @@ class TestEphemeralMarkers:
         scanner = ShadowServersScanner()
         findings = await scanner.scan(ctx)
 
-        eph_findings = [f for f in findings if f.rule_id == "QAI-SHADOW-005"]
+        eph_findings = [f for f in findings if f.rule_id == "CTPF-SHADOW-005"]
         assert all(f.severity == Severity.INFO for f in eph_findings)
 
 

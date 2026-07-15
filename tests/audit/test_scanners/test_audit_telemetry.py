@@ -9,13 +9,13 @@ Integration tests requiring fixture servers are skipped.
 
 import pytest
 
-from q_ai.audit.scanner.audit_telemetry import (
+from ctpf.audit.scanner.audit_telemetry import (
     AuditTelemetryScanner,
     _build_error_triggering_args,
     _check_error_disclosure,
     _check_sensitive_data,
 )
-from q_ai.mcp.models import ScanContext
+from ctpf.mcp.models import ScanContext
 
 
 @pytest.mark.skip(reason="requires fixture server")
@@ -62,11 +62,11 @@ class TestSyntheticChecks:
 
         # Should still find missing name, version, protocol, logging
         rule_ids = {f.rule_id for f in findings}
-        assert "QAI-AUDIT-001" in rule_ids, "Should flag missing identification"
+        assert "CTPF-AUDIT-001" in rule_ids, "Should flag missing identification"
 
     @pytest.mark.asyncio
     async def test_complete_server_info_no_id_findings(self):
-        """Complete server_info should not trigger QAI-AUDIT-001 or QAI-AUDIT-005."""
+        """Complete server_info should not trigger CTPF-AUDIT-001 or CTPF-AUDIT-005."""
         ctx = ScanContext(
             tools=[],
             server_info={
@@ -79,12 +79,12 @@ class TestSyntheticChecks:
         scanner = AuditTelemetryScanner()
         findings = await scanner.scan(ctx)
 
-        id_findings = [f for f in findings if f.rule_id in ("QAI-AUDIT-001", "QAI-AUDIT-005")]
+        id_findings = [f for f in findings if f.rule_id in ("CTPF-AUDIT-001", "CTPF-AUDIT-005")]
         assert len(id_findings) == 0, f"Complete server info should not trigger: {id_findings}"
 
     @pytest.mark.asyncio
     async def test_logging_capability_suppresses_audit_003(self):
-        """Server with logging capability should not trigger QAI-AUDIT-003."""
+        """Server with logging capability should not trigger CTPF-AUDIT-003."""
         ctx = ScanContext(
             tools=[],
             server_info={"capabilities": {"logging": True}},
@@ -92,12 +92,12 @@ class TestSyntheticChecks:
         scanner = AuditTelemetryScanner()
         findings = await scanner.scan(ctx)
 
-        logging_findings = [f for f in findings if f.rule_id == "QAI-AUDIT-003"]
+        logging_findings = [f for f in findings if f.rule_id == "CTPF-AUDIT-003"]
         assert len(logging_findings) == 0
 
     @pytest.mark.asyncio
     async def test_log_resource_suppresses_audit_003(self):
-        """Server with audit resource should not trigger QAI-AUDIT-003."""
+        """Server with audit resource should not trigger CTPF-AUDIT-003."""
         ctx = ScanContext(
             tools=[],
             server_info={"capabilities": {}},
@@ -106,7 +106,7 @@ class TestSyntheticChecks:
         scanner = AuditTelemetryScanner()
         findings = await scanner.scan(ctx)
 
-        logging_findings = [f for f in findings if f.rule_id == "QAI-AUDIT-003"]
+        logging_findings = [f for f in findings if f.rule_id == "CTPF-AUDIT-003"]
         assert len(logging_findings) == 0
 
 

@@ -1,4 +1,4 @@
-"""Tests for q_ai.mcp.discovery — server capability enumeration."""
+"""Tests for ctpf.mcp.discovery — server capability enumeration."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from q_ai.mcp.discovery import (
+from ctpf.mcp.discovery import (
     _prompt_to_dict,
     _resource_to_dict,
     _tool_to_dict,

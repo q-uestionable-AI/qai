@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from q_ai.core.schema import (
+from ctpf.core.schema import (
     CURRENT_VERSION,
     V1_INDEXES,
     V1_TABLES,

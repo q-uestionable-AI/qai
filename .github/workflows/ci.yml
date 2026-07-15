@@ -29,7 +29,7 @@ jobs:
         run: uv run ruff format --check .
 
       - name: Type check
-        run: uv run mypy src/q_ai/
+        run: uv run mypy src/ctpf/
 
   test:
     runs-on: ${{ matrix.os }}
@@ -65,7 +65,7 @@ jobs:
           --durations-min=1
 
       - name: Smoke test CLI
-        run: uv run qai --help
+        run: uv run ctpf --help
 
   test-windows:
     name: test (windows-latest, 3.13, ${{ matrix.shard }})
@@ -102,7 +102,7 @@ jobs:
           --durations-min=1
 
       - name: Smoke test CLI
-        run: uv run qai --help
+        run: uv run ctpf --help
 
   security-scan:
     runs-on: ubuntu-latest

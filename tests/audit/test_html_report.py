@@ -12,8 +12,8 @@ from typing import Any
 
 import pytest
 
-from q_ai.audit.reporting.html_report import generate_html_report
-from q_ai.mcp.models import ScanFinding, Severity
+from ctpf.audit.reporting.html_report import generate_html_report
+from ctpf.mcp.models import ScanFinding, Severity
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -41,7 +41,7 @@ class _FakeScanResult:
 
 
 def _make_finding(
-    rule_id: str = "QAI-INJ-CWE78-test",
+    rule_id: str = "CTPF-INJ-CWE78-test",
     category: str = "command_injection",
     title: str = "Test finding",
     description: str = "A test vulnerability",
@@ -67,31 +67,31 @@ def _make_finding(
 def sample_findings() -> list[ScanFinding]:
     return [
         _make_finding(
-            rule_id="QAI-INJ-CWE78-test",
+            rule_id="CTPF-INJ-CWE78-test",
             category="command_injection",
             title="Command injection",
             severity=Severity.CRITICAL,
         ),
         _make_finding(
-            rule_id="QAI-AUTH-001",
+            rule_id="CTPF-AUTH-001",
             category="auth",
             title="Missing auth",
             severity=Severity.HIGH,
         ),
         _make_finding(
-            rule_id="QAI-PERM-001",
+            rule_id="CTPF-PERM-001",
             category="permissions",
             title="Privilege escalation",
             severity=Severity.MEDIUM,
         ),
         _make_finding(
-            rule_id="QAI-TOK-001",
+            rule_id="CTPF-TOK-001",
             category="token_exposure",
             title="Token exposure",
             severity=Severity.LOW,
         ),
         _make_finding(
-            rule_id="QAI-AUDIT-001",
+            rule_id="CTPF-AUDIT-001",
             category="audit_telemetry",
             title="Missing telemetry",
             severity=Severity.INFO,

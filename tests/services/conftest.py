@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from q_ai.core.db import (
+from ctpf.core.db import (
     create_evidence,
     create_finding,
     create_run,
     update_run_status,
 )
-from q_ai.core.models import RunStatus, Severity
-from q_ai.core.schema import migrate
+from ctpf.core.models import RunStatus, Severity
+from ctpf.core.schema import migrate
 
 
 @pytest.fixture

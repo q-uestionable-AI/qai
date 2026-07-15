@@ -6,8 +6,8 @@ import json
 import tempfile
 from pathlib import Path
 
-from q_ai.audit.reporting.ndjson_report import generate_ndjson_report
-from q_ai.core.mitigation import (
+from ctpf.audit.reporting.ndjson_report import generate_ndjson_report
+from ctpf.core.mitigation import (
     GuidanceSection,
     MitigationGuidance,
     SectionKind,
@@ -94,8 +94,8 @@ class TestNdjsonReport:
 
     def test_accepts_finding_list(self) -> None:
         """Generator accepts list[Finding] as well as ScanResult."""
-        from q_ai.core.models import Finding
-        from q_ai.core.models import Severity as CoreSeverity
+        from ctpf.core.models import Finding
+        from ctpf.core.models import Severity as CoreSeverity
 
         findings = [
             Finding(

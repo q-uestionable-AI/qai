@@ -1,4 +1,4 @@
-"""Tests for q_ai.proxy.mapper -- persist_session."""
+"""Tests for ctpf.proxy.mapper -- persist_session."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ from pathlib import Path
 
 from mcp.types import JSONRPCMessage, JSONRPCRequest
 
-from q_ai.core.db import create_run, get_connection
-from q_ai.mcp.models import Direction, Transport
-from q_ai.proxy.mapper import persist_session
-from q_ai.proxy.models import ProxyMessage
-from q_ai.proxy.session_store import SessionStore
+from ctpf.core.db import create_run, get_connection
+from ctpf.mcp.models import Direction, Transport
+from ctpf.proxy.mapper import persist_session
+from ctpf.proxy.models import ProxyMessage
+from ctpf.proxy.session_store import SessionStore
 
 
 def _make_store(

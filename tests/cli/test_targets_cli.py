@@ -1,4 +1,4 @@
-"""Tests for qai targets delete CLI command."""
+"""Tests for ctpf targets delete CLI command."""
 
 from __future__ import annotations
 
@@ -6,18 +6,18 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from q_ai.cli import app
-from q_ai.core.db import create_target, get_connection
+from ctpf.cli import app
+from ctpf.core.db import create_target, get_connection
 
 runner = CliRunner()
 
 
 class TestTargetsDelete:
-    """Tests for qai targets delete command."""
+    """Tests for ctpf targets delete command."""
 
     def test_targets_delete_with_yes(self, tmp_path: Path) -> None:
-        """qai targets delete --yes removes the target."""
-        db_path = tmp_path / "qai.db"
+        """ctpf targets delete --yes removes the target."""
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             tid = create_target(conn, type="server", name="My Server", uri="http://x")
 
@@ -31,8 +31,8 @@ class TestTargetsDelete:
             )
 
     def test_targets_delete_partial_id(self, tmp_path: Path) -> None:
-        """qai targets delete with partial ID resolves and deletes."""
-        db_path = tmp_path / "qai.db"
+        """ctpf targets delete with partial ID resolves and deletes."""
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             tid = create_target(conn, type="server", name="Partial", uri="http://x")
 
@@ -43,8 +43,8 @@ class TestTargetsDelete:
         assert "Deleted target 'Partial'" in result.output
 
     def test_targets_delete_not_found(self, tmp_path: Path) -> None:
-        """qai targets delete with nonexistent ID reports an error."""
-        db_path = tmp_path / "qai.db"
+        """ctpf targets delete with nonexistent ID reports an error."""
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path):
             pass
 

@@ -1,4 +1,4 @@
-"""Tests for q_ai.proxy.session_store — SessionStore."""
+"""Tests for ctpf.proxy.session_store — SessionStore."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ from mcp.types import (
     JSONRPCResponse,
 )
 
-from q_ai.mcp.models import Direction, Transport
-from q_ai.proxy.models import ProxyMessage
-from q_ai.proxy.session_store import SessionStore
+from ctpf.mcp.models import Direction, Transport
+from ctpf.proxy.models import ProxyMessage
+from ctpf.proxy.session_store import SessionStore
 
 
 def _make_proxy_message(

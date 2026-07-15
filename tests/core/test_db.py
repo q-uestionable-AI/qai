@@ -1,10 +1,10 @@
-"""Tests for q-ai core database service."""
+"""Tests for CTPF core database service."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from q_ai.core.db import (
+from ctpf.core.db import (
     create_evidence,
     create_finding,
     create_run,
@@ -19,30 +19,30 @@ from q_ai.core.db import (
     set_setting,
     update_run_status,
 )
-from q_ai.core.models import RunStatus, Severity
-from q_ai.core.schema import CURRENT_VERSION
+from ctpf.core.models import RunStatus, Severity
+from ctpf.core.schema import CURRENT_VERSION
 
 
 class TestConnection:
     def test_creates_db_file(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path):
             assert db_path.exists()
 
     def test_wal_mode(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
             assert mode == "wal"
 
     def test_foreign_keys_enabled(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             fk = conn.execute("PRAGMA foreign_keys").fetchone()[0]
             assert fk == 1
 
     def test_user_version_set(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             ver = conn.execute("PRAGMA user_version").fetchone()[0]
             assert ver == CURRENT_VERSION
@@ -69,7 +69,7 @@ class TestConnection:
             assert "via_tunnel" in ipi_hits_cols
 
     def test_schema_tables_created(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             tables = {
                 row[0]
@@ -90,14 +90,14 @@ class TestConnection:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "subdir" / "qai.db"
+        db_path = tmp_path / "subdir" / "ctpf.db"
         with get_connection(db_path):
             assert db_path.exists()
 
 
 class TestRunCRUD:
     def test_create_run(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             run_id = create_run(
                 conn,
@@ -107,7 +107,7 @@ class TestRunCRUD:
             assert len(run_id) == 32
 
     def test_create_run_respects_explicit_started_at(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         fixed = "2026-01-01T00:00:00+00:00"
         with get_connection(db_path) as conn:
             run_id = create_run(
@@ -119,7 +119,7 @@ class TestRunCRUD:
             assert row["started_at"] == fixed
 
     def test_create_run_default_started_at_is_stamped(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             run_id = create_run(conn, module="audit")
             row = conn.execute("SELECT started_at FROM runs WHERE id = ?", (run_id,)).fetchone()
@@ -129,7 +129,7 @@ class TestRunCRUD:
             assert row["started_at"]
 
     def test_create_child_run(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             parent_id = create_run(conn, module="chain")
             child_id = create_run(
@@ -148,7 +148,7 @@ class TestRunCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             run_id = create_run(conn, module="audit")
             update_run_status(
@@ -163,7 +163,7 @@ class TestRunCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             run_id = create_run(conn, module="audit")
             update_run_status(
@@ -178,7 +178,7 @@ class TestRunCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             create_run(conn, module="audit")
             create_run(conn, module="inject")
@@ -190,7 +190,7 @@ class TestRunCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             r1 = create_run(conn, module="audit")
             create_run(conn, module="audit")
@@ -209,7 +209,7 @@ class TestRunCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             create_run(conn, module="audit")
             runs = list_runs(conn)
@@ -219,7 +219,7 @@ class TestRunCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             cfg = {"transport": "stdio", "timeout": 30}
             create_run(
@@ -231,7 +231,7 @@ class TestRunCRUD:
             assert runs[0].config == cfg
 
     def test_get_run_returns_run(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             run_id = create_run(conn, module="audit", name="scan1")
             run = get_run(conn, run_id)
@@ -241,7 +241,7 @@ class TestRunCRUD:
             assert run.name == "scan1"
 
     def test_get_run_not_found(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             run = get_run(conn, "nonexistent")
             assert run is None
@@ -252,7 +252,7 @@ class TestTargetCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             tid = create_target(
                 conn,
@@ -269,13 +269,13 @@ class TestTargetCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             target = get_target(conn, "nonexistent")
             assert target is None
 
     def test_list_targets(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             create_target(
                 conn,
@@ -294,7 +294,7 @@ class TestTargetCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             meta = {"version": "1.0", "protocol": "mcp"}
             tid = create_target(
@@ -310,7 +310,7 @@ class TestTargetCRUD:
 
 class TestFindingCRUD:
     def test_create_finding(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             run_id = create_run(conn, module="audit")
             fid = create_finding(
@@ -327,7 +327,7 @@ class TestFindingCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             run_id = create_run(conn, module="audit")
             create_finding(
@@ -365,7 +365,7 @@ class TestFindingCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             r1 = create_run(conn, module="audit")
             r2 = create_run(conn, module="inject")
@@ -392,7 +392,7 @@ class TestFindingCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             r1 = create_run(conn, module="audit")
             r2 = create_run(conn, module="audit")
@@ -420,7 +420,7 @@ class TestFindingCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             tid = create_target(
                 conn,
@@ -460,7 +460,7 @@ class TestFindingCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             run_id = create_run(conn, module="audit")
             create_finding(
@@ -489,7 +489,7 @@ class TestEvidenceCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             run_id = create_run(conn, module="audit")
             fid = create_finding(
@@ -514,7 +514,7 @@ class TestEvidenceCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             run_id = create_run(conn, module="audit")
             eid = create_evidence(
@@ -530,7 +530,7 @@ class TestEvidenceCRUD:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             run_id = create_run(conn, module="audit")
             eid = create_evidence(
@@ -547,7 +547,7 @@ class TestSettings:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             val = get_setting(
                 conn,
@@ -560,7 +560,7 @@ class TestSettings:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             val = get_setting(conn, "nonexistent")
             assert val is None
@@ -569,7 +569,7 @@ class TestSettings:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             set_setting(
                 conn,
@@ -583,7 +583,7 @@ class TestSettings:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             set_setting(conn, "key", "v1")
             set_setting(conn, "key", "v2")

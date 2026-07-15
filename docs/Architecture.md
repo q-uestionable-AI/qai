@@ -8,8 +8,8 @@ operating model — not route inventories or file-by-file ownership.
 
 ## System Shape
 
-CTPF Research Harness is a local Python harness with one preferred public operator entry point:
-the `ctpf` CLI. The former `qai` executable remains a compatibility alias.
+CTPF Research Harness is a local Python harness with one public operator entry point:
+the `ctpf` CLI.
 
 **Centered substrate:**
 
@@ -18,7 +18,7 @@ the `ctpf` CLI. The former `qai` executable remains a compatibility alias.
 | `proxy` | Capture, intercept, live modify, export MCP traffic (Textual TUI) |
 | `mcp` | MCP transports and sessions (stdio, SSE, streamable HTTP) |
 | `core` | Shared models, SQLite persistence, config, credentials, LLM protocol |
-| `ctpf` | Trust-transition kernel, trace parsing, evidence bundles, cascade fixture |
+| `kernel` | Trust-transition kernel, trace parsing, evidence bundles, cascade fixture |
 | experiment adapters | Cascade director, OpenAI-compatible driver, Claude Code CLI runtime |
 
 **Library modules** (not public CLI pillars):
@@ -37,13 +37,13 @@ until a demonstrated experiment defines a real interface.
 
 ## Shared Backbone
 
-Persistence is a local SQLite database (`~/.qai/qai.db`). The common schema
+Persistence is a local SQLite database (`~/.ctpf/ctpf.db`). The common schema
 centers on `targets`, `runs`, `findings`, `evidence`, and `settings`, with
 additional tables retained for historical module data. IPI, CXP, Inject, Chain, and
 RXP tables may still exist for old databases even though their writers are gone.
 
-`services/db_service.py` provides shared database helpers used by the
-transitional CLI. Other former “service layer” UI/workflow helpers were removed
+`services/db_service.py` provides shared database helpers used by the CLI.
+Other former “service layer” UI/workflow helpers were removed
 with the Web UI and orchestrator.
 
 ## Boundaries and Responsibilities

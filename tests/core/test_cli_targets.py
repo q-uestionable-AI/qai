@@ -7,24 +7,23 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from q_ai.cli import app
-from q_ai.core.db import get_connection
+from ctpf.cli import app
+from ctpf.core.db import get_connection
 
 runner = CliRunner()
 
 
-def test_add_help_uses_preferred_ctpf_name() -> None:
-    """Target help presents the preferred CLI name in its examples."""
+def test_add_help_uses_canonical_ctpf_name() -> None:
+    """Target help presents the canonical CLI name in its examples."""
     result = runner.invoke(app, ["targets", "add", "--help"], prog_name="ctpf")
 
     assert result.exit_code == 0
     assert "ctpf targets add" in result.output
-    assert "qai targets add" not in result.output
 
 
 class TestTargetsList:
     def test_exits_zero_empty_db(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path):
             pass
         result = runner.invoke(app, ["targets", "list", "--db-path", str(db_path)])
@@ -35,7 +34,7 @@ class TestTargetsAddPositional:
     """targets add with positional NAME and URI."""
 
     def test_add_positional_args(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         result = runner.invoke(
             app,
             [
@@ -52,7 +51,7 @@ class TestTargetsAddPositional:
 
     def test_add_with_spaces_in_name(self, tmp_path: Path) -> None:
         """Spaces in target name work as positional arg."""
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         result = runner.invoke(
             app,
             [
@@ -68,7 +67,7 @@ class TestTargetsAddPositional:
         assert "Created target" in result.output
 
     def test_add_then_list_positional(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         runner.invoke(
             app,
             [
@@ -87,7 +86,7 @@ class TestTargetsAddPositional:
 
     def test_default_type_is_server(self, tmp_path: Path) -> None:
         """Type defaults to 'server' when not specified."""
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         result = runner.invoke(
             app,
             [
@@ -105,7 +104,7 @@ class TestTargetsAddPositional:
         assert "server" in list_result.output
 
     def test_explicit_type_flag(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         result = runner.invoke(
             app,
             [
@@ -126,7 +125,7 @@ class TestTargetsAddMeta:
     """targets add --meta key=value flag."""
 
     def test_meta_single(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         result = runner.invoke(
             app,
             [
@@ -143,7 +142,7 @@ class TestTargetsAddMeta:
         assert result.exit_code == 0
 
     def test_meta_multiple(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         result = runner.invoke(
             app,
             [
@@ -162,7 +161,7 @@ class TestTargetsAddMeta:
         assert result.exit_code == 0
 
     def test_meta_malformed_fails(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         result = runner.invoke(
             app,
             [
@@ -182,25 +181,25 @@ class TestTargetsAddMeta:
 class TestTargetsAddInteractive:
     """Interactive prompting for targets add."""
 
-    @patch("q_ai.core.cli.targets.is_tty", return_value=False)
-    @patch("q_ai.core.cli.prompt.is_tty", return_value=False)
+    @patch("ctpf.core.cli.targets.is_tty", return_value=False)
+    @patch("ctpf.core.cli.prompt.is_tty", return_value=False)
     def test_non_tty_no_args_fails(
         self, _mock_prompt: object, _mock_targets: object, tmp_path: Path
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         result = runner.invoke(
             app,
             ["targets", "add", "--db-path", str(db_path)],
         )
         assert result.exit_code != 0
 
-    @patch("q_ai.core.cli.targets.is_tty", return_value=True)
-    @patch("q_ai.core.cli.prompt.is_tty", return_value=True)
+    @patch("ctpf.core.cli.targets.is_tty", return_value=True)
+    @patch("ctpf.core.cli.prompt.is_tty", return_value=True)
     def test_teaching_tip_shown_on_interactive(
         self, _mock_prompt: object, _mock_targets: object, tmp_path: Path
     ) -> None:
         """When args are prompted, a teaching tip is printed."""
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         result = runner.invoke(
             app,
             ["targets", "add", "--db-path", str(db_path)],
@@ -211,7 +210,7 @@ class TestTargetsAddInteractive:
 
     def test_no_teaching_tip_when_args_provided(self, tmp_path: Path) -> None:
         """No teaching tip when all args are provided directly."""
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         result = runner.invoke(
             app,
             [

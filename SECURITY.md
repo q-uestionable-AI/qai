@@ -27,11 +27,11 @@ Out of scope: vulnerabilities in third-party MCP servers or AI systems discovere
 
 ## Evidence at Rest
 
-CTPF Research Harness stores operational records locally in plaintext under `~/.qai/`. The SQLite database at `~/.qai/qai.db` includes proxy session data and other finding evidence; upgraded databases may also retain historical records from removed modules. Controlled experiment traces and evidence bundles are written to the operator-selected directory outside the Git checkout.
+CTPF Research Harness stores operational records locally in plaintext under `~/.ctpf/`. The SQLite database at `~/.ctpf/ctpf.db` includes proxy session data and other finding evidence; upgraded databases may also retain historical records from removed modules. Controlled experiment traces and evidence bundles are written to the operator-selected directory outside the Git checkout.
 
-Access control relies on filesystem permissions. On POSIX, `~/.qai/` is created with mode `0o700`; any pre-existing wider mode is narrowed on the next harness startup. On Windows the default user-profile ACLs apply — the harness does not set additional ACL restrictions there.
+Access control relies on filesystem permissions. On POSIX, `~/.ctpf/` is created with mode `0o700`; any pre-existing wider mode is narrowed on the next harness startup. On Windows the default user-profile ACLs apply — the harness does not set additional ACL restrictions there.
 
-To purge or rotate evidence: `ctpf db reset` wipes the database entirely; `ctpf runs delete <run_id>` removes a specific run and its findings; `ctpf db backup` takes a timestamped snapshot before destructive operations. The `qai` compatibility alias performs the same operations.
+To purge or rotate evidence: `ctpf db reset` wipes the database entirely; `ctpf runs delete <run_id>` removes a specific run and its findings; `ctpf db backup` takes a timestamped snapshot before destructive operations.
 
 ## Supported Versions
 

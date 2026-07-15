@@ -1,9 +1,9 @@
 ---
 title: Framework Coverage
-description: "How q-ai findings map to OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, and CWE"
+description: "How CTPF findings map to OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, and CWE"
 ---
 
-All 10 q-ai scanners map 1:1 to [OWASP MCP Top 10](https://owasp.org/www-project-mcp-top-10/) categories. Every `audit scan` runs all scanners by default, or use `--checks` to target specific ones.
+All 10 CTPF scanners map 1:1 to [OWASP MCP Top 10](https://owasp.org/www-project-mcp-top-10/) categories. `run_scan(connection)` runs all scanners by default; pass registry names through `check_names` to target a subset.
 
 ## OWASP MCP Top 10
 
@@ -57,7 +57,7 @@ All 10 categories of the [OWASP Top 10 for Agentic Applications](https://genai.o
 
 ## MITRE ATLAS
 
-q-ai maps audit finding categories to [MITRE ATLAS](https://atlas.mitre.org/) technique IDs, connecting MCP-specific vulnerabilities to the broader adversarial ML threat landscape.
+CTPF maps audit finding categories to [MITRE ATLAS](https://atlas.mitre.org/) technique IDs, connecting MCP-specific vulnerabilities to the broader adversarial ML threat landscape.
 
 `reviewed_against: v5.4.0, last_reviewed: 2026-03-18`
 
@@ -76,7 +76,7 @@ q-ai maps audit finding categories to [MITRE ATLAS](https://atlas.mitre.org/) te
 
 ## CWE
 
-q-ai maps audit finding categories to [CWE](https://cwe.mitre.org/) weakness IDs for integration with vulnerability management workflows.
+CTPF maps audit finding categories to [CWE](https://cwe.mitre.org/) weakness IDs for integration with vulnerability management workflows.
 
 `version: 4.19`
 

@@ -10,7 +10,7 @@ Integration tests requiring fixture servers are skipped.
 
 import pytest
 
-from q_ai.audit.scanner.token_exposure import (
+from ctpf.audit.scanner.token_exposure import (
     TokenExposureScanner,
     _find_env_var_leakage,
     _find_secret_patterns,
@@ -18,7 +18,7 @@ from q_ai.audit.scanner.token_exposure import (
     _normalize_param_name,
     _redact_secret,
 )
-from q_ai.mcp.models import ScanContext
+from ctpf.mcp.models import ScanContext
 
 
 @pytest.mark.skip(reason="requires fixture server")
@@ -90,7 +90,7 @@ class TestSyntheticChecks:
         scanner = TokenExposureScanner()
         findings = await scanner.scan(ctx)
 
-        param_findings = [f for f in findings if f.rule_id == "QAI-TOK-001"]
+        param_findings = [f for f in findings if f.rule_id == "CTPF-TOK-001"]
         assert len(param_findings) == 1
         assert "api_key" in param_findings[0].evidence
 
@@ -116,14 +116,14 @@ class TestSyntheticChecks:
         scanner = TokenExposureScanner()
         findings = await scanner.scan(ctx)
 
-        param_findings = [f for f in findings if f.rule_id == "QAI-TOK-001"]
+        param_findings = [f for f in findings if f.rule_id == "CTPF-TOK-001"]
         assert len(param_findings) == 1
         assert "password" in param_findings[0].evidence
         assert "token" in param_findings[0].evidence
 
     @pytest.mark.asyncio
     async def test_clean_tool_no_param_findings(self):
-        """Tool with non-sensitive params produces no QAI-TOK-001 findings."""
+        """Tool with non-sensitive params produces no CTPF-TOK-001 findings."""
         ctx = ScanContext(
             tools=[
                 {
@@ -142,7 +142,7 @@ class TestSyntheticChecks:
         scanner = TokenExposureScanner()
         findings = await scanner.scan(ctx)
 
-        param_findings = [f for f in findings if f.rule_id == "QAI-TOK-001"]
+        param_findings = [f for f in findings if f.rule_id == "CTPF-TOK-001"]
         assert len(param_findings) == 0
 
     @pytest.mark.asyncio
@@ -165,7 +165,7 @@ class TestSyntheticChecks:
         scanner = TokenExposureScanner()
         findings = await scanner.scan(ctx)
 
-        param_findings = [f for f in findings if f.rule_id == "QAI-TOK-001"]
+        param_findings = [f for f in findings if f.rule_id == "CTPF-TOK-001"]
         assert len(param_findings) == 1
 
 

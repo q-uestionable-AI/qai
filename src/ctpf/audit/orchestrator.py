@@ -1,0 +1,167 @@
+"""Scan orchestrator.
+
+Coordinates the full scan lifecycle: connect to server, enumerate
+capabilities, run selected scanners, collect findings, and resolve
+framework IDs. This is the retained audit library's main entry point.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
+from ctpf.audit.scanner.registry import get_all_scanners, get_scanner
+from ctpf.core.frameworks import FrameworkResolver
+from ctpf.core.mitigation import MitigationResolver
+from ctpf.mcp.connection import MCPConnection
+from ctpf.mcp.discovery import enumerate_server
+from ctpf.mcp.models import ScanFinding
+
+logger = logging.getLogger("ctpf.audit.orchestrator")
+
+
+def _resolve_mitigations(result: ScanResult) -> None:
+    """Resolve mitigation guidance on every finding (best-effort).
+
+    If the resolver fails to initialize, an error is appended and no
+    findings are enriched. If an individual finding fails, that finding
+    is skipped and the error is recorded.
+
+    Args:
+        result: ScanResult whose findings will be enriched in-place.
+    """
+    try:
+        mitigation_resolver = MitigationResolver()
+    except Exception as exc:
+        logger.error("MitigationResolver failed to initialize: %s", exc, exc_info=True)
+        result.errors.append(
+            {
+                "scanner": "mitigation_resolver",
+                "error": f"Resolver initialization failed: {exc}",
+            }
+        )
+        return
+
+    for finding in result.findings:
+        try:
+            finding.mitigation = mitigation_resolver.resolve(finding)
+        except Exception as exc:
+            logger.error(
+                "Mitigation resolve failed for %s (%s): %s",
+                finding.rule_id,
+                finding.category,
+                exc,
+                exc_info=True,
+            )
+            result.errors.append(
+                {
+                    "scanner": "mitigation_resolver",
+                    "error": f"Failed to resolve mitigation for {finding.rule_id}: {exc}",
+                }
+            )
+
+
+@dataclass
+class ScanResult:
+    """Complete results from a scan run.
+
+    Attributes:
+        findings: All findings from all scanners.
+        server_info: Server metadata from the MCP handshake.
+        tools_scanned: Number of tools that were tested.
+        scanners_run: Names of scanners that were executed.
+        started_at: When the scan started.
+        finished_at: When the scan completed.
+        errors: Any scanner-level errors that occurred.
+    """
+
+    findings: list[ScanFinding] = field(default_factory=list)
+    server_info: dict[str, Any] = field(default_factory=dict)
+    tools_scanned: int = 0
+    scanners_run: list[str] = field(default_factory=list)
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    finished_at: datetime | None = None
+    errors: list[dict[str, str]] = field(default_factory=list)
+
+
+async def run_scan(
+    conn: MCPConnection,
+    check_names: list[str] | None = None,
+) -> ScanResult:
+    """Execute a full scan against a connected MCP server.
+
+        Enumerates the server's capabilities, then runs each selected
+        scanner module and collects findings. After all scanners complete,
+    resolves framework IDs on every finding via FrameworkResolver.
+
+        Args:
+            conn: An active MCPConnection (already entered as context manager).
+            check_names: Optional list of scanner names to run. If None,
+                runs all registered scanners.
+
+        Returns:
+            ScanResult with all findings and metadata.
+
+        Example:
+            async with MCPConnection.stdio("python", ["server.py"]) as conn:
+                result = await run_scan(conn)
+                for f in result.findings:
+                    print(f"{f.severity.value}: {f.title}")
+    """
+    result = ScanResult()
+
+    # Enumerate server capabilities
+    logger.info("Enumerating server capabilities...")
+    context = await enumerate_server(conn)
+    result.server_info = context.server_info
+    result.tools_scanned = len(context.tools)
+
+    logger.info(
+        "Found %d tools, %d resources, %d prompts",
+        len(context.tools),
+        len(context.resources),
+        len(context.prompts),
+    )
+
+    # Select scanners
+    if check_names:
+        scanners = []
+        for name in check_names:
+            try:
+                scanners.append(get_scanner(name))
+            except KeyError as exc:
+                result.errors.append({"scanner": name, "error": str(exc)})
+                logger.warning("Scanner not found: %s", name)
+    else:
+        scanners = get_all_scanners()
+
+    # Run each scanner
+    for scanner in scanners:
+        logger.info("Running scanner: %s (%s)", scanner.name, scanner.category)
+        result.scanners_run.append(scanner.name)
+
+        try:
+            findings = await scanner.scan(context)
+            result.findings.extend(findings)
+            logger.info("Scanner %s complete — %d findings", scanner.name, len(findings))
+        except Exception as exc:
+            logger.error("Scanner %s failed: %s", scanner.name, exc, exc_info=True)
+            result.errors.append(
+                {
+                    "scanner": scanner.name,
+                    "error": str(exc),
+                }
+            )
+
+    # Resolve framework IDs on every finding
+    resolver = FrameworkResolver()
+    for finding in result.findings:
+        finding.framework_ids = resolver.resolve(finding.category)
+
+    # Resolve mitigation guidance on every finding (best-effort)
+    _resolve_mitigations(result)
+
+    result.finished_at = datetime.now(UTC)
+    return result

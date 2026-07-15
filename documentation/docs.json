@@ -25,7 +25,6 @@
         "pages": [
           "introduction",
           "quickstart",
-          "identity-compatibility",
           "concepts",
           "responsible-use",
           "changelog"
@@ -62,10 +61,8 @@
         "group": "Audit Library",
         "pages": [
           "audit/overview",
-          "audit/cli",
           "audit/scanners",
           "audit/framework-coverage",
-          "audit/sarif-output",
           "audit/fixtures"
         ]
       },

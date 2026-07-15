@@ -33,9 +33,6 @@ ctpf --help
 ctpf --version
 ```
 
-The former `qai` executable remains available as a compatibility alias for `ctpf`.
-Existing `q-uestionable-ai` installations upgrade through a same-version compatibility package.
-
 ## Configure a provider (optional)
 
 Credentials are optional for proxy and manual operator workflows. For a driven-inference
@@ -83,7 +80,7 @@ external-runtime targets use the runtime's secure login instead.
   </Step>
 
   <Step title="Inspect local state">
-    Runs and findings live in SQLite (`~/.qai/qai.db`):
+    Runs and findings live in SQLite (`~/.ctpf/ctpf.db`):
 
     ```bash
     ctpf runs list
@@ -103,7 +100,7 @@ Examples:
 ctpf experiment run cascade-memo --help
 
 # Audit as a library (import or module entry — not `ctpf audit`)
-python -c "import q_ai.audit; print('audit library available')"
+python -c "import ctpf.audit; print('audit library available')"
 ```
 
 See [Audit Overview](/audit/overview) and [Architecture Overview](/architecture/overview).

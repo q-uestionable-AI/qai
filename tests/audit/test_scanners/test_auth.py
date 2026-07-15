@@ -8,12 +8,12 @@ Integration tests requiring fixture servers are skipped.
 
 import pytest
 
-from q_ai.audit.scanner.auth import (
+from ctpf.audit.scanner.auth import (
     AuthScanner,
     _classify_tool_sensitivity,
     _extract_url_components,
 )
-from q_ai.mcp.models import ScanContext, Severity
+from ctpf.mcp.models import ScanContext, Severity
 
 
 @pytest.mark.skip(reason="requires fixture server")
@@ -62,7 +62,7 @@ class TestTransportChecks:
         finding = scanner._check_transport_encryption(ctx)
 
         assert finding is not None
-        assert finding.rule_id == "QAI-AUTH-003"
+        assert finding.rule_id == "CTPF-AUTH-003"
         assert finding.severity.value == "high"
 
     def test_tls_passes(self):
@@ -86,7 +86,7 @@ class TestTransportChecks:
         finding = scanner._check_default_port(ctx)
 
         assert finding is not None
-        assert finding.rule_id == "QAI-AUTH-004"
+        assert finding.rule_id == "CTPF-AUTH-004"
         assert "6274" in finding.description
 
     def test_non_default_port_passes(self):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from q_ai.mcp.payloads.injection import CANARY, get_injection_payloads
+from ctpf.mcp.payloads.injection import CANARY, get_injection_payloads
 
 
 class TestInjectionPayloads:

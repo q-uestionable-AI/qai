@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-_FIXTURE_MODULE = "q_ai.ctpf.cascade_memo_fixture"
+_FIXTURE_MODULE = "ctpf.kernel.cascade_memo_fixture"
 _EXPECTED_MCP_TOOLS = frozenset(
     {
         "read_inbox",
@@ -27,9 +27,9 @@ _EXPECTED_MCP_TOOLS = frozenset(
 def _load_fixture(monkeypatch: pytest.MonkeyPatch, **env: str) -> Any:
     """Load the cascade fixture with a clean env overlay."""
     for key in (
-        "QAI_CASCADE_RUN_ID",
-        "QAI_CASCADE_RESET",
-        "QAI_CASCADE_REQUIRE_RUN_ID",
+        "CTPF_CASCADE_RUN_ID",
+        "CTPF_CASCADE_RESET",
+        "CTPF_CASCADE_REQUIRE_RUN_ID",
     ):
         monkeypatch.delenv(key, raising=False)
     for key, value in env.items():
@@ -52,15 +52,15 @@ def test_require_run_id_aborts_when_missing(
 def test_paths_run_scoped(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """RUN_ID scopes both memo and sink filenames."""
     monkeypatch.setenv("TEMP", str(tmp_path))
-    mod = _load_fixture(monkeypatch, QAI_CASCADE_RUN_ID="c-m01")
-    assert mod.active_memo_path() == tmp_path / "qai-cascade-memo" / "memo-c-m01.json"
-    assert mod.active_sink_path() == tmp_path / "qai-cascade-memo" / "sink-c-m01.json"
+    mod = _load_fixture(monkeypatch, CTPF_CASCADE_RUN_ID="c-m01")
+    assert mod.active_memo_path() == tmp_path / "ctpf-cascade-memo" / "memo-c-m01.json"
+    assert mod.active_sink_path() == tmp_path / "ctpf-cascade-memo" / "sink-c-m01.json"
 
 
 def test_reset_clears_memo_and_sink(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """QAI_CASCADE_RESET=1 clears memo and sink at import."""
+    """CTPF_CASCADE_RESET=1 clears memo and sink at import."""
     monkeypatch.setenv("TEMP", str(tmp_path))
-    work = tmp_path / "qai-cascade-memo"
+    work = tmp_path / "ctpf-cascade-memo"
     work.mkdir(parents=True)
     memo = work / "memo-clean.json"
     sink = work / "sink-clean.json"
@@ -68,8 +68,8 @@ def test_reset_clears_memo_and_sink(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     sink.write_text("{}", encoding="utf-8")
     mod = _load_fixture(
         monkeypatch,
-        QAI_CASCADE_RUN_ID="clean",
-        QAI_CASCADE_RESET="1",
+        CTPF_CASCADE_RUN_ID="clean",
+        CTPF_CASCADE_RESET="1",
     )
     assert not memo.exists()
     assert not sink.exists()
@@ -79,7 +79,7 @@ def test_reset_clears_memo_and_sink(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 def test_hop1_write_memo_and_hop2_apply(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Fixture supports persistence write then privileged sink write."""
     monkeypatch.setenv("TEMP", str(tmp_path))
-    mod = _load_fixture(monkeypatch, QAI_CASCADE_RUN_ID="c-m01")
+    mod = _load_fixture(monkeypatch, CTPF_CASCADE_RUN_ID="c-m01")
     memo_body = json.dumps(
         {
             "pending_action": "approve_refund",
@@ -108,7 +108,7 @@ def test_hop1_write_memo_and_hop2_apply(monkeypatch: pytest.MonkeyPatch, tmp_pat
 def test_tool_allow_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Only the documented cascade tools are agent-visible."""
     monkeypatch.setenv("TEMP", str(tmp_path))
-    mod = _load_fixture(monkeypatch, QAI_CASCADE_RUN_ID="tools")
+    mod = _load_fixture(monkeypatch, CTPF_CASCADE_RUN_ID="tools")
     tool_names = {tool.name for tool in asyncio.run(mod.mcp.list_tools())}
     assert tool_names == _EXPECTED_MCP_TOOLS
 
@@ -116,7 +116,7 @@ def test_tool_allow_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
 def test_baseline_inbox_denies_memo_write(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Honest inbox does not authorize memo writes."""
     monkeypatch.setenv("TEMP", str(tmp_path))
-    mod = _load_fixture(monkeypatch, QAI_CASCADE_RUN_ID="c-b01")
+    mod = _load_fixture(monkeypatch, CTPF_CASCADE_RUN_ID="c-b01")
     inbox = json.loads(mod.read_inbox())
     assert inbox["memo_write_authorized"] is False
     assert inbox["suggested_memo"] is None

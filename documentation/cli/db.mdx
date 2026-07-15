@@ -21,14 +21,14 @@ ctpf db backup [PATH]
 |----------|-------------|
 | `PATH` | Optional. Custom path for the backup file. |
 
-**Default location:** `~/.qai/backups/qai-{YYYY-MM-DD-HHMMSS}.db`
+**Default location:** `~/.ctpf/backups/ctpf-{YYYY-MM-DD-HHMMSS}.db`
 
 **Examples:**
 
 ```bash
 # Backup to default location
 ctpf db backup
-# Output: Backup created: /home/user/.qai/backups/qai-2025-04-10-143052.db
+# Output: Backup created: /home/user/.ctpf/backups/ctpf-2025-04-10-143052.db
 
 # Backup to custom path
 ctpf db backup /tmp/my-backup.db
@@ -36,7 +36,7 @@ ctpf db backup /tmp/my-backup.db
 ```
 
 <Tip>
-Run backups before destructive operations like reset, or before upgrading q-ai versions.
+Run backups before destructive operations like reset, or before upgrading CTPF versions.
 </Tip>
 
 ---
@@ -76,7 +76,7 @@ ctpf db reset
 # ⚠️  This will delete all targets, runs, findings, and evidence.
 # Settings and credentials will be preserved.
 # Type RESET to confirm: RESET
-# Backup created: /home/user/.qai/backups/qai-2025-04-10-143052.db
+# Backup created: /home/user/.ctpf/backups/ctpf-2025-04-10-143052.db
 # Database reset complete.
 
 # Non-interactive reset

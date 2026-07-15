@@ -33,8 +33,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ctpf = "q_ai.cli:app"
-qai = "q_ai.cli:app"
+ctpf = "ctpf.cli:app"
 
 [project.urls]
 Homepage = "https://q-uestionable.ai"
@@ -42,7 +41,7 @@ Repository = "https://github.com/q-uestionable-AI/CTPF"
 Issues = "https://github.com/q-uestionable-AI/CTPF/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/q_ai"]
+packages = ["src/ctpf"]
 
 [dependency-groups]
 dev = [
@@ -82,10 +81,10 @@ max-args = 6
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "N806", "PLR0913"]
-"src/q_ai/**/cli*.py" = ["B008", "PLR0913"]  # typer.Option() defaults + many CLI params
-"src/q_ai/core/db.py" = ["A002", "PLR0913"]  # type/hash params match DB column names + CRUD args
-"src/q_ai/audit/mapper.py" = ["PLR0913"]  # audit scan creation takes many params
-"src/q_ai/proxy/tui/app.py" = ["PLR0913"]  # TUI app constructor takes transport config params
+"src/ctpf/**/cli*.py" = ["B008", "PLR0913"]  # typer.Option() defaults + many CLI params
+"src/ctpf/core/db.py" = ["A002", "PLR0913"]  # type/hash params match DB column names + CRUD args
+"src/ctpf/audit/mapper.py" = ["PLR0913"]  # audit scan creation takes many params
+"src/ctpf/proxy/tui/app.py" = ["PLR0913"]  # TUI app constructor takes transport config params
 
 [tool.bandit]
 # Skip checks already enforced by ruff's flake8-bandit (S) rules.

@@ -20,18 +20,8 @@ jobs:
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           PKG_VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          COMPAT_VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('compat/q-uestionable-ai/pyproject.toml','rb'))['project']['version'])")
-          COMPAT_DEP=$(python3 -c "import tomllib; print(tomllib.load(open('compat/q-uestionable-ai/pyproject.toml','rb'))['project']['dependencies'][0])")
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
             echo "::error::Tag $TAG_VERSION does not match pyproject.toml version $PKG_VERSION"
-            exit 1
-          fi
-          if [ "$COMPAT_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Compatibility version $COMPAT_VERSION does not match primary version $PKG_VERSION"
-            exit 1
-          fi
-          if [ "$COMPAT_DEP" != "ctpf==$PKG_VERSION" ]; then
-            echo "::error::Compatibility dependency $COMPAT_DEP does not exactly pin ctpf==$PKG_VERSION"
             exit 1
           fi
 
@@ -43,21 +33,11 @@ jobs:
       - name: Build ctpf sdist and wheel
         run: uv build --clear --out-dir dist/ctpf
 
-      - name: Build q-uestionable-ai compatibility sdist and wheel
-        run: uv build --clear compat/q-uestionable-ai --out-dir dist/q-uestionable-ai
-
       - name: Upload ctpf artifacts
         uses: actions/upload-artifact@v7
         with:
           name: ctpf-distributions
           path: dist/ctpf/
-          if-no-files-found: error
-
-      - name: Upload q-uestionable-ai compatibility artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: q-uestionable-ai-compat-distributions
-          path: dist/q-uestionable-ai/
           if-no-files-found: error
 
   publish-ctpf:
@@ -78,24 +58,4 @@ jobs:
           path: dist/
 
       - name: Publish ctpf to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-
-  publish-compatibility:
-    name: Publish q-uestionable-ai compatibility package
-    needs: [build, publish-ctpf]
-    runs-on: ubuntu-latest
-    environment:
-      name: release
-      url: https://pypi.org/p/q-uestionable-ai
-    permissions:
-      id-token: write
-      actions: read
-    steps:
-      - name: Download q-uestionable-ai compatibility artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: q-uestionable-ai-compat-distributions
-          path: dist/
-
-      - name: Publish q-uestionable-ai compatibility package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

@@ -7,13 +7,13 @@ Integration tests requiring fixture servers are skipped.
 
 import pytest
 
-from q_ai.audit.scanner.permissions import (
+from ctpf.audit.scanner.permissions import (
     _EXCESSIVE_TOOL_THRESHOLD,
     PermissionsScanner,
     _check_param_constraints,
     _classify_tool_category,
 )
-from q_ai.mcp.models import ScanContext
+from ctpf.mcp.models import ScanContext
 
 
 @pytest.mark.skip(reason="requires fixture server")
@@ -82,7 +82,7 @@ class TestEdgeCases:
         scanner = PermissionsScanner()
         findings = await scanner.scan(ctx)
 
-        excessive = [f for f in findings if f.rule_id == "QAI-PERM-001"]
+        excessive = [f for f in findings if f.rule_id == "CTPF-PERM-001"]
         assert len(excessive) == 0, "At-threshold should not trigger"
 
 

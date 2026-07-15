@@ -7,18 +7,15 @@ CSV exports produce a flat file with one row per finding, suitable for Excel, Go
 
 ## Generating CSV
 
-**CLI:**
+Generate CSV from the `ScanResult` returned by `run_scan()`:
 
-```bash
-qai audit scan --transport stdio --command "npx @modelcontextprotocol/server-memory" \
-  --format csv --output results.csv
+```python
+from ctpf.audit.reporting.csv_report import generate_csv_report
+
+generate_csv_report(result, "results.csv")
 ```
 
-Or convert an existing scan:
-
-```bash
-qai audit report --input results/scan.json --format csv --output results.csv
-```
+See [Audit Overview](/audit/overview) for the complete connection and scan example.
 
 ## Columns
 

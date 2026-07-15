@@ -153,7 +153,7 @@ Before cutting a release, confirm:
 Run the repository verification before release:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy src/q_ai/ && uv run pre-commit run --all-files
+uv run ruff check . && uv run ruff format --check . && uv run mypy src/ctpf/ && uv run pre-commit run --all-files
 ```
 
 Also run relevant tests for the release scope.
@@ -161,7 +161,7 @@ Also run relevant tests for the release scope.
 At minimum, smoke test the CLI:
 
 ```bash
-qai --help
+ctpf --help
 ```
 
 ---

@@ -1,4 +1,4 @@
-"""Tests for q_ai.proxy.correlation."""
+"""Tests for ctpf.proxy.correlation."""
 
 from mcp.types import (
     JSONRPCError,
@@ -8,7 +8,7 @@ from mcp.types import (
     JSONRPCResponse,
 )
 
-from q_ai.proxy.correlation import (
+from ctpf.proxy.correlation import (
     extract_jsonrpc_id,
     extract_method,
     is_notification,

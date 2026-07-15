@@ -11,18 +11,18 @@ import pytest
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, JSONRPCRequest
 
-from q_ai.mcp.models import Transport
-from q_ai.mcp.transport import TransportClosedError
-from q_ai.proxy.constants import LISTEN_HOST
-from q_ai.proxy.intercept import InterceptEngine
-from q_ai.proxy.models import HeldMessage, InterceptMode
-from q_ai.proxy.pipeline import PipelineSession
-from q_ai.proxy.runtime import (
+from ctpf.mcp.models import Transport
+from ctpf.mcp.transport import TransportClosedError
+from ctpf.proxy.constants import LISTEN_HOST
+from ctpf.proxy.intercept import InterceptEngine
+from ctpf.proxy.models import HeldMessage, InterceptMode
+from ctpf.proxy.pipeline import PipelineSession
+from ctpf.proxy.runtime import (
     ProxyRuntime,
     ProxyRuntimeConfig,
     _build_client_adapter,
 )
-from q_ai.proxy.session_store import SessionStore
+from ctpf.proxy.session_store import SessionStore
 
 
 class QueueAdapter:
@@ -104,7 +104,7 @@ class TestRuntimeConfig:
             listen_transport=Transport.SSE,
             listen_port=8123,
         )
-        with patch("q_ai.proxy.runtime.SseClientAdapter") as adapter_factory:
+        with patch("ctpf.proxy.runtime.SseClientAdapter") as adapter_factory:
             _build_client_adapter(config)
         adapter_factory.assert_called_once_with(host=LISTEN_HOST, port=8123)
 
@@ -123,8 +123,8 @@ class TestProxyRuntime:
         )
 
         with (
-            patch("q_ai.proxy.runtime._build_client_adapter", return_value=client),
-            patch("q_ai.proxy.runtime._build_server_adapter", return_value=server),
+            patch("ctpf.proxy.runtime._build_client_adapter", return_value=client),
+            patch("ctpf.proxy.runtime._build_server_adapter", return_value=server),
         ):
             task = asyncio.create_task(runtime.run(config))
             await runtime.wait_until_ready()

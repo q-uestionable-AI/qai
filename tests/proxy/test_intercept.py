@@ -1,4 +1,4 @@
-"""Tests for q_ai.proxy.intercept — InterceptEngine."""
+"""Tests for ctpf.proxy.intercept — InterceptEngine."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from datetime import UTC, datetime
 import pytest
 from mcp.types import JSONRPCMessage, JSONRPCRequest
 
-from q_ai.mcp.models import Direction, Transport
-from q_ai.proxy.intercept import InterceptDecision, InterceptEngine
-from q_ai.proxy.models import (
+from ctpf.mcp.models import Direction, Transport
+from ctpf.proxy.intercept import InterceptDecision, InterceptEngine
+from ctpf.proxy.models import (
     HeldMessage,
     InterceptAction,
     InterceptMode,

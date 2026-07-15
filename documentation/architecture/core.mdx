@@ -3,13 +3,13 @@ title: Core Infrastructure
 description: Database schema, configuration system, and shared data models
 ---
 
-The core layer (`q_ai.core`) provides persistent data storage, configuration management,
+The core layer (`ctpf.core`) provides persistent data storage, configuration management,
 framework mapping, mitigation guidance, and the provider-agnostic LLM protocol used by
 driven inference.
 
 ## SQLite Database
 
-CTPF Research Harness uses SQLite with WAL mode for concurrent access and foreign key enforcement. The database lives at `~/.qai/qai.db` and auto-initializes with schema migrations on first access.
+CTPF Research Harness uses SQLite with WAL mode for concurrent access and foreign key enforcement. The database lives at `~/.ctpf/ctpf.db` and auto-initializes with schema migrations on first access.
 
 <Note>
 WAL mode requires the `.db`, `-wal`, and `-shm` files to remain in the same directory.
@@ -95,14 +95,14 @@ Configuration merges from multiple sources with precedence ordering:
 1. **CLI flags** (highest)
 2. **Environment variables**
 3. **Database settings** (SQLite `settings` table, managed via `ctpf config set`)
-4. **YAML config file** (`~/.qai/config.yaml`)
+4. **YAML config file** (`~/.ctpf/config.yaml`)
 5. **Built-in defaults** (lowest)
 
 Use `ctpf config get <key>` to see the resolved value and its source for any setting.
 
 ## Credential Management
 
-Provider API keys are stored in the OS keyring (Windows Credential Manager, macOS Keychain, Linux Secret Service). The keyring service name is `q-ai`.
+Provider API keys are stored in the OS keyring (Windows Credential Manager, macOS Keychain, Linux Secret Service). The keyring service name is `CTPF`.
 
 Credentials are read only from the OS keyring. Environment variables and configuration
 files are not credential sources.
@@ -116,7 +116,7 @@ CLI commands for credential management:
 
 ## FrameworkResolver
 
-Loads framework definitions from `q_ai/core/data/frameworks.yaml` and maps assessment categories (e.g., `command_injection`, `auth`, `tool_poisoning`) to technique IDs across four frameworks:
+Loads framework definitions from `ctpf/core/data/frameworks.yaml` and maps assessment categories (e.g., `command_injection`, `auth`, `tool_poisoning`) to technique IDs across four frameworks:
 
 - **OWASP MCP Top 10** — MCP01 through MCP10
 - **MITRE ATLAS** — AML technique IDs (reviewed against v5.4.0)
@@ -142,14 +142,14 @@ contracts does not imply that the removed IPI, CXP, Inject, Chain, or RXP writer
 
 ## Service Layer
 
-The `q_ai.services` package retains database management helpers used by the
+The `ctpf.services` package retains database management helpers used by the
 core CLI (`db_service`: backup, reset, delete). Workflow, run, finding, audit,
 evidence, and managed-listener services were removed in Phase 1b.
 ## External Tool Import
 
-Removed in Phase 1. The `q_ai.imports` package and `qai import` CLI are gone.
+Removed in Phase 1. The `ctpf.imports` package and `ctpf import` CLI are gone.
 Do not expect External Tool Import workflows in current releases.
 
 ## LLM protocol
 
-LLM calls go through `q_ai.core.llm` which defines a `ProviderClient` protocol. The implementation in `q_ai.core.llm_litellm` wraps litellm for actual API calls, returning `NormalizedResponse` objects that abstract away provider-specific response formats.
+LLM calls go through `ctpf.core.llm` which defines a `ProviderClient` protocol. The implementation in `ctpf.core.llm_litellm` wraps litellm for actual API calls, returning `NormalizedResponse` objects that abstract away provider-specific response formats.

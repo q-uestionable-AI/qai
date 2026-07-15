@@ -7,13 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from q_ai.core.llm import (
+from ctpf.core.llm import (
     NormalizedResponse,
     ProviderError,
     ToolSpec,
     UnsupportedCapabilityError,
 )
-from q_ai.core.llm_litellm import (
+from ctpf.core.llm_litellm import (
     LiteLLMClient,
     _tool_spec_to_openai_format,
     complete_text,
@@ -64,7 +64,7 @@ class TestLiteLLMClient:
         mock_response.choices = [mock_choice]
         mock_response.model_dump.return_value = {"id": "resp-1"}
 
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.return_value = mock_response
             client = LiteLLMClient()
             result = await client.complete(
@@ -95,7 +95,7 @@ class TestLiteLLMClient:
         mock_response.choices = [mock_choice]
         mock_response.model_dump.return_value = {"id": "resp-1"}
 
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.return_value = mock_response
             client = LiteLLMClient()
             result = await client.complete(
@@ -115,7 +115,7 @@ class TestLiteLLMClient:
         mock_response = MagicMock(choices=[mock_choice])
         mock_response.model_dump.return_value = {"id": "resp-1"}
 
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.return_value = mock_response
             client = LiteLLMClient(
                 api_base="https://models.example.test/v1",
@@ -144,7 +144,7 @@ class TestLiteLLMClient:
 
     async def test_complete_provider_error(self) -> None:
         """acompletion exception raises ProviderError."""
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.side_effect = Exception("Rate limited")
             client = LiteLLMClient()
             with pytest.raises(ProviderError, match="Provider anthropic error"):
@@ -156,7 +156,7 @@ class TestLiteLLMClient:
 
     async def test_complete_unsupported_capability(self) -> None:
         """Tool support error raises UnsupportedCapabilityError."""
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.side_effect = Exception("This model does not support tools")
             client = LiteLLMClient()
             with pytest.raises(UnsupportedCapabilityError, match="does not support tool calling"):
@@ -184,7 +184,7 @@ class TestLiteLLMClient:
         mock_response.choices = [mock_choice]
         mock_response.model_dump.return_value = {}
 
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.return_value = mock_response
             client = LiteLLMClient()
             result = await client.complete(
@@ -214,7 +214,7 @@ class TestLiteLLMClient:
         mock_response.choices = [mock_choice]
         mock_response.model_dump.return_value = {}
 
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.return_value = mock_response
             client = LiteLLMClient()
             with pytest.raises(ProviderError, match="Malformed tool call arguments"):
@@ -239,7 +239,7 @@ class TestBoundaryHelpers:
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
 
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.return_value = mock_response
             result = await complete_text(
                 model="ollama/llama3.1",
@@ -262,7 +262,7 @@ class TestBoundaryHelpers:
         mock_response = MagicMock()
         mock_response.choices = []
 
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.return_value = mock_response
             result = await complete_text("openai/gpt-4o", [])
 
@@ -276,7 +276,7 @@ class TestBoundaryHelpers:
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
 
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.return_value = mock_response
             result = await complete_text("openai/gpt-4o", [])
 
@@ -293,7 +293,7 @@ class TestBoundaryHelpers:
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
 
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.return_value = mock_response
             result = await complete_text("openai/gpt-4o", [])
 
@@ -312,7 +312,7 @@ class TestBoundaryHelpers:
                 chunk.choices = [choice]
                 yield chunk
 
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.return_value = fake_stream()
             result = [token async for token in stream_text("openai/gpt-4o", [])]
 
@@ -346,7 +346,7 @@ class TestBoundaryHelpers:
             valid_chunk.choices = [valid_choice]
             yield valid_chunk
 
-        with patch("q_ai.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        with patch("ctpf.core.llm_litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
             mock_acomp.return_value = fake_stream()
             result = [token async for token in stream_text("openai/gpt-4o", [])]
 
@@ -355,7 +355,7 @@ class TestBoundaryHelpers:
     def test_get_litellm_context_window_prefers_max_input_tokens(self) -> None:
         """get_litellm_context_window() should prefer max_input_tokens."""
         with patch(
-            "q_ai.core.llm_litellm.get_model_info",
+            "ctpf.core.llm_litellm.get_model_info",
             return_value={"max_input_tokens": 8192, "max_tokens": 4096},
         ):
             result = get_litellm_context_window("anthropic/claude-sonnet-4-20250514")
@@ -364,7 +364,7 @@ class TestBoundaryHelpers:
 
     def test_get_litellm_context_window_falls_back_to_max_tokens(self) -> None:
         """get_litellm_context_window() should use max_tokens when needed."""
-        with patch("q_ai.core.llm_litellm.get_model_info", return_value={"max_tokens": 4096}):
+        with patch("ctpf.core.llm_litellm.get_model_info", return_value={"max_tokens": 4096}):
             result = get_litellm_context_window("unknown/model")
 
         assert result == 4096

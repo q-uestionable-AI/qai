@@ -20,17 +20,17 @@ from mcp.types import (
 )
 from typer.testing import CliRunner
 
-from q_ai import experiment
-from q_ai.cli import app as root_app
-from q_ai.ctpf import (
+from ctpf import experiment
+from ctpf.cli import app as root_app
+from ctpf.driven_inference import OpenAICompatibleTargetProfile
+from ctpf.external_runtime import ClaudeCodeTargetProfile
+from ctpf.kernel import (
     CascadeArmObservation,
     ExternalEffect,
     PromotionResult,
 )
-from q_ai.driven_inference import OpenAICompatibleTargetProfile
-from q_ai.external_runtime import ClaudeCodeTargetProfile
-from q_ai.mcp.models import Direction, Transport
-from q_ai.proxy.models import ProxyMessage
+from ctpf.mcp.models import Direction, Transport
+from ctpf.proxy.models import ProxyMessage
 
 # Disable Rich ANSI so substring assertions on --help stay stable. With color
 # enabled, option names like `--model` can render as ANSI-split spans and break
@@ -195,13 +195,13 @@ class TestExperimentBoundary:
             experiment._validate_options(options)
 
     def test_environment_is_restored(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("QAI_CASCADE_RUN_ID", "prior")
-        monkeypatch.delenv("QAI_CASCADE_RESET", raising=False)
+        monkeypatch.setenv("CTPF_CASCADE_RUN_ID", "prior")
+        monkeypatch.delenv("CTPF_CASCADE_RESET", raising=False)
         with experiment._cascade_environment("new-run", True):
-            assert os.environ["QAI_CASCADE_RUN_ID"] == "new-run"
-            assert os.environ["QAI_CASCADE_RESET"] == "1"
-        assert os.environ["QAI_CASCADE_RUN_ID"] == "prior"
-        assert "QAI_CASCADE_RESET" not in os.environ
+            assert os.environ["CTPF_CASCADE_RUN_ID"] == "new-run"
+            assert os.environ["CTPF_CASCADE_RESET"] == "1"
+        assert os.environ["CTPF_CASCADE_RUN_ID"] == "prior"
+        assert "CTPF_CASCADE_RESET" not in os.environ
 
     def test_external_runtime_profile_selects_claude_operator_and_pins(self) -> None:
         profile = ClaudeCodeTargetProfile(
@@ -236,7 +236,7 @@ class _FakeOperator:
         endpoint: str,
         inference_path: Path | None,
     ) -> None:
-        assert os.environ["QAI_CASCADE_RUN_ID"] == "test-run"
+        assert os.environ["CTPF_CASCADE_RUN_ID"] == "test-run"
         assert prompt and model == "Composer 2.5"
         assert endpoint == "http://127.0.0.1:8765/mcp/"
         assert inference_path is None
@@ -344,7 +344,7 @@ class TestConsoleSessionIsolation:
         )
 
     def test_worker_command_uses_python_module_entrypoint(self, tmp_path: Path) -> None:
-        """Worker command is list-form and invokes the hidden q_ai session command."""
+        """Worker command is list-form and invokes the hidden ctpf session command."""
         spec = self._spec(tmp_path)
         options = experiment.CascadeExperimentOptions("Composer 2.5", tmp_path, 8877)
 
@@ -353,7 +353,7 @@ class TestConsoleSessionIsolation:
         assert command[:6] == [
             experiment.sys.executable,
             "-m",
-            "q_ai",
+            "ctpf",
             "experiment",
             "run",
             "_session",
@@ -392,7 +392,7 @@ class TestConsoleSessionIsolation:
             mutation_path=None,
             inference_path=tmp_path / "session-A.inference.json",
         )
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         options = experiment.CascadeExperimentOptions(
             None,
             tmp_path,
@@ -647,7 +647,7 @@ class TestFixtureArtifactPaths:
 
     def test_uses_packaged_fixture_module(self) -> None:
         command = experiment._fixture_command()
-        assert command == f'"{sys.executable}" -m q_ai.ctpf.cascade_memo_fixture'
+        assert command == f'"{sys.executable}" -m ctpf.kernel.cascade_memo_fixture'
 
     def test_prefers_temp_over_tmpdir(
         self,
@@ -660,8 +660,8 @@ class TestFixtureArtifactPaths:
         monkeypatch.setenv("TMPDIR", str(tmpdir_root))
         monkeypatch.delenv("TMP", raising=False)
         memo, sink = experiment._fixture_artifact_paths("run-1")
-        assert memo == temp_root / "qai-cascade-memo" / "memo-run-1.json"
-        assert sink == temp_root / "qai-cascade-memo" / "sink-run-1.json"
+        assert memo == temp_root / "ctpf-cascade-memo" / "memo-run-1.json"
+        assert sink == temp_root / "ctpf-cascade-memo" / "sink-run-1.json"
 
     def test_defaults_to_tmp_when_temp_vars_unset(
         self,
@@ -671,4 +671,4 @@ class TestFixtureArtifactPaths:
         monkeypatch.delenv("TMP", raising=False)
         monkeypatch.setenv("TMPDIR", "/var/tmp")
         memo, _sink = experiment._fixture_artifact_paths("run-2")
-        assert memo == Path("/tmp/qai-cascade-memo/memo-run-2.json")
+        assert memo == Path("/tmp/ctpf-cascade-memo/memo-run-2.json")

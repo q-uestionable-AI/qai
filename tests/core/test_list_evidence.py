@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from q_ai.core.db import (
+from ctpf.core.db import (
     create_evidence,
     create_finding,
     create_run,
     get_connection,
     list_evidence,
 )
-from q_ai.core.models import Severity
+from ctpf.core.models import Severity
 
 
 class TestListEvidence:

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from q_ai.audit.scanner.base import BaseScanner
-from q_ai.audit.scanner.registry import get_all_scanners, get_scanner, list_scanner_names
+from ctpf.audit.scanner.base import BaseScanner
+from ctpf.audit.scanner.registry import get_all_scanners, get_scanner, list_scanner_names
 
 
 class TestRegistry:

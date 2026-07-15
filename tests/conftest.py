@@ -1,1 +1,1 @@
-"""Shared test fixtures for q-ai."""
+"""Shared test fixtures for CTPF."""

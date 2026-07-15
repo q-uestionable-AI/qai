@@ -1,4 +1,4 @@
-"""Tests for q_ai.proxy.adapters.sse -- SseServerAdapter and SseClientAdapter.
+"""Tests for ctpf.proxy.adapters.sse -- SseServerAdapter and SseClientAdapter.
 
 Uses mocked SDK sse_client() / SseServerTransport with real anyio memory
 object streams. No network connections.
@@ -15,7 +15,7 @@ from unittest.mock import patch
 import anyio
 from mcp.shared.message import SessionMessage
 
-from q_ai.proxy.adapters.sse import SseClientAdapter, SseServerAdapter
+from ctpf.proxy.adapters.sse import SseClientAdapter, SseServerAdapter
 
 from .conftest import make_session_message, mock_sdk_streams
 
@@ -36,7 +36,7 @@ class TestSseServerAdapterRead:
             async with mock_sdk_streams(inbound=[msg]) as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.sse.sse_client", fake_sse_client):
+        with patch("ctpf.proxy.adapters.sse.sse_client", fake_sse_client):
             async with SseServerAdapter(url="http://fake:3000/sse") as adapter:
                 result = await adapter.read()
 
@@ -53,7 +53,7 @@ class TestSseServerAdapterRead:
                 yield r, w
 
         with (
-            patch("q_ai.proxy.adapters.sse.sse_client", fake_sse_client),
+            patch("ctpf.proxy.adapters.sse.sse_client", fake_sse_client),
             caplog.at_level(logging.WARNING),
         ):
             async with SseServerAdapter(url="http://fake:3000/sse") as adapter:
@@ -86,7 +86,7 @@ class TestSseServerAdapterWrite:
             write_send.close()
             write_recv.close()
 
-        with patch("q_ai.proxy.adapters.sse.sse_client", fake_sse_client):
+        with patch("ctpf.proxy.adapters.sse.sse_client", fake_sse_client):
             async with SseServerAdapter(url="http://fake:3000/sse") as adapter:
                 await adapter.write(msg)
                 await asyncio.sleep(0.05)
@@ -105,7 +105,7 @@ class TestSseServerAdapterClose:
             async with mock_sdk_streams() as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.sse.sse_client", fake_sse_client):
+        with patch("ctpf.proxy.adapters.sse.sse_client", fake_sse_client):
             async with SseServerAdapter(url="http://fake:3000/sse") as adapter:
                 await adapter.close()
                 await adapter.close()  # should not raise
@@ -118,7 +118,7 @@ class TestSseServerAdapterClose:
             async with mock_sdk_streams() as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.sse.sse_client", fake_sse_client):
+        with patch("ctpf.proxy.adapters.sse.sse_client", fake_sse_client):
             async with SseServerAdapter(url="http://fake:3000/sse") as adapter:
                 await adapter.close()
                 try:
@@ -136,7 +136,7 @@ class TestSseServerAdapterClose:
             async with mock_sdk_streams() as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.sse.sse_client", fake_sse_client):
+        with patch("ctpf.proxy.adapters.sse.sse_client", fake_sse_client):
             async with SseServerAdapter(url="http://fake:3000/sse") as adapter:
                 await adapter.close()
                 try:
@@ -153,7 +153,7 @@ class TestSseServerAdapterClose:
             async with mock_sdk_streams() as (r, w):
                 yield r, w
 
-        with patch("q_ai.proxy.adapters.sse.sse_client", fake_sse_client):
+        with patch("ctpf.proxy.adapters.sse.sse_client", fake_sse_client):
             async with SseServerAdapter(url="http://fake:3000/sse") as adapter:
                 assert adapter is not None
             assert adapter._closed

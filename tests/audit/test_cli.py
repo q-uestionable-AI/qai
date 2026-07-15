@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from typer.testing import CliRunner
 
-from q_ai.audit.cli import app
+from ctpf.audit.cli import app
 
 runner = CliRunner()
 
@@ -73,13 +73,13 @@ class TestAuditScanPositionalTarget:
         assert result.exit_code == 0
         assert "Examples" in result.output
 
-    @patch("q_ai.core.cli.prompt.is_tty", return_value=False)
+    @patch("ctpf.core.cli.prompt.is_tty", return_value=False)
     def test_scan_no_args_non_tty_fails(self, _mock: object) -> None:
         """Non-TTY with no target fails with clear error."""
         result = runner.invoke(app, ["scan"])
         assert result.exit_code != 0
 
-    @patch("q_ai.audit.cli.MCPConnection")
+    @patch("ctpf.audit.cli.MCPConnection")
     def test_backward_compat_explicit_flags(self, mock_mcp_cls: MagicMock) -> None:
         """--transport stdio --command still parses and reaches the connection attempt.
 
@@ -110,12 +110,12 @@ class TestAuditEnumeratePositionalTarget:
         assert result.exit_code == 0
         assert "Examples" in result.output
 
-    @patch("q_ai.core.cli.prompt.is_tty", return_value=False)
+    @patch("ctpf.core.cli.prompt.is_tty", return_value=False)
     def test_enumerate_no_args_non_tty_fails(self, _mock: object) -> None:
         result = runner.invoke(app, ["enumerate"])
         assert result.exit_code != 0
 
-    @patch("q_ai.audit.cli.MCPConnection")
+    @patch("ctpf.audit.cli.MCPConnection")
     def test_backward_compat_explicit_flags(self, mock_mcp_cls: MagicMock) -> None:
         """--transport stdio --command still parses and reaches the connection attempt.
 

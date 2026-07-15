@@ -25,7 +25,7 @@ git push -u origin feature/your-description
 1. **Tests pass:** `uv run pytest -q`
 2. **Lint clean:** `uv run ruff check .`
 3. **Types clean:** `uv run mypy src/`
-4. **CLI works:** `uv run ctpf --help` and `uv run qai --help`
+4. **CLI works:** `uv run ctpf --help`
 
 Pre-commit hooks enforce linting, formatting, type checking, and secrets detection automatically on each commit.
 

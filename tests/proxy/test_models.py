@@ -1,4 +1,4 @@
-"""Tests for q_ai.proxy.models."""
+"""Tests for ctpf.proxy.models."""
 
 import asyncio
 import uuid
@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 
 from mcp.types import JSONRPCMessage, JSONRPCRequest
 
-from q_ai.mcp.models import Direction, Transport
-from q_ai.proxy.models import (
+from ctpf.mcp.models import Direction, Transport
+from ctpf.proxy.models import (
     HeldMessage,
     InterceptAction,
     InterceptMode,

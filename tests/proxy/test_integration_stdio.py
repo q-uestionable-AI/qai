@@ -27,19 +27,19 @@ import pytest
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, JSONRPCNotification, JSONRPCRequest
 
-from q_ai.mcp.models import Direction, Transport
-from q_ai.mcp.transport import TransportClosedError
-from q_ai.proxy.adapters.stdio import StdioServerAdapter
-from q_ai.proxy.intercept import InterceptEngine
-from q_ai.proxy.models import (
+from ctpf.mcp.models import Direction, Transport
+from ctpf.mcp.transport import TransportClosedError
+from ctpf.proxy.adapters.stdio import StdioServerAdapter
+from ctpf.proxy.intercept import InterceptEngine
+from ctpf.proxy.models import (
     HeldMessage,
     InterceptAction,
     InterceptMode,
     ProxyMessage,
 )
-from q_ai.proxy.pipeline import PipelineSession, run_pipeline
-from q_ai.proxy.replay import replay_messages
-from q_ai.proxy.session_store import SessionStore
+from ctpf.proxy.pipeline import PipelineSession, run_pipeline
+from ctpf.proxy.replay import replay_messages
+from ctpf.proxy.session_store import SessionStore
 
 # Path to the FastMCP fixture server
 FIXTURE_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "proxy_vuln_injection.py"

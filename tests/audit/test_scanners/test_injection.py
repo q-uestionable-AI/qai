@@ -12,9 +12,9 @@ from typing import Any
 
 import pytest
 
-from q_ai.audit.scanner.injection import InjectionScanner
-from q_ai.mcp.models import ScanContext, Severity
-from q_ai.mcp.payloads.injection import (
+from ctpf.audit.scanner.injection import InjectionScanner
+from ctpf.mcp.models import ScanContext, Severity
+from ctpf.mcp.payloads.injection import (
     CANARY,
     InjectionPayload,
     _argument_injection_payloads,

@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from q_ai.audit.reporting.prompt import build_audit_interpret_prompt
-from q_ai.mcp.models import ScanFinding, Severity
+from ctpf.audit.reporting.prompt import build_audit_interpret_prompt
+from ctpf.mcp.models import ScanFinding, Severity
 
 
 class _FakeScanResult:
@@ -29,7 +29,7 @@ class _FakeScanResult:
 
 
 def _make_finding(
-    rule_id: str = "QAI-INJ-CWE78-test",
+    rule_id: str = "CTPF-INJ-CWE78-test",
     category: str = "command_injection",
     title: str = "Test finding",
     severity: Severity = Severity.HIGH,
@@ -55,8 +55,12 @@ class TestBuildAuditInterpretPromptWithFindings:
         """Prompt includes severity counts and total."""
         findings = [
             _make_finding(severity=Severity.CRITICAL),
-            _make_finding(rule_id="QAI-AUTH-001", category="auth", severity=Severity.HIGH),
-            _make_finding(rule_id="QAI-PERM-001", category="permissions", severity=Severity.MEDIUM),
+            _make_finding(rule_id="CTPF-AUTH-001", category="auth", severity=Severity.HIGH),
+            _make_finding(
+                rule_id="CTPF-PERM-001",
+                category="permissions",
+                severity=Severity.MEDIUM,
+            ),
         ]
         result = _FakeScanResult(findings)
         prompt = build_audit_interpret_prompt(result)
@@ -70,7 +74,7 @@ class TestBuildAuditInterpretPromptWithFindings:
         """Prompt includes OWASP category IDs when framework_ids are set."""
         f1 = _make_finding(category="command_injection")
         f1.framework_ids = {"owasp_mcp_top10": "MCP05"}
-        f2 = _make_finding(rule_id="QAI-AUTH-001", category="auth")
+        f2 = _make_finding(rule_id="CTPF-AUTH-001", category="auth")
         f2.framework_ids = {"owasp_mcp_top10": "MCP07"}
         findings = [f1, f2]
         result = _FakeScanResult(findings)

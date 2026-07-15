@@ -1,0 +1,116 @@
+# Framework mapping data for CTPF
+# Maps internal categories to external security framework identifiers
+# Updated: 2026-04-01
+
+frameworks:
+  owasp_mcp_top10:
+    version: "2025-beta"
+    url: "https://owasp.org/www-project-mcp-top-10/"
+    mappings:
+      command_injection: "MCP05"
+      auth: "MCP07"
+      token_exposure: "MCP01"
+      permissions: "MCP02"
+      tool_poisoning: "MCP03"
+      supply_chain: "MCP04"
+      prompt_injection: "MCP06"
+      audit_telemetry: "MCP08"
+      shadow_servers: "MCP09"
+      context_sharing: "MCP10"
+
+  owasp_agentic_top10:
+    version: "2026"
+    url: "https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/"
+    mappings:
+      prompt_injection:
+        - "ASI01"
+        - "ASI09"
+      tool_poisoning: "ASI02"
+      command_injection:
+        - "ASI02"
+        - "ASI05"
+      supply_chain: "ASI04"
+      context_sharing: "ASI06"
+      auth: "ASI03"
+      token_exposure: "ASI03"
+      permissions: "ASI03"
+      shadow_servers:
+        - "ASI04"
+        - "ASI10"
+      audit_telemetry: "ASI08"
+
+  mitre_atlas:
+    reviewed_against: "v5.4.0"
+    last_reviewed: "2026-03-18"
+    url: "https://atlas.mitre.org/"
+    mappings:
+      command_injection:
+        - "AML.T0043"
+        - "AML.T0050"
+      tool_poisoning:
+        - "AML.T0051.000"
+        - "AML.T0080"
+        - "AML.T0099"
+      prompt_injection:
+        - "AML.T0051.000"
+        - "AML.T0051.001"
+      supply_chain:
+        - "AML.T0010"
+      auth:
+        - "AML.T0012"
+        - "AML.T0040"
+      token_exposure:
+        - "AML.T0057"
+        - "AML.T0024"
+      context_sharing:
+        - "AML.T0080"
+        - "AML.T0085"
+      permissions:
+        - "AML.T0054"
+        - "AML.T0081"
+      shadow_servers:
+        - "AML.T0010"
+        - "AML.T0049"
+      audit_telemetry:
+        - "AML.T0014"
+        - "AML.T0007"
+
+  cwe:
+    version: "4.19"
+    mappings:
+      command_injection:
+        - "CWE-78"
+        - "CWE-88"
+        - "CWE-22"
+      token_exposure:
+        - "CWE-798"
+        - "CWE-312"
+      permissions:
+        - "CWE-269"
+        - "CWE-732"
+        - "CWE-1434"
+      auth:
+        - "CWE-287"
+        - "CWE-306"
+      prompt_injection:
+        - "CWE-94"
+        - "CWE-74"
+        - "CWE-1427"
+      tool_poisoning:
+        - "CWE-94"
+        - "CWE-74"
+        - "CWE-1426"
+        - "CWE-1427"
+      supply_chain:
+        - "CWE-1104"
+        - "CWE-829"
+      context_sharing:
+        - "CWE-200"
+        - "CWE-359"
+        - "CWE-1426"
+      shadow_servers:
+        - "CWE-345"
+        - "CWE-346"
+      audit_telemetry:
+        - "CWE-778"
+        - "CWE-223"
