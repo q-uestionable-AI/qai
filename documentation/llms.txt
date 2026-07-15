@@ -1,56 +1,51 @@
-# CTPF Research Harness Documentation
+# CTPF Documentation
 
-> Trust-boundary testing for agentic systems.
+> Evidence-first capability-trust experiments for agentic systems.
 
 Canonical documentation: https://ctpf.q-uestionable.ai
 Repository: https://github.com/q-uestionable-AI/CTPF
+Released package: `ctpf==0.14.0`
 CLI: `ctpf`
 
-## Getting Started
+## Research
 
-- [Introduction](https://ctpf.q-uestionable.ai/introduction): Purpose and current product shape
-- [Quickstart](https://ctpf.q-uestionable.ai/quickstart): Install the distribution and use `ctpf`
-- [Core Concepts](https://ctpf.q-uestionable.ai/concepts): CTPF framing and MCP trust boundaries
+- [Introduction](https://ctpf.q-uestionable.ai/introduction): Project identity and current empirical scope
+- [CTPF Concepts](https://ctpf.q-uestionable.ai/concepts): Trust, authority, effects, and claim levels
+- [Research Method](https://ctpf.q-uestionable.ai/method/overview): Repeatable experimental contract
+- [Observations and Scoring](https://ctpf.q-uestionable.ai/method/observations-and-scoring): Conditions and fail-closed outcomes
+- [Evidence and Integrity](https://ctpf.q-uestionable.ai/method/evidence): Experiment records and bundle boundaries
+- [Claims and Limitations](https://ctpf.q-uestionable.ai/method/claims-and-limitations): Supported and prohibited conclusions
 - [Responsible Use](https://ctpf.q-uestionable.ai/responsible-use): Authorization and disclosure
-- [Changelog](https://ctpf.q-uestionable.ai/changelog): Append-only release history
 
-## Proxy
+## Experiments
 
-- [Overview](https://ctpf.q-uestionable.ai/proxy/overview): Observe and control MCP traffic
-- [CLI](https://ctpf.q-uestionable.ai/proxy/cli): Proxy command reference
-- [Live Interception](https://ctpf.q-uestionable.ai/proxy/intercept): Forward, modify, or drop messages
-- [Replay](https://ctpf.q-uestionable.ai/proxy/replay): Replay captured MCP messages
-- [Session Export](https://ctpf.q-uestionable.ai/proxy/session-export): Session evidence structure
+- [Experiment Quickstart](https://ctpf.q-uestionable.ai/quickstart): Run released cascade memo from `ctpf==0.14.0`
+- [Cascade Memo](https://ctpf.q-uestionable.ai/experiments/cascade-memo): Released two-session reference experiment
+- [Pattern 2](https://ctpf.q-uestionable.ai/experiments/pattern2): Unreleased source-only calibration experiment
+- [Inference Targets](https://ctpf.q-uestionable.ai/config/providers): Target pins and OS-keyring credentials
+- [Targets CLI](https://ctpf.q-uestionable.ai/cli/targets): Register model, runtime, and MCP targets
 
-## Database and Targets
+## Supporting Harness
 
+- [Proxy Overview](https://ctpf.q-uestionable.ai/proxy/overview): MCP observation and intervention infrastructure
+- [Proxy CLI](https://ctpf.q-uestionable.ai/proxy/cli): Start, replay, export, and inspect sessions
+- [Session Evidence](https://ctpf.q-uestionable.ai/proxy/session-export): Protocol session structure
+- [MCP Transports](https://ctpf.q-uestionable.ai/config/transports): stdio, SSE, and Streamable HTTP
+- [Operational Runs](https://ctpf.q-uestionable.ai/cli/runs): Stored operational records
+- [Operational Findings](https://ctpf.q-uestionable.ai/cli/findings): Stored secondary-library findings
 - [Database](https://ctpf.q-uestionable.ai/cli/db): Local database maintenance
-- [Targets](https://ctpf.q-uestionable.ai/cli/targets): MCP target registration
-- [Runs](https://ctpf.q-uestionable.ai/cli/runs): Stored run inspection
-- [Findings](https://ctpf.q-uestionable.ai/cli/findings): Stored finding inspection
 
-## Configuration
+## Frozen Audit Library
 
-- [Inference Targets](https://ctpf.q-uestionable.ai/config/providers): OpenAI-compatible target pins and keyring credentials
-- [Transports](https://ctpf.q-uestionable.ai/config/transports): MCP transport configuration
-- [Environment Variables](https://ctpf.q-uestionable.ai/config/environment-variables): Non-secret environment behavior
+- [Audit Overview](https://ctpf.q-uestionable.ai/audit/overview): Frozen enumeration and scanner library
+- [Scanner Catalog](https://ctpf.q-uestionable.ai/audit/scanners): Retained scanner implementations
+- [Framework Coverage](https://ctpf.q-uestionable.ai/audit/framework-coverage): Audit taxonomy mappings
+- [SARIF](https://ctpf.q-uestionable.ai/exports/sarif): Audit SARIF output
+- [NDJSON](https://ctpf.q-uestionable.ai/exports/ndjson): Audit finding export
+- [CSV](https://ctpf.q-uestionable.ai/exports/csv): Audit finding export
 
-## Audit Library
+## Architecture and History
 
-- [Audit Overview](https://ctpf.q-uestionable.ai/audit/overview): Capability enumeration and scanners
-
-## Exports and Integrations
-
-- [JSON Schema](https://ctpf.q-uestionable.ai/exports/json-schema): Run bundle schema
-- [SARIF](https://ctpf.q-uestionable.ai/exports/sarif): SARIF 2.1.0 output
-- [NDJSON](https://ctpf.q-uestionable.ai/exports/ndjson): Streaming-friendly export
-- [CSV](https://ctpf.q-uestionable.ai/exports/csv): Flat finding export
-- [DefectDojo](https://ctpf.q-uestionable.ai/integrations/defectdojo): Findings import guidance
-- [GitHub Security](https://ctpf.q-uestionable.ai/integrations/github-security): Code scanning integration
-
-## Architecture
-
-- [Overview](https://ctpf.q-uestionable.ai/architecture/overview): Current system shape
-- [Core](https://ctpf.q-uestionable.ai/architecture/core): Shared database and configuration
-- [Proxy](https://ctpf.q-uestionable.ai/architecture/proxy-module): Traffic observation and control
-- [Audit](https://ctpf.q-uestionable.ai/architecture/audit-module): Scanner library
+- [Architecture](https://ctpf.q-uestionable.ai/architecture/overview): Current package responsibility boundaries
+- [Operational Run Bundle](https://ctpf.q-uestionable.ai/exports/json-schema): Compatibility database export, not experiment evidence
+- [Changelog](https://ctpf.q-uestionable.ai/changelog): Append-only release history

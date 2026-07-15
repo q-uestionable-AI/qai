@@ -1,15 +1,16 @@
 ---
 title: "ctpf findings"
-description: "List stored security findings"
+description: "List retained operational findings"
 ---
 
-List findings persisted in the local SQLite database (`~/.ctpf/ctpf.db`).
+List findings persisted in the local SQLite database (`~/.ctpf/ctpf.db`). These are operational
+records produced by retained library/persistence paths, not controlled experiment classifications.
 
 ## Commands
 
 ### `ctpf findings list`
 
-List security findings with optional filters.
+List operational findings with optional filters.
 
 ```bash
 ctpf findings list [OPTIONS]

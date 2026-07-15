@@ -1,0 +1,50 @@
+---
+title: Evidence and Integrity
+description: Experiment records, bundles, failure preservation, and operational state boundaries
+---
+
+Every experiment writes to an operator-selected external research directory. Git checkouts are
+rejected as output roots so generated evidence is not mixed with source code.
+
+## Experiment record
+
+A completed series contains condition-scoped protocol traces and observations plus top-level
+coordination records. Depending on the selected target and scenario, the record includes:
+
+- MCP session traces and inference transcripts;
+- mutation records containing both original and modified responses;
+- run-scoped persisted artifacts and external-effect sink files;
+- condition observations and trust-transition classifications;
+- target/runtime pins and condition order;
+- progress and failure manifests; and
+- a declared evidence bundle with hashes for copied artifacts.
+
+The series manifest is updated as work progresses. A failed condition therefore leaves a durable
+record instead of disappearing behind a retry.
+
+## Integrity rules
+
+- Originals are preserved before a response is changed.
+- Effects and persisted artifacts carry the expected run-scoped identity.
+- Bundle manifests declare the files copied into the bundle and their hashes.
+- Missing files or hash mismatches are integrity failures, not evidence to reconstruct.
+- Secret material is excluded: target records contain keyring credential names, never API keys.
+
+The bundle verifies that the captured record is internally consistent. It does not by itself prove
+that an independent outsider can reproduce the experiment or that the result generalizes.
+
+## Experiment evidence versus SQLite state
+
+CTPF also retains an operational SQLite database at `~/.ctpf/ctpf.db` for targets, settings, and
+legacy/current run or finding records. That database is not the evidence store for
+`ctpf experiment` output.
+
+The compatibility helper `ctpf.core.db.export_run_bundle()` produces `run-bundle-v1` for stored
+operational records. It is distinct from the scenario evidence bundles produced by controlled
+experiments. See [Operational Run Bundle](/exports/json-schema) for that compatibility contract.
+
+## Research storage
+
+Treat traces, transcripts, sink artifacts, manifests, bundles, analyses, and publication material
+as research records. Store them in an authorized, access-controlled research directory or lab
+vault, never in a public Git checkout.

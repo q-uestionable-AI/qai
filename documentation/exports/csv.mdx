@@ -3,7 +3,8 @@ title: CSV Export
 description: Flat spreadsheet export with one row per finding
 ---
 
-CSV exports produce a flat file with one row per finding, suitable for Excel, Google Sheets, database import, and reporting workflows.
+CSV exports produce a flat file with one row per retained audit finding, suitable for Excel,
+Google Sheets, database import, and reporting workflows.
 
 ## Generating CSV
 
@@ -72,5 +73,7 @@ with open('results.csv') as f:
 ```
 
 <Note>
-CSV flattens the framework_ids dict into a single string column. For structured framework data, use the JSON bundle or NDJSON exports.
+CSV flattens the `framework_ids` dict into one string column. For structured audit data, use the
+JSON report generator or [NDJSON](/exports/ndjson). Controlled experiments write scenario evidence
+bundles instead of finding CSV files.
 </Note>

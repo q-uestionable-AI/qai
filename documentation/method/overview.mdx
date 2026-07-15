@@ -1,0 +1,66 @@
+---
+title: Research Method
+description: The repeatable experimental contract used by CTPF studies
+---
+
+CTPF is an evidence-first method for controlled capability-trust experiments. A study asks whether
+a declared change at one trust boundary can be connected to a matching higher-authority invocation
+and, when the scenario requires it, an independently verified external effect.
+
+The Python package is the reference harness for that method. It coordinates CTPF-owned experiments;
+it is not the thesis itself, a generic scanner, or a workflow orchestrator.
+
+## The experimental contract
+
+<Steps>
+  <Step title="Declare the boundary">
+    Record the approved scope, source provenance and trust, permitted and prohibited capabilities,
+    expected authorization path, and independently observable effect before the run.
+  </Step>
+  <Step title="Pin and isolate conditions">
+    Keep task wording, target, runtime, model parameters, run identifiers, and state explicit.
+    Isolate baseline, manipulated, and—when justified—hardened conditions from each other.
+  </Step>
+  <Step title="Intervene narrowly">
+    Change only the declared result or artifact. Preserve the original response and record the
+    mutation and intended trust transition. Do not alter a later hop when testing persistence.
+  </Step>
+  <Step title="Separate observations">
+    Record invocation, original result, modified result, persistence, later consumption,
+    higher-authority invocation, and external effect as distinct evidence.
+  </Step>
+  <Step title="Compare conservatively">
+    Require a clean baseline, the scenario's exact causal continuity, and a matching run-scoped
+    effect. Missing, malformed, contaminated, or contradictory evidence is `INCONCLUSIVE`.
+  </Step>
+  <Step title="Freeze the record">
+    Preserve failed attempts and partial manifests, declare and hash artifacts, record pins and
+    limitations, and keep mechanical classification separate from scientific interpretation.
+  </Step>
+</Steps>
+
+## Responsibility boundary
+
+| Layer | Responsibility | Owner |
+| --- | --- | --- |
+| Thesis | Define the provenance, integrity, authorization-scope, audience, persistence, and capability-promotion question | Research program |
+| Stable harness | Isolate conditions, capture evidence, compare conservatively, verify effects, and bundle artifacts | Reusable `ctpf` package |
+| Study instrument | Define the task, fixture, prompt, mutation, authority semantics, and oracle expectations | Scenario-specific code and study design |
+| External system | Supply a model, runtime, benchmark task, or raw artifact for one named study | External system; raw output remains external evidence |
+| Interpretation | Decide what the observation establishes and authorize publication language | Human researcher |
+
+External labels do not automatically become CTPF conclusions. A future study may use one
+study-specific external seam, but the current package does not provide an adapter registry, plugin
+system, recipe language, or general external-artifact ingestion contract.
+
+## What remains scenario-specific
+
+The method is reusable at the level above. Prompts, tools, mutation content, artifact formats,
+authority fields, causal-link requirements, and effect oracles remain specific to each experiment.
+Sharing engineering machinery across scenarios is not scientific generality.
+
+## Continue
+
+- [Observations and Scoring](/method/observations-and-scoring)
+- [Evidence and Integrity](/method/evidence)
+- [Claims and Limitations](/method/claims-and-limitations)

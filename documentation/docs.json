@@ -15,61 +15,55 @@
     }
   ],
   "topbarCtaButton": {
-    "name": "Get Started",
+    "name": "Run the Experiment",
     "url": "/quickstart"
   },
   "navigation": {
     "groups": [
       {
-        "group": "Getting Started",
+        "group": "Research",
         "pages": [
           "introduction",
-          "quickstart",
           "concepts",
-          "responsible-use",
-          "changelog"
+          "method/overview",
+          "method/observations-and-scoring",
+          "method/evidence",
+          "method/claims-and-limitations",
+          "responsible-use"
         ]
       },
       {
-        "group": "Proxy",
+        "group": "Experiments",
+        "pages": [
+          "quickstart",
+          "experiments/cascade-memo",
+          "experiments/pattern2",
+          "config/providers",
+          "cli/targets"
+        ]
+      },
+      {
+        "group": "Supporting Harness",
         "pages": [
           "proxy/overview",
           "proxy/cli",
           "proxy/intercept",
           "proxy/replay",
-          "proxy/session-export"
-        ]
-      },
-      {
-        "group": "Database & Targets",
-        "pages": [
-          "cli/db",
-          "cli/targets",
-          "cli/runs",
-          "cli/findings"
-        ]
-      },
-      {
-        "group": "Configuration",
-        "pages": [
-          "config/providers",
+          "proxy/session-export",
           "config/transports",
-          "config/environment-variables"
+          "config/environment-variables",
+          "cli/runs",
+          "cli/findings",
+          "cli/db"
         ]
       },
       {
-        "group": "Audit Library",
+        "group": "Frozen Audit Library",
         "pages": [
           "audit/overview",
           "audit/scanners",
           "audit/framework-coverage",
-          "audit/fixtures"
-        ]
-      },
-      {
-        "group": "Exports & Integrations",
-        "pages": [
-          "exports/json-schema",
+          "audit/fixtures",
           "exports/sarif",
           "exports/ndjson",
           "exports/csv",
@@ -78,12 +72,14 @@
         ]
       },
       {
-        "group": "Architecture",
+        "group": "Architecture & History",
         "pages": [
           "architecture/overview",
           "architecture/core",
           "architecture/proxy-module",
-          "architecture/audit-module"
+          "architecture/audit-module",
+          "exports/json-schema",
+          "changelog"
         ]
       }
     ]
@@ -163,7 +159,7 @@
   },
   "metadata": {
     "og:site_name": "CTPF Research Harness Docs",
-    "og:description": "Trust-boundary testing for agentic systems"
+    "og:description": "Evidence-first capability-trust experiments for agentic systems"
   },
   "seo": {
     "metatags": {
@@ -171,6 +167,6 @@
     }
   },
   "search": {
-    "placeholder": "Search docs..."
+    "placeholder": "Search CTPF research docs..."
   }
 }

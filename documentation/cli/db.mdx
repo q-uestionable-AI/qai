@@ -1,9 +1,14 @@
 ---
 title: "ctpf db"
-description: "Database management commands"
+description: "Operational SQLite backup and reset commands"
 ---
 
-Database backup and reset operations.
+Backup and reset the operational SQLite database at `~/.ctpf/ctpf.db`.
+
+<Note>
+These commands do not back up or delete the external research directories selected through
+`ctpf experiment --output-root`.
+</Note>
 
 ## Commands
 
@@ -57,7 +62,7 @@ ctpf db reset [--yes]
 
 **What gets deleted:**
 
-- All scan targets
+- All persisted targets
 - All runs, findings, and evidence
 - Historical removed-module rows retained in upgraded databases
 

@@ -1,155 +1,79 @@
 ---
 title: Core Infrastructure
-description: Database schema, configuration system, and shared data models
+description: Targets, operational state, configuration, credentials, and LLM boundaries
 ---
 
-The core layer (`ctpf.core`) provides persistent data storage, configuration management,
-framework mapping, mitigation guidance, and the provider-agnostic LLM protocol used by
-driven inference.
+The `ctpf.core` package provides the operational backbone used by the CLI and demonstrated target
+adapters. It does not own scenario semantics or the experiment evidence directory.
 
-## SQLite Database
+## Operational SQLite state
 
-CTPF Research Harness uses SQLite with WAL mode for concurrent access and foreign key enforcement. The database lives at `~/.ctpf/ctpf.db` and auto-initializes with schema migrations on first access.
+CTPF uses SQLite with WAL mode and foreign keys at `~/.ctpf/ctpf.db`. Current tables support targets,
+settings, runs, findings, evidence references, and proxy/audit records. Upgraded databases may also
+contain historical tables for removed modules.
 
-<Note>
-WAL mode requires the `.db`, `-wal`, and `-shm` files to remain in the same directory.
-</Note>
+| Model | Current role |
+| --- | --- |
+| Target | Persist a demonstrated endpoint/runtime identity and non-secret metadata |
+| Run | Represent retained operational activity; not the condition manifest for `ctpf experiment` |
+| Finding | Store secondary-library or other operational findings |
+| Evidence | Store operational evidence references; not scenario bundle content |
+| Setting | Store non-secret configuration values |
 
-## Core Data Models
+Experiment traces, transcripts, mutation records, effects, manifests, and bundles are written to
+the external `--output-root`, not SQLite.
 
-### Run
+## Target profiles
 
-Represents a top-level operation or module execution. IDs are UUID strings.
+Driven experiments load a persisted target and validate it into one of the demonstrated profiles:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | str | UUID identifier |
-| `module` | str | Producer name; current values include proxy, audit, and experiment, while old databases may contain removed module names |
-| `status` | RunStatus | Execution status |
-| `parent_run_id` | str \| None | Parent run for workflow child runs |
-| `name` | str \| None | Human-readable name (e.g., workflow ID) |
-| `target_id` | str \| None | Reference to the target being tested |
-| `config` | dict \| None | Run configuration (serialized as JSON) |
-| `started_at` | datetime \| None | Start timestamp |
-| `finished_at` | datetime \| None | Completion timestamp |
-| `guidance` | str \| None | Historical JSON guidance retained for old database rows; no current writer |
-| `source` | str \| None | Run provenance — where the run was initiated (web, cli, api, mcp, garak, pyrit, sarif) |
+- an OpenAI-compatible inference endpoint with exact model/generation pins and a credential name;
+- a Claude Code agent-runtime target with an exact model, runtime constraints, and runtime-managed
+  authentication; or
+- an MCP server target used by the supporting proxy/MCP layer.
 
-**RunStatus values:**
+Target ID prefixes must contain at least eight characters and be unambiguous.
 
-| Status | Value | Description |
-|--------|-------|-------------|
-| PENDING | 0 | Awaiting execution |
-| RUNNING | 1 | Currently executing |
-| COMPLETED | 2 | Successfully finished |
-| FAILED | 3 | Terminated with error |
-| CANCELLED | 4 | User-initiated stop |
-| WAITING_FOR_USER | 5 | Awaiting operator interaction |
-| PARTIAL | 6 | Completed with some module failures |
+## Configuration precedence
 
-### Target
+Non-secret configuration resolves in this order:
 
-Represents a scan or test target.
+1. CLI flags
+2. Explicitly mapped environment variables
+3. SQLite settings managed through `ctpf config`
+4. `~/.ctpf/config.yaml`
+5. Built-in defaults
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | str | UUID identifier |
-| `type` | str | Target type (e.g., "server") |
-| `name` | str | Human-readable name |
-| `uri` | str \| None | Connection URI or address |
-| `metadata` | dict \| None | Additional target properties |
+Credential resolution is a separate boundary: OS keyring → error. API keys are never read from
+environment variables, configuration files, target metadata, or source code.
 
-### Finding
+## Credential management
 
-A security finding produced by a module run.
+The keyring service is `CTPF`.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | str | UUID identifier |
-| `run_id` | str | The run that produced this finding |
-| `module` | str | Module name |
-| `category` | str | Finding category (e.g., `command_injection`, `auth`, `tool_poisoning`) |
-| `severity` | Severity | INFO (0), LOW (1), MEDIUM (2), HIGH (3), CRITICAL (4) |
-| `title` | str | Short human-readable title |
-| `description` | str \| None | Detailed description |
-| `framework_ids` | dict \| None | Framework mappings (e.g., `{"owasp_mcp_top10": "MCP05", "mitre_atlas": "AML.T0054"}`) |
-| `mitigation` | dict \| None | Persisted mitigation guidance data |
-| `source_ref` | str \| None | Scanner or source reference |
+- `ctpf config set-credential NAME` prompts with masked input.
+- `ctpf config delete-credential NAME` removes a keyring entry.
+- `ctpf config list-providers` reports configured credential names.
+- `ctpf config import-legacy-credentials` performs the one-time plaintext migration path.
 
-### Evidence
+## LLM boundary
 
-Structured proof attached to findings.
+`ctpf.core.llm` defines the provider-neutral client protocol used by driven inference.
+`ctpf.core.llm_litellm` supplies the demonstrated OpenAI-compatible implementation and returns
+normalized response objects. The Claude Code adapter is separate and relies on the runtime's secure
+login rather than an embedded provider credential.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | str | UUID identifier |
-| `finding_id` | str | Parent finding |
-| `evidence_type` | str | Type of evidence (e.g., "request", "response", "tool_call") |
-| `content` | str | Raw evidence content |
-| `metadata` | dict \| None | Additional structured data |
+## Frozen audit support
 
-## Configuration System
+Framework and mitigation resolvers remain available to the frozen audit library. They do not score
+controlled CTPF experiments and are not part of the method contribution.
 
-Configuration merges from multiple sources with precedence ordering:
+## Historical compatibility
 
-1. **CLI flags** (highest)
-2. **Environment variables**
-3. **Database settings** (SQLite `settings` table, managed via `ctpf config set`)
-4. **YAML config file** (`~/.ctpf/config.yaml`)
-5. **Built-in defaults** (lowest)
+Schema columns, tables, migrations, bundle helpers, and reset/deletion logic for removed modules
+remain so existing databases can be opened, backed up, reset, and cleaned safely. Retaining those
+data contracts does not restore their product writers.
 
-Use `ctpf config get <key>` to see the resolved value and its source for any setting.
-
-## Credential Management
-
-Provider API keys are stored in the OS keyring (Windows Credential Manager, macOS Keychain, Linux Secret Service). The keyring service name is `CTPF`.
-
-Credentials are read only from the OS keyring. Environment variables and configuration
-files are not credential sources.
-
-CLI commands for credential management:
-
-- `ctpf config set-credential <provider>` — prompts for key with masked input
-- `ctpf config delete-credential <provider>` — removes key from keyring
-- `ctpf config list-providers` — shows credential status for known providers
-- `ctpf config import-legacy-credentials` — one-time migration from plaintext `config.yaml` to keyring
-
-## FrameworkResolver
-
-Loads framework definitions from `ctpf/core/data/frameworks.yaml` and maps assessment categories (e.g., `command_injection`, `auth`, `tool_poisoning`) to technique IDs across four frameworks:
-
-- **OWASP MCP Top 10** — MCP01 through MCP10
-- **MITRE ATLAS** — AML technique IDs (reviewed against v5.4.0)
-- **CWE** — Common Weakness Enumeration IDs
-- **OWASP Agentic Top 10** — Agentic AI security categories
-
-Used by audit scanners to populate `framework_ids` on findings.
-
-## MitigationResolver
-
-Generates structured, tiered remediation guidance for audit findings. Loads `mitigations.yaml` which covers all 10 OWASP MCP categories with recommended actions, platform support notes, and risk decision guidance.
-
-Each finding receives a `MitigationGuidance` object with `GuidanceSection` entries. Each section tracks its provenance (`SourceType`: baseline YAML, scanner-contributed, or runtime-enriched).
-
-MitigationGuidance is per-finding and generated at report time. Historical run-guidance
-rows remain readable for database compatibility but have no current writer.
-
-## Historical schema compatibility
-
-Schema columns, tables, migrations, and deletion/reset logic for removed modules remain so
-existing databases can be opened, backed up, reset, and cleaned safely. Retaining those data
-contracts does not imply that the removed IPI, CXP, Inject, Chain, or RXP writers still exist.
-
-## Service Layer
-
-The `ctpf.services` package retains database management helpers used by the
-core CLI (`db_service`: backup, reset, delete). Workflow, run, finding, audit,
-evidence, and managed-listener services were removed in Phase 1b.
-## External Tool Import
-
-Removed in Phase 1. The `ctpf.imports` package and `ctpf import` CLI are gone.
-Do not expect External Tool Import workflows in current releases.
-
-## LLM protocol
-
-LLM calls go through `ctpf.core.llm` which defines a `ProviderClient` protocol. The implementation in `ctpf.core.llm_litellm` wraps litellm for actual API calls, returning `NormalizedResponse` objects that abstract away provider-specific response formats.
+The public `export_run_bundle()` compatibility helper is documented at
+[Operational Run Bundle](/exports/json-schema). It is distinct from controlled experiment evidence
+bundles.

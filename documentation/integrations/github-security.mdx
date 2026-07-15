@@ -40,7 +40,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install CTPF
-        run: pip install ctpf
+        run: pip install ctpf==0.14.0
 
       - name: Run MCP server audit
         run: python tools/run_ctpf_audit.py

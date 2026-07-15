@@ -19,14 +19,16 @@ See [Audit Overview](/audit/overview) for the complete connection and scan examp
 
 ## SARIF Structure
 
-The output conforms to SARIF 2.1.0 with one run containing the CTPF tool driver, deduplicated rules, and one result per finding.
+The output conforms to SARIF 2.1.0 with one run containing the CTPF tool driver, deduplicated rules,
+and one result per finding. The driver version is populated from the installed package; `0.14.0`
+below illustrates the current public release.
 
 ### Tool Driver
 
 ```json
 {
   "name": "CTPF",
-  "version": "0.5.1",
+  "version": "0.14.0",
   "informationUri": "https://github.com/q-uestionable-AI/CTPF",
   "rules": [ ... ]
 }
@@ -99,7 +101,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install CTPF
-        run: pip install ctpf
+        run: pip install ctpf==0.14.0
 
       - name: Run audit
         run: python tools/run_ctpf_audit.py

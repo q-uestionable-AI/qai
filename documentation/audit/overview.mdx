@@ -1,15 +1,16 @@
 ---
-title: Overview
-description: Automated MCP server security scanning mapped to OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10
+title: Frozen Audit Library
+description: Retained MCP enumeration and scanner library outside the CTPF method path
 ---
 
 <Note>
-**Library capability.** Audit is not mounted on the root `ctpf` CLI. Use the
-Python package API—not `ctpf audit`. The public CLI center is
-[`ctpf proxy`](/proxy/overview).
+Audit is a frozen secondary library. It is not mounted as `ctpf audit`, is not the CTPF research
+contribution, and should not expand in competition with dedicated external scanners.
 </Note>
 
-The audit module scans MCP servers by enumerating exposed tools, resources, and prompts, then running security checks mapped to the OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10. It produces structured findings with severity ratings and remediation guidance.
+The retained library connects to an MCP server, enumerates tools, resources, and prompts, runs
+registered static or active checks, and exports findings in structured formats. These observations
+do not become controlled experiment results or CTPF conclusions automatically.
 
 ## Minimal library use
 
@@ -30,68 +31,34 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## What It Tests
+## Pipeline
 
-MCP servers execute real actions — running commands, querying databases, writing files. When misconfigured or compromised, they can leak credentials, escalate privileges, inject instructions into agent workflows, or execute arbitrary commands. The audit module checks for these issues systematically.
+1. **Connect** through stdio, SSE, or Streamable HTTP.
+2. **Enumerate** the server's tools, resources, and prompts.
+3. **Scan** with all registered checks or a selected `check_names` subset.
+4. **Report** as JSON, SARIF, HTML, NDJSON, or CSV.
 
-## How It Works
+Active scanners invoke target tools and may cause side effects. Use them only against authorized,
+controlled systems.
 
-The audit scanning pipeline follows four steps:
+## Scanner categories
 
-1. **Connect** — Establish a connection to the target MCP server (stdio, SSE, or Streamable HTTP)
-2. **Enumerate** — Discover all tools, resources, and prompts exposed by the server
-3. **Scan** — Run each scanner module against the server's attack surface (static analysis, dynamic probing, or both)
-4. **Report** — Output findings in JSON, SARIF, HTML, NDJSON, or CSV format with framework mappings
+The library retains ten scanner registrations corresponding to its OWASP MCP Top 10 mapping:
+token exposure, permissions, tool poisoning, supply-chain metadata, injection, prompt-injection
+patterns, authentication, audit/telemetry, shadow-server indicators, and context sharing.
 
-## Scanner Categories
+These are scanner observations and taxonomy mappings. For example, detecting prompt-like text in a
+tool result does not establish that an agent consumed it or produced an external effect.
 
-The audit module includes 10 scanner modules, each targeting one OWASP MCP Top 10 category:
+## Reports and persistence
 
-| Scanner | Category | Checks |
-|---------|----------|--------|
-| `token_exposure` | Token Mismanagement & Secret Exposure | Credential leakage in schemas, responses, error messages |
-| `permissions` | Privilege Escalation via Tools | Excessive tool counts, dangerous categories, unconstrained parameters |
-| `tool_poisoning` | Tool Poisoning | Embedded instructions, Unicode tricks, suspicious patterns |
-| `supply_chain` | Supply Chain & Integrity | Server identity, CVE checking, tool provenance |
-| `injection` | Command Injection via Tools | Shell injection, argument injection, path traversal payloads |
-| `prompt_injection` | Indirect Prompt Injection | Injection patterns in tool responses |
-| `auth` | Insufficient Authentication/Authorization | Unauthenticated enumeration, unencrypted transports |
-| `audit_telemetry` | Insufficient Audit & Telemetry | Logging, monitoring, error handling capabilities |
-| `shadow_servers` | Shadow MCP Servers | Development markers, unmanaged deployment indicators |
-| `context_sharing` | Context Over-Sharing | Session data leakage, context oversharing, resource scope |
+Report generators consume `ScanResult` and write explicit output files. `persist_scan()` can map
+scan findings into the operational SQLite schema, but persistence is optional and remains separate
+from `ctpf experiment` evidence directories.
 
-## Report Formats
+## Reference
 
-Generate findings in any format:
-
-- **JSON** — Programmatic consumption, database integration
-- **SARIF** — GitHub Code Scanning integration, CI/CD automation
-- **HTML** — Human-readable reports with interactive navigation
-- **NDJSON** — Streaming format for large scan results
-- **CSV** — Spreadsheet analysis and reporting
-
-<Tip>
-SARIF output integrates directly with GitHub Code Scanning. Use `gh code-scanning upload-sarif` to publish audit findings in your repository.
-</Tip>
-
-## Framework Mapping
-
-Every finding is mapped to multiple security frameworks:
-
-- **OWASP MCP Top 10** — Agentic AI security framework specific to MCP
-- **OWASP Agentic Top 10** — Broader agentic AI security categories
-- **MITRE ATLAS** — Machine learning attack tactics and techniques
-- **CWE** — Software weakness catalog for root cause tracking
-
-Mappings enable integration with your existing security tools and compliance workflows.
-
-## What to Expect
-
-Audit scanning is automated once invoked as a library: select scanners (or run all), and get a structured report. No manual iteration, no payload crafting. Scanners can be individually selected. New scanners can be added by subclassing `BaseScanner` and registering in the scanner registry.
-
-## Next Steps
-
-- [Scanner Catalog](/audit/scanners) — Detailed description of each scanner
-- [Framework Coverage](/audit/framework-coverage) — Mapping tables for OWASP, MITRE, and CWE
-- [SARIF Output](/exports/sarif) — Report format and CI integration
-- [Fixtures](/audit/fixtures) — Vulnerable test servers for scanner validation
+- [Scanner Catalog](/audit/scanners)
+- [Framework Coverage](/audit/framework-coverage)
+- [Test Fixtures](/audit/fixtures)
+- [SARIF Export](/exports/sarif)

@@ -1,9 +1,14 @@
 ---
 title: "ctpf runs"
-description: "Manage scan runs"
+description: "Inspect and delete retained operational run records"
 ---
 
-List and delete scan runs.
+List and delete runs persisted in the operational SQLite database.
+
+<Note>
+`ctpf experiment` condition records, traces, effects, and evidence bundles are written to the
+external `--output-root`; they are not represented by this command.
+</Note>
 
 ## Commands
 
@@ -69,7 +74,8 @@ ctpf runs delete f9e8d7c6 --yes
 ```
 
 <Warning>
-Run deletion is permanent. Associated findings and evidence cannot be recovered. Consider exporting results before deletion if needed for compliance or audit purposes.
+Run deletion is permanent. Associated findings and evidence references cannot be recovered from
+SQLite. It does not delete a separately selected experiment output directory.
 </Warning>
 
 <Note>

@@ -1,116 +1,99 @@
 ---
 title: Architecture Overview
-description: Current CTPF research harness shape
+description: Responsibility boundaries of the CTPF reference research harness
 ---
 
-CTPF Research Harness is a local Python harness with one preferred public operator entry point:
-the `ctpf` CLI. This page matches the
-durable invariants in the repository
-[`docs/Architecture.md`](https://github.com/q-uestionable-AI/CTPF/blob/main/docs/Architecture.md)
-after the Phase 6 fixture prune.
+CTPF is a research project for testing Capability Trust Propagation Failure. The Python package is
+its evidence-first reference harness: it coordinates controlled conditions and preserves the
+experimental record. It is not the thesis itself or a generic scanner, proxy product, red-team
+platform, or workflow orchestrator.
 
-## System shape
+## Responsibility layers
 
-**Centered substrate:**
+| Layer | Responsibility | Location |
+| --- | --- | --- |
+| Research thesis | Define the capability-trust question and publication claims | Research program outside the repository |
+| Stable harness | Condition isolation, protocol capture, trust-transition records, comparison, effect verification, and evidence integrity | Reusable `ctpf` package |
+| Study instrument | Scenario task, prompt, fixture, intervention, authority semantics, and oracle expectations | Narrow scenario modules and tests |
+| External system | Supply a model or agent runtime required by a named study | Registered target |
+| Interpretation | Decide what the observation establishes | Human researcher |
 
-| Area | Responsibility |
-| --- | --- |
-| `proxy` | Capture, intercept, live modify, export MCP traffic (Textual TUI) |
-| `mcp` | MCP transports and sessions (stdio, SSE, streamable HTTP) |
-| `core` | Shared models, SQLite persistence, config, credentials, LLM protocol |
-| `ctpf` | Trust-transition kernel, trace parsing, evidence bundles, cascade fixture |
-| experiment adapters | Cascade director, OpenAI-compatible driver, Claude Code CLI runtime |
-
-**Library module** (not a public CLI pillar):
+## Package shape
 
 | Area | Responsibility |
 | --- | --- |
-| `audit` | Capability enumeration / scanners; SARIF export |
+| `experiment.py` | Coordinate isolated conditions, targets, manifests, comparisons, and bundles |
+| `kernel` | Trust-transition schemas, observations, trace parsing, scenario comparison, effect oracles, and evidence bundles |
+| `proxy` | MCP capture, controlled intervention, original preservation, persistence, replay, and export |
+| `mcp` | Async MCP connections, transports, discovery, and protocol models |
+| `driven_inference.py` | Demonstrated OpenAI-compatible model/tool loop and transcript capture |
+| `external_runtime.py` | Demonstrated external-runtime seam, currently Claude Code for cascade |
+| `core` | SQLite state, targets, settings, OS-keyring credentials, models, and provider-neutral LLM contracts |
+| `services` | Small database maintenance helpers |
+| `audit` | Frozen secondary enumeration/scanner library; not a root CLI or method contribution |
 
-**Removed** (do not restore without explicit instruction): Web UI (`server/`),
-`assist/`, `rxp/`, `chain/`, `orchestrator/`, `imports/`, `ipi/`, `cxp/`, and `inject/`.
+The public operator entry point is `ctpf`. Its research command is `ctpf experiment`; proxy,
+targets, stored operational records, configuration, and database commands support that work.
 
-## Public CLI (transitional)
+## Experimental flow
 
-```
-ctpf proxy          # Intercept / modify / export MCP traffic
-ctpf experiment     # Run controlled CTPF experiments
-ctpf targets        # Register MCP targets
-ctpf runs           # Inspect stored runs
-ctpf findings       # Inspect stored findings
-ctpf config         # Settings and OS-keyring credentials
-ctpf db             # Local database maintenance
-ctpf --version
-```
+1. The scenario declares its prompt, tools, mutation, trust transition, and expected effect.
+2. The coordinator allocates series and condition-scoped run identities.
+3. Baseline, manipulated, and hardened conditions run sequentially with isolated state.
+4. The proxy preserves protocol messages and the original for every modified response.
+5. Manual, driven-inference, or demonstrated external-runtime operation drives the controlled client.
+6. Scenario parsing records invocation, response, persistence, later consumption, and effect
+   separately.
+7. Comparison fails closed when causal or effect evidence is missing.
+8. Progress manifests preserve failures; bundles declare and hash copied artifacts.
 
-New verbs such as `inspect`, `evidence`, or `fixture` are deferred until a demonstrated
-CTPF experiment defines a real interface. The cascade fixture is implementation equipment
-behind `ctpf experiment`, not an independent CLI.
+## Packaged scenarios
 
-## Shared backbone
+### Cascade memo
 
-Persistence is a local SQLite database (`~/.ctpf/ctpf.db`). The common schema
-centers on `targets`, `runs`, `findings`, `evidence`, and `settings`, with
-additional tables retained for historical module data. IPI, CXP, Inject, Chain, and
-RXP tables may still exist for old databases even though their writers are gone.
+The released `ctpf==0.14.0` workflow uses two sessions per condition and can require exact
+write → artifact → later read → action → sink continuity. Demonstrated seams include manual Cursor,
+OpenAI-compatible driven inference, a sequential two-model matrix, and Claude Code.
 
-`core/db.py` provides shared database access used by the transitional CLI
-(`get_connection`, target/run/finding helpers, and the default DB path).
-`services/db_service.py` covers backup, reset, and delete operations only.
-Former UI/workflow service helpers were removed with the Web UI and
-orchestrator.
+### Pattern 2
 
-## Boundaries
+Unreleased source `main` contains a one-session direct response-to-effect scenario. It records the
+status response, matching `apply_change` invocation, and independently verified sink effect. One
+OpenAI-compatible acceptance series has been demonstrated; no Pattern 2 Claude Code result exists.
 
-### Core
+Shared engineering machinery across these scenarios is not scientific generality. Their prompts,
+tools, trust semantics, parsers, and oracle rules remain scenario-specific.
 
-`core` owns durable cross-cutting contracts: database access, schema migration,
-shared data models, configuration, credential lookup (OS keyring), and the
-provider-agnostic protocol used by driven inference.
+## Target boundaries
 
-### MCP
+Persisted targets identify one demonstrated execution seam:
 
-`mcp` centralizes client connections to MCP servers. Proxy adapters and other
-callers build on that shared async transport boundary.
+- `inference` with `driver=openai-compatible`, an exact model and generation pins, and an OS-keyring
+  credential name;
+- `agent-runtime` with `driver=claude-code-cli`, an exact model/runtime pin, and runtime-managed
+  authentication; or
+- an MCP server target used by observation/proxy workflows.
 
-### Proxy
+There is no adapter registry, plugin system, workflow DAG, recipe language, or general
+external-artifact ingestion contract.
 
-`proxy` is the CTPF observation center: bidirectional message capture, optional
-intercept with forward / modify / drop, session persistence, and export. Live
-mutation of server→client tool results is a first-class research path; full
-agent counterfactual replay is not assumed.
+## State and evidence
 
-### Operator surface
+SQLite at `~/.ctpf/ctpf.db` stores targets, settings, and operational records. Experiment traces,
+transcripts, mutations, effects, manifests, and bundles go to the operator-selected external
+research directory. The two stores are intentionally distinct.
 
-`cli.py` is the only public product surface.
+## Security and evidence invariants
 
-## LLM boundary
+- CTPF-owned local HTTP listeners bind to `127.0.0.1` only.
+- API keys are stored and read only through the OS keyring.
+- Modified responses preserve their originals.
+- Condition state and external effects are run-scoped.
+- Missing or contaminated evidence is not reconstructed.
+- Experiment output directories must be outside Git checkouts.
 
-Provider-facing code stays behind `core.llm` and the LiteLLM-backed implementation.
-The demonstrated remote target is OpenAI-compatible; the independent Claude Code adapter
-uses runtime-managed authentication rather than an embedded provider SDK.
+## Removed and frozen surfaces
 
-## Security and trust invariants
-
-- Any CTPF-owned local HTTP listener or proxy adapter binds to `127.0.0.1` only.
-- API keys go in the OS keyring only — never config files or source code.
-- Claude Code uses runtime-managed secure login and a minimal non-secret environment.
-
-## Configuration precedence
-
-```
-CLI flags (highest priority)
-  → Environment variables
-    → Database settings (ctpf config)
-      → YAML config file (~/.ctpf/config.yaml)
-        → Built-in defaults (lowest priority)
-```
-
-Credentials follow a separate boundary: OS keyring → error. Environment variables and
-configuration files are not credential sources.
-
-## Next steps
-
-- [Core Infrastructure](/architecture/core) — Database, configuration, shared models
-- [Proxy Module](/architecture/proxy-module) — Observation and intercept
-- [Audit Module](/architecture/audit-module) — Library scanners and reporting
+Web UI, Assist, RXP, Chain, Orchestrator, Imports, IPI, CXP, and Inject packages were removed.
+Historical database tables may remain for migration and deletion compatibility. Audit remains
+in-tree but frozen and secondary.
