@@ -1,4 +1,4 @@
-"""Tests for qai runs delete CLI command."""
+"""Tests for ctpf runs delete CLI command."""
 
 from __future__ import annotations
 
@@ -8,24 +8,24 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from q_ai.cli import app
-from q_ai.core.db import (
+from ctpf.cli import app
+from ctpf.core.db import (
     create_evidence,
     create_finding,
     create_run,
     get_connection,
 )
-from q_ai.core.models import Severity
+from ctpf.core.models import Severity
 
 runner = CliRunner()
 
 
 class TestRunsDelete:
-    """Tests for qai runs delete command."""
+    """Tests for ctpf runs delete command."""
 
     def test_runs_delete_with_yes(self, tmp_path: Path) -> None:
-        """qai runs delete --yes removes the run."""
-        db_path = tmp_path / "qai.db"
+        """ctpf runs delete --yes removes the run."""
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             rid = create_run(conn, module="audit", name="test-scan")
 
@@ -37,8 +37,8 @@ class TestRunsDelete:
             assert conn.execute("SELECT COUNT(*) FROM runs WHERE id = ?", (rid,)).fetchone()[0] == 0
 
     def test_runs_delete_cascades(self, tmp_path: Path) -> None:
-        """qai runs delete --yes removes findings and evidence too."""
-        db_path = tmp_path / "qai.db"
+        """ctpf runs delete --yes removes findings and evidence too."""
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             rid = create_run(conn, module="audit")
             fid = create_finding(
@@ -62,7 +62,7 @@ class TestRunsDelete:
 
     def test_runs_delete_counts_include_child_runs(self, tmp_path: Path) -> None:
         """Output counts reflect findings/evidence of the full cascade (parent + children)."""
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             parent_rid = create_run(conn, module="chain")
             child_rid = create_run(conn, module="audit", parent_run_id=parent_rid)
@@ -94,8 +94,8 @@ class TestRunsDelete:
         assert "3 evidence" in result.output
 
     def test_runs_delete_cascades_module_data(self, tmp_path: Path) -> None:
-        """qai runs delete removes module-backed rows (e.g. audit_scans)."""
-        db_path = tmp_path / "qai.db"
+        """ctpf runs delete removes module-backed rows (e.g. audit_scans)."""
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             rid = create_run(conn, module="audit")
             conn.execute(
@@ -118,18 +118,18 @@ class TestRunsDelete:
     def test_runs_delete_removes_session_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """qai runs delete cleans up proxy_sessions.session_file on disk."""
-        qai_home = tmp_path / ".qai"
-        qai_home.mkdir()
+        """ctpf runs delete cleans up proxy_sessions.session_file on disk."""
+        ctpf_home = tmp_path / ".ctpf"
+        ctpf_home.mkdir()
         # Override the module-level data-dir constant — it's evaluated once at import.
-        monkeypatch.setattr("q_ai.core.db._QAI_DATA_DIR", qai_home)
+        monkeypatch.setattr("ctpf.core.db._CTPF_DATA_DIR", ctpf_home)
 
-        sessions_dir = qai_home / "sessions"
+        sessions_dir = ctpf_home / "sessions"
         sessions_dir.mkdir()
         session_file = sessions_dir / "s.jsonl"
         session_file.write_text("{}\n", encoding="utf-8")
 
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             rid = create_run(conn, module="proxy")
             conn.execute(

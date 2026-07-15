@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from q_ai.core.db import (
+from ctpf.core.db import (
     get_connection,
     get_previously_seen_finding_keys,
     get_prior_run_counts_by_target,
 )
-from q_ai.core.models import RunStatus
+from ctpf.core.models import RunStatus
 
 
 @pytest.fixture()

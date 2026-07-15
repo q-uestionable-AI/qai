@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from q_ai.core.db import (
+from ctpf.core.db import (
     create_evidence,
     create_finding,
     create_run,
@@ -18,14 +18,14 @@ from q_ai.core.db import (
     list_runs,
     update_run_status,
 )
-from q_ai.core.models import RunStatus, Severity
+from ctpf.core.models import RunStatus, Severity
 
 
 class TestListRunsNameFilter:
     """Verify list_runs filtering by name and combinations with module."""
 
     def test_filter_by_name(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             create_run(conn, module="workflow", name="assess")
             create_run(conn, module="workflow", name="test_docs")
@@ -35,14 +35,14 @@ class TestListRunsNameFilter:
         assert all(r.name == "assess" for r in runs)
 
     def test_filter_by_name_no_match(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             create_run(conn, module="workflow", name="assess")
             runs = list_runs(conn, name="nonexistent")
         assert runs == []
 
     def test_filter_by_name_and_module(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             create_run(conn, module="workflow", name="assess")
             create_run(conn, module="audit", name="assess")
@@ -159,7 +159,7 @@ def _insert_rxp_validation(conn: sqlite3.Connection, run_id: str) -> str:
 
 class TestDeleteRunCascade:
     def test_deletes_parent_and_children(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             target_id = create_target(conn, type="server", name="t1")
             parent_id = create_run(conn, module="workflow", name="assess", target_id=target_id)
@@ -170,7 +170,7 @@ class TestDeleteRunCascade:
             assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
 
     def test_deletes_findings_and_evidence(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             parent_id = create_run(conn, module="workflow", name="assess")
             child_id = create_run(conn, module="audit", parent_run_id=parent_id)
@@ -190,7 +190,7 @@ class TestDeleteRunCascade:
             assert conn.execute("SELECT COUNT(*) FROM evidence").fetchone()[0] == 0
 
     def test_deletes_all_module_specific_tables(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             parent_id = create_run(conn, module="workflow", name="assess")
             child_audit = create_run(conn, module="audit", parent_run_id=parent_id)
@@ -231,7 +231,7 @@ class TestDeleteRunCascade:
                 assert count == 0, f"Table {table} still has {count} rows"
 
     def test_ipi_hits_deleted_via_uuid(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             parent_id = create_run(conn, module="workflow", name="test_docs")
             child_ipi = create_run(conn, module="ipi", parent_run_id=parent_id)
@@ -245,8 +245,8 @@ class TestDeleteRunCascade:
     def test_cleans_up_evidence_files(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("q_ai.core.db._QAI_DATA_DIR", tmp_path)
-        db_path = tmp_path / "qai.db"
+        monkeypatch.setattr("ctpf.core.db._CTPF_DATA_DIR", tmp_path)
+        db_path = tmp_path / "ctpf.db"
         evidence_file = tmp_path / "evidence" / "capture.png"
         evidence_file.parent.mkdir(parents=True, exist_ok=True)
         evidence_file.write_text("data")
@@ -272,8 +272,8 @@ class TestDeleteRunCascade:
     def test_cleans_up_proxy_session_files(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("q_ai.core.db._QAI_DATA_DIR", tmp_path)
-        db_path = tmp_path / "qai.db"
+        monkeypatch.setattr("ctpf.core.db._CTPF_DATA_DIR", tmp_path)
+        db_path = tmp_path / "ctpf.db"
         session_file = tmp_path / "sessions" / "session.json"
         session_file.parent.mkdir(parents=True, exist_ok=True)
         session_file.write_text("{}")
@@ -295,8 +295,8 @@ class TestDeleteRunCascade:
     ) -> None:
         data_dir = tmp_path / "safe"
         data_dir.mkdir()
-        monkeypatch.setattr("q_ai.core.db._QAI_DATA_DIR", data_dir)
-        db_path = tmp_path / "qai.db"
+        monkeypatch.setattr("ctpf.core.db._CTPF_DATA_DIR", data_dir)
+        db_path = tmp_path / "ctpf.db"
         outside_file = tmp_path / "outside" / "secret.txt"
         outside_file.parent.mkdir(parents=True, exist_ok=True)
         outside_file.write_text("sensitive")
@@ -317,14 +317,14 @@ class TestDeleteRunCascade:
         assert outside_file.exists()
 
     def test_returns_empty_list_for_no_files(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             parent_id = create_run(conn, module="workflow", name="assess")
             files = delete_run_cascade(conn, parent_id)
         assert files == []
 
     def test_nonexistent_run_raises(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn, pytest.raises(ValueError, match=r"Run .* not found"):
             delete_run_cascade(conn, "nonexistent")
 
@@ -336,7 +336,7 @@ class TestDeleteRunCascade:
 
 class TestExportRunBundle:
     def test_basic_export_structure(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             target_id = create_target(conn, type="server", name="test-srv")
             parent_id = create_run(
@@ -358,7 +358,7 @@ class TestExportRunBundle:
         assert isinstance(bundle["evidence"], list)
 
     def test_export_includes_child_runs(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             parent_id = create_run(conn, module="workflow", name="assess")
             child_id = create_run(conn, module="audit", parent_run_id=parent_id)
@@ -368,7 +368,7 @@ class TestExportRunBundle:
         assert bundle["child_runs"][0]["id"] == child_id
 
     def test_export_includes_findings_and_evidence(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             parent_id = create_run(conn, module="workflow", name="assess")
             child_id = create_run(conn, module="audit", parent_run_id=parent_id)
@@ -397,7 +397,7 @@ class TestExportRunBundle:
         assert "content" not in bundle["evidence"][0]
 
     def test_export_includes_module_data(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             parent_id = create_run(conn, module="workflow", name="assess")
             child_id = create_run(conn, module="audit", parent_run_id=parent_id)
@@ -407,6 +407,6 @@ class TestExportRunBundle:
         assert len(bundle["audit_scans"]) == 1
 
     def test_export_nonexistent_run_raises(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn, pytest.raises(ValueError, match=r"Run .* not found"):
             export_run_bundle(conn, "nonexistent")

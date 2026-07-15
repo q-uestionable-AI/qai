@@ -4,7 +4,7 @@ description: Current CTPF research harness shape
 ---
 
 CTPF Research Harness is a local Python harness with one preferred public operator entry point:
-the `ctpf` CLI. The former `qai` executable remains a compatibility alias. This page matches the
+the `ctpf` CLI. This page matches the
 durable invariants in the repository
 [`docs/Architecture.md`](https://github.com/q-uestionable-AI/CTPF/blob/main/docs/Architecture.md)
 after the Phase 6 fixture prune.
@@ -49,7 +49,7 @@ behind `ctpf experiment`, not an independent CLI.
 
 ## Shared backbone
 
-Persistence is a local SQLite database (`~/.qai/qai.db`). The common schema
+Persistence is a local SQLite database (`~/.ctpf/ctpf.db`). The common schema
 centers on `targets`, `runs`, `findings`, `evidence`, and `settings`, with
 additional tables retained for historical module data. IPI, CXP, Inject, Chain, and
 RXP tables may still exist for old databases even though their writers are gone.
@@ -102,7 +102,7 @@ uses runtime-managed authentication rather than an embedded provider SDK.
 CLI flags (highest priority)
   → Environment variables
     → Database settings (ctpf config)
-      → YAML config file (~/.qai/config.yaml)
+      → YAML config file (~/.ctpf/config.yaml)
         → Built-in defaults (lowest priority)
 ```
 

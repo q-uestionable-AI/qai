@@ -9,14 +9,14 @@ Integration tests requiring fixture servers are skipped.
 
 import pytest
 
-from q_ai.audit.scanner.tool_poisoning import (
+from ctpf.audit.scanner.tool_poisoning import (
     ToolPoisoningScanner,
     _check_homoglyphs,
     _find_hidden_unicode,
     _levenshtein_ratio,
     _shared_prefix_length,
 )
-from q_ai.mcp.models import ScanContext
+from ctpf.mcp.models import ScanContext
 
 
 @pytest.mark.skip(reason="requires fixture server")
@@ -77,7 +77,7 @@ class TestSyntheticChecks:
         scanner = ToolPoisoningScanner()
         findings = scanner._check_embedded_instructions(tool)
         assert len(findings) >= 1
-        assert findings[0].rule_id == "QAI-TPOIS-001"
+        assert findings[0].rule_id == "CTPF-TPOIS-001"
 
     def test_instruction_pattern_ignore_previous(self):
         """Detects 'ignore previous instructions' pattern."""
@@ -125,7 +125,7 @@ class TestSyntheticDuplicateChecks:
         scanner = ToolPoisoningScanner()
         findings = await scanner.scan(ctx)
 
-        dup = [f for f in findings if f.rule_id == "QAI-TPOIS-005"]
+        dup = [f for f in findings if f.rule_id == "CTPF-TPOIS-005"]
         assert len(dup) == 1
         assert dup[0].severity.value == "info"
         assert dup[0].metadata["shared_prefix"] == "git_diff_"
@@ -143,7 +143,7 @@ class TestSyntheticDuplicateChecks:
         scanner = ToolPoisoningScanner()
         findings = await scanner.scan(ctx)
 
-        dup = [f for f in findings if f.rule_id == "QAI-TPOIS-005"]
+        dup = [f for f in findings if f.rule_id == "CTPF-TPOIS-005"]
         assert len(dup) == 1
         assert dup[0].severity.value == "high"
         assert dup[0].metadata["prefix_ratio"] < 0.5
@@ -164,7 +164,7 @@ class TestSyntheticDuplicateChecks:
         scanner = ToolPoisoningScanner()
         findings = await scanner.scan(ctx)
 
-        dup = [f for f in findings if f.rule_id == "QAI-TPOIS-005"]
+        dup = [f for f in findings if f.rule_id == "CTPF-TPOIS-005"]
         assert len(dup) == 0, f"Should not flag at {ratio:.2%} (below 85% threshold)"
 
     @pytest.mark.asyncio
@@ -178,7 +178,7 @@ class TestSyntheticDuplicateChecks:
         scanner = ToolPoisoningScanner()
         findings = await scanner.scan(ctx)
 
-        dup = [f for f in findings if f.rule_id == "QAI-TPOIS-005"]
+        dup = [f for f in findings if f.rule_id == "CTPF-TPOIS-005"]
         assert len(dup) == 1
         assert dup[0].severity.value == "critical"
 
@@ -193,7 +193,7 @@ class TestSyntheticDuplicateChecks:
         scanner = ToolPoisoningScanner()
         findings = await scanner.scan(ctx)
 
-        dup = [f for f in findings if f.rule_id == "QAI-TPOIS-005"]
+        dup = [f for f in findings if f.rule_id == "CTPF-TPOIS-005"]
         # Only flagged if similarity >= 85%
         ratio = _levenshtein_ratio("list_users", "list_roles")
         if ratio >= 0.85:

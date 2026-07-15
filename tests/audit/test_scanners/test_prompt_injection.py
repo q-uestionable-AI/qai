@@ -9,14 +9,14 @@ Integration tests requiring fixture servers are skipped.
 
 import pytest
 
-from q_ai.audit.scanner.prompt_injection import (
+from ctpf.audit.scanner.prompt_injection import (
     PromptInjectionScanner,
     _find_cross_tool_references,
     _find_hidden_unicode,
     _find_injection_patterns,
     _find_suspicious_urls,
 )
-from q_ai.mcp.models import ScanContext
+from ctpf.mcp.models import ScanContext
 
 
 @pytest.mark.skip(reason="requires fixture server")

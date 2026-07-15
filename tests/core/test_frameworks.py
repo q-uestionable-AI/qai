@@ -1,10 +1,10 @@
-"""Tests for q-ai framework resolver."""
+"""Tests for CTPF framework resolver."""
 
 from __future__ import annotations
 
 import pytest
 
-from q_ai.core.frameworks import FrameworkResolver
+from ctpf.core.frameworks import FrameworkResolver
 
 ALL_CATEGORIES = [
     "command_injection",

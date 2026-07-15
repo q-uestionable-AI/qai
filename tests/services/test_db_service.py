@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from q_ai.core.db import create_finding, create_run, create_target
-from q_ai.core.models import Severity
-from q_ai.services.db_service import (
+from ctpf.core.db import create_finding, create_run, create_target
+from ctpf.core.models import Severity
+from ctpf.services.db_service import (
     backup_database,
     delete_target,
     reset_database,
@@ -20,12 +20,12 @@ class TestBackupDatabase:
     """Tests for backup_database service function."""
 
     def test_backup_database_default_path(self, db: sqlite3.Connection, tmp_path: Path) -> None:
-        """Backup with no output_path creates a timestamped file in ~/.qai/backups/."""
+        """Backup with no output_path creates a timestamped file in ~/.ctpf/backups/."""
         db_file = tmp_path / "test.db"
         result = backup_database(db_file)
         assert result.exists()
         assert result.parent.name == "backups"
-        assert result.name.startswith("qai-")
+        assert result.name.startswith("ctpf-")
         assert result.suffix == ".db"
         # Clean up
         result.unlink(missing_ok=True)

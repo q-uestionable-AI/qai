@@ -3,8 +3,7 @@
 **Repository-local instructions for coding agents.** Do not create a parallel `CLAUDE.md`
 or other second agent-instruction file.
 
-CTPF Research Harness (`ctpf` on PyPI from v0.12.0, `q-uestionable-ai` compatibility
-distribution, preferred CLI `ctpf`, temporary alias `qai`)
+CTPF Research Harness (`ctpf` on PyPI and the `ctpf` CLI)
 is a security research tool for agentic AI and a lean research harness for Capability Trust
 Propagation Failure (CTPF). Durable program guidance lives in the lab vault
 `CTPF/Project Instructions.md`; current sequence and progress live in the active plan and boards.
@@ -70,7 +69,7 @@ These are product invariants, not preferences.
 
 - Python >= 3.11
 - Package manager: `uv` (PEP 735 groups — sync with `uv sync --group dev`)
-- Database: SQLite (`~/.qai/qai.db`)
+- Database: SQLite (`~/.ctpf/ctpf.db`)
 - CLI: Typer
 - MCP: official SDK (async-native)
 - Lint/format: ruff (line length 100)
@@ -110,11 +109,11 @@ These rules exist to prevent recurring bugs. Follow them exactly.
 ## Repo Layout
 
 ```text
-src/q_ai/
+src/ctpf/
 ├── core/           # shared DB, models, config
 ├── mcp/            # MCP connectivity
 ├── proxy/          # traffic capture / intercept (CTPF center)
-├── ctpf/           # trust-transition and evidence kernel
+├── kernel/         # trust-transition and evidence kernel
 ├── audit/          # capability enumeration and scanners
 └── services/       # shared service-layer helpers (db_service)
 
@@ -131,9 +130,8 @@ uv sync --group dev
 uv run pytest
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
-uv run mypy src/q_ai/
+uv run mypy src/ctpf/
 ctpf --help
-qai --help
 ```
 
 Without `--group dev`, dev dependencies get stripped.
@@ -158,14 +156,13 @@ Without `--group dev`, dev dependencies get stripped.
 Run before every commit:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy src/q_ai/ && uv run pre-commit run --all-files
+uv run ruff check . && uv run ruff format --check . && uv run mypy src/ctpf/ && uv run pre-commit run --all-files
 ```
 
 Smoke test the CLI after changes:
 
 ```bash
 ctpf --help
-qai --help
 ```
 
 Test scope:

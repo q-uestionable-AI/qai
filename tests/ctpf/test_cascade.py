@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from q_ai.ctpf import (
+from ctpf.kernel import (
     BASELINE_TRACE_NAME,
     CONDITION_BASELINE,
     CONDITION_MANIPULATED,

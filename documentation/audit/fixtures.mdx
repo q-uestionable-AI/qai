@@ -3,7 +3,7 @@ title: Test Fixtures
 description: Vulnerable MCP server fixtures used in the test suite
 ---
 
-The qai test suite includes intentionally vulnerable MCP server fixtures for scanner validation. These are internal test infrastructure — they live in the test suite, not as user-facing tools.
+The ctpf test suite includes intentionally vulnerable MCP server fixtures for scanner validation. These are internal test infrastructure — they live in the test suite, not as user-facing tools.
 
 ## Where Fixtures Live
 
@@ -31,14 +31,17 @@ if __name__ == "__main__":
     mcp.run(transport="stdio")
 ```
 
-Scan it with:
+Scan it through the retained library:
 
-```bash
-qai audit scan \
-  --transport stdio \
-  --command "python my_test_server.py"
+```python
+from ctpf.audit.orchestrator import run_scan
+from ctpf.mcp.connection import MCPConnection
+
+async with MCPConnection.stdio("python", ["my_test_server.py"]) as connection:
+    result = await run_scan(connection)
 ```
 
 <Note>
-Each scanner targets one OWASP MCP Top 10 category. See [Scanner Catalog](/audit/scanners) for what each scanner checks and how to run specific scanners with `--checks`.
+Each scanner targets one OWASP MCP Top 10 category. See [Scanner Catalog](/audit/scanners)
+for registry names and subset selection with `check_names`.
 </Note>

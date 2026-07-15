@@ -1,10 +1,10 @@
-"""Tests for q_ai.mcp.models — MCP domain data models."""
+"""Tests for ctpf.mcp.models — MCP domain data models."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from q_ai.mcp.models import Direction, ScanContext, ScanFinding, Severity, Transport
+from ctpf.mcp.models import Direction, ScanContext, ScanFinding, Severity, Transport
 
 
 class TestSeverity:

@@ -7,9 +7,9 @@ CTPF does not accept API keys or remote credentials from environment variables. 
 in the OS keyring with `ctpf config set-credential` and reference only the credential name from an
 inference target.
 
-The cascade experiment uses internal, run-scoped `QAI_CASCADE_*` variables when it launches its
+The cascade experiment uses internal, run-scoped `CTPF_CASCADE_*` variables when it launches its
 packaged stdio fixture. The historical Pattern 2 calibration fixture similarly uses
-`QAI_PATTERN2_*`. These values contain run identifiers and reset controls, not credentials, and
+`CTPF_PATTERN2_*`. These values contain run identifiers and reset controls, not credentials, and
 are managed by the harness or its tests.
 
 The configuration resolver can consult an explicitly mapped environment variable for a

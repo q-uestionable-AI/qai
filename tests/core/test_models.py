@@ -1,10 +1,10 @@
-"""Tests for q-ai core data models."""
+"""Tests for CTPF core data models."""
 
 from __future__ import annotations
 
 import datetime
 
-from q_ai.core.models import (
+from ctpf.core.models import (
     Evidence,
     Finding,
     Run,

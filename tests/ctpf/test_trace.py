@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from q_ai.ctpf import (
+from ctpf.kernel import (
     CONDITION_BASELINE,
     CONDITION_MANIPULATED,
     ExternalEffect,

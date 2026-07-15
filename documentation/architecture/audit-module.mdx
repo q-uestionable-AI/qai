@@ -3,7 +3,7 @@ title: Audit Module Architecture
 description: Scanner pipeline, MCP connection, and multi-format reporting
 ---
 
-The audit module (`q_ai.audit`) scans MCP servers for security vulnerabilities. It connects to a server, enumerates its tools/resources/prompts, runs scanner checks against them, and produces findings mapped to security frameworks.
+The audit module (`ctpf.audit`) scans MCP servers for security vulnerabilities. It connects to a server, enumerates its tools/resources/prompts, runs scanner checks against them, and produces findings mapped to security frameworks.
 
 ## Module Structure
 
@@ -19,16 +19,15 @@ audit/
 │   ├── html_report.py
 │   ├── ndjson_report.py
 │   └── csv_report.py
-├── cli.py               # scan, enumerate, list-checks, report commands
-├── adapter.py           # AuditAdapter for orchestrator integration
+├── cli.py               # internal, unmounted Typer app used by tests
 └── mapper.py            # persist_scan() — bridges ScanFinding → core Finding for DB
 ```
 
 ## Scan Pipeline
 
-1. **Connect** — `MCPConnection` (from `q_ai.mcp`) opens a stdio, SSE, or Streamable HTTP connection to the target server
+1. **Connect** — `MCPConnection` (from `ctpf.mcp`) opens a stdio, SSE, or Streamable HTTP connection to the target server
 2. **Enumerate** — `enumerate_server()` discovers tools, resources, and prompts
-3. **Scan** — `run_scan()` runs all registered scanners (or a filtered subset via `--checks`) against the enumerated capabilities
+3. **Scan** — `run_scan()` runs all registered scanners, or a filtered subset passed as `check_names`
 4. **Map** — Each scanner produces `ScanFinding` objects with a `category` field (e.g., `command_injection`, `auth`). The `FrameworkResolver` populates `framework_ids` with OWASP MCP Top 10, MITRE ATLAS, CWE, and OWASP Agentic Top 10 mappings.
 5. **Report** — Results serialize to JSON, SARIF, HTML, NDJSON, or CSV
 6. **Persist** — `persist_scan()` maps `ScanFinding` → core `Finding` model for database storage
@@ -50,14 +49,13 @@ Scanners are registered in `scanner/registry.py`. Each scanner targets one OWASP
 | `shadow_servers` | shadow_servers | Unauthorized MCP server detection |
 | `context_sharing` | context_sharing | Cross-context information leakage |
 
-Use `qai audit list-checks` to see available scanners and their framework mappings.
-
-## Adapter
-
-`AuditAdapter` integrates the audit module with the orchestrator for workflow execution. It creates a child run, calls `run_scan()`, persists results, and emits findings via the workflow runner.
+Use `get_all_scanners()` or `get_scanner(name)` from
+`ctpf.audit.scanner.registry` to inspect the registry.
 
 ## Reporting
 
-All report generators take a `ScanResult` object (containing findings, server info, scanner metadata) and produce formatted output. The `--format` flag on `qai audit scan` and `qai audit report` selects the format.
+All report generators take a `ScanResult` object containing findings, server info, and
+scanner metadata. Import the required generator from `ctpf.audit.reporting` and pass an
+explicit output path.
 
 SARIF output follows the OASIS SARIF 2.1.0 schema and is compatible with GitHub Code Scanning.

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from q_ai.core.mitigation import (
+from ctpf.core.mitigation import (
     DEFAULT_DISCLAIMER,
     VALID_CATEGORIES,
     GuidanceSection,
@@ -16,7 +16,7 @@ from q_ai.core.mitigation import (
     SourceType,
     normalize_metadata,
 )
-from q_ai.mcp.models import ScanFinding, Severity
+from ctpf.mcp.models import ScanFinding, Severity
 
 # ---------------------------------------------------------------------------
 # StrEnum types

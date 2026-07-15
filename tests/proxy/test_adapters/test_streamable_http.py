@@ -1,4 +1,4 @@
-"""Tests for q_ai.proxy.adapters.streamable_http -- StreamableHttpServerAdapter
+"""Tests for ctpf.proxy.adapters.streamable_http -- StreamableHttpServerAdapter
 and StreamableHttpClientAdapter.
 
 Uses mocked SDK streamable_http_client() / StreamableHTTPServerTransport with
@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 import anyio
 from mcp.shared.message import SessionMessage
 
-from q_ai.proxy.adapters.streamable_http import (
+from ctpf.proxy.adapters.streamable_http import (
     StreamableHttpClientAdapter,
     StreamableHttpServerAdapter,
 )
@@ -41,7 +41,7 @@ class TestStreamableHttpServerAdapterRead:
                 yield r, w, lambda: None
 
         with patch(
-            "q_ai.proxy.adapters.streamable_http.streamable_http_client",
+            "ctpf.proxy.adapters.streamable_http.streamable_http_client",
             fake_streamable_http_client,
         ):
             async with StreamableHttpServerAdapter(url="http://fake:3000/mcp") as adapter:
@@ -61,7 +61,7 @@ class TestStreamableHttpServerAdapterRead:
 
         with (
             patch(
-                "q_ai.proxy.adapters.streamable_http.streamable_http_client",
+                "ctpf.proxy.adapters.streamable_http.streamable_http_client",
                 fake_streamable_http_client,
             ),
             caplog.at_level(logging.WARNING),
@@ -97,7 +97,7 @@ class TestStreamableHttpServerAdapterWrite:
             write_recv.close()
 
         with patch(
-            "q_ai.proxy.adapters.streamable_http.streamable_http_client",
+            "ctpf.proxy.adapters.streamable_http.streamable_http_client",
             fake_streamable_http_client,
         ):
             async with StreamableHttpServerAdapter(url="http://fake:3000/mcp") as adapter:
@@ -119,7 +119,7 @@ class TestStreamableHttpServerAdapterClose:
                 yield r, w, lambda: None
 
         with patch(
-            "q_ai.proxy.adapters.streamable_http.streamable_http_client",
+            "ctpf.proxy.adapters.streamable_http.streamable_http_client",
             fake_streamable_http_client,
         ):
             async with StreamableHttpServerAdapter(url="http://fake:3000/mcp") as adapter:
@@ -135,7 +135,7 @@ class TestStreamableHttpServerAdapterClose:
                 yield r, w, lambda: None
 
         with patch(
-            "q_ai.proxy.adapters.streamable_http.streamable_http_client",
+            "ctpf.proxy.adapters.streamable_http.streamable_http_client",
             fake_streamable_http_client,
         ):
             async with StreamableHttpServerAdapter(url="http://fake:3000/mcp") as adapter:
@@ -156,7 +156,7 @@ class TestStreamableHttpServerAdapterClose:
                 yield r, w, lambda: None
 
         with patch(
-            "q_ai.proxy.adapters.streamable_http.streamable_http_client",
+            "ctpf.proxy.adapters.streamable_http.streamable_http_client",
             fake_streamable_http_client,
         ):
             async with StreamableHttpServerAdapter(url="http://fake:3000/mcp") as adapter:
@@ -176,7 +176,7 @@ class TestStreamableHttpServerAdapterClose:
                 yield r, w, lambda: None
 
         with patch(
-            "q_ai.proxy.adapters.streamable_http.streamable_http_client",
+            "ctpf.proxy.adapters.streamable_http.streamable_http_client",
             fake_streamable_http_client,
         ):
             async with StreamableHttpServerAdapter(url="http://fake:3000/mcp") as adapter:

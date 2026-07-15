@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from q_ai.audit.mapper import _build_description, _map_severity, persist_scan
-from q_ai.audit.orchestrator import ScanResult
-from q_ai.core.db import create_run, create_target, get_connection
-from q_ai.core.mitigation import GuidanceSection, MitigationGuidance, SectionKind, SourceType
-from q_ai.core.models import Severity as CoreSeverity
-from q_ai.core.schema import migrate
-from q_ai.mcp.models import ScanFinding, Severity
+from ctpf.audit.mapper import _build_description, _map_severity, persist_scan
+from ctpf.audit.orchestrator import ScanResult
+from ctpf.core.db import create_run, create_target, get_connection
+from ctpf.core.mitigation import GuidanceSection, MitigationGuidance, SectionKind, SourceType
+from ctpf.core.models import Severity as CoreSeverity
+from ctpf.core.schema import migrate
+from ctpf.mcp.models import ScanFinding, Severity
 
 
 class TestMapSeverity:

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from q_ai.core.mitigation import (
+from ctpf.core.mitigation import (
     DEFAULT_DISCLAIMER,
     GuidanceSection,
     MitigationGuidance,

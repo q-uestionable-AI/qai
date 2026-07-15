@@ -13,14 +13,14 @@ from pathlib import Path
 
 import pytest
 
-from q_ai.audit.reporting.sarif_report import (
+from ctpf.audit.reporting.sarif_report import (
     _SEVERITY_MAP,
     _build_rules,
     _sarif_level,
     _security_severity,
     generate_sarif_report,
 )
-from q_ai.mcp.models import ScanFinding, Severity
+from ctpf.mcp.models import ScanFinding, Severity
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -41,7 +41,7 @@ class _FakeScanResult:
 
 
 def _make_finding(
-    rule_id: str = "QAI-INJ-CWE78-test",
+    rule_id: str = "CTPF-INJ-CWE78-test",
     category: str = "command_injection",
     title: str = "Test finding",
     description: str = "A test vulnerability",
@@ -66,25 +66,25 @@ def _make_finding(
 def sample_findings() -> list[ScanFinding]:
     return [
         _make_finding(
-            rule_id="QAI-INJ-CWE78-test",
+            rule_id="CTPF-INJ-CWE78-test",
             category="command_injection",
             title="Command injection",
             severity=Severity.CRITICAL,
         ),
         _make_finding(
-            rule_id="QAI-AUTH-001",
+            rule_id="CTPF-AUTH-001",
             category="auth",
             title="Missing auth",
             severity=Severity.HIGH,
         ),
         _make_finding(
-            rule_id="QAI-INJ-CWE78-test",
+            rule_id="CTPF-INJ-CWE78-test",
             category="command_injection",
             title="Command injection duplicate",
             severity=Severity.CRITICAL,
         ),
         _make_finding(
-            rule_id="QAI-PERM-001",
+            rule_id="CTPF-PERM-001",
             category="permissions",
             title="Privilege escalation",
             severity=Severity.MEDIUM,
@@ -119,7 +119,7 @@ class TestSarifReportStructure:
     def test_tool_driver(self, sarif_output: dict) -> None:
         """Tool driver has name, version, informationUri, and rules."""
         driver = sarif_output["runs"][0]["tool"]["driver"]
-        assert driver["name"] == "q-ai"
+        assert driver["name"] == "CTPF"
         assert "version" in driver
         assert "informationUri" in driver
         assert "rules" in driver
@@ -134,12 +134,12 @@ class TestSarifRulesDeduplication:
         rule_ids = [r["id"] for r in rules]
         # 4 findings but only 3 unique rule_ids
         assert len(rules) == 3
-        assert rule_ids == ["QAI-INJ-CWE78-test", "QAI-AUTH-001", "QAI-PERM-001"]
+        assert rule_ids == ["CTPF-INJ-CWE78-test", "CTPF-AUTH-001", "CTPF-PERM-001"]
 
     def test_first_occurrence_wins(self, sample_findings: list[ScanFinding]) -> None:
         """When rule_id repeats, first finding's metadata is used."""
         rules = _build_rules(sample_findings)
-        inj_rule = next(r for r in rules if r["id"] == "QAI-INJ-CWE78-test")
+        inj_rule = next(r for r in rules if r["id"] == "CTPF-INJ-CWE78-test")
         assert inj_rule["name"] == "Command injection"
 
 
@@ -345,7 +345,7 @@ class TestDictToFinding:
 
     def test_round_trip(self) -> None:
         """finding_to_dict -> dict_to_finding produces equivalent ScanFinding."""
-        from q_ai.audit.reporting.json_report import (
+        from ctpf.audit.reporting.json_report import (
             dict_to_finding,
             finding_to_dict,
         )

@@ -1,4 +1,4 @@
-"""Tests for qai config CLI commands."""
+"""Tests for ctpf config CLI commands."""
 
 from __future__ import annotations
 
@@ -7,14 +7,14 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from q_ai.cli import app
+from ctpf.cli import app
 
 runner = CliRunner()
 
 
 class TestConfigSet:
     def test_set_value(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         result = runner.invoke(
             app,
             ["config", "set", "audit.default_transport", "stdio", "--db-path", str(db_path)],
@@ -25,7 +25,7 @@ class TestConfigSet:
 
 class TestConfigGet:
     def test_get_not_set(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         result = runner.invoke(
             app,
             ["config", "get", "nonexistent", "--db-path", str(db_path)],
@@ -34,7 +34,7 @@ class TestConfigGet:
         assert "not set" in result.output
 
     def test_set_then_get_roundtrip(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         runner.invoke(
             app,
             ["config", "set", "audit.default_transport", "stdio", "--db-path", str(db_path)],
@@ -51,7 +51,7 @@ class TestConfigGet:
 class TestConfigSetCredential:
     def test_set_credential(self) -> None:
         with (
-            patch("q_ai.core.cli.config.set_credential") as mock_set,
+            patch("ctpf.core.cli.config.set_credential") as mock_set,
             patch("getpass.getpass", return_value="sk-test-key"),
         ):
             result = runner.invoke(
@@ -74,7 +74,7 @@ class TestConfigSetCredential:
 
 class TestConfigDeleteCredential:
     def test_delete_credential(self) -> None:
-        with patch("q_ai.core.cli.config.delete_credential") as mock_del:
+        with patch("ctpf.core.cli.config.delete_credential") as mock_del:
             result = runner.invoke(
                 app,
                 ["config", "delete-credential", "anthropic"],
@@ -86,7 +86,7 @@ class TestConfigDeleteCredential:
 
 class TestConfigListProviders:
     def test_list_providers(self) -> None:
-        with patch("q_ai.core.cli.config.get_credential") as mock_get:
+        with patch("ctpf.core.cli.config.get_credential") as mock_get:
             mock_get.side_effect = lambda p: "key" if p == "anthropic" else None
             result = runner.invoke(app, ["config", "list-providers"])
         assert result.exit_code == 0
@@ -95,7 +95,7 @@ class TestConfigListProviders:
 
 class TestConfigImportLegacy:
     def test_import_no_legacy(self) -> None:
-        with patch("q_ai.core.cli.config.import_legacy_credentials", return_value=[]):
+        with patch("ctpf.core.cli.config.import_legacy_credentials", return_value=[]):
             result = runner.invoke(app, ["config", "import-legacy-credentials"])
         assert result.exit_code == 0
         assert "No legacy" in result.output

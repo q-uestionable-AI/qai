@@ -9,7 +9,7 @@ Integration tests requiring fixture servers are skipped.
 
 import pytest
 
-from q_ai.audit.scanner.context_sharing import (
+from ctpf.audit.scanner.context_sharing import (
     ContextSharingScanner,
     _build_error_args,
     _build_minimal_args,
@@ -18,7 +18,7 @@ from q_ai.audit.scanner.context_sharing import (
     _find_sensitive_in_resource,
     _find_session_data,
 )
-from q_ai.mcp.models import ScanContext
+from ctpf.mcp.models import ScanContext
 
 
 @pytest.mark.skip(reason="requires fixture server")
@@ -94,7 +94,7 @@ class TestSyntheticChecks:
         scanner = ContextSharingScanner()
         findings = await scanner.scan(ctx)
 
-        scoping_findings = [f for f in findings if f.rule_id == "QAI-CTX-004"]
+        scoping_findings = [f for f in findings if f.rule_id == "CTPF-CTX-004"]
         assert len(scoping_findings) == 1
 
     @pytest.mark.asyncio
@@ -114,12 +114,12 @@ class TestSyntheticChecks:
         scanner = ContextSharingScanner()
         findings = await scanner.scan(ctx)
 
-        scoping_findings = [f for f in findings if f.rule_id == "QAI-CTX-004"]
+        scoping_findings = [f for f in findings if f.rule_id == "CTPF-CTX-004"]
         assert len(scoping_findings) == 0
 
     @pytest.mark.asyncio
     async def test_mixed_resources_partial_findings(self):
-        """Only unscoped resources trigger QAI-CTX-004."""
+        """Only unscoped resources trigger CTPF-CTX-004."""
         ctx = ScanContext(
             tools=[],
             resources=[
@@ -139,7 +139,7 @@ class TestSyntheticChecks:
         scanner = ContextSharingScanner()
         findings = await scanner.scan(ctx)
 
-        scoping_findings = [f for f in findings if f.rule_id == "QAI-CTX-004"]
+        scoping_findings = [f for f in findings if f.rule_id == "CTPF-CTX-004"]
         assert len(scoping_findings) == 1
         assert "global_config" in scoping_findings[0].title
 

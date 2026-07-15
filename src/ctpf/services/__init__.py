@@ -1,0 +1,7 @@
+"""Shared service-layer helpers for CTPF Research Harness.
+
+Retains database management helpers used by the core CLI
+(:mod:`ctpf.services.db_service`). Workflow, run, finding, audit,
+evidence, and managed-listener services were removed in CTPF Reconnect
+Phase 1b.
+"""

@@ -1,4 +1,4 @@
-"""Smoke test for q-ai proxy CLI."""
+"""Smoke test for CTPF proxy CLI."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from pathlib import Path
 from mcp.types import JSONRPCMessage, JSONRPCRequest, JSONRPCResponse
 from typer.testing import CliRunner
 
-from q_ai.mcp.models import Direction, Transport
-from q_ai.proxy.cli import app
-from q_ai.proxy.models import ProxyMessage
-from q_ai.proxy.session_store import SessionStore
+from ctpf.mcp.models import Direction, Transport
+from ctpf.proxy.cli import app
+from ctpf.proxy.models import ProxyMessage
+from ctpf.proxy.session_store import SessionStore
 
 
 def _strip_ansi(text: str) -> str:

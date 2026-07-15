@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from q_ai.core.llm import (
+from ctpf.core.llm import (
     NormalizedResponse,
     ToolCall,
     get_provider_client,
@@ -86,13 +86,13 @@ class TestGetProviderClient:
     """Tests for get_provider_client()."""
 
     def test_returns_litellm(self) -> None:
-        from q_ai.core.llm_litellm import LiteLLMClient
+        from ctpf.core.llm_litellm import LiteLLMClient
 
         client = get_provider_client("anthropic/claude-sonnet-4-20250514")
         assert isinstance(client, LiteLLMClient)
 
     def test_returns_litellm_for_bare_model(self) -> None:
-        from q_ai.core.llm_litellm import LiteLLMClient
+        from ctpf.core.llm_litellm import LiteLLMClient
 
         client = get_provider_client("claude-sonnet-4-20250514")
         assert isinstance(client, LiteLLMClient)

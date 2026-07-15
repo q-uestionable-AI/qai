@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from q_ai.audit.orchestrator import ScanResult, run_scan
-from q_ai.audit.scanner.base import BaseScanner
-from q_ai.core.frameworks import FrameworkResolver
-from q_ai.core.mitigation import MitigationGuidance
-from q_ai.mcp.models import ScanContext, ScanFinding, Severity
+from ctpf.audit.orchestrator import ScanResult, run_scan
+from ctpf.audit.scanner.base import BaseScanner
+from ctpf.core.frameworks import FrameworkResolver
+from ctpf.core.mitigation import MitigationGuidance
+from ctpf.mcp.models import ScanContext, ScanFinding, Severity
 
 
 class FakeScanner(BaseScanner):
@@ -65,12 +65,12 @@ class TestRunScan:
 
         with (
             patch(
-                "q_ai.audit.orchestrator.enumerate_server",
+                "ctpf.audit.orchestrator.enumerate_server",
                 new_callable=AsyncMock,
                 return_value=mock_context,
             ),
             patch(
-                "q_ai.audit.orchestrator.get_all_scanners",
+                "ctpf.audit.orchestrator.get_all_scanners",
                 return_value=[scanner],
             ),
         ):
@@ -111,12 +111,12 @@ class TestRunScan:
 
         with (
             patch(
-                "q_ai.audit.orchestrator.enumerate_server",
+                "ctpf.audit.orchestrator.enumerate_server",
                 new_callable=AsyncMock,
                 return_value=mock_context,
             ),
             patch(
-                "q_ai.audit.orchestrator.get_scanner",
+                "ctpf.audit.orchestrator.get_scanner",
                 return_value=scanner,
             ),
         ):
@@ -148,12 +148,12 @@ class TestRunScan:
 
         with (
             patch(
-                "q_ai.audit.orchestrator.enumerate_server",
+                "ctpf.audit.orchestrator.enumerate_server",
                 new_callable=AsyncMock,
                 return_value=mock_context,
             ),
             patch(
-                "q_ai.audit.orchestrator.get_all_scanners",
+                "ctpf.audit.orchestrator.get_all_scanners",
                 return_value=[FailingScanner()],
             ),
         ):
@@ -177,7 +177,7 @@ class TestRunScan:
         mock_conn = MagicMock()
 
         with patch(
-            "q_ai.audit.orchestrator.enumerate_server",
+            "ctpf.audit.orchestrator.enumerate_server",
             new_callable=AsyncMock,
             return_value=mock_context,
         ):
@@ -200,12 +200,12 @@ class TestRunScan:
 
         with (
             patch(
-                "q_ai.audit.orchestrator.enumerate_server",
+                "ctpf.audit.orchestrator.enumerate_server",
                 new_callable=AsyncMock,
                 return_value=mock_context,
             ),
             patch(
-                "q_ai.audit.orchestrator.get_all_scanners",
+                "ctpf.audit.orchestrator.get_all_scanners",
                 return_value=[],
             ),
         ):
@@ -238,12 +238,12 @@ class TestRunScan:
 
         with (
             patch(
-                "q_ai.audit.orchestrator.enumerate_server",
+                "ctpf.audit.orchestrator.enumerate_server",
                 new_callable=AsyncMock,
                 return_value=mock_context,
             ),
             patch(
-                "q_ai.audit.orchestrator.get_all_scanners",
+                "ctpf.audit.orchestrator.get_all_scanners",
                 return_value=[scanner],
             ),
         ):

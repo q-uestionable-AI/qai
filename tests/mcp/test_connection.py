@@ -1,10 +1,10 @@
-"""Tests for q_ai.mcp.connection — MCP server connector."""
+"""Tests for ctpf.mcp.connection — MCP server connector."""
 
 from __future__ import annotations
 
 import pytest
 
-from q_ai.mcp.connection import MCPConnection
+from ctpf.mcp.connection import MCPConnection
 
 
 class TestStdioFactory:

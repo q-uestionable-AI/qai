@@ -7,8 +7,8 @@ import io
 import tempfile
 from pathlib import Path
 
-from q_ai.audit.reporting.csv_report import generate_csv_report
-from q_ai.core.mitigation import (
+from ctpf.audit.reporting.csv_report import generate_csv_report
+from ctpf.core.mitigation import (
     GuidanceSection,
     MitigationGuidance,
     SectionKind,

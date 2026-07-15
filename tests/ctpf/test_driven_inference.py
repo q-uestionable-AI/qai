@@ -9,10 +9,10 @@ from typing import Any
 
 import pytest
 
-from q_ai import driven_inference
-from q_ai.core.db import create_target, get_connection
-from q_ai.core.llm import NormalizedResponse, ToolCall, ToolSpec
-from q_ai.driven_inference import (
+from ctpf import driven_inference
+from ctpf.core.db import create_target, get_connection
+from ctpf.core.llm import NormalizedResponse, ToolCall, ToolSpec
+from ctpf.driven_inference import (
     DrivenInferenceError,
     OpenAICompatibleDriver,
     OpenAICompatibleTargetProfile,
@@ -126,7 +126,7 @@ class TestTargetProfile:
         tmp_path: Path,
         reasoning_effort: str,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             target_id = create_target(
                 conn,
@@ -156,7 +156,7 @@ class TestTargetProfile:
         }
 
     def test_rejects_malformed_numeric_metadata(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             target_id = create_target(
                 conn,
@@ -175,7 +175,7 @@ class TestTargetProfile:
             load_openai_target_profile(target_id[:8], db_path=db_path)
 
     def test_rejects_unsupported_reasoning_effort(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             target_id = create_target(
                 conn,

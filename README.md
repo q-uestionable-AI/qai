@@ -30,8 +30,6 @@ promotion under pinned conditions — they do not “falsify CTPF” as a class.
 | `ctpf config` / `ctpf db` | Settings and local database maintenance |
 | `ctpf --version` | Package version |
 
-The former `qai` command remains a compatibility alias for `ctpf` during the identity transition.
-
 ### Retained library and fixtures
 
 Audit enumeration and SARIF export remain in-tree as a library capability rather than a
@@ -50,9 +48,6 @@ Install from PyPI:
 ```bash
 pip install ctpf
 ```
-
-Starting with v0.12.0, the former `q-uestionable-ai` distribution is a compatibility package
-that installs the same-version `ctpf` distribution.
 
 ```bash
 ctpf proxy --help

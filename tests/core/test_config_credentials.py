@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from q_ai.core.config import (
+from ctpf.core.config import (
     _KEYRING_SERVICE,
     delete_credential,
     get_credential,
@@ -23,7 +23,7 @@ class TestGetCredential:
     def test_ignores_environment_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Environment variables never override the keyring."""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-from-env")
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             mock_kr.get_password.return_value = "sk-from-keyring"
             result = get_credential("anthropic")
         assert result == "sk-from-keyring"
@@ -31,7 +31,7 @@ class TestGetCredential:
 
     def test_from_keyring(self) -> None:
         """Keyring is the credential source."""
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             mock_kr.get_password.return_value = "sk-from-keyring"
             result = get_credential("anthropic")
         assert result == "sk-from-keyring"
@@ -39,14 +39,14 @@ class TestGetCredential:
 
     def test_not_found(self) -> None:
         """Returns None when the keyring has no value."""
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             mock_kr.get_password.return_value = None
             result = get_credential("openai")
         assert result is None
 
     def test_normalises_provider_name(self) -> None:
         """Mixed case and whitespace are normalised before lookup."""
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             mock_kr.get_password.return_value = "sk-key"
             result = get_credential("  Anthropic ")
         assert result == "sk-key"
@@ -58,7 +58,7 @@ class TestGetKeyringCredential:
 
     def test_ignores_environment_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("REMOTE_A_API_KEY", "sk-from-env")
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             mock_kr.get_password.return_value = "sk-from-keyring"
             result = get_keyring_credential(" Remote-A ")
 
@@ -71,13 +71,13 @@ class TestSetCredential:
 
     def test_writes_keyring(self) -> None:
         """Verifies keyring.set_password is called correctly."""
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             set_credential("openai", "sk-test-key")
         mock_kr.set_password.assert_called_once_with(_KEYRING_SERVICE, "openai", "sk-test-key")
 
     def test_normalises_provider_name(self) -> None:
         """Mixed case and whitespace are normalised."""
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             set_credential("  OpenAI ", "sk-key")
         mock_kr.set_password.assert_called_once_with(_KEYRING_SERVICE, "openai", "sk-key")
 
@@ -87,7 +87,7 @@ class TestDeleteCredential:
 
     def test_deletes_from_keyring(self) -> None:
         """Verifies keyring.delete_password is called."""
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             delete_credential("anthropic")
         mock_kr.delete_password.assert_called_once_with(_KEYRING_SERVICE, "anthropic")
 
@@ -95,7 +95,7 @@ class TestDeleteCredential:
         """Deleting a non-existent credential does not raise."""
         import keyring.errors
 
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             mock_kr.errors = keyring.errors
             mock_kr.delete_password.side_effect = keyring.errors.PasswordDeleteError()
             delete_credential("nonexistent")  # Should not raise
@@ -107,7 +107,7 @@ class TestInsecureBackendGuard:
     def test_set_credential_insecure_backend_raises(self) -> None:
         """set_credential raises RuntimeError on insecure backend."""
         fake_backend = type("PlaintextKeyring", (), {})()
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             mock_kr.get_keyring.return_value = fake_backend
             with pytest.raises(RuntimeError, match="Insecure keyring backend"):
                 set_credential("openai", "sk-test")
@@ -115,7 +115,7 @@ class TestInsecureBackendGuard:
     def test_get_credential_insecure_backend_raises(self) -> None:
         """get_credential raises RuntimeError when the backend is insecure."""
         fake_backend = type("PlaintextKeyring", (), {})()
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             mock_kr.get_keyring.return_value = fake_backend
             with pytest.raises(RuntimeError, match="Insecure keyring backend"):
                 get_credential("anthropic")
@@ -126,7 +126,7 @@ class TestInsecureBackendGuard:
         """An environment variable cannot bypass an insecure keyring backend."""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-from-env")
         fake_backend = type("PlaintextKeyring", (), {})()
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             mock_kr.get_keyring.return_value = fake_backend
             with pytest.raises(RuntimeError, match="Insecure keyring backend"):
                 get_credential("anthropic")
@@ -149,7 +149,7 @@ class TestImportLegacyCredentials:
             encoding="utf-8",
         )
 
-        with patch("q_ai.core.config.keyring") as mock_kr:
+        with patch("ctpf.core.config.keyring") as mock_kr:
             results = import_legacy_credentials(config_path)
 
         assert len(results) == 2

@@ -9,10 +9,10 @@ from typing import Any
 
 import pytest
 
-from q_ai import external_runtime
-from q_ai.core.db import create_target, get_connection
-from q_ai.driven_inference import OpenAICompatibleTargetProfile
-from q_ai.external_runtime import (
+from ctpf import external_runtime
+from ctpf.core.db import create_target, get_connection
+from ctpf.driven_inference import OpenAICompatibleTargetProfile
+from ctpf.external_runtime import (
     ClaudeCodeDriver,
     ClaudeCodeTargetProfile,
     ExternalRuntimeError,
@@ -99,7 +99,7 @@ class TestClaudeCodeTargetProfile:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         target_id = _create_runtime_target(db_path)
         monkeypatch.setattr(
             external_runtime,
@@ -129,7 +129,7 @@ class TestClaudeCodeTargetProfile:
         version: str,
         message: str,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         target_id = _create_runtime_target(db_path)
         monkeypatch.setattr(
             external_runtime,
@@ -141,7 +141,7 @@ class TestClaudeCodeTargetProfile:
             load_experiment_target_profile(target_id[:8], db_path=db_path)
 
     def test_preserves_existing_inference_target_dispatch(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         with get_connection(db_path) as conn:
             target_id = create_target(
                 conn,
@@ -186,7 +186,7 @@ class TestClaudeCodeTargetProfile:
         metadata: dict[str, Any],
         message: str,
     ) -> None:
-        db_path = tmp_path / "qai.db"
+        db_path = tmp_path / "ctpf.db"
         target_id = _create_runtime_target(db_path, metadata=metadata)
 
         with pytest.raises(ExternalRuntimeError, match=message):

@@ -18,9 +18,9 @@ from mcp.types import (
     JSONRPCResponse,
 )
 
-from q_ai.mcp.models import Direction, Transport
-from q_ai.proxy.models import ProxyMessage
-from q_ai.proxy.replay import ReplayResult, replay_messages
+from ctpf.mcp.models import Direction, Transport
+from ctpf.proxy.models import ProxyMessage
+from ctpf.proxy.replay import ReplayResult, replay_messages
 
 # ---------------------------------------------------------------------------
 # Mock adapter for replay tests

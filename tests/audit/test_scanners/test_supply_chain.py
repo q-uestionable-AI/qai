@@ -9,7 +9,7 @@ Integration tests requiring fixture servers are skipped.
 
 import pytest
 
-from q_ai.audit.scanner.supply_chain import (
+from ctpf.audit.scanner.supply_chain import (
     SupplyChainScanner,
     _check_version_affected,
     _is_generic_name,
@@ -19,7 +19,7 @@ from q_ai.audit.scanner.supply_chain import (
     _parse_version,
     _severity_from_cvss,
 )
-from q_ai.mcp.models import ScanContext, Severity
+from ctpf.mcp.models import ScanContext, Severity
 
 
 @pytest.mark.skip(reason="requires fixture server")
@@ -48,7 +48,7 @@ class TestSupplyChainIntegration:
 
 
 class TestServerIdentity:
-    """Synthetic tests for QAI-SCHAIN-001: Unidentified server."""
+    """Synthetic tests for CTPF-SCHAIN-001: Unidentified server."""
 
     @pytest.mark.asyncio
     async def test_missing_name_and_version(self):
@@ -61,7 +61,7 @@ class TestServerIdentity:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        id_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-001"]
+        id_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-001"]
         assert len(id_findings) == 1
         assert id_findings[0].severity == Severity.MEDIUM
         assert "name" in id_findings[0].evidence
@@ -69,7 +69,7 @@ class TestServerIdentity:
 
     @pytest.mark.asyncio
     async def test_generic_name_flagged(self):
-        """Generic name like 'mcp-server' triggers QAI-SCHAIN-001."""
+        """Generic name like 'mcp-server' triggers CTPF-SCHAIN-001."""
         ctx = ScanContext(
             tools=[],
             resources=[],
@@ -78,7 +78,7 @@ class TestServerIdentity:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        id_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-001"]
+        id_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-001"]
         assert len(id_findings) == 1
         assert id_findings[0].severity == Severity.MEDIUM
 
@@ -93,13 +93,13 @@ class TestServerIdentity:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        id_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-001"]
+        id_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-001"]
         assert len(id_findings) == 1
         assert id_findings[0].severity == Severity.LOW
 
     @pytest.mark.asyncio
     async def test_valid_name_and_version_no_finding(self):
-        """Valid name and version produces no QAI-SCHAIN-001 finding."""
+        """Valid name and version produces no CTPF-SCHAIN-001 finding."""
         ctx = ScanContext(
             tools=[],
             resources=[],
@@ -108,7 +108,7 @@ class TestServerIdentity:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        id_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-001"]
+        id_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-001"]
         assert len(id_findings) == 0
 
     @pytest.mark.asyncio
@@ -122,13 +122,13 @@ class TestServerIdentity:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        id_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-001"]
+        id_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-001"]
         assert len(id_findings) == 1
         assert id_findings[0].severity == Severity.LOW
 
 
 class TestKnownCVEs:
-    """Synthetic tests for QAI-SCHAIN-002: Known vulnerable server version."""
+    """Synthetic tests for CTPF-SCHAIN-002: Known vulnerable server version."""
 
     @pytest.mark.asyncio
     async def test_vulnerable_version_detected(self):
@@ -141,7 +141,7 @@ class TestKnownCVEs:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        cve_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-002"]
+        cve_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-002"]
         assert len(cve_findings) == 1
         assert "CVE-2025-6514" in cve_findings[0].title
         assert cve_findings[0].severity == Severity.CRITICAL
@@ -157,7 +157,7 @@ class TestKnownCVEs:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        cve_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-002"]
+        cve_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-002"]
         assert len(cve_findings) == 0
 
     @pytest.mark.asyncio
@@ -171,7 +171,7 @@ class TestKnownCVEs:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        cve_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-002"]
+        cve_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-002"]
         assert len(cve_findings) == 1
         assert "CVE-2025-53967" in cve_findings[0].title
 
@@ -186,7 +186,7 @@ class TestKnownCVEs:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        cve_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-002"]
+        cve_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-002"]
         assert len(cve_findings) == 1
         assert cve_findings[0].severity == Severity.INFO
         assert "unparseable" in cve_findings[0].evidence
@@ -202,7 +202,7 @@ class TestKnownCVEs:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        cve_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-002"]
+        cve_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-002"]
         assert len(cve_findings) == 1
 
     @pytest.mark.asyncio
@@ -216,7 +216,7 @@ class TestKnownCVEs:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        cve_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-002"]
+        cve_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-002"]
         assert len(cve_findings) >= 1
 
     @pytest.mark.asyncio
@@ -230,7 +230,7 @@ class TestKnownCVEs:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        cve_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-002"]
+        cve_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-002"]
         assert len(cve_findings) == 1
         assert cve_findings[0].severity == Severity.INFO
 
@@ -245,7 +245,7 @@ class TestKnownCVEs:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        cve_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-002"]
+        cve_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-002"]
         assert len(cve_findings) == 0
 
     @pytest.mark.asyncio
@@ -262,7 +262,7 @@ class TestKnownCVEs:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        cve_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-002"]
+        cve_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-002"]
         assert len(cve_findings) == 2
         cve_ids = {f.metadata["cve_id"] for f in cve_findings}
         assert "CVE-2025-53110" in cve_ids
@@ -270,7 +270,7 @@ class TestKnownCVEs:
 
     @pytest.mark.asyncio
     async def test_unrelated_server_no_cve(self):
-        """Server name that doesn't match any CVE produces no QAI-SCHAIN-002 finding."""
+        """Server name that doesn't match any CVE produces no CTPF-SCHAIN-002 finding."""
         ctx = ScanContext(
             tools=[],
             resources=[],
@@ -279,16 +279,16 @@ class TestKnownCVEs:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        cve_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-002"]
+        cve_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-002"]
         assert len(cve_findings) == 0
 
 
 class TestProtocolVersion:
-    """Synthetic tests for QAI-SCHAIN-003: Outdated protocol version."""
+    """Synthetic tests for CTPF-SCHAIN-003: Outdated protocol version."""
 
     @pytest.mark.asyncio
     async def test_outdated_protocol_flagged(self):
-        """Older protocol version triggers QAI-SCHAIN-003."""
+        """Older protocol version triggers CTPF-SCHAIN-003."""
         ctx = ScanContext(
             tools=[],
             resources=[],
@@ -301,13 +301,13 @@ class TestProtocolVersion:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        proto_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-003"]
+        proto_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-003"]
         assert len(proto_findings) == 1
         assert proto_findings[0].severity == Severity.LOW
 
     @pytest.mark.asyncio
     async def test_current_protocol_no_finding(self):
-        """Current protocol version produces no QAI-SCHAIN-003 finding."""
+        """Current protocol version produces no CTPF-SCHAIN-003 finding."""
         ctx = ScanContext(
             tools=[],
             resources=[],
@@ -320,12 +320,12 @@ class TestProtocolVersion:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        proto_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-003"]
+        proto_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-003"]
         assert len(proto_findings) == 0
 
     @pytest.mark.asyncio
     async def test_missing_protocol_no_finding(self):
-        """Missing protocolVersion does not trigger QAI-SCHAIN-003."""
+        """Missing protocolVersion does not trigger CTPF-SCHAIN-003."""
         ctx = ScanContext(
             tools=[],
             resources=[],
@@ -334,16 +334,16 @@ class TestProtocolVersion:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        proto_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-003"]
+        proto_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-003"]
         assert len(proto_findings) == 0
 
 
 class TestToolNamespaces:
-    """Synthetic tests for QAI-SCHAIN-004: Tool namespace confusion."""
+    """Synthetic tests for CTPF-SCHAIN-004: Tool namespace confusion."""
 
     @pytest.mark.asyncio
     async def test_mismatched_tool_flagged(self):
-        """Filesystem tool from a database server triggers QAI-SCHAIN-004."""
+        """Filesystem tool from a database server triggers CTPF-SCHAIN-004."""
         ctx = ScanContext(
             tools=[{"name": "read_file", "inputSchema": {}}],
             resources=[],
@@ -352,7 +352,7 @@ class TestToolNamespaces:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        ns_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-004"]
+        ns_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-004"]
         assert len(ns_findings) == 1
         assert ns_findings[0].tool_name == "read_file"
         assert ns_findings[0].severity == Severity.MEDIUM
@@ -368,12 +368,12 @@ class TestToolNamespaces:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        ns_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-004"]
+        ns_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-004"]
         assert len(ns_findings) == 0
 
     @pytest.mark.asyncio
     async def test_unknown_tool_no_finding(self):
-        """Unknown tool name produces no QAI-SCHAIN-004 finding."""
+        """Unknown tool name produces no CTPF-SCHAIN-004 finding."""
         ctx = ScanContext(
             tools=[{"name": "custom_analysis_tool", "inputSchema": {}}],
             resources=[],
@@ -382,7 +382,7 @@ class TestToolNamespaces:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        ns_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-004"]
+        ns_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-004"]
         assert len(ns_findings) == 0
 
     @pytest.mark.asyncio
@@ -396,7 +396,7 @@ class TestToolNamespaces:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        ns_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-004"]
+        ns_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-004"]
         assert len(ns_findings) == 0
 
     @pytest.mark.asyncio
@@ -414,7 +414,7 @@ class TestToolNamespaces:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        ns_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-004"]
+        ns_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-004"]
         assert len(ns_findings) == 2
         tool_names = {f.tool_name for f in ns_findings}
         assert "read_file" in tool_names
@@ -422,7 +422,7 @@ class TestToolNamespaces:
 
     @pytest.mark.asyncio
     async def test_no_tools_no_findings(self):
-        """Empty tool list produces no QAI-SCHAIN-004 findings."""
+        """Empty tool list produces no CTPF-SCHAIN-004 findings."""
         ctx = ScanContext(
             tools=[],
             resources=[],
@@ -431,7 +431,7 @@ class TestToolNamespaces:
         scanner = SupplyChainScanner()
         findings = await scanner.scan(ctx)
 
-        ns_findings = [f for f in findings if f.rule_id == "QAI-SCHAIN-004"]
+        ns_findings = [f for f in findings if f.rule_id == "CTPF-SCHAIN-004"]
         assert len(ns_findings) == 0
 
 
