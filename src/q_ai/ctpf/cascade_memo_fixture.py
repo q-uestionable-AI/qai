@@ -32,7 +32,7 @@ _WORK_DIRNAME = "qai-cascade-memo"
 def work_dir() -> Path:
     """Return the directory used for cascade memo and sink files."""
     # Shared /tmp fallback is intentional for this local research fixture.
-    return Path(os.environ.get("TEMP", os.environ.get("TMP", "/tmp"))) / _WORK_DIRNAME  # noqa: S108
+    return Path(os.environ.get("TEMP", os.environ.get("TMP", "/tmp"))) / _WORK_DIRNAME  # noqa: S108  # nosec B108
 
 
 def _run_id() -> str:
