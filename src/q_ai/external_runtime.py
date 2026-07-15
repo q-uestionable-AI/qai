@@ -314,6 +314,7 @@ def _mcp_config(mcp_endpoint: str) -> dict[str, Any]:
     return {
         "mcpServers": {
             _MCP_SERVER_NAME: {
+                "alwaysLoad": True,
                 "type": "http",
                 "url": endpoint,
             }

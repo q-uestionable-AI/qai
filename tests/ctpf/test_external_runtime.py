@@ -175,6 +175,16 @@ class TestClaudeCodeDriver:
         assert "--no-session-persistence" in command
         assert "--max-turns" not in command
         assert "--bare" not in command
+        mcp_config = json.loads(command[command.index("--mcp-config") + 1])
+        assert mcp_config == {
+            "mcpServers": {
+                "ctpf-cascade": {
+                    "alwaysLoad": True,
+                    "type": "http",
+                    "url": "http://127.0.0.1:8765/mcp/",
+                }
+            }
+        }
         assert captured["env"].get("ANTHROPIC_API_KEY") is None
         assert captured["env"].get("AWS_SECRET_ACCESS_KEY") is None
         transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
