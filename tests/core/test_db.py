@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 from ctpf.core.db import (
     create_evidence,
@@ -20,10 +21,23 @@ from ctpf.core.db import (
     update_run_status,
 )
 from ctpf.core.models import RunStatus, Severity
+from ctpf.core.paths import ensure_ctpf_dir
 from ctpf.core.schema import CURRENT_VERSION
 
 
 class TestConnection:
+    def test_default_path_uses_hardened_data_directory(self, tmp_path: Path) -> None:
+        db_path = tmp_path / ".ctpf" / "ctpf.db"
+        with (
+            patch("ctpf.core.db._DEFAULT_DB_PATH", db_path),
+            patch("ctpf.core.db.ensure_ctpf_dir", wraps=ensure_ctpf_dir) as ensure_dir,
+            get_connection(),
+        ):
+            pass
+
+        ensure_dir.assert_called_once_with(db_path.parent)
+        assert db_path.exists()
+
     def test_creates_db_file(self, tmp_path: Path) -> None:
         db_path = tmp_path / "ctpf.db"
         with get_connection(db_path):

@@ -19,6 +19,7 @@ from ctpf.core.models import (
     Target,
     _dump_json,
 )
+from ctpf.core.paths import ensure_ctpf_dir
 from ctpf.core.schema import migrate
 
 logger = logging.getLogger(__name__)
@@ -51,8 +52,11 @@ def get_connection(
     Yields:
         A sqlite3.Connection with row_factory set to sqlite3.Row.
     """
-    path = db_path or _DEFAULT_DB_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = db_path if db_path is not None else _DEFAULT_DB_PATH
+    if db_path is None:
+        ensure_ctpf_dir(path.parent)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     try:
