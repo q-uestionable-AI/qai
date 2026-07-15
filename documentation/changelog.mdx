@@ -3,7 +3,41 @@ title: Changelog
 description: Release history for CTPF Research Harness
 ---
 
-## Unreleased — CTPF identity compatibility wave
+## 0.13.0 / 2026-07-15
+
+Completes CTPF Reconnect as a lean research harness that can run the demonstrated cascade
+workflow across local operator-driven sessions, remote inference endpoints, model matrices, and
+an independent agent runtime. `cascade-memo` remains the only public runnable experiment; this
+release does not claim a generic scenario framework.
+
+### Added
+
+- Add an OpenAI-compatible driven-inference adapter with pinned target profiles, reasoning
+  controls, automatic inference transcripts, and OS-keyring credential lookup.
+- Add deterministic sequential two-model experiment matrices with three to five trials per model,
+  condition rotation, per-trial evidence bundles, and a top-level series manifest.
+- Add a narrow Claude Code CLI adapter for an external agent runtime, with fail-closed MCP
+  readiness and an isolated loopback-only MCP configuration.
+- Package the demonstrated cascade memo fixture so installed experiment workflows use the same
+  fixture as repository tests.
+
+### Changed
+
+- Keep `proxy`, the CTPF evidence kernel, experiment automation, demonstrated target adapters,
+  Pattern 2 and proxy integration fixtures, and historical database compatibility.
+- Require remote credentials to come from the OS keyring; configuration and environment values
+  may select credential identities but cannot contain API keys.
+- Align the repository and Mintlify documentation with the completed research-harness shape.
+
+### Removed
+
+- Remove the unused IPI, CXP, and Inject product packages and their orphaned core helpers after
+  auditing them against the completed local and remote workflows.
+- Remove eight unused runtime dependencies and the unused direct development dependency on
+  `httpx`; no dependency is added in this release.
+- Remove the superseded repository roadmap and stale documentation for deleted product surfaces.
+
+## 0.12.0 / 2026-07-13 — CTPF identity compatibility wave
 
 - Adopt **CTPF Research Harness** as the display name and
   **Trust-boundary testing for agentic systems** as the subtitle.
