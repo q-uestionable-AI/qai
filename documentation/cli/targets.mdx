@@ -1,9 +1,13 @@
 ---
 title: "ctpf targets"
-description: "Manage scan targets"
+description: "Register demonstrated experiment, runtime, and MCP targets"
 ---
 
-Create, list, and delete scan targets — the MCP servers, platforms, or endpoints that security tests run against.
+Create, list, and delete persisted target records. Controlled experiments use `inference` and
+`agent-runtime` targets; supporting proxy workflows can use MCP server targets.
+
+Target metadata contains endpoint/runtime pins and credential names only. API keys remain in the OS
+keyring.
 
 ## Commands
 
@@ -21,7 +25,7 @@ Displays a table with Name, Type, URI, and ID for each target.
 
 ### `ctpf targets add`
 
-Add a new scan target. Supply the name and URI as positional arguments, or omit both to use
+Add a new target. Supply the name and URI as positional arguments, or omit both to use
 interactive prompts in a terminal.
 
 ```bash
@@ -40,7 +44,7 @@ ctpf targets add
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--type`, `-t` | `server` | Target type, such as `server` or `endpoint`. |
+| `--type`, `-t` | `server` | Target type, such as `server`, `inference`, or `agent-runtime`. |
 | `--meta KEY=VALUE` | — | Target metadata. Repeat the option to add multiple values. |
 
 **Examples:**
@@ -48,6 +52,7 @@ ctpf targets add
 ```bash
 ctpf targets add "My Server" http://localhost:3000/sse
 ctpf targets add "Local MCP" http://localhost:8080 --meta transport=sse
+ctpf targets add "Local Model" http://127.0.0.1:1234/v1 --type inference --meta driver=openai-compatible --meta model=MODEL_ID --meta credential=KEYRING_NAME
 ```
 
 ---

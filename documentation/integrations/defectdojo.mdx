@@ -122,7 +122,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install CTPF
-        run: pip install ctpf
+        run: pip install ctpf==0.14.0
 
       - name: Run audit
         run: python tools/run_ctpf_audit.py

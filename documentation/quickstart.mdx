@@ -1,116 +1,86 @@
 ---
-title: Quickstart
-description: Install CTPF Research Harness and start MCP observation with the proxy CLI
+title: Experiment Quickstart
+description: Install v0.14.0 and run the released cascade memo experiment
 ---
+
+This path runs the released `cascade-memo` reference experiment through a registered
+OpenAI-compatible inference target. The model endpoint is external; the packaged tools, mutations,
+artifacts, and effects are synthetic and run-scoped.
 
 ## Prerequisites
 
-- **Python 3.11** or later
-- **[uv](https://docs.astral.sh/uv/)** (recommended) or pip
-- **Node.js / npm** (optional) — Useful if your MCP target is an npm package you spawn locally
-- **Inference endpoint credential** (optional) — Only needed for a driven-inference target.
-  Store credentials in the OS keyring via `ctpf config set-credential`. See
-  [Configure a provider](#configure-a-provider-optional).
+- Python 3.11 or later
+- An authorized OpenAI-compatible inference endpoint and exact model ID
+- An OS-backed keyring
+- An absolute research output directory outside every Git checkout
 
-## Install
-
-<CodeGroup>
-```bash pip
-pip install ctpf
-```
-
-```bash uv (from source)
-git clone https://github.com/q-uestionable-AI/CTPF.git
-cd CTPF
-uv sync --group dev
-```
-</CodeGroup>
-
-Confirm the CLI:
+## Install the released package
 
 ```bash
-ctpf --help
+pip install ctpf==0.14.0
 ctpf --version
-```
-
-## Configure a provider (optional)
-
-Credentials are optional for proxy and manual operator workflows. For a driven-inference
-target, store its credential in the OS keyring (never in config files or environment variables):
-
-<CodeGroup>
-```bash Target credential
-ctpf config set-credential lab-inference
-# Prompts for the credential (masked input)
-```
-</CodeGroup>
-
-```bash
-ctpf config list-providers
-```
-
-The credential name is referenced by an OpenAI-compatible inference target. Claude Code
-external-runtime targets use the runtime's secure login instead.
-
-## Register a target and start the proxy
-
-<Steps>
-  <Step title="Register an MCP target">
-    Point CTPF Research Harness at a server you are authorized to test:
-
-    ```bash
-    ctpf targets add "My Server" http://localhost:3000/sse
-    ctpf targets list
-    ```
-
-    Transports include stdio (command string), SSE, and Streamable HTTP. See
-    [Targets](/cli/targets) and [Transports](/config/transports).
-  </Step>
-
-  <Step title="Start the proxy">
-    The proxy is the CTPF observation center — capture, optional intercept
-    (forward / modify / drop), and session export:
-
-    ```bash
-    ctpf proxy --help
-    ```
-
-    Configure the MCP client **you control** to connect through the proxy instead of
-    directly to the target. See [Proxy Overview](/proxy/overview).
-  </Step>
-
-  <Step title="Inspect local state">
-    Runs and findings live in SQLite (`~/.ctpf/ctpf.db`):
-
-    ```bash
-    ctpf runs list
-    ctpf findings list
-    ctpf db --help
-    ```
-  </Step>
-</Steps>
-
-## Experiment and audit surfaces
-
-The demonstrated cascade workflow is available through the experiment command:
-
-Examples:
-
-```bash
 ctpf experiment run cascade-memo --help
-
-# Audit as a library (import or module entry — not `ctpf audit`)
-python -c "import ctpf.audit; print('audit library available')"
 ```
 
-See [Audit Overview](/audit/overview) and [Architecture Overview](/architecture/overview).
+The current public package contains cascade memo only. Pattern 2 is documented separately as an
+unreleased [source workflow](/experiments/pattern2).
 
-## Next steps
+## Store the credential
 
-- [Core Concepts](/concepts) — MCP threat model, CTPF Pattern framing, libraries vs CLI
-- [Proxy Overview](/proxy/overview) — Intercept, modify, replay, export
-- [Architecture Overview](/architecture/overview) — Post–Phase 1 system shape
-- [Responsible Use](/responsible-use) — Authorization requirements
+```bash
+ctpf config set-credential local-research
+```
+
+The command prompts with masked input and writes to the OS keyring. CTPF does not read API keys
+from environment variables, YAML, target metadata, or source files.
+
+## Register the target
+
+```bash
+ctpf targets add "Local Model" http://127.0.0.1:1234/v1 \
+  --type inference \
+  --meta driver=openai-compatible \
+  --meta model=MODEL_ID \
+  --meta credential=local-research \
+  --meta max_tokens=512 \
+  --meta temperature=0 \
+  --meta seed=0 \
+  --meta reasoning_effort=none
+```
+
+The command prints a target ID. Use an unambiguous prefix of at least eight characters.
+
+## Run the experiment
+
+```bash
+ctpf experiment run cascade-memo \
+  --target TARGET_ID_PREFIX \
+  --output-root ABSOLUTE_EXTERNAL_DIRECTORY
+```
+
+The harness runs isolated baseline, manipulated, and hardened conditions. It preserves protocol
+traces, inference transcripts, original and modified responses, run-scoped memo and sink artifacts,
+condition observations, progress/failure manifests, mechanical comparisons, and a hashed evidence
+bundle when the series completes.
+
+## Interpret the result
+
+The series manifest records the primary and hardened mechanical outcomes:
+
+- `CONFIRMED` means the named scenario's required causal and effect evidence is present;
+- `NOT_OBSERVED` means complete evidence did not show the required effect; and
+- `INCONCLUSIVE` means the evidence is incomplete, contaminated, contradictory, or causally
+  insufficient.
+
+These labels apply only to the recorded scenario and pins. Read
+[Observations and Scoring](/method/observations-and-scoring),
+[Evidence and Integrity](/method/evidence), and
+[Claims and Limitations](/method/claims-and-limitations) before drawing a research conclusion.
+
+## Other demonstrated modes
+
+The [Cascade Memo guide](/experiments/cascade-memo) covers manual operator mode, two-model matrices,
+and the demonstrated Claude Code external-runtime seam.
 
 <Warning>
 Only test systems you own, control, or have explicit written authorization to test.

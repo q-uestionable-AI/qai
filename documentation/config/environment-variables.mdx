@@ -8,9 +8,9 @@ in the OS keyring with `ctpf config set-credential` and reference only the crede
 inference target.
 
 The cascade experiment uses internal, run-scoped `CTPF_CASCADE_*` variables when it launches its
-packaged stdio fixture. The historical Pattern 2 calibration fixture similarly uses
-`CTPF_PATTERN2_*`. These values contain run identifiers and reset controls, not credentials, and
-are managed by the harness or its tests.
+packaged stdio fixture. The source-only Pattern 2 experiment similarly uses `CTPF_PATTERN2_*`.
+These values contain run identifiers and reset controls, not credentials, and are managed by the
+harness or its tests. Pattern 2 is not included in public `v0.14.0`.
 
 The configuration resolver can consult an explicitly mapped environment variable for a
 **non-secret** setting. That generic precedence does not apply to credentials.

@@ -1,6 +1,6 @@
 ---
 title: Framework Coverage
-description: "How CTPF findings map to OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, and CWE"
+description: "How the frozen audit library maps findings to security taxonomies"
 ---
 
 All 10 CTPF scanners map 1:1 to [OWASP MCP Top 10](https://owasp.org/www-project-mcp-top-10/) categories. `run_scan(connection)` runs all scanners by default; pass registry names through `check_names` to target a subset.
@@ -93,4 +93,4 @@ CTPF maps audit finding categories to [CWE](https://cwe.mitre.org/) weakness IDs
 | shadow_servers | CWE-345, CWE-346 |
 | audit_telemetry | CWE-778, CWE-223 |
 
-See [Scanner Coverage](/audit/scanners) for per-scanner detail and CLI usage.
+See [Scanner Coverage](/audit/scanners) for per-scanner detail and Python library usage.

@@ -1,81 +1,62 @@
 ---
-title: "Proxy Overview"
-description: "CTPF observation — intercept, inspect, mutate, and export MCP traffic"
+title: Proxy Overview
+description: Supporting MCP observation and intervention infrastructure
 ---
 
-The Proxy module is the **CTPF observation center**: transparent interception of Model Context Protocol (MCP) traffic so you can inspect tool calls, modify messages in flight under control, and export sessions for evidence.
+The proxy captures MCP traffic between a client you control and a target server. It can preserve
+messages unchanged, hold them for inspection, record a controlled modification with its original,
+drop them, and export or replay the resulting session.
 
-## When to Use the Proxy
+Within CTPF experiments, this is supporting evidence infrastructure. The scenario owns the prompt,
+trust semantics, mutation rule, effect oracle, and comparison; the proxy owns protocol observation
+and intervention.
 
-The proxy is a **client-side interception tool**. It sits between an MCP client and an MCP server, and the person running the proxy must control the client — because the client is what gets configured to route traffic through the proxy. The target server is unaware of the proxy's presence.
+## When it applies
 
-This means the proxy works when:
+The proxy works when:
 
-- **You control the MCP client.** Configure Claude Desktop, Cursor, an agent framework, or other MCP clients you operate to route through the proxy for observation, self-assessment, or debugging.
-- **Experiment tooling drives a client you control.** The OpenAI-compatible driver opens MCP
-  connections through the proxy, and the Claude Code adapter supplies a strict loopback MCP
-  configuration to the external runtime.
+- you control the MCP client and can route it through the proxy; or
+- the experiment harness supplies a controlled client, such as the OpenAI-compatible driver or the
+  demonstrated Claude Code runtime configuration.
 
-The proxy does **not** work when a target-owned MCP client cannot be configured to use the proxy.
-Demonstrated external runtimes are admitted only when their MCP traffic remains observable and
-mutable through the controlled loopback seam.
+It does not observe a target-owned client that cannot be configured through the controlled seam.
 
-<Note>
-Once positioned in the traffic path, the proxy lets you:
-- **Inspect tool calls** — See exactly which tools are being invoked and with what parameters
-- **Modify messages** — Alter requests or responses mid-session for controlled CTPF experiments
-- **Replay sessions** — Re-send captured messages against different server implementations
-- **Drop messages** — Intercept and discard specific tool invocations during manual testing
-</Note>
+## Operating modes
 
-## Core Concepts
+### Passthrough
 
-### Session Capture
+Messages flow unchanged while the proxy records direction, sequence, correlation, timestamps, and
+payloads. Use this for baseline capture.
 
-The proxy operates as a transparent man-in-the-middle positioned between your client and server. Every message in both directions flows through the proxy envelope:
+### Intercept
 
-- **ProxyMessage** — Wraps each JSON-RPC message with proxy metadata (timestamp, sequence number, direction, transport type)
-- **ProxySession** — Captures the complete sequence of messages across a single interaction, serializable to JSON for storage and replay
+Messages pause for an explicit action:
 
-### Operating Modes
+- **forward** the original;
+- **modify** and preserve the original before forwarding; or
+- **drop** the message.
 
-**Passthrough Mode** (default)
-- All messages flow through unobstructed to their destination
-- Passive capture and monitoring without latency overhead
-- Use for baseline traffic recording
+Manual interception uses the Textual TUI. Packaged experiments use scenario-specific automated
+rules against the same capture/intervention machinery.
 
-**Intercept Mode**
-- Messages are paused and held for user inspection
-- User can FORWARD unchanged, MODIFY with edits, or DROP entirely
-- Interactive TUI-based control
-- Useful for targeted analysis of specific interactions — including live mutation of server→client tool results
+## Evidence boundary
 
-## Transport Support
+The session proves which protocol messages were observed and whether a response was changed. It
+does not by itself prove persistence, a later higher-authority invocation, or an external effect.
+Those observations and the scenario comparison live in the experiment record.
 
-The proxy bridges three MCP transports:
+## Transports
 
-- **STDIO** — Local processes communicating via stdin/stdout
-- **SSE** — HTTP servers using server-sent events
-- **Streamable HTTP** — Bidirectional HTTP for modern MCP implementations
+The proxy supports stdio, legacy SSE, and Streamable HTTP. CTPF-owned HTTP listeners bind to
+`127.0.0.1` only.
 
-## Typical Workflow
+## Manual workflow
 
-1. Start the proxy with your target server details and optionally enable intercept mode (`ctpf proxy`)
-2. Configure the MCP client you control to connect to the proxy instead of directly to the target server
-3. Watch messages in real-time via the interactive TUI
-4. Toggle intercept mode to halt and inspect specific interactions
-5. Forward, modify, or drop messages as needed
-6. Export the completed session for evidence or later analysis
+1. Start `ctpf proxy` against an authorized target.
+2. Route the controlled MCP client through the proxy.
+3. Capture in passthrough or toggle intercept mode.
+4. Forward, modify, or drop selected messages.
+5. Save the session for inspection or replay.
 
-## What to Expect
-
-Proxy is interactive. It captures and replays traffic but does not produce automated vulnerability findings. The researcher observes, inspects, and optionally modifies messages in real time. Session recordings provide evidence for later analysis; the analysis itself is manual.
-
-Live mutation of server→client tool results is a first-class research path. Full agent counterfactual replay is not assumed.
-
-## Next Steps
-
-- **[CLI Commands](./cli.mdx)** — Start, replay, export, and inspect sessions
-- **[Live Interception](./intercept.mdx)** — Halt and modify messages interactively
-- **[Session Replay](./replay.mdx)** — Re-send captured messages to a live server
-- **[Session Export](./session-export.mdx)** — Export formats and session file structure
+See [Proxy CLI](/proxy/cli), [Live Interception](/proxy/intercept),
+[Session Replay](/proxy/replay), and [Session Evidence](/proxy/session-export).

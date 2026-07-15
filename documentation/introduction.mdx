@@ -1,68 +1,62 @@
 ---
-title: "Introduction"
-description: "Trust-boundary testing for agentic systems"
+title: Introduction
+description: Evidence-first capability-trust experiments for agentic systems
 ---
 
-## What is CTPF Research Harness?
+CTPF is a research project investigating **Capability Trust Propagation Failure**: whether data
+crossing tools, artifacts, sessions, or capabilities acquires authority that its provenance,
+integrity, authorization scope, or intended audience does not justify.
 
-CTPF Research Harness is a local harness for studying **Capability Trust Propagation Failure
-(CTPF)**.
-It investigates whether low-trust data — for example an MCP tool result — is silently
-promoted into higher-authority actions when provenance, integrity, authorization scope,
-or intended audience are not preserved.
+The `ctpf` Python package is the project's reference research harness. It coordinates controlled
+conditions, captures original and modified protocol evidence, verifies run-scoped external effects,
+compares results conservatively, and writes integrity-checkable evidence bundles.
 
-The product shape is a lean CLI centered on MCP traffic observation and controlled
-mutation via the **proxy**, with local SQLite persistence for targets, runs, findings,
-and evidence. Individual experiments **confirm** or **fail to observe** promotion under
-pinned conditions — they do not “falsify CTPF” as a class.
+It is not a general scanner, red-team platform, proxy product, or workflow orchestrator.
 
-## Public CLI
+## Start with the method
 
-| Command | Role |
-|---------|------|
-| `ctpf proxy` | Intercept, inspect, modify, and export MCP traffic (Textual TUI) |
-| `ctpf experiment` | Run controlled CTPF experiments |
-| `ctpf targets` | Register MCP targets |
-| `ctpf runs` / `ctpf findings` | Inspect stored runs and findings |
-| `ctpf config` / `ctpf db` | Settings and local database maintenance |
-| `ctpf --version` | Package version |
+A CTPF study declares its trust boundary and effect before running isolated baseline, manipulated,
+and when justified hardened conditions. Invocation, result, persistence, later consumption, and
+external effect remain separate observations. Missing or contradictory evidence fails closed to
+`INCONCLUSIVE`.
 
-New verbs such as `inspect`, `evidence`, or `fixture` are deferred until a demonstrated
-experiment defines a real interface.
+Read the [Research Method](/method/overview) and
+[Observations and Scoring](/method/observations-and-scoring) before interpreting an experiment.
 
-## Retained library and fixtures
+## Current reference experiments
 
-Audit remains in-tree as library tooling, not an equal product module on the public CLI:
+| Experiment | Question | Availability |
+| --- | --- | --- |
+| [Cascade memo](/experiments/cascade-memo) | Can changed authority persist into an artifact, cross a session boundary, and precede a matching action and effect? | Included in PyPI `v0.14.0` |
+| [Pattern 2](/experiments/pattern2) | Can one changed status response precede a matching privileged action and run-scoped effect? | Unreleased source `main` only |
 
-| Library | Role |
-|---------|------|
-| **audit** | Capability enumeration / scanners; SARIF and other report exports |
-Demonstrated experiment fixtures are narrow scenario or test modules. The packaged cascade
-fixture is internal to `ctpf experiment`; it is not a separate fixture CLI or framework.
+These are bounded calibration cases. Their prompts delegate conditional action authority to
+returned data, so positive observations demonstrate a response-to-effect mechanism under pinned
+conditions. They do not prove prevalence, general model vulnerability, or mitigation efficacy.
 
-## Removed in Phase 1
+## Reference harness surfaces
 
-The former platform surfaces are gone: Web UI, Assistant, Chain, RXP,
-External Tool Import, orchestrator, IPI, CXP, and Inject. Do not expect those packages,
-commands, or workflows in current releases.
+| Surface | Role |
+| --- | --- |
+| `ctpf experiment` | Coordinate packaged controlled experiments and evidence |
+| `ctpf targets` | Register demonstrated model and agent-runtime targets |
+| `ctpf proxy` | Observe or intervene in MCP traffic and preserve protocol evidence |
+| `ctpf config` / `ctpf db` | Manage OS-keyring credentials, settings, and local operational state |
+| `ctpf runs` / `ctpf findings` | Inspect retained operational records, not experiment evidence directories |
 
-## Framework mappings (library audit)
+Audit enumeration and report export remain in-tree as a frozen secondary library. They are not the
+CTPF research contribution or a public root CLI command.
 
-When using the audit library, findings can map to OWASP MCP Top 10, OWASP Agentic Top 10,
-MITRE ATLAS, and CWE. See [Framework Coverage](/audit/framework-coverage).
-
-## Quick start
+## Run the released reference experiment
 
 ```bash
-pip install ctpf
-ctpf proxy --help
-ctpf targets add "My Server" http://localhost:3000/sse
+pip install ctpf==0.14.0
+ctpf experiment run cascade-memo --help
 ```
 
-## Learn more
+Continue with the [Experiment Quickstart](/quickstart) for the complete driven setup.
 
-- [Quick Start](/quickstart) — Install, register a target, start the proxy
-- [Core Concepts](/concepts) — MCP threat model, CTPF framing, libraries vs CLI
-- [Proxy Overview](/proxy/overview) — Observation and controlled mutation
-- [Responsible Use](/responsible-use) — Authorization and disclosure
-- [GitHub](https://github.com/q-uestionable-AI/CTPF)
+## Responsible use
+
+Only test systems you own, control, or have explicit written authorization to test. See
+[Responsible Use](/responsible-use).

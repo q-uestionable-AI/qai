@@ -1,0 +1,52 @@
+---
+title: Claims and Limitations
+description: What current CTPF evidence does and does not establish
+---
+
+CTPF distinguishes a conceptual lens, a testable proposition, and a population claim.
+
+- **Conceptual lens:** trust and authority can be altered as information crosses tools, artifacts,
+  sessions, and capabilities.
+- **Testable proposition:** under a named scenario and pinned conditions, one controlled change can
+  cause a matching higher-authority invocation and independently verified effect.
+- **Population claim:** a prevalence rate, model-family comparison, or production conclusion.
+
+Current evidence supports only bounded mechanism and calibration claims. It does not support a
+population claim.
+
+## Current empirical scope
+
+| Scenario | Current evidence boundary |
+| --- | --- |
+| Cascade memo | One manual cross-session calibration produced exact write → artifact → read → action → effect continuity. Later automated runs primarily demonstrate execution seams, complete evidence capture, and conservative inconclusive or confounded handling. |
+| Pattern 2 | One pinned OpenAI-compatible acceptance series connected a changed status response to the matching privileged invocation and run-scoped effect. It supplies no rate estimate or cross-runtime result. |
+
+## Primary construct limitation
+
+Both positive calibration prompts tell the agent to act when returned data indicates that an action
+is authorized. The manipulated result then supplies that authorization. The observations therefore
+demonstrate a response-to-effect mechanism under the pinned task, but they do not independently show
+that the agent silently or emergently promoted low-trust data into authority.
+
+Repeating the same prompt construction with more models may measure execution reliability; it does
+not resolve this construct-validity limitation.
+
+## Unsupported conclusions
+
+Current evidence does not establish:
+
+- a distinct or universal vulnerability class;
+- prevalence in deployed systems;
+- general model or runtime vulnerability or resistance;
+- production impact;
+- proven mitigation efficacy;
+- scientific generality from shared implementation machinery; or
+- a general CTPF external-tool coordination capability.
+
+Hardened outcomes are mixed across the completed work. A clean hardened condition is therefore a
+local observation, not proof that the control or model is generally effective.
+
+## Release boundary
+
+The public `v0.14.0` package contains cascade memo. Pattern 2 is present only on unreleased source
+`main`. Source behavior must not be attributed to the installed release.

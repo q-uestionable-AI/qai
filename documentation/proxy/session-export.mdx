@@ -3,7 +3,9 @@ title: "Session Export & Structure"
 description: "Understand session file format and export captured MCP traffic"
 ---
 
-Session files store complete MCP request/response sequences as JSON, providing a portable record of interactions for replay, debugging, and evidence.
+Session files store complete MCP request/response sequences as JSON, providing a portable protocol
+record for replay, debugging, and experiment evidence. A session alone is not a CTPF result or an
+independently verified external effect.
 
 ## Session File Format
 
@@ -37,7 +39,7 @@ A session file contains a `ProxySession` object with metadata and an ordered lis
           "capabilities": {},
           "clientInfo": {
             "name": "ctpf-agent",
-            "version": "0.5.1"
+            "version": "0.14.0"
           }
         }
       }

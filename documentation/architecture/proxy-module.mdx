@@ -1,81 +1,62 @@
 ---
-title: Proxy Module Architecture
-description: MCP traffic interception, session recording, and replay
+title: Proxy Architecture
+description: MCP capture, controlled intervention, original preservation, and replay
 ---
 
-The proxy module (`ctpf.proxy`) intercepts MCP traffic between a client and server for inspection, modification, and replay. It operates as a man-in-the-middle, presenting itself as the server to the client while forwarding messages to the real server.
+`ctpf.proxy` is supporting observation and intervention infrastructure for controlled MCP traffic.
+It preserves protocol evidence needed by CTPF experiments and also exposes a manual TUI, replay,
+export, and inspection surface.
 
-## Module Structure
+## Module structure
 
-```
+```text
 proxy/
-├── intercept.py         # Message interception logic
-├── pipeline.py          # Processing pipeline for messages
-├── session_store.py     # Session persistence (JSON files)
-├── correlation.py       # Request-response message correlation
-├── replay.py            # Session replay against live servers
-├── models.py            # ProxyMessage, ProxySession, Transport, Direction
-├── tui/                 # Textual TUI for interactive session review
-│   └── app.py           # ProxyApp — main TUI application
-├── adapters/
-│   ├── stdio.py         # StdioServerAdapter for child process servers
-│   ├── sse.py           # SseServerAdapter for SSE servers
-│   └── streamable_http.py # StreamableHttpServerAdapter
-├── exporting/           # Export to JSON
-├── cli.py               # start, replay, export, inspect commands
-├── adapter.py           # ProxyAdapter for orchestrator integration
-└── mapper.py            # persist_session() — bridges to core DB
+├── intercept.py          # Hold, forward, modify, or drop messages
+├── pipeline.py           # Bidirectional processing and capture
+├── runtime.py            # Loopback proxy runtime used by experiments
+├── session_store.py      # JSON session persistence
+├── correlation.py        # Request/response correlation
+├── replay.py             # Replay captured client messages
+├── models.py             # ProxyMessage, ProxySession, and intercept state
+├── adapters/             # stdio, SSE, and Streamable HTTP transports
+├── tui/                  # Textual manual operator interface
+├── exporting/            # Session JSON export
+├── cli.py                # start, replay, export, and inspect commands
+└── mapper.py             # Optional operational database mapping helper
 ```
 
-## How It Works
+There is no `ProxyAdapter` or orchestrator integration in the current package.
 
-`ctpf proxy start` launches the TUI. The proxy:
+## Runtime flow
 
-1. Spawns the target MCP server (stdio) or connects to it (SSE/HTTP)
-2. Presents itself as the server to the client
-3. Records all messages with timestamps, direction, and sequence numbers
-4. In passthrough mode: forwards messages transparently
-5. In intercept mode: pauses on each message for inspection/modification
+1. A controlled client connects to the loopback-facing proxy endpoint or TUI path.
+2. The runtime connects upstream to the declared MCP server or packaged fixture.
+3. The pipeline wraps every JSON-RPC message with sequence, direction, transport, and correlation
+   metadata.
+4. Passthrough forwards messages immediately; intercept mode holds them for forward, modify, or
+   drop decisions.
+5. A modified message stores the pre-change JSON-RPC body in `original_raw` before forwarding.
+6. The completed session is serialized for experiment parsing, manual inspection, or replay.
 
-## Session Model
+## Experiment boundary
 
-A session is a sequence of `ProxyMessage` objects. Each message records:
+Controlled experiments configure the loopback runtime directly and apply narrow, scenario-owned
+mutation rules. The proxy supplies protocol capture and original preservation; it does not decide
+the scenario's authority semantics, score the trust transition, or interpret the result.
 
-- **direction** — `CLIENT_TO_SERVER` or `SERVER_TO_CLIENT`
-- **method** — MCP method name (e.g., `tools/call`, `initialize`)
-- **jsonrpc_id** — For request/response correlation
-- **sequence** — Ordering within the session
-- **raw** — Full JSON-RPC message
-- **original_raw** — Pre-modification content (if intercepted and changed)
-- **modified** — Boolean flag
-- **correlated_id** — Links requests to their responses
+## Session model
 
-Sessions persist as JSON files via `SessionStore`.
+`ProxyMessage` records direction, transport, JSON-RPC identity/method, sequence, correlation,
+modification state, the forwarded message, and the original when changed. `ProxySession` stores the
+ordered messages plus connection metadata and start/end timestamps.
 
-## Replay
+## Replay boundary
 
-`ctpf proxy replay` replays recorded client-to-server messages against a live server:
+`ctpf proxy replay` sends captured client-to-server messages to a live authorized server and records
+new responses. This is server interaction replay, not full agent counterfactual replay and not a
+CTPF experiment classification by itself.
 
-- Loads a saved session file
-- Optionally sends a synthetic `initialize` handshake
-- Sends each client→server message to the target
-- Records responses and latency
-- Reports success/failure per message
+## Local binding invariant
 
-Supports replay against stdio servers (`--target-command`) or HTTP servers (`--target-url`).
-
-## TUI
-
-The Textual-based TUI provides:
-
-- Chronological message list with direction indicators (`→` client→server, `←` server→client)
-- Message expansion for full JSON payload inspection
-- Intercept mode with pause/modify/forward controls
-
-## Adapter
-
-`ProxyAdapter` wraps session recording for orchestrator workflows. It creates a child run, starts the proxy, and persists the session to the database on completion or failure.
-
-## Export
-
-`ctpf proxy export` serializes a session to JSON. `ctpf proxy inspect` prints session contents to stdout with optional `--verbose` for full JSON payloads.
+Every CTPF-owned HTTP listener binds to `127.0.0.1`. Remote MCP targets may be contacted as declared
+upstream endpoints, but the local proxy never listens on an external interface.

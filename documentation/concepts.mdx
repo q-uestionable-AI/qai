@@ -1,109 +1,57 @@
 ---
-title: Core Concepts
-description: MCP threat model, CTPF framing, and retained surfaces
+title: CTPF Concepts
+description: Trust, authority, effects, and the boundary of current claims
 ---
 
-## What is MCP?
+## Capability Trust Propagation Failure
 
-The **Model Context Protocol (MCP)** is an open standard that lets AI agents communicate with external tools and data sources through a client-server architecture. An MCP **client** (the AI agent or its host) connects to one or more MCP **servers**, each of which exposes **tools** (callable functions), **resources** (readable data), and **prompts** (reusable templates). Because MCP servers execute real actions — running commands, querying databases, writing files — they are a direct attack surface for agent infrastructure.
+CTPF is a conceptual lens for asking whether trust properties remain attached to data as it moves
+through an agentic system. Relevant properties include:
 
-## CTPF framing
+- **provenance** — where the data originated;
+- **integrity** — whether it was changed and whether the original is preserved;
+- **authorization scope** — which actions the data is allowed to authorize;
+- **intended audience** — which component or capability should consume it; and
+- **persistence** — whether it survives into a later artifact, session, or capability.
 
-**Capability Trust Propagation Failure (CTPF)** asks whether trust properties
-(provenance, integrity, authorization scope, intended audience) fail to propagate
-across capability boundaries in multi-step AI systems.
+The testable question is not merely whether manipulated text reached a model. It is whether the
+declared change can be connected to a matching higher-authority invocation and independently
+observable effect under controlled conditions.
 
-In this harness, the **proxy** is the primary observation surface: capture MCP traffic,
-optionally mutate server→client tool results under control, and retain sessions as
-evidence. Experiments confirm or fail to observe promotion under pinned conditions.
-They do not claim to falsify CTPF as a class.
+## Trust transition
 
-Do not invent Pattern 2 how-to workflows here — experiment procedures live with the
-research program outside this docs tree.
+A trust transition records the source and destination capability, the expected authority boundary,
+the controlled intervention, the required observations, and the mechanical outcome. It makes the
+study's causal proposition explicit instead of inferring it from a transcript after the fact.
 
-## Libraries vs public CLI
+## Invocation is not effect
 
-| Surface | Role |
-|---------|------|
-| **Public CLI** | `ctpf proxy`, `experiment`, `targets`, `runs`, `findings`, `config`, `db` |
-| **Library** | `audit` — enumeration, scanners, and report exports; not a root pillar |
+| Observation | What it establishes |
+| --- | --- |
+| Tool invocation | The agent requested a capability with recorded arguments |
+| Tool result | The capability returned specific content |
+| Persisted artifact | Matching run-scoped state was written |
+| Later consumption | A later hop read the required state |
+| External effect | A separate oracle observed the exact matching change |
 
-Removed surfaces (do not document as current product): Web UI, Assistant, Chain, RXP,
-External Tool Import, IPI, CXP, and Inject.
+No earlier row automatically proves a later one.
 
-## OWASP MCP Top 10
+## Claims at three levels
 
-The [OWASP MCP Top 10](https://owasp.org/www-project-mcp-top-10/) is a vulnerability taxonomy for MCP-based systems. The audit **library** can map findings to these categories.
+1. **Conceptual lens** — trust can be lost or changed across capability boundaries.
+2. **Pinned proposition** — one declared intervention produced or did not produce one matching
+   effect under recorded conditions.
+3. **Population claim** — prevalence, model-family behavior, or production impact.
 
-| ID | Vulnerability |
-|------|--------------|
-| MCP01 | Token Mismanagement & Secret Exposure |
-| MCP02 | Privilege Escalation via Scope Creep |
-| MCP03 | Tool Poisoning |
-| MCP04 | Software Supply Chain Attacks |
-| MCP05 | Command Injection & Execution |
-| MCP06 | Prompt Injection via Contextual Payloads |
-| MCP07 | Insufficient Authentication & Authorization |
-| MCP08 | Lack of Audit & Telemetry |
-| MCP09 | Shadow MCP Servers |
-| MCP10 | Context Injection & Over-Sharing |
+CTPF currently supports bounded propositions and calibration observations, not population claims.
+See [Claims and Limitations](/method/claims-and-limitations).
 
-## Framework mapping
+## Project and package
 
-When using the audit library, findings can map to four frameworks:
+The CTPF research project owns the thesis, studies, evidence, interpretation, and publication
+claims. The Python package is the reference harness for isolation, capture, comparison, effect
+verification, and evidence integrity. Study-local semantics remain narrow; external tools remain
+external until one approved study demonstrates a necessary evidence seam.
 
-### OWASP Agentic Top 10
-
-The [OWASP Agentic Top 10](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) addresses vulnerabilities in agentic AI systems.
-
-### MITRE ATLAS
-
-[MITRE ATLAS](https://atlas.mitre.org/) catalogs tactics and techniques observed in real-world attacks on AI systems.
-
-### CWE
-
-Findings can map to relevant CWE (Common Weakness Enumeration) IDs for classification and tracking.
-
-See [Framework Coverage](/audit/framework-coverage) for mapping tables.
-
-## Transport types
-
-MCP defines three transport mechanisms for client-server communication.
-
-| Transport | Description | Use case |
-|-----------|-------------|----------|
-| **stdio** | Server spawned as a child process, communication over stdin/stdout | Local development, CI pipelines, testing servers you can run directly |
-| **SSE** | Server-Sent Events over HTTP (legacy transport) | Remote servers using the older SSE-based MCP protocol |
-| **Streamable HTTP** | Bidirectional HTTP transport (current standard) | Remote servers using the current MCP transport specification |
-
-See [Transport Types](/config/transports) for configuration details.
-
-## Threat model
-
-CTPF Research Harness tests **agent infrastructure** — the servers, tools, and trust boundaries that AI agents interact with — not just model outputs. The assumption is that MCP servers and tool results are untrusted components: they may leak secrets, execute injected commands, poison tool descriptions, or over-share context across sessions.
-
-Proxy observation asks what happens when that untrusted content crosses into a higher-trust action path without preserved provenance or scope.
-
-## Retained methodologies
-
-### Proxy — Observe and mutate
-
-Sit between a client you control and an MCP server. Capture traffic, optionally intercept with forward / modify / drop, export sessions. This is the CTPF center of the public CLI.
-
-### Audit — Enumerate and scan (library)
-
-Connect to a server, enumerate tools/resources/prompts, run scanners mapped to OWASP MCP categories, export structured reports (including SARIF). Invoked as library code — not `ctpf audit`.
-
-### Controlled experiments
-
-The narrow `cascade-memo` experiment owns its packaged honest fixture, proxy mutation,
-target adapter, trace parsing, effect oracle, and evidence bundle. Historical local calibration
-and proxy integration fixtures remain test equipment; no generic fixture hierarchy exists.
-
-## Surface summary
-
-| Area | Attack / observation surface | Role after Phase 1 |
-|------|------------------------------|--------------------|
-| **proxy** | MCP client↔server traffic | Public CLI center |
-| **ctpf experiment** | Controlled trust-transition scenarios | Public CLI research seam |
-| **audit** | MCP server capabilities | Library |
+Proxy is supporting observation/intervention infrastructure. Audit is a frozen secondary library.
+Neither defines the project identity.
