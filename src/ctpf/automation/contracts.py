@@ -9,9 +9,18 @@ from enum import IntEnum, StrEnum
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Self, TypeVar
 
-from ctpf.automation.canonical import CANONICALIZATION_ID
+from ctpf.automation.canonical import (
+    CANONICALIZATION_ID,
+    CanonicalizationError,
+    canonical_bytes,
+    sha256_digest,
+)
 
-SCHEMA_VERSION = 1
+RUN_SPEC_SCHEMA_VERSION = 1
+POLICY_SCHEMA_VERSION = 2
+GRANT_SCHEMA_VERSION = 1
+# Backward-compatible public name for the original RunSpec schema version.
+SCHEMA_VERSION = RUN_SPEC_SCHEMA_VERSION
 SIGNING_ALGORITHM = "hmac-sha256"
 _HEX_ID = re.compile(r"^[0-9a-f]{32}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -179,7 +188,7 @@ class RunSpec:
     experiment: ExperimentRequest
     output_root_id: str
     limits: ResourceLimits
-    schema_version: int = SCHEMA_VERSION
+    schema_version: int = RUN_SPEC_SCHEMA_VERSION
     canonicalization: str = CANONICALIZATION_ID
 
     def to_payload(self) -> dict[str, Any]:
@@ -222,7 +231,7 @@ class RunSpec:
                 "limits",
             },
         )
-        _validate_header(payload)
+        _validate_header(payload, RUN_SPEC_SCHEMA_VERSION)
         return cls(
             idempotency_key=_idempotency(payload["idempotency_key"]),
             requester=_parse_requester(payload["requester"]),
@@ -260,6 +269,8 @@ class TargetPolicy:
 
     target_id: str
     target_fingerprint: str
+    target_type: str
+    behavior: dict[str, Any]
     network_class: NetworkClass
     billing_class: BillingClass
     request_cost_ceiling_microusd: int | None
@@ -267,11 +278,13 @@ class TargetPolicy:
     def to_payload(self) -> dict[str, Any]:
         """Return a canonical JSON-compatible representation."""
         return {
+            "behavior": dict(self.behavior),
             "billing_class": self.billing_class.value,
             "network_class": self.network_class.value,
             "request_cost_ceiling_microusd": self.request_cost_ceiling_microusd,
             "target_fingerprint": self.target_fingerprint,
             "target_id": self.target_id,
+            "target_type": self.target_type,
         }
 
 
@@ -321,7 +334,7 @@ class PolicyDocument:
     output_roots: tuple[OutputRootPolicy, ...]
     allowed_effects: tuple[str, ...]
     limits: PolicyLimits
-    schema_version: int = SCHEMA_VERSION
+    schema_version: int = POLICY_SCHEMA_VERSION
     canonicalization: str = CANONICALIZATION_ID
 
     def to_payload(self) -> dict[str, Any]:
@@ -361,11 +374,21 @@ class PolicyDocument:
             "limits",
         }
         _require_shape(payload, required=required)
-        _validate_header(payload)
-        standing = _tier_list(payload["standing_tiers"], "standing_tiers")
-        per_run = _tier_list(payload["per_run_tiers"], "per_run_tiers")
+        _validate_header(payload, POLICY_SCHEMA_VERSION)
+        standing = _tier_list(payload["standing_tiers"], "standing_tiers", allow_empty=True)
+        per_run = _tier_list(payload["per_run_tiers"], "per_run_tiers", allow_empty=True)
+        if not standing and not per_run:
+            raise ContractError("policy must authorize at least one execution tier")
         if set(standing).intersection(per_run):
             raise ContractError("standing_tiers and per_run_tiers must not overlap")
+        if any(tier != AuthorizationTier.LOCAL_SYNTHETIC for tier in standing):
+            raise ContractError("standing_tiers may contain only local synthetic authority")
+        allowed_per_run = {
+            AuthorizationTier.LOCAL_SYNTHETIC,
+            AuthorizationTier.BOUNDED_REMOTE,
+        }
+        if any(tier not in allowed_per_run for tier in per_run):
+            raise ContractError("per_run_tiers may contain only executable Tier 1 or Tier 2")
         created_at = _timestamp(payload["created_at"], "created_at")
         expires_at = _timestamp(payload["expires_at"], "expires_at")
         if created_at >= expires_at:
@@ -403,7 +426,7 @@ class AuthorizationGrant:
     nonce: str
     key_id: str
     signing_algorithm: str = SIGNING_ALGORITHM
-    schema_version: int = SCHEMA_VERSION
+    schema_version: int = GRANT_SCHEMA_VERSION
     canonicalization: str = CANONICALIZATION_ID
 
     def to_payload(self) -> dict[str, Any]:
@@ -449,7 +472,7 @@ class AuthorizationGrant:
             "signing_algorithm",
         }
         _require_shape(payload, required=required)
-        _validate_header(payload)
+        _validate_header(payload, GRANT_SCHEMA_VERSION)
         if payload["signing_algorithm"] != SIGNING_ALGORITHM:
             raise ContractError("unsupported signing_algorithm")
         issued_at = _timestamp(payload["issued_at"], "issued_at")
@@ -496,9 +519,9 @@ class PolicyDecision:
         }
 
 
-def _validate_header(payload: dict[str, Any]) -> None:
-    if payload.get("schema_version") != SCHEMA_VERSION:
-        raise ContractError(f"schema_version must be {SCHEMA_VERSION}")
+def _validate_header(payload: dict[str, Any], expected_version: int) -> None:
+    if payload.get("schema_version") != expected_version:
+        raise ContractError(f"schema_version must be {expected_version}")
     if payload.get("canonicalization") != CANONICALIZATION_ID:
         raise ContractError(f"canonicalization must be {CANONICALIZATION_ID!r}")
 
@@ -617,11 +640,21 @@ def _parse_target_policy(payload: dict[str, Any]) -> TargetPolicy:
     required = {
         "target_id",
         "target_fingerprint",
+        "target_type",
+        "behavior",
         "network_class",
         "billing_class",
         "request_cost_ceiling_microusd",
     }
     _require_shape(payload, required=required)
+    target_id = _hex_id(payload["target_id"], "target_id")
+    target_type = _safe_id(payload["target_type"], "target_type")
+    fingerprint = _digest(payload["target_fingerprint"], "target_fingerprint")
+    behavior = _canonical_object(payload["behavior"], "target behavior")
+    if behavior.get("target_id") != target_id or behavior.get("target_type") != target_type:
+        raise ContractError("target behavior identity does not match its policy fields")
+    if sha256_digest(behavior) != fingerprint:
+        raise ContractError("target behavior does not match target_fingerprint")
     billing = _enum_value(BillingClass, payload["billing_class"], "billing_class")
     ceiling = _optional_nonnegative_int(
         payload["request_cost_ceiling_microusd"], "request_cost_ceiling_microusd"
@@ -631,8 +664,10 @@ def _parse_target_policy(payload: dict[str, Any]) -> TargetPolicy:
     if billing != BillingClass.METERED and ceiling is not None:
         raise ContractError("only metered targets may set request_cost_ceiling_microusd")
     return TargetPolicy(
-        _hex_id(payload["target_id"], "target_id"),
-        _digest(payload["target_fingerprint"], "target_fingerprint"),
+        target_id,
+        fingerprint,
+        target_type,
+        behavior,
         _enum_value(NetworkClass, payload["network_class"], "network_class"),
         billing,
         ceiling,
@@ -685,8 +720,13 @@ def _parse_policy_limits(raw: Any) -> PolicyLimits:
     )
 
 
-def _tier_list(raw: Any, label: str) -> tuple[AuthorizationTier, ...]:
-    values = _list(raw, label)
+def _tier_list(
+    raw: Any,
+    label: str,
+    *,
+    allow_empty: bool = False,
+) -> tuple[AuthorizationTier, ...]:
+    values = _list(raw, label, allow_empty=allow_empty)
     tiers = tuple(_tier(item, allow_tier_three=False) for item in values)
     _require_unique([str(int(tier)) for tier in tiers], label)
     return tiers
@@ -720,10 +760,22 @@ def _object_list(raw: Any, label: str) -> tuple[dict[str, Any], ...]:
     return tuple(values)
 
 
-def _list(raw: Any, label: str) -> list[Any]:
-    if not isinstance(raw, list) or not raw:
-        raise ContractError(f"{label} must be a non-empty array")
+def _list(raw: Any, label: str, *, allow_empty: bool = False) -> list[Any]:
+    if not isinstance(raw, list) or (not allow_empty and not raw):
+        qualifier = "an array" if allow_empty else "a non-empty array"
+        raise ContractError(f"{label} must be {qualifier}")
     return raw
+
+
+def _canonical_object(raw: Any, label: str) -> dict[str, Any]:
+    if not isinstance(raw, dict) or not raw:
+        raise ContractError(f"{label} must be a non-empty object")
+    value = dict(raw)
+    try:
+        canonical_bytes(value)
+    except CanonicalizationError as exc:
+        raise ContractError(f"{label} is invalid: {exc}") from exc
+    return value
 
 
 def _digest_list(raw: Any, label: str) -> tuple[str, ...]:

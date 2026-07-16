@@ -21,6 +21,7 @@ import typer
 from mcp.types import JSONRPCMessage
 
 from ctpf import __version__
+from ctpf.automation.cli import control_app, govern_app
 from ctpf.driven_inference import (
     DrivenInferenceError,
     OpenAICompatibleDriver,
@@ -63,6 +64,8 @@ from ctpf.proxy.session_store import SessionStore
 app = typer.Typer(no_args_is_help=True, help="Run controlled CTPF experiments.")
 run_app = typer.Typer(no_args_is_help=True, help="Run a demonstrated experiment.")
 app.add_typer(run_app, name="run")
+app.add_typer(control_app, name="control")
+app.add_typer(govern_app, name="govern")
 
 DEFAULT_LISTEN_PORT = 8765
 SESSION_A_PROMPT = (

@@ -92,6 +92,32 @@ def _identity(
     return TargetIdentity(target_id, target_type, network, behavior, fingerprint)
 
 
+def _target_policy(
+    *,
+    network: NetworkClass = NetworkClass.LOOPBACK,
+    billing: BillingClass = BillingClass.UNMETERED,
+    request_cost: int | None = None,
+    target_id: str = TARGET_ID,
+    fingerprint: str = TARGET_FINGERPRINT,
+) -> TargetPolicy:
+    target_type = "agent-runtime" if network == NetworkClass.EXTERNAL_RUNTIME else "inference"
+    identity = _identity(
+        network=network,
+        target_type=target_type,
+        target_id=target_id,
+        fingerprint=fingerprint,
+    )
+    return TargetPolicy(
+        target_id,
+        fingerprint,
+        target_type,
+        identity.behavior,
+        network,
+        billing,
+        request_cost,
+    )
+
+
 def _spec(**overrides: object) -> RunSpec:
     values: dict[str, object] = {
         "idempotency_key": "agent-request-0001",
@@ -134,16 +160,7 @@ def _policy(
                 1,
             ),
         ),
-        targets=(
-            target
-            or TargetPolicy(
-                TARGET_ID,
-                TARGET_FINGERPRINT,
-                NetworkClass.LOOPBACK,
-                BillingClass.UNMETERED,
-                None,
-            ),
-        ),
+        targets=(target or _target_policy(),),
         output_roots=(OutputRootPolicy("research-evidence", "C:/research/evidence"),),
         allowed_effects=allowed_effects,
         limits=PolicyLimits(resources or _resources(), 1, 300, 8765),
@@ -188,20 +205,8 @@ def _matrix_policy(
             ),
         ),
         targets=(
-            TargetPolicy(
-                TARGET_ID,
-                TARGET_FINGERPRINT,
-                first_network,
-                first_billing,
-                None,
-            ),
-            TargetPolicy(
-                TARGET_ID_TWO,
-                TARGET_FINGERPRINT_TWO,
-                NetworkClass.LOOPBACK,
-                BillingClass.UNMETERED,
-                None,
-            ),
+            _target_policy(network=first_network, billing=first_billing),
+            _target_policy(target_id=TARGET_ID_TWO, fingerprint=TARGET_FINGERPRINT_TWO),
         ),
     )
 
@@ -219,12 +224,10 @@ def test_loopback_unmetered_scenario_is_allowed_by_standing_policy() -> None:
 
 def test_remote_metered_target_requires_tier_two_and_reserves_cost() -> None:
     """Public billed execution is per-run and includes declared worst-case cost."""
-    target_policy = TargetPolicy(
-        TARGET_ID,
-        TARGET_FINGERPRINT,
-        NetworkClass.HTTPS_PUBLIC,
-        BillingClass.METERED,
-        25_000,
+    target_policy = _target_policy(
+        network=NetworkClass.HTTPS_PUBLIC,
+        billing=BillingClass.METERED,
+        request_cost=25_000,
     )
     policy = _policy(
         target=target_policy,
@@ -242,13 +245,7 @@ def test_remote_metered_target_requires_tier_two_and_reserves_cost() -> None:
 
 def test_remote_target_is_denied_at_local_tier() -> None:
     """A policy listing does not let an agent understate required authority."""
-    target_policy = TargetPolicy(
-        TARGET_ID,
-        TARGET_FINGERPRINT,
-        NetworkClass.HTTPS_PUBLIC,
-        BillingClass.UNMETERED,
-        None,
-    )
+    target_policy = _target_policy(network=NetworkClass.HTTPS_PUBLIC)
 
     decision = evaluate_policy(
         _spec(),
@@ -301,12 +298,9 @@ def test_expired_policy_and_unexecutable_inspection_tier_are_denied() -> None:
 
 def test_external_runtime_is_per_run_and_emits_cost_warning() -> None:
     """The demonstrated external runtime remains Tier 2 with explicit uncertainty."""
-    target_policy = TargetPolicy(
-        TARGET_ID,
-        TARGET_FINGERPRINT,
-        NetworkClass.EXTERNAL_RUNTIME,
-        BillingClass.EXTERNAL_RUNTIME,
-        None,
+    target_policy = _target_policy(
+        network=NetworkClass.EXTERNAL_RUNTIME,
+        billing=BillingClass.EXTERNAL_RUNTIME,
     )
     spec = _spec(requested_tier=AuthorizationTier.BOUNDED_REMOTE)
     identity = _identity(
@@ -339,12 +333,9 @@ def test_external_runtime_is_per_run_and_emits_cost_warning() -> None:
 
 def test_external_runtime_identity_probe_reservations_fail_closed() -> None:
     """Missing or invalid identity-probe accounting cannot authorize a runtime."""
-    target_policy = TargetPolicy(
-        TARGET_ID,
-        TARGET_FINGERPRINT,
-        NetworkClass.EXTERNAL_RUNTIME,
-        BillingClass.EXTERNAL_RUNTIME,
-        None,
+    target_policy = _target_policy(
+        network=NetworkClass.EXTERNAL_RUNTIME,
+        billing=BillingClass.EXTERNAL_RUNTIME,
     )
     identity = _identity(
         network=NetworkClass.EXTERNAL_RUNTIME,

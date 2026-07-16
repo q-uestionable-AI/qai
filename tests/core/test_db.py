@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from ctpf.core.db import (
     create_evidence,
@@ -11,6 +14,7 @@ from ctpf.core.db import (
     create_run,
     create_target,
     get_connection,
+    get_readonly_connection,
     get_run,
     get_setting,
     get_target,
@@ -26,6 +30,20 @@ from ctpf.core.schema import CURRENT_VERSION
 
 
 class TestConnection:
+    def test_readonly_connection_never_creates_or_accepts_writes(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "missing" / "ctpf.db"
+        with pytest.raises(FileNotFoundError), get_readonly_connection(db_path):
+            pass
+        assert not db_path.exists()
+
+        with get_connection(db_path):
+            pass
+        with get_readonly_connection(db_path) as conn:
+            assert conn.execute("PRAGMA query_only").fetchone()[0] == 1
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == CURRENT_VERSION
+            with pytest.raises(sqlite3.OperationalError, match="readonly"):
+                conn.execute("CREATE TABLE forbidden (id INTEGER)")
+
     def test_default_path_uses_hardened_data_directory(self, tmp_path: Path) -> None:
         db_path = tmp_path / ".ctpf" / "ctpf.db"
         with (
