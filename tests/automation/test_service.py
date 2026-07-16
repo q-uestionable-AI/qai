@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import sqlite3
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from threading import Barrier
 
 import pytest
 
 from ctpf import driven_inference
 from ctpf.automation import approval
+from ctpf.automation import service as automation_service
 from ctpf.automation.canonical import sha256_digest
 from ctpf.automation.contracts import (
     AuthorizationTier,
@@ -32,12 +36,13 @@ from ctpf.automation.contracts import (
     TargetReference,
 )
 from ctpf.automation.envelope import ControlError
-from ctpf.automation.service import AutomationService
+from ctpf.automation.service import AutomationService, ValidationResult
 from ctpf.automation.targets import scenario_capability
 from ctpf.core.db import get_readonly_connection
 
 POLICY_ID = "a" * 32
 TARGET_ID = "b" * 32
+CONCURRENT_START_TIMEOUT_SECONDS = 10
 NOW = datetime.datetime(2026, 7, 16, 12, 0, tzinfo=datetime.UTC)
 
 
@@ -184,6 +189,43 @@ def test_standing_start_is_idempotent_and_cancel_has_no_research_effect(
     assert service.result(first["run_id"])["state"] == AutomationRunState.CANCELLED.value
     assert not output_root.exists()
 
+    with get_readonly_connection(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM automation_runs").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM automation_grants").fetchone()[0] == 1
+
+
+def test_concurrent_standing_starts_reuse_one_ready_run(
+    tmp_path: Path,
+    fake_keyring: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Concurrent standing starts issue one grant and return one READY run."""
+    db_path = tmp_path / "ctpf.db"
+    policy, spec, output_root = _material(tmp_path, AuthorizationTier.LOCAL_SYNTHETIC)
+    service = AutomationService(db_path=db_path)
+    approval.initialize_approval_key()
+    service.create_policy(policy, now=NOW)
+    validation_barrier = Barrier(2)
+    original_validate = automation_service._validate_with_connection
+
+    def synchronized_validate(
+        conn: sqlite3.Connection,
+        candidate: RunSpec,
+        current: datetime.datetime,
+    ) -> ValidationResult:
+        result = original_validate(conn, candidate, current)
+        validation_barrier.wait(timeout=CONCURRENT_START_TIMEOUT_SECONDS)
+        return result
+
+    monkeypatch.setattr(automation_service, "_validate_with_connection", synchronized_validate)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(service.start, spec, now=NOW) for _ in range(2)]
+        starts = [future.result(timeout=CONCURRENT_START_TIMEOUT_SECONDS) for future in futures]
+
+    assert {start["run_id"] for start in starts} == {starts[0]["run_id"]}
+    assert sorted(start["created"] for start in starts) == [False, True]
+    assert all(start["state"] == AutomationRunState.READY.value for start in starts)
+    assert not output_root.exists()
     with get_readonly_connection(db_path) as conn:
         assert conn.execute("SELECT COUNT(*) FROM automation_runs").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM automation_grants").fetchone()[0] == 1

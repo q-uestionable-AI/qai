@@ -168,6 +168,10 @@ class AutomationService:
                     return _existing_start(existing, spec, approval_id)
                 validation = _validate_with_connection(conn, spec, current)
                 _require_authorized(validation)
+                conn.execute("BEGIN IMMEDIATE")
+                existing = get_automation_run_by_idempotency(conn, spec.idempotency_key)
+                if existing is not None:
+                    return _existing_start(existing, spec, approval_id)
                 grant = _grant_for_start(conn, validation, approval_id, current)
                 binding = bind_grant_and_create_ready_run(conn, spec, grant, now=current)
         except ControlError:
