@@ -27,18 +27,20 @@ from ctpf.automation.targets import ScenarioCapability, TargetIdentity
 
 POLICY_ID = "a" * 32
 TARGET_ID = "b" * 32
+TARGET_ID_TWO = "e" * 32
 SCENARIO_FINGERPRINT = "c" * 64
 TARGET_FINGERPRINT = "d" * 64
+TARGET_FINGERPRINT_TWO = "f" * 64
 NOW = datetime.datetime(2026, 7, 16, 12, 0, tzinfo=datetime.UTC)
 
 
 def _resources(**overrides: int) -> ResourceLimits:
     values = {
-        "wall_clock_seconds": 120,
-        "provider_requests": 12,
-        "output_tokens_reserved": 3_072,
-        "tool_calls": 12,
-        "runtime_processes": 1,
+        "wall_clock_seconds": 300,
+        "provider_requests": 36,
+        "output_tokens_reserved": 9_216,
+        "tool_calls": 3,
+        "runtime_processes": 4,
         "cost_limit_microusd": 0,
     }
     values.update(overrides)
@@ -51,7 +53,7 @@ def _capability(**overrides: object) -> ScenarioCapability:
         "contract_version": 1,
         "modes": (ExperimentMode.SINGLE,),
         "conditions": ("baseline", "manipulated", "hardened"),
-        "sessions_per_trial": 1,
+        "sessions_per_trial": 3,
         "prompts": ("Inspect the status.",),
         "tool_names": ("read_status", "apply_change", "read_sink"),
         "effect_ids": ("pattern2-action-sink",),
@@ -69,21 +71,25 @@ def _identity(
     *,
     network: NetworkClass = NetworkClass.LOOPBACK,
     target_type: str = "inference",
+    target_id: str = TARGET_ID,
+    fingerprint: str = TARGET_FINGERPRINT,
 ) -> TargetIdentity:
     behavior: dict[str, object] = {
         "driver": "openai-compatible",
         "max_tokens": 256,
         "max_provider_rounds": 12,
-        "target_id": TARGET_ID,
+        "target_id": target_id,
         "target_type": target_type,
     }
     if target_type == "agent-runtime":
         behavior = {
             "driver": "claude-code-cli",
-            "target_id": TARGET_ID,
+            "identity_probe_processes": 1,
+            "identity_probe_timeout_seconds": 10,
+            "target_id": target_id,
             "timeout_seconds": 90,
         }
-    return TargetIdentity(TARGET_ID, target_type, network, behavior, TARGET_FINGERPRINT)
+    return TargetIdentity(target_id, target_type, network, behavior, fingerprint)
 
 
 def _spec(**overrides: object) -> RunSpec:
@@ -144,14 +150,71 @@ def _policy(
     )
 
 
+def _matrix_experiment() -> ExperimentRequest:
+    return ExperimentRequest(
+        "cascade-memo",
+        SCENARIO_FINGERPRINT,
+        ExperimentMode.MATRIX,
+        3,
+        (
+            TargetReference(TARGET_ID, TARGET_FINGERPRINT),
+            TargetReference(TARGET_ID_TWO, TARGET_FINGERPRINT_TWO),
+        ),
+    )
+
+
+def _matrix_capability() -> ScenarioCapability:
+    return _capability(
+        scenario="cascade-memo",
+        modes=(ExperimentMode.SINGLE, ExperimentMode.MATRIX),
+        sessions_per_trial=6,
+    )
+
+
+def _matrix_policy(
+    *,
+    resources: ResourceLimits | None = None,
+    first_network: NetworkClass = NetworkClass.LOOPBACK,
+    first_billing: BillingClass = BillingClass.UNMETERED,
+) -> PolicyDocument:
+    return replace(
+        _policy(resources=resources),
+        scenarios=(
+            ScenarioPolicy(
+                "cascade-memo",
+                (SCENARIO_FINGERPRINT,),
+                (ExperimentMode.MATRIX,),
+                3,
+            ),
+        ),
+        targets=(
+            TargetPolicy(
+                TARGET_ID,
+                TARGET_FINGERPRINT,
+                first_network,
+                first_billing,
+                None,
+            ),
+            TargetPolicy(
+                TARGET_ID_TWO,
+                TARGET_FINGERPRINT_TWO,
+                NetworkClass.LOOPBACK,
+                BillingClass.UNMETERED,
+                None,
+            ),
+        ),
+    )
+
+
 def test_loopback_unmetered_scenario_is_allowed_by_standing_policy() -> None:
     """Exact local target and scenario identities receive Tier 1 authority."""
     decision = evaluate_policy(_spec(), _policy(), _capability(), (_identity(),), now=NOW)
 
     assert decision.kind == DecisionKind.ALLOWED_STANDING_POLICY
     assert decision.reason_code == "policy_match"
-    assert decision.minimum_reservations.provider_requests == 12
-    assert decision.minimum_reservations.output_tokens_reserved == 3_072
+    assert decision.minimum_reservations.provider_requests == 36
+    assert decision.minimum_reservations.output_tokens_reserved == 9_216
+    assert decision.minimum_reservations.tool_calls == 3
 
 
 def test_remote_metered_target_requires_tier_two_and_reserves_cost() -> None:
@@ -165,16 +228,16 @@ def test_remote_metered_target_requires_tier_two_and_reserves_cost() -> None:
     )
     policy = _policy(
         target=target_policy,
-        resources=_resources(cost_limit_microusd=300_000),
+        resources=_resources(cost_limit_microusd=900_000),
     )
-    limits = _resources(cost_limit_microusd=300_000)
+    limits = _resources(cost_limit_microusd=900_000)
     spec = _spec(requested_tier=AuthorizationTier.BOUNDED_REMOTE, limits=limits)
     identity = _identity(network=NetworkClass.HTTPS_PUBLIC)
 
     decision = evaluate_policy(spec, policy, _capability(), (identity,), now=NOW)
 
     assert decision.kind == DecisionKind.APPROVAL_REQUIRED
-    assert decision.minimum_reservations.cost_limit_microusd == 300_000
+    assert decision.minimum_reservations.cost_limit_microusd == 900_000
 
 
 def test_remote_target_is_denied_at_local_tier() -> None:
@@ -256,14 +319,14 @@ def test_external_runtime_is_per_run_and_emits_cost_warning() -> None:
     )
 
     assert decision.kind == DecisionKind.APPROVAL_REQUIRED
-    assert decision.minimum_reservations.runtime_processes == 1
-    assert decision.minimum_reservations.wall_clock_seconds == 90
+    assert decision.minimum_reservations.runtime_processes == 4
+    assert decision.minimum_reservations.wall_clock_seconds == 280
     assert decision.warnings == ("external runtime cost is not measured by CTPF",)
 
     under_reserved = evaluate_policy(
         _spec(
             requested_tier=AuthorizationTier.BOUNDED_REMOTE,
-            limits=_resources(wall_clock_seconds=89),
+            limits=_resources(wall_clock_seconds=279),
         ),
         _policy(target=target_policy),
         _capability(),
@@ -272,3 +335,87 @@ def test_external_runtime_is_per_run_and_emits_cost_warning() -> None:
     )
     assert under_reserved.kind == DecisionKind.DENIED
     assert under_reserved.reason_code == "requested_limits_below_minimum"
+
+
+def test_external_runtime_identity_probe_reservations_fail_closed() -> None:
+    """Missing or invalid identity-probe accounting cannot authorize a runtime."""
+    target_policy = TargetPolicy(
+        TARGET_ID,
+        TARGET_FINGERPRINT,
+        NetworkClass.EXTERNAL_RUNTIME,
+        BillingClass.EXTERNAL_RUNTIME,
+        None,
+    )
+    identity = _identity(
+        network=NetworkClass.EXTERNAL_RUNTIME,
+        target_type="agent-runtime",
+    )
+    expected_reasons = {
+        "identity_probe_processes": "target_identity_probe_processes_invalid",
+        "identity_probe_timeout_seconds": "target_identity_probe_timeout_invalid",
+    }
+
+    for key, expected in expected_reasons.items():
+        behavior = dict(identity.behavior)
+        behavior[key] = 0
+        invalid = replace(identity, behavior=behavior)
+        decision = evaluate_policy(
+            _spec(requested_tier=AuthorizationTier.BOUNDED_REMOTE),
+            _policy(target=target_policy),
+            _capability(),
+            (invalid,),
+            now=NOW,
+        )
+        assert decision.kind == DecisionKind.DENIED
+        assert decision.reason_code == expected
+
+
+def test_cascade_matrix_reserves_every_condition_session_for_every_target() -> None:
+    """Three cascade trials over two targets reserve all 36 sessions."""
+    limits = _resources(
+        provider_requests=432,
+        output_tokens_reserved=110_592,
+        tool_calls=36,
+    )
+    spec = _spec(experiment=_matrix_experiment(), limits=limits)
+    identities = (
+        _identity(),
+        _identity(target_id=TARGET_ID_TWO, fingerprint=TARGET_FINGERPRINT_TWO),
+    )
+
+    decision = evaluate_policy(
+        spec,
+        _matrix_policy(resources=limits),
+        _matrix_capability(),
+        identities,
+        now=NOW,
+    )
+
+    assert decision.kind == DecisionKind.ALLOWED_STANDING_POLICY
+    assert decision.minimum_reservations.provider_requests == 432
+    assert decision.minimum_reservations.output_tokens_reserved == 110_592
+    assert decision.minimum_reservations.tool_calls == 36
+
+
+def test_matrix_rejects_external_runtime_before_reservation() -> None:
+    """The demonstrated matrix workflow is inference-only."""
+    spec = _spec(
+        requested_tier=AuthorizationTier.BOUNDED_REMOTE,
+        experiment=_matrix_experiment(),
+    )
+    identities = (
+        _identity(
+            network=NetworkClass.EXTERNAL_RUNTIME,
+            target_type="agent-runtime",
+        ),
+        _identity(target_id=TARGET_ID_TWO, fingerprint=TARGET_FINGERPRINT_TWO),
+    )
+
+    policy = _matrix_policy(
+        first_network=NetworkClass.EXTERNAL_RUNTIME,
+        first_billing=BillingClass.EXTERNAL_RUNTIME,
+    )
+    decision = evaluate_policy(spec, policy, _matrix_capability(), identities, now=NOW)
+
+    assert decision.kind == DecisionKind.DENIED
+    assert decision.reason_code == "target_type_not_supported"

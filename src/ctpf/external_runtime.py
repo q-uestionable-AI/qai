@@ -27,7 +27,7 @@ _MCP_SERVER_NAME = "ctpf-cascade"
 _DEFAULT_TIMEOUT_SECONDS = 300
 _MIN_TIMEOUT_SECONDS = 30
 _MAX_TIMEOUT_SECONDS = 1800
-_VERSION_TIMEOUT_SECONDS = 10.0
+VERSION_PROBE_TIMEOUT_SECONDS = 10
 _PROCESS_TERMINATE_GRACE_SECONDS = 5.0
 _MIN_ALWAYS_LOAD_VERSION = (2, 1, 121)
 _MODEL_ALIASES = frozenset({"default", "fable", "haiku", "opus", "sonnet"})
@@ -306,7 +306,7 @@ def _inspect_claude_executable(raw: str | None) -> tuple[str, str]:
             check=False,
             capture_output=True,
             text=True,
-            timeout=_VERSION_TIMEOUT_SECONDS,
+            timeout=VERSION_PROBE_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ExternalRuntimeError(f"Claude Code version check failed: {exc}") from exc
