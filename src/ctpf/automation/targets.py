@@ -98,7 +98,7 @@ def installed_scenario_capabilities() -> tuple[ScenarioCapability, ...]:
     cascade = _build_capability(
         scenario="cascade-memo",
         modes=(ExperimentMode.SINGLE, ExperimentMode.MATRIX),
-        sessions=2,
+        sessions=6,
         prompts=(experiment.SESSION_A_PROMPT, experiment.SESSION_B_PROMPT),
         tools=(
             "apply_change",
@@ -118,7 +118,7 @@ def installed_scenario_capabilities() -> tuple[ScenarioCapability, ...]:
     pattern2 = _build_capability(
         scenario="pattern2",
         modes=(ExperimentMode.SINGLE,),
-        sessions=1,
+        sessions=3,
         prompts=(experiment.PATTERN2_PROMPT,),
         tools=("apply_change", "read_sink", "read_status"),
         effects=("pattern2-action-sink",),
@@ -287,6 +287,8 @@ def _runtime_identity(profile: ClaudeCodeTargetProfile) -> TargetIdentity:
         "environment_policy": "minimal non-secret allowlist",
         "executable": str(executable),
         "executable_sha256": executable_hash,
+        "identity_probe_processes": 1,
+        "identity_probe_timeout_seconds": external_runtime.VERSION_PROBE_TIMEOUT_SECONDS,
         "mcp_policy": "strict loopback allowlisted-tools only",
         "model": profile.model,
         "runtime_version": profile.runtime_version,

@@ -26,12 +26,13 @@ def test_installed_capabilities_are_stable_and_cover_demonstrated_scenarios() ->
     assert [item.fingerprint for item in first] == [item.fingerprint for item in second]
     cascade, pattern2 = first
     assert cascade.modes == (ExperimentMode.SINGLE, ExperimentMode.MATRIX)
-    assert cascade.sessions_per_trial == 2
+    assert cascade.sessions_per_trial == 6
     assert set(cascade.effect_ids) == {
         "cascade-action-sink",
         "cascade-memo-persistence",
     }
     assert pattern2.tool_names == ("apply_change", "read_sink", "read_status")
+    assert pattern2.sessions_per_trial == 3
     assert all(len(value) == 64 for item in first for value in item.source_hashes.values())
 
 
@@ -134,6 +135,11 @@ def test_external_runtime_target_identity_pins_inspected_runtime(
     assert identity.behavior["runtime_version"] == "2.1.121 (Claude Code)"
     assert len(identity.behavior["driver_source_hash"]) == 64
     assert len(identity.behavior["executable_sha256"]) == 64
+    assert identity.behavior["identity_probe_processes"] == 1
+    assert (
+        identity.behavior["identity_probe_timeout_seconds"]
+        == external_runtime.VERSION_PROBE_TIMEOUT_SECONDS
+    )
     assert identity.behavior["mcp_policy"] == "strict loopback allowlisted-tools only"
     assert "credential" not in str(identity.to_payload()).lower()
 

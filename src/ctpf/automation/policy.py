@@ -10,6 +10,7 @@ from ctpf.automation.contracts import (
     AuthorizationTier,
     BillingClass,
     DecisionKind,
+    ExperimentMode,
     NetworkClass,
     PolicyDecision,
     PolicyDocument,
@@ -21,6 +22,7 @@ from ctpf.automation.targets import ScenarioCapability, TargetIdentity
 
 _MAX_INTEGER = (2**63) - 1
 _ZERO_RESERVATIONS = ResourceLimits(1, 1, 1, 1, 1, 0)
+_MATRIX_TARGET_TYPE = "inference"
 
 
 def evaluate_policy(  # noqa: PLR0911 - explicit fail-closed guard sequence
@@ -143,6 +145,11 @@ def _validate_targets(  # noqa: PLR0911 - reason-specific guard sequence
             return "target_identity_mismatch"
         if identity.target_type not in capability.supported_target_types:
             return "target_type_not_supported"
+        if (
+            spec.experiment.mode == ExperimentMode.MATRIX
+            and identity.target_type != _MATRIX_TARGET_TYPE
+        ):
+            return "target_type_not_supported"
         target_policy = policies.get(reference.target_id)
         reason = _target_policy_reason(reference.target_fingerprint, identity, target_policy)
         if reason:
@@ -219,17 +226,13 @@ def _minimum_reservations(
             provider_requests += target_requests
             tokens += max_tokens * target_requests
         else:
-            timeout_seconds = identity.behavior.get("timeout_seconds")
-            if (
-                isinstance(timeout_seconds, bool)
-                or not isinstance(timeout_seconds, int)
-                or timeout_seconds < 1
-            ):
-                return _ZERO_RESERVATIONS, (), "target_timeout_seconds_invalid"
+            process_count, wall_clock, reason = _runtime_reservations(identity, sessions_per_target)
+            if reason:
+                return _ZERO_RESERVATIONS, (), reason
             target_requests = sessions_per_target
             provider_requests += target_requests
-            runtime_processes += sessions_per_target
-            runtime_wall_clock += timeout_seconds * sessions_per_target
+            runtime_processes += process_count
+            runtime_wall_clock += wall_clock
             warnings.append("external runtime cost is not measured by CTPF")
         target_policy = target_policies[identity.target_id]
         ceiling = target_policy.request_cost_ceiling_microusd
@@ -247,6 +250,31 @@ def _minimum_reservations(
         cost_limit_microusd=cost,
     )
     return reservations, tuple(sorted(set(warnings))), None
+
+
+def _runtime_reservations(
+    identity: TargetIdentity,
+    sessions_per_target: int,
+) -> tuple[int, int, str | None]:
+    timeout_seconds = _positive_behavior_int(identity, "timeout_seconds")
+    if timeout_seconds is None:
+        return 0, 0, "target_timeout_seconds_invalid"
+    probe_processes = _positive_behavior_int(identity, "identity_probe_processes")
+    if probe_processes is None:
+        return 0, 0, "target_identity_probe_processes_invalid"
+    probe_timeout = _positive_behavior_int(identity, "identity_probe_timeout_seconds")
+    if probe_timeout is None:
+        return 0, 0, "target_identity_probe_timeout_invalid"
+    processes = sessions_per_target + probe_processes
+    wall_clock = (timeout_seconds * sessions_per_target) + probe_timeout
+    return processes, wall_clock, None
+
+
+def _positive_behavior_int(identity: TargetIdentity, key: str) -> int | None:
+    value = identity.behavior.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
 
 
 def _decision_kind(
