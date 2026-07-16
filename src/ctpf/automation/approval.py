@@ -23,6 +23,7 @@ from ctpf.core.config import delete_local_secret, get_local_secret, set_local_se
 
 _APPROVAL_SECRET_NAME = "automation-approval-key-v1"  # noqa: S105 - keyring account name
 _KEY_BYTES = 32
+_KEY_ID_DOMAIN = b"ctpf-approval-key-id-v1\x00"
 _POLICY_DOMAIN = b"ctpf-policy-v1\x00"
 _GRANT_DOMAIN = b"ctpf-authorization-grant-v1\x00"
 
@@ -284,7 +285,7 @@ def _decode_key(encoded: str) -> bytes:
 
 
 def _key_id(key: bytes) -> str:
-    return hashlib.sha256(key).hexdigest()
+    return hmac.new(key, _KEY_ID_DOMAIN, hashlib.sha256).hexdigest()
 
 
 def _sign(domain: bytes, payload: dict[str, object], key: bytes) -> str:

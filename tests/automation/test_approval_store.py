@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import datetime
+import hashlib
+import hmac
 from dataclasses import replace
 from pathlib import Path
 
@@ -245,6 +248,21 @@ def test_key_initialization_is_idempotent_and_deletion_fails_closed(
         approval.sign_policy(_policy())
 
 
+def test_key_identifier_uses_domain_separated_hmac(fake_keyring: dict[str, str]) -> None:
+    """The public key ID is not a password-style raw hash of secret material."""
+    key_id = approval.initialize_approval_key()
+    encoded = next(iter(fake_keyring.values()))
+    key = base64.urlsafe_b64decode(encoded)
+
+    expected = hmac.new(
+        key,
+        b"ctpf-approval-key-id-v1\x00",
+        hashlib.sha256,
+    ).hexdigest()
+    assert key_id == expected
+    assert key_id != hashlib.sha256(key).hexdigest()
+
+
 def test_store_binds_grant_once_and_returns_exact_idempotent_run(
     tmp_path: Path,
     fake_keyring: dict[str, str],
@@ -343,6 +361,36 @@ def test_store_requires_active_policy_and_grant_interval(
         assert revoke_policy(conn, policy.policy_id, revoked_at="2026-07-16T12:00:00Z")
         with pytest.raises(AutomationStoreError, match="policy is revoked"):
             bind_grant_and_create_ready_run(conn, spec, grant, now=NOW)
+
+
+@pytest.mark.parametrize("forged_record", ["policy", "grant"])
+def test_store_authenticates_signed_authority_before_binding(
+    tmp_path: Path,
+    fake_keyring: dict[str, str],
+    forged_record: str,
+) -> None:
+    """Syntactically valid forged signatures cannot create a READY run."""
+    approval.initialize_approval_key()
+    spec, policy, policy_signature, key_id, grant, grant_signature = _signed_material()
+    if forged_record == "policy":
+        policy_signature = "0" * 64
+    else:
+        grant_signature = "0" * 64
+
+    with get_connection(tmp_path / f"forged-{forged_record}.db") as conn:
+        save_policy(conn, policy, signature=policy_signature, key_id=key_id)
+        save_grant(conn, grant, signature=grant_signature)
+
+        with pytest.raises(AutomationStoreError, match="authentication failed"):
+            bind_grant_and_create_ready_run(conn, spec, grant, now=NOW)
+
+        run_count = conn.execute("SELECT COUNT(*) FROM automation_runs").fetchone()[0]
+        bound_run_id = conn.execute(
+            "SELECT bound_run_id FROM automation_grants WHERE id = ?",
+            (grant.grant_id,),
+        ).fetchone()[0]
+        assert run_count == 0
+        assert bound_run_id is None
 
 
 def test_lifecycle_transitions_and_events_are_compare_and_set(

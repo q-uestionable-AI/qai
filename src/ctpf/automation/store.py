@@ -10,10 +10,21 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from ctpf.automation.canonical import canonical_json, sha256_digest
+from ctpf.automation.approval import (
+    ApprovalError,
+    authenticate_authorization_grant,
+    authenticate_policy,
+)
+from ctpf.automation.canonical import (
+    CanonicalizationError,
+    canonical_json,
+    load_canonical_object,
+    sha256_digest,
+)
 from ctpf.automation.contracts import (
     AuthorizationGrant,
     AutomationRunState,
+    ContractError,
     PolicyDocument,
     RunSpec,
 )
@@ -285,7 +296,7 @@ def bind_grant_and_create_ready_run(
     """Atomically bind a grant and create or return one idempotent ready run."""
     spec_payload = spec.to_payload()
     spec_digest = sha256_digest(spec_payload)
-    evaluation_time = _evaluation_timestamp(now)
+    evaluation_time = _evaluation_time(now)
     conn.execute("SAVEPOINT automation_bind")
     try:
         binding = _bind_or_return_existing(
@@ -311,11 +322,12 @@ def _bind_or_return_existing(
     spec_payload: dict[str, Any],
     spec_digest: str,
     grant: AuthorizationGrant,
-    evaluation_time: str,
+    evaluation_time: datetime.datetime,
 ) -> RunBinding:
     existing = _get_run_by_idempotency(conn, spec.idempotency_key)
     if existing is not None:
         return _existing_binding(conn, existing, spec_digest, grant.grant_id)
+    _authenticate_stored_authority(conn, spec, grant, evaluation_time)
     _validate_binding_contract(spec, grant, spec_digest)
     _validate_stored_grant(conn, grant, spec_digest, evaluation_time)
     run_id = uuid.uuid4().hex
@@ -503,8 +515,9 @@ def _validate_stored_grant(
     conn: sqlite3.Connection,
     grant: AuthorizationGrant,
     spec_digest: str,
-    evaluation_time: str,
+    evaluation_time: datetime.datetime,
 ) -> None:
+    timestamp = evaluation_time.strftime("%Y-%m-%dT%H:%M:%SZ")
     row = conn.execute(
         """
         SELECT
@@ -526,9 +539,9 @@ def _validate_stored_grant(
         raise AutomationStoreError("authorization grant is revoked")
     if row["policy_status"] != "active":
         raise AutomationStoreError("authorizing policy is revoked")
-    if not row["issued_at"] <= evaluation_time < row["expires_at"]:
+    if not row["issued_at"] <= timestamp < row["expires_at"]:
         raise AutomationStoreError("authorization grant is outside its validity interval")
-    if not row["policy_created_at"] <= evaluation_time < row["policy_expires_at"]:
+    if not row["policy_created_at"] <= timestamp < row["policy_expires_at"]:
         raise AutomationStoreError("authorizing policy is outside its validity interval")
     if row["bound_run_id"] is not None:
         raise GrantReplayError("authorization grant is already bound")
@@ -540,6 +553,47 @@ def _validate_stored_grant(
         or row["grant_json"] != canonical_json(grant.to_payload())
     ):
         raise AutomationStoreError("authorization grant does not match the RunSpec")
+
+
+def _authenticate_stored_authority(
+    conn: sqlite3.Connection,
+    spec: RunSpec,
+    grant: AuthorizationGrant,
+    evaluation_time: datetime.datetime,
+) -> None:
+    stored_policy = get_policy(conn, grant.policy_id)
+    stored_grant = get_grant(conn, grant.grant_id)
+    if stored_policy is None or stored_grant is None:
+        raise AutomationStoreError("stored authorization records are incomplete")
+    try:
+        policy = PolicyDocument.from_payload(load_canonical_object(stored_policy.policy_json))
+        authenticated_grant = AuthorizationGrant.from_payload(
+            load_canonical_object(stored_grant.grant_json)
+        )
+        policy_digest = authenticate_policy(
+            policy,
+            stored_policy.signature,
+            stored_policy.key_id,
+            now=evaluation_time,
+        )
+        authenticate_authorization_grant(
+            authenticated_grant,
+            stored_grant.signature,
+            spec,
+            policy,
+            now=evaluation_time,
+        )
+    except (ApprovalError, CanonicalizationError, ContractError) as exc:
+        raise AutomationStoreError(f"stored authorization authentication failed: {exc}") from exc
+    identity_matches = (
+        policy.policy_id == stored_policy.policy_id
+        and policy_digest == stored_policy.policy_digest
+        and authenticated_grant == grant
+        and authenticated_grant.grant_id == stored_grant.grant_id
+        and authenticated_grant.key_id == stored_grant.key_id
+    )
+    if not identity_matches:
+        raise AutomationStoreError("authenticated authorization does not match stored identity")
 
 
 def _validate_binding_contract(
@@ -660,8 +714,8 @@ def _validate_auth_fields(signature: str, key_id: str) -> None:
         raise AutomationStoreError("key_id must be a lowercase SHA-256 digest")
 
 
-def _evaluation_timestamp(value: datetime.datetime | None) -> str:
+def _evaluation_time(value: datetime.datetime | None) -> datetime.datetime:
     current = value or datetime.datetime.now(datetime.UTC)
     if current.tzinfo is None or current.utcoffset() is None:
         raise AutomationStoreError("grant evaluation time must be timezone-aware")
-    return current.astimezone(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return current.astimezone(datetime.UTC).replace(microsecond=0)

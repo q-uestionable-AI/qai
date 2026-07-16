@@ -78,7 +78,11 @@ def _identity(
         "target_type": target_type,
     }
     if target_type == "agent-runtime":
-        behavior = {"driver": "claude-code-cli", "target_id": TARGET_ID}
+        behavior = {
+            "driver": "claude-code-cli",
+            "target_id": TARGET_ID,
+            "timeout_seconds": 90,
+        }
     return TargetIdentity(TARGET_ID, target_type, network, behavior, TARGET_FINGERPRINT)
 
 
@@ -253,4 +257,18 @@ def test_external_runtime_is_per_run_and_emits_cost_warning() -> None:
 
     assert decision.kind == DecisionKind.APPROVAL_REQUIRED
     assert decision.minimum_reservations.runtime_processes == 1
+    assert decision.minimum_reservations.wall_clock_seconds == 90
     assert decision.warnings == ("external runtime cost is not measured by CTPF",)
+
+    under_reserved = evaluate_policy(
+        _spec(
+            requested_tier=AuthorizationTier.BOUNDED_REMOTE,
+            limits=_resources(wall_clock_seconds=89),
+        ),
+        _policy(target=target_policy),
+        _capability(),
+        (identity,),
+        now=NOW,
+    )
+    assert under_reserved.kind == DecisionKind.DENIED
+    assert under_reserved.reason_code == "requested_limits_below_minimum"

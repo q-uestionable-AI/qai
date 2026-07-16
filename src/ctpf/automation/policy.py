@@ -203,6 +203,7 @@ def _minimum_reservations(
     provider_requests = 0
     tokens = 0
     runtime_processes = 0
+    runtime_wall_clock = 0
     cost = 0
     warnings: list[str] = []
     target_policies = {item.target_id: item for item in policy.targets}
@@ -218,19 +219,27 @@ def _minimum_reservations(
             provider_requests += target_requests
             tokens += max_tokens * target_requests
         else:
+            timeout_seconds = identity.behavior.get("timeout_seconds")
+            if (
+                isinstance(timeout_seconds, bool)
+                or not isinstance(timeout_seconds, int)
+                or timeout_seconds < 1
+            ):
+                return _ZERO_RESERVATIONS, (), "target_timeout_seconds_invalid"
             target_requests = sessions_per_target
             provider_requests += target_requests
             runtime_processes += sessions_per_target
+            runtime_wall_clock += timeout_seconds * sessions_per_target
             warnings.append("external runtime cost is not measured by CTPF")
         target_policy = target_policies[identity.target_id]
         ceiling = target_policy.request_cost_ceiling_microusd
         if ceiling is not None:
             cost += ceiling * target_requests
-    values = (provider_requests, tokens, runtime_processes, cost)
+    values = (provider_requests, tokens, runtime_processes, runtime_wall_clock, cost)
     if any(value > _MAX_INTEGER for value in values):
         return _ZERO_RESERVATIONS, (), "minimum_reservation_overflow"
     reservations = ResourceLimits(
-        wall_clock_seconds=1,
+        wall_clock_seconds=max(1, runtime_wall_clock),
         provider_requests=max(1, provider_requests),
         output_tokens_reserved=max(1, tokens),
         tool_calls=max(1, sessions),
