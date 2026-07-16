@@ -189,11 +189,17 @@ class TestClaudeCodeTargetProfile:
     def test_rejects_unpinned_or_secret_metadata(
         self,
         tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
         metadata: dict[str, Any],
         message: str,
     ) -> None:
         db_path = tmp_path / "ctpf.db"
         target_id = _create_runtime_target(db_path, metadata=metadata)
+        monkeypatch.setattr(
+            external_runtime,
+            "_inspect_claude_executable",
+            lambda _raw: ("C:/tools/claude.exe", "2.1.121 (Claude Code)"),
+        )
 
         with pytest.raises(ExternalRuntimeError, match=message):
             load_experiment_target_profile(target_id[:8], db_path=db_path)
