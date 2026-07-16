@@ -352,6 +352,14 @@ def get_automation_run(
     return _run_from_row(row) if row is not None else None
 
 
+def get_automation_run_by_idempotency(
+    conn: sqlite3.Connection,
+    idempotency_key: str,
+) -> AutomationRunRecord | None:
+    """Return one governed run by its exact idempotency key."""
+    return _get_run_by_idempotency(conn, idempotency_key)
+
+
 def append_event(
     conn: sqlite3.Connection,
     run_id: str,

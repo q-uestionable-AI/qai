@@ -73,6 +73,34 @@ def get_connection(
         conn.close()
 
 
+@contextmanager
+def get_readonly_connection(
+    db_path: Path | None = None,
+) -> Generator[sqlite3.Connection, None, None]:
+    """Yield a query-only connection without creating or migrating a database.
+
+    Args:
+        db_path: Existing database path. Defaults to ``~/.ctpf/ctpf.db``.
+
+    Yields:
+        A SQLite connection that rejects write statements.
+
+    Raises:
+        FileNotFoundError: If the selected database does not exist.
+    """
+    path = (db_path or _DEFAULT_DB_PATH).expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"CTPF database does not exist: {path}")
+    conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA query_only=ON")
+        conn.execute("PRAGMA foreign_keys=ON")
+        yield conn
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Run CRUD
 # ---------------------------------------------------------------------------

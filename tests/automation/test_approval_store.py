@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from ctpf import driven_inference
 from ctpf.automation import approval
 from ctpf.automation.approval import ApprovalError
 from ctpf.automation.canonical import CanonicalizationError, sha256_digest
@@ -55,7 +56,23 @@ from ctpf.core.db import get_connection
 POLICY_ID = "a" * 32
 TARGET_ID = "b" * 32
 SCENARIO_FINGERPRINT = "c" * 64
-TARGET_FINGERPRINT = "d" * 64
+TARGET_BEHAVIOR = {
+    "credential_alias": "test-key",
+    "driver": "openai-compatible",
+    "driver_source_hash": hashlib.sha256(Path(driven_inference.__file__).read_bytes()).hexdigest(),
+    "endpoint": "http://127.0.0.1:11434/v1",
+    "generation_parameters": {
+        "reasoning_effort": None,
+        "seed": None,
+        "temperature": "0",
+    },
+    "max_provider_rounds": 12,
+    "max_tokens": 256,
+    "model": "test-model",
+    "target_id": TARGET_ID,
+    "target_type": "inference",
+}
+TARGET_FINGERPRINT = sha256_digest(TARGET_BEHAVIOR)
 NOW = datetime.datetime(2026, 7, 16, 12, 0, tzinfo=datetime.UTC)
 
 
@@ -102,6 +119,8 @@ def _policy() -> PolicyDocument:
             TargetPolicy(
                 TARGET_ID,
                 TARGET_FINGERPRINT,
+                "inference",
+                TARGET_BEHAVIOR,
                 NetworkClass.LOOPBACK,
                 BillingClass.UNMETERED,
                 None,
@@ -261,6 +280,22 @@ def test_key_identifier_uses_domain_separated_hmac(fake_keyring: dict[str, str])
     ).hexdigest()
     assert key_id == expected
     assert key_id != hashlib.sha256(key).hexdigest()
+
+
+def test_key_rotation_invalidates_existing_authority(
+    fake_keyring: dict[str, str],
+) -> None:
+    """Explicit rotation replaces key identity and fails closed on old signatures."""
+    old_key_id = approval.initialize_approval_key()
+    policy = _policy()
+    signature, signed_key_id = approval.sign_policy(policy)
+
+    previous, replacement = approval.rotate_approval_key()
+
+    assert previous == old_key_id == signed_key_id
+    assert replacement != previous
+    with pytest.raises(ApprovalError, match="identifier"):
+        approval.authenticate_policy(policy, signature, signed_key_id, now=NOW)
 
 
 def test_store_binds_grant_once_and_returns_exact_idempotent_run(

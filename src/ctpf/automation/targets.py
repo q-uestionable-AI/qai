@@ -6,13 +6,14 @@ import hashlib
 import ipaddress
 import re
 from dataclasses import dataclass
-from pathlib import Path
+from decimal import Decimal, InvalidOperation
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 from urllib.parse import urlparse
 
 from ctpf import __version__, driven_inference, external_runtime
 from ctpf.automation.canonical import sha256_digest
-from ctpf.automation.contracts import ExperimentMode, NetworkClass
+from ctpf.automation.contracts import ExperimentMode, NetworkClass, TargetPolicy
 from ctpf.driven_inference import OpenAICompatibleTargetProfile
 from ctpf.external_runtime import (
     ClaudeCodeTargetProfile,
@@ -21,6 +22,37 @@ from ctpf.external_runtime import (
 )
 
 _FULL_ID = re.compile(r"^[0-9a-f]{32}$")
+_DIGEST = re.compile(r"^[0-9a-f]{64}$")
+_MIN_TEMPERATURE = Decimal("0")
+_MAX_TEMPERATURE = Decimal("2")
+_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+_INFERENCE_BEHAVIOR_KEYS = {
+    "credential_alias",
+    "driver",
+    "driver_source_hash",
+    "endpoint",
+    "generation_parameters",
+    "max_provider_rounds",
+    "max_tokens",
+    "model",
+    "target_id",
+    "target_type",
+}
+_RUNTIME_BEHAVIOR_KEYS = {
+    "driver",
+    "driver_source_hash",
+    "environment_policy",
+    "executable",
+    "executable_sha256",
+    "identity_probe_processes",
+    "identity_probe_timeout_seconds",
+    "mcp_policy",
+    "model",
+    "runtime_version",
+    "target_id",
+    "target_type",
+    "timeout_seconds",
+}
 
 
 class TargetIdentityError(ValueError):
@@ -177,6 +209,40 @@ def load_target_identity(target_id: str, *, db_path: Path | None = None) -> Targ
     raise TargetIdentityError(f"unsupported target profile: {type(profile).__name__}")
 
 
+def target_identity_from_policy(target: TargetPolicy) -> TargetIdentity:
+    """Validate one signed target snapshot without contacting its live target.
+
+    Args:
+        target: Policy target containing the complete non-secret behavior snapshot.
+
+    Returns:
+        Validated target identity suitable for deterministic policy evaluation.
+
+    Raises:
+        TargetIdentityError: If the snapshot is malformed, inconsistent, or unsafe.
+    """
+    behavior = dict(target.behavior)
+    if sha256_digest(behavior) != target.target_fingerprint:
+        raise TargetIdentityError("policy target behavior fingerprint is invalid")
+    if behavior.get("target_id") != target.target_id:
+        raise TargetIdentityError("policy target behavior has a mismatched target ID")
+    if behavior.get("target_type") != target.target_type:
+        raise TargetIdentityError("policy target behavior has a mismatched target type")
+    if target.target_type == "inference":
+        _validate_inference_snapshot(behavior, target.network_class)
+    elif target.target_type == "agent-runtime":
+        _validate_runtime_snapshot(behavior, target.network_class)
+    else:
+        raise TargetIdentityError(f"unsupported policy target type: {target.target_type!r}")
+    return TargetIdentity(
+        target.target_id,
+        target.target_type,
+        target.network_class,
+        behavior,
+        target.target_fingerprint,
+    )
+
+
 def classify_inference_endpoint(endpoint: str) -> NetworkClass:
     """Classify one normalized inference endpoint for the initial policy.
 
@@ -303,6 +369,113 @@ def _runtime_identity(profile: ClaudeCodeTargetProfile) -> TargetIdentity:
         behavior,
         sha256_digest(behavior),
     )
+
+
+def _validate_inference_snapshot(
+    behavior: dict[str, Any],
+    network_class: NetworkClass,
+) -> None:
+    _require_behavior_keys(behavior, _INFERENCE_BEHAVIOR_KEYS)
+    if behavior["driver"] != "openai-compatible":
+        raise TargetIdentityError("policy inference driver is unsupported")
+    _require_installed_driver_hash(behavior["driver_source_hash"], Path(driven_inference.__file__))
+    endpoint = _require_text(behavior["endpoint"], "endpoint")
+    if endpoint.endswith("/"):
+        raise TargetIdentityError("policy inference endpoint must be normalized")
+    if classify_inference_endpoint(endpoint) != network_class:
+        raise TargetIdentityError("policy inference network class does not match its endpoint")
+    _require_text(behavior["model"], "model")
+    _require_text(behavior["credential_alias"], "credential_alias")
+    _require_positive_int(behavior["max_tokens"], "max_tokens")
+    if behavior["max_provider_rounds"] != driven_inference.DEFAULT_MAX_ROUNDS:
+        raise TargetIdentityError("policy inference provider-round limit is not installed")
+    _validate_generation_snapshot(behavior["generation_parameters"])
+
+
+def _validate_runtime_snapshot(
+    behavior: dict[str, Any],
+    network_class: NetworkClass,
+) -> None:
+    _require_behavior_keys(behavior, _RUNTIME_BEHAVIOR_KEYS)
+    if network_class != NetworkClass.EXTERNAL_RUNTIME:
+        raise TargetIdentityError("policy runtime must use the external-runtime network class")
+    if behavior["driver"] != "claude-code-cli":
+        raise TargetIdentityError("policy external runtime driver is unsupported")
+    if behavior["environment_policy"] != "minimal non-secret allowlist":
+        raise TargetIdentityError("policy runtime environment policy is unsupported")
+    if behavior["mcp_policy"] != "strict loopback allowlisted-tools only":
+        raise TargetIdentityError("policy runtime MCP policy is unsupported")
+    _require_installed_driver_hash(behavior["driver_source_hash"], Path(external_runtime.__file__))
+    _require_digest(behavior["executable_sha256"], "executable_sha256")
+    _require_absolute_path(behavior["executable"])
+    _require_text(behavior["model"], "model")
+    _require_text(behavior["runtime_version"], "runtime_version")
+    _require_positive_int(behavior["timeout_seconds"], "timeout_seconds")
+    if behavior["identity_probe_processes"] != 1:
+        raise TargetIdentityError("policy runtime identity-probe process count is not installed")
+    if behavior["identity_probe_timeout_seconds"] != external_runtime.VERSION_PROBE_TIMEOUT_SECONDS:
+        raise TargetIdentityError("policy runtime identity-probe timeout is not installed")
+
+
+def _validate_generation_snapshot(raw: Any) -> None:
+    if not isinstance(raw, dict):
+        raise TargetIdentityError("generation_parameters must be an object")
+    expected = {"reasoning_effort", "seed", "temperature"}
+    _require_behavior_keys(raw, expected)
+    reasoning = raw["reasoning_effort"]
+    if reasoning is not None:
+        value = _require_text(reasoning, "reasoning_effort")
+        if value not in _REASONING_EFFORTS:
+            raise TargetIdentityError("policy target reasoning_effort is unsupported")
+    seed = raw["seed"]
+    if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
+        raise TargetIdentityError("seed must be an integer or null")
+    temperature = raw["temperature"]
+    if temperature is None:
+        return
+    value = _require_text(temperature, "temperature")
+    try:
+        parsed = Decimal(value)
+    except InvalidOperation as exc:
+        raise TargetIdentityError("temperature must be a decimal string or null") from exc
+    if not parsed.is_finite() or not _MIN_TEMPERATURE <= parsed <= _MAX_TEMPERATURE:
+        raise TargetIdentityError("temperature must be finite and between 0 and 2")
+
+
+def _require_behavior_keys(behavior: dict[str, Any], expected: set[str]) -> None:
+    if set(behavior) != expected:
+        raise TargetIdentityError("policy target behavior fields are incomplete or unknown")
+
+
+def _require_text(raw: Any, label: str) -> str:
+    if not isinstance(raw, str) or not raw.strip() or raw != raw.strip():
+        raise TargetIdentityError(f"policy target {label} must be normalized non-empty text")
+    return raw
+
+
+def _require_digest(raw: Any, label: str) -> None:
+    if not isinstance(raw, str) or not _DIGEST.fullmatch(raw):
+        raise TargetIdentityError(f"policy target {label} must be a SHA-256 digest")
+
+
+def _require_installed_driver_hash(raw: Any, path: Path) -> None:
+    _require_digest(raw, "driver_source_hash")
+    if raw != _file_hash(path):
+        raise TargetIdentityError("policy target driver source is not the installed driver")
+
+
+def _require_positive_int(raw: Any, label: str) -> None:
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+        raise TargetIdentityError(f"policy target {label} must be a positive integer")
+
+
+def _require_absolute_path(raw: Any) -> None:
+    value = _require_text(raw, "executable")
+    posix = PurePosixPath(value)
+    windows = PureWindowsPath(value)
+    parts = posix.parts if posix.is_absolute() else windows.parts
+    if not (posix.is_absolute() or windows.is_absolute()) or ".." in parts:
+        raise TargetIdentityError("policy target executable must be an absolute local path")
 
 
 def _decimal_string(raw: Any) -> str | None:

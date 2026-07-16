@@ -18,7 +18,23 @@ from ctpf.automation.contracts import ContractError, PolicyDocument, RunSpec
 POLICY_ID = "a" * 32
 TARGET_ID = "b" * 32
 SCENARIO_FINGERPRINT = "c" * 64
-TARGET_FINGERPRINT = "d" * 64
+TARGET_BEHAVIOR = {
+    "credential_alias": "test-key",
+    "driver": "openai-compatible",
+    "driver_source_hash": "d" * 64,
+    "endpoint": "http://127.0.0.1:11434/v1",
+    "generation_parameters": {
+        "reasoning_effort": None,
+        "seed": None,
+        "temperature": "0",
+    },
+    "max_provider_rounds": 12,
+    "max_tokens": 256,
+    "model": "test-model",
+    "target_id": TARGET_ID,
+    "target_type": "inference",
+}
+TARGET_FINGERPRINT = sha256_digest(TARGET_BEHAVIOR)
 
 
 def _limits() -> dict[str, int]:
@@ -82,15 +98,17 @@ def _policy_payload() -> dict[str, object]:
                 "scenario": "pattern2",
             }
         ],
-        "schema_version": 1,
+        "schema_version": 2,
         "standing_tiers": [1],
         "targets": [
             {
+                "behavior": TARGET_BEHAVIOR,
                 "billing_class": "unmetered",
                 "network_class": "loopback",
                 "request_cost_ceiling_microusd": None,
                 "target_fingerprint": TARGET_FINGERPRINT,
                 "target_id": TARGET_ID,
+                "target_type": "inference",
             }
         ],
     }
@@ -187,6 +205,25 @@ def test_policy_round_trip_rejects_invalid_interval_and_cost_classification() ->
     targets[0]["billing_class"] = "metered"
     with pytest.raises(ContractError, match="require request_cost"):
         PolicyDocument.from_payload(payload)
+
+
+def test_policy_v2_allows_one_authority_path_but_never_tier_two_standing() -> None:
+    """A policy may be standing-only or per-run-only without widening standing authority."""
+    per_run_only = _policy_payload()
+    per_run_only["standing_tiers"] = []
+    assert PolicyDocument.from_payload(per_run_only).standing_tiers == ()
+
+    neither = _policy_payload()
+    neither["standing_tiers"] = []
+    neither["per_run_tiers"] = []
+    with pytest.raises(ContractError, match="at least one execution tier"):
+        PolicyDocument.from_payload(neither)
+
+    remote_standing = _policy_payload()
+    remote_standing["standing_tiers"] = [2]
+    remote_standing["per_run_tiers"] = []
+    with pytest.raises(ContractError, match="only local synthetic"):
+        PolicyDocument.from_payload(remote_standing)
 
 
 def test_contract_timestamp_rejects_impossible_calendar_date() -> None:

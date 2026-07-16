@@ -48,6 +48,21 @@ def delete_approval_key() -> None:
     delete_local_secret(_APPROVAL_SECRET_NAME)
 
 
+def rotate_approval_key() -> tuple[str, str]:
+    """Replace the initialized signing key and return its old and new identifiers.
+
+    Returns:
+        Tuple containing the previous and replacement public key identifiers.
+
+    Raises:
+        ApprovalError: If no valid approval key is currently initialized.
+    """
+    previous = _key_id(_load_key())
+    replacement = secrets.token_bytes(_KEY_BYTES)
+    set_local_secret(_APPROVAL_SECRET_NAME, _encode_key(replacement))
+    return previous, _key_id(replacement)
+
+
 def approval_key_id() -> str:
     """Return the current local signing-key identifier without exposing the key."""
     return _key_id(_load_key())
@@ -237,9 +252,13 @@ def _validate_grant_times(
 
 
 def _validate_policy_contract(policy: PolicyDocument) -> None:
+    from ctpf.automation.targets import TargetIdentityError, target_identity_from_policy
+
     try:
         parsed = PolicyDocument.from_payload(policy.to_payload())
-    except (AttributeError, ContractError, TypeError, ValueError) as exc:
+        for target in parsed.targets:
+            target_identity_from_policy(target)
+    except (AttributeError, ContractError, TargetIdentityError, TypeError, ValueError) as exc:
         raise ApprovalError(f"policy contract is invalid: {exc}") from exc
     if parsed != policy:
         raise ApprovalError("policy contract is not normalized")

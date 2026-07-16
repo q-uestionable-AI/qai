@@ -2,17 +2,27 @@
 
 from __future__ import annotations
 
+import hashlib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from ctpf import external_runtime
-from ctpf.automation.contracts import ExperimentMode, NetworkClass
+from ctpf import driven_inference, external_runtime
+from ctpf.automation import targets
+from ctpf.automation.canonical import sha256_digest
+from ctpf.automation.contracts import (
+    BillingClass,
+    ExperimentMode,
+    NetworkClass,
+    TargetPolicy,
+)
 from ctpf.automation.targets import (
     TargetIdentityError,
     classify_inference_endpoint,
     installed_scenario_capabilities,
     load_target_identity,
+    target_identity_from_policy,
 )
 from ctpf.core.db import create_target, get_connection
 
@@ -148,3 +158,90 @@ def test_target_identity_requires_full_unambiguous_id(tmp_path: Path) -> None:
     """Automation never resolves the partial IDs accepted by interactive commands."""
     with pytest.raises(TargetIdentityError, match="full lowercase"):
         load_target_identity("abcdef12", db_path=tmp_path / "ctpf.db")
+
+
+def test_signed_runtime_snapshot_validation_is_stateless(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Machine validation never launches the Claude identity probe or reloads a profile."""
+    target_id = "a" * 32
+    behavior = {
+        "driver": "claude-code-cli",
+        "driver_source_hash": hashlib.sha256(
+            Path(external_runtime.__file__).read_bytes()
+        ).hexdigest(),
+        "environment_policy": "minimal non-secret allowlist",
+        "executable": str((tmp_path / "claude").resolve()),
+        "executable_sha256": "c" * 64,
+        "identity_probe_processes": 1,
+        "identity_probe_timeout_seconds": 10,
+        "mcp_policy": "strict loopback allowlisted-tools only",
+        "model": "claude-test-model",
+        "runtime_version": "2.1.121 (Claude Code)",
+        "target_id": target_id,
+        "target_type": "agent-runtime",
+        "timeout_seconds": 90,
+    }
+    policy_target = TargetPolicy(
+        target_id,
+        sha256_digest(behavior),
+        "agent-runtime",
+        behavior,
+        NetworkClass.EXTERNAL_RUNTIME,
+        BillingClass.EXTERNAL_RUNTIME,
+        None,
+    )
+
+    def unexpected_profile_load(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("stateless snapshot validation loaded a live target")
+
+    monkeypatch.setattr(targets, "load_experiment_target_profile", unexpected_profile_load)
+    identity = target_identity_from_policy(policy_target)
+    assert identity.behavior["runtime_version"] == "2.1.121 (Claude Code)"
+
+    tampered = dict(behavior)
+    tampered["runtime_version"] = "changed"
+    with pytest.raises(TargetIdentityError, match="fingerprint"):
+        target_identity_from_policy(replace(policy_target, behavior=tampered))
+
+
+def test_signed_inference_snapshot_cannot_understate_fixed_driver_rounds() -> None:
+    """A self-consistent snapshot still fails if it changes installed driver constants."""
+    target_id = "a" * 32
+    behavior = {
+        "credential_alias": "test-key",
+        "driver": "openai-compatible",
+        "driver_source_hash": hashlib.sha256(
+            Path(driven_inference.__file__).read_bytes()
+        ).hexdigest(),
+        "endpoint": "http://127.0.0.1:11434/v1",
+        "generation_parameters": {
+            "reasoning_effort": None,
+            "seed": None,
+            "temperature": "0",
+        },
+        "max_provider_rounds": 1,
+        "max_tokens": 256,
+        "model": "test-model",
+        "target_id": target_id,
+        "target_type": "inference",
+    }
+    policy_target = TargetPolicy(
+        target_id,
+        sha256_digest(behavior),
+        "inference",
+        behavior,
+        NetworkClass.LOOPBACK,
+        BillingClass.UNMETERED,
+        None,
+    )
+
+    with pytest.raises(TargetIdentityError, match="provider-round"):
+        target_identity_from_policy(policy_target)
+
+    behavior["max_provider_rounds"] = driven_inference.DEFAULT_MAX_ROUNDS
+    behavior["driver_source_hash"] = "d" * 64
+    changed = replace(policy_target, behavior=behavior, target_fingerprint=sha256_digest(behavior))
+    with pytest.raises(TargetIdentityError, match="installed driver"):
+        target_identity_from_policy(changed)
