@@ -378,6 +378,54 @@ class TestSessionLifecycle:
 
         assert delays == [experiment._LISTENER_RESTART_COOLDOWN]
 
+    async def test_run_session_cancels_operator_when_runtime_dies(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A dead proxy interrupts an operator instead of leaving it hung."""
+        operator_started = asyncio.Event()
+        operator_cancelled = asyncio.Event()
+
+        class BlockingOperator(_FakeOperator):
+            async def wait_for_completion(self, *args: Any, **kwargs: Any) -> None:
+                operator_started.set()
+                try:
+                    await asyncio.Future()
+                finally:
+                    operator_cancelled.set()
+
+        class FailingRuntime(_FakeRuntime):
+            async def run(self, _config: Any) -> None:
+                self.ready.set()
+                await operator_started.wait()
+                self.pipeline.session_store.finish()
+                raise OSError("fixture exited")
+
+        monkeypatch.setattr(experiment, "ProxyRuntime", FailingRuntime)
+        monkeypatch.setattr(experiment, "_LISTENER_RESTART_COOLDOWN", 0.0)
+        options = experiment.CascadeExperimentOptions("Composer 2.5", tmp_path)
+        spec = experiment._build_session_spec(
+            "cascade-memo",
+            experiment._Condition.BASELINE,
+            "A",
+            experiment.SESSION_A_PROMPT,
+            tmp_path / "session-A.json",
+            "test-run",
+            True,
+            None,
+            None,
+            None,
+        )
+
+        with pytest.raises(OSError, match="fixture exited"):
+            await asyncio.wait_for(
+                experiment._run_session(spec, options, BlockingOperator()),
+                timeout=1.0,
+            )
+
+        assert operator_cancelled.is_set()
+
 
 class TestConsoleSessionIsolation:
     """Interactive sessions use fresh Python worker processes."""
