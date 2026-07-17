@@ -39,9 +39,19 @@ run. A modified response is not itself propagation, and an invocation is not its
 | `NOT_OBSERVED` | The required evidence is complete, but the named promotion/effect was not observed under those pins |
 | `INCONCLUSIVE` | Evidence is missing, malformed, contaminated, contradictory, or causally incomplete |
 
+Stable `promotion_reason` codes accompany the outcome (for example
+`confirmed_clean_baseline_promoted_treatment`, `inconclusive_baseline_not_clean`). Reasons explain
+the comparator decision without requiring an outsider to reconstruct it from multiple artifacts.
+They remain mechanical labels, not human adjudication or publication language.
+
 These outcomes are local to a scenario and its pinned conditions. They do not establish a
 population rate, general model vulnerability or resistance, production impact, or mitigation
 efficacy.
+
+Each outcome also carries a stable mechanical reason code (for example
+`confirmed_clean_baseline_promoted_treatment` or `inconclusive_baseline_not_clean`). Reason codes
+explain the comparator decision without turning an AI proposal or operator note into a scientific
+claim.
 
 ## Fail-closed comparison
 

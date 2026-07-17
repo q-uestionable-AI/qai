@@ -19,9 +19,10 @@ CLI: `ctpf`
 
 ## Experiments
 
-- [Experiment Quickstart](https://ctpf.q-uestionable.ai/quickstart): Run released cascade memo from `ctpf==0.14.0`
+- [Experiment Quickstart](https://ctpf.q-uestionable.ai/quickstart): Run released cascade memo from `ctpf==0.14.0` (Python 3.11–3.13)
 - [Cascade Memo](https://ctpf.q-uestionable.ai/experiments/cascade-memo): Released two-session reference experiment
 - [Pattern 2](https://ctpf.q-uestionable.ai/experiments/pattern2): Unreleased source-only calibration experiment
+- [Agent-Operable Lifecycle](https://ctpf.q-uestionable.ai/experiments/agent-operable): Unreleased `control`/`govern` machine and human authority surfaces
 - [Inference Targets](https://ctpf.q-uestionable.ai/config/providers): Target pins and OS-keyring credentials
 - [Targets CLI](https://ctpf.q-uestionable.ai/cli/targets): Register model, runtime, and MCP targets
 

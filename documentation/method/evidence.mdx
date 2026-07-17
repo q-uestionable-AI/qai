@@ -33,6 +33,29 @@ record instead of disappearing behind a retry.
 The bundle verifies that the captured record is internally consistent. It does not by itself prove
 that an independent outsider can reproduce the experiment or that the result generalizes.
 
+On source `main`, `ctpf experiment control verify` runs that internal-consistency check against the
+bundle declared by a governed run result. It does not establish independent authenticity, scientific
+validity, or generality. Stable mechanical reason codes travel with the result; they are not human
+adjudication.
+
+## Authoritative discovery
+
+For a completed series, treat these as the authoritative mechanical records (names may vary slightly
+by scenario, but the roles do not):
+
+| Record | Role |
+| --- | --- |
+| Series / run manifest | Progress, pins, failures, and primary/hardened mechanical outcomes |
+| Primary trust-transition | Mechanical `promotion_result` plus stable `promotion_reason` |
+| Hardened trust-transition | Same fields for the hardened arm when present |
+| Structured traces / transcripts | Invocation and protocol evidence |
+| Sink / effect artifacts | Independent external-effect oracle inputs |
+| Evidence bundle + `manifest.json` | Declared copied artifacts and hashes |
+
+`evidence_complete` means required inputs were readable. It is not a positive observation.
+Invocation is not external effect. On source `main`, `ctpf experiment control verify` checks bundle
+internal consistency only.
+
 ## Experiment evidence versus SQLite state
 
 CTPF also retains an operational SQLite database at `~/.ctpf/ctpf.db` for targets, settings, and

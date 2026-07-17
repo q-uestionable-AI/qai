@@ -38,6 +38,7 @@
           "quickstart",
           "experiments/cascade-memo",
           "experiments/pattern2",
+          "experiments/agent-operable",
           "config/providers",
           "cli/targets"
         ]

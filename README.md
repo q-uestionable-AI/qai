@@ -19,6 +19,10 @@ red-team platform, proxy product, or workflow orchestrator. It coordinates contr
 captures original and modified protocol evidence, verifies run-scoped external effects, compares
 results conservatively, and writes integrity-checkable evidence bundles.
 
+The harness is intended primarily for an AI agent and secondarily for a human operator. Humans
+retain target and policy approval, spend and risk authority, scientific adjudication, and
+publication. Mechanical scores are not research conclusions.
+
 ## Research method
 
 A CTPF experiment:
@@ -51,10 +55,16 @@ not by themselves establish independently emergent authority promotion.
 | Command | Role |
 | --- | --- |
 | `ctpf experiment` | Run packaged controlled experiments |
+| `ctpf experiment control` | Machine lifecycle for an untrusted AI caller (source `main` only) |
+| `ctpf experiment govern` | TTY-only human policy, key, and approval authority (source `main` only) |
 | `ctpf targets` | Register demonstrated model and agent-runtime targets |
 | `ctpf proxy` | Observe or intervene in MCP traffic and preserve protocol evidence |
 | `ctpf runs` / `ctpf findings` | Inspect retained operational records |
 | `ctpf config` / `ctpf db` | Manage non-secret settings, OS-keyring credentials, and local state |
+
+`control` and `govern` are present on unreleased source `main`. They are not part of public
+`v0.14.0`. Proxy replay and arbitrary target mutation remain human-operated supporting surfaces, not
+the autonomous entry path.
 
 Audit enumeration and SARIF export remain in-tree as a frozen secondary library, not a public CLI
 pillar or research contribution. Demonstrated fixtures stay narrow and scenario-specific. Removed
@@ -100,8 +110,23 @@ uv sync --group dev
 uv run ctpf experiment run --help
 ```
 
-Source `main` currently exposes both `cascade-memo` and `pattern2`. Do not treat source-only behavior
-as part of `v0.14.0` or as a commitment to another package release.
+Source `main` currently exposes `cascade-memo`, `pattern2`, and the agent-operable
+`control` / `govern` surfaces. Do not treat source-only behavior as part of `v0.14.0` or as a
+commitment to another package release.
+
+### Safe agent entry on source `main`
+
+Query-only discovery first:
+
+```bash
+uv run ctpf experiment control capabilities
+uv run ctpf experiment control validate < runspec.json
+```
+
+A human must create signed policy (and, when required, approval) through `ctpf experiment govern`
+on an interactive TTY before the agent may `start` or `execute`. Deploy the agent inside an
+external OS/runtime sandbox; the harness does not claim full-shell containment. Details:
+[Agent-Operable Lifecycle](https://ctpf.q-uestionable.ai/experiments/agent-operable).
 
 > By [Richard Spicer](https://richardspicer.io) · [q-uestionable-AI](https://q-uestionable.ai)
 

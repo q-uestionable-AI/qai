@@ -13,17 +13,21 @@ platform, or workflow orchestrator.
 | Layer | Responsibility | Location |
 | --- | --- | --- |
 | Research thesis | Define the capability-trust question and publication claims | Research program outside the repository |
+| Human governance | Sign policy/approvals; authorize targets, spend, science, and publication | `ctpf experiment govern` (TTY) |
+| Agent-operable control | Untrusted machine lifecycle over exact contracts | `ctpf experiment control` (source `main`) |
 | Stable harness | Condition isolation, protocol capture, trust-transition records, comparison, effect verification, and evidence integrity | Reusable `ctpf` package |
 | Study instrument | Scenario task, prompt, fixture, intervention, authority semantics, and oracle expectations | Narrow scenario modules and tests |
 | External system | Supply a model or agent runtime required by a named study | Registered target |
+| External sandbox | Contain a full-shell caller | Operator deployment |
 | Interpretation | Decide what the observation establishes | Human researcher |
 
 ## Package shape
 
 | Area | Responsibility |
 | --- | --- |
-| `experiment.py` | Coordinate isolated conditions, targets, manifests, comparisons, and bundles |
-| `kernel` | Trust-transition schemas, observations, trace parsing, scenario comparison, effect oracles, and evidence bundles |
+| `experiment.py` | Coordinate isolated conditions, targets, manifests, comparisons, and bundles; mount `control`/`govern` |
+| `automation/` | Contracts, policy, approval, lifecycle service, and execution control (source `main`) |
+| `kernel` | Trust-transition schemas, observations, trace parsing, scenario comparison, effect oracles, evidence bundles, and verifier |
 | `proxy` | MCP capture, controlled intervention, original preservation, persistence, replay, and export |
 | `mcp` | Async MCP connections, transports, discovery, and protocol models |
 | `driven_inference.py` | Demonstrated OpenAI-compatible model/tool loop and transcript capture |
@@ -32,8 +36,10 @@ platform, or workflow orchestrator.
 | `services` | Small database maintenance helpers |
 | `audit` | Frozen secondary enumeration/scanner library; not a root CLI or method contribution |
 
-The public operator entry point is `ctpf`. Its research command is `ctpf experiment`; proxy,
-targets, stored operational records, configuration, and database commands support that work.
+The public operator entry point is `ctpf`. Its research command is `ctpf experiment`. On source
+`main`, `control` is the autonomous surface and `govern` is the human authority surface. Proxy,
+targets, stored operational records, configuration, and database commands support that work and are
+not the default autonomous entry. See [Agent-Operable Lifecycle](/experiments/agent-operable).
 
 ## Experimental flow
 

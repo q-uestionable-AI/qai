@@ -15,10 +15,14 @@ It does not turn proposed studies or integrations into implemented behavior.
 | Layer | Responsibility | Location |
 | --- | --- | --- |
 | Research thesis | Define provenance, integrity, authorization scope, intended audience, persistence, and capability-promotion questions | Research program and study records outside the repository |
+| Human governance | Sign policy and approvals, approve targets and spend, adjudicate science, authorize publication | `ctpf experiment govern` (TTY) and operator judgment |
+| Agent-operable control | Untrusted machine lifecycle over exact RunSpec/policy/grant contracts | `ctpf experiment control` and `automation/` (source `main`) |
 | Stable harness | Condition isolation, protocol capture, trust-transition records, causal comparison, effect verification, and evidence integrity | Reusable `ctpf` package |
 | Study instrument | Scenario task, prompt, fixture, intervention, authority semantics, and effect oracle expectations | Narrow scenario modules and tests |
 | External system | Supply a model, agent runtime, benchmark task, or raw research artifact when a named study requires it | Registered target or separately approved study integration |
+| External sandbox | Contain a full-shell caller; CTPF does not claim OS isolation | Operator deployment outside the package |
 | Interpretation | Decide what an observation establishes and authorize publication language | Human researcher |
+| Optional adapter | Convenience distribution only; no independent safety or scientific authority | Not required for standalone use |
 
 External labels or conclusions never become CTPF conclusions automatically. Raw external artifacts
 must be preserved before normalization.
@@ -27,8 +31,9 @@ must be preserved before normalization.
 
 | Area | Responsibility |
 | --- | --- |
-| `experiment.py` | CLI and coordinator for complete isolated condition sequences, manifests, comparisons, and bundles |
-| `kernel` | Trust-transition schemas, observations, trace parsing, scenario-specific comparison, effect oracles, and evidence bundles |
+| `experiment.py` | CLI and coordinator for complete isolated condition sequences, manifests, comparisons, and bundles; mounts `control` and `govern` |
+| `automation/` | Canonical contracts, policy evaluation, HMAC approval, lifecycle service, envelopes, and execution control (source `main`) |
+| `kernel` | Trust-transition schemas, observations, trace parsing, scenario-specific comparison, effect oracles, evidence bundles, and verifier |
 | `proxy` | MCP observation/intervention infrastructure: capture, optional forward/modify/drop, persistence, replay, and export |
 | `mcp` | Async MCP connections, transports, discovery, and protocol models |
 | `driven_inference.py` | Demonstrated OpenAI-compatible model/tool loop and pinned inference transcript capture |
@@ -37,8 +42,10 @@ must be preserved before normalization.
 | `services` | Small shared database helpers |
 | `audit` | Frozen secondary enumeration/scanner library with reporting and SARIF support; not a root CLI or methods contribution |
 
-The public operator entry point is the `ctpf` CLI. Its research command is `ctpf experiment`; proxy,
-targets, stored records, configuration, and database commands support that work.
+The public operator entry point is the `ctpf` CLI. Its research command is `ctpf experiment`. On
+source `main`, `ctpf experiment control` is the autonomous machine surface and
+`ctpf experiment govern` is the human authority surface. Proxy, targets, stored records,
+configuration, and database commands support that work and are not the default autonomous entry.
 
 ## Experimental flow
 
@@ -136,11 +143,21 @@ may remain for migration and deletion compatibility.
 Audit remains in-tree but frozen and secondary. It does not define CTPF's identity and should not
 expand in competition with dedicated external scanners.
 
+## Agent-operable lifecycle (source `main`)
+
+`ctpf experiment control` accepts canonical RunSpec JSON, evaluates signed policy, claims leases,
+reserves budgets, executes packaged scenarios, and returns mechanical results plus
+`control verify` for bundle internal consistency. `ctpf experiment govern` issues and revokes the
+local signing key, policies, and approvals on an interactive TTY.
+
+Adapters are optional later. They do not own policy, credentials, execution, evidence, or science.
+
 ## Release boundary
 
 The installed package version is defined by the release tag, not by the current contents of `main`.
-As of `v0.14.0`, the public package contains cascade memo but not Pattern 2. Source documentation must
-identify unreleased behavior explicitly until a separately approved release changes that boundary.
+As of `v0.14.0`, the public package contains cascade memo but not Pattern 2 or the agent-operable
+`control` / `govern` surfaces. Source documentation must identify unreleased behavior explicitly
+until a separately approved release changes that boundary.
 
 ## Deliberate omissions
 

@@ -9,6 +9,10 @@ Create, list, and delete persisted target records. Controlled experiments use `i
 Target metadata contains endpoint/runtime pins and credential names only. API keys remain in the OS
 keyring.
 
+Target registration and deletion are human-operated. An autonomous caller on source `main` may use
+only targets already authorized by signed policy fingerprints; see
+[Agent-Operable Lifecycle](/experiments/agent-operable).
+
 ## Commands
 
 ### `ctpf targets list`
