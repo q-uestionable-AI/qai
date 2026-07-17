@@ -51,7 +51,7 @@ uv.lock
 .jules/
 .memory/
 .superpowers/
-.cursor/
+.cursor/*
 !.cursor/rules/
 !.cursor/rules/**
 
