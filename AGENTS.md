@@ -48,6 +48,21 @@ These are product invariants, not preferences.
 - Interpret instructions literally, but make reasonable implementation decisions within the
   requested scope instead of escalating routine details.
 
+### Builder-mode delegation
+
+- Treat the requested outcome as authorization for every routine, reversible step needed to
+  deliver it through a ready PR. Do not request separate approval to inspect files, choose among
+  implementation details that preserve scope, edit or refactor, run validation, create a feature
+  branch, commit, push, open or update the PR, or address and resolve valid in-scope review feedback.
+- When several reasonable implementations satisfy the request, choose the smallest supported
+  option and continue. Present a decision only when the choice would cross a stop boundary above.
+- Plans, gates, work-package labels, provenance records, and board maintenance constrain scope and
+  live research; they do not divide routine engineering into additional operator checkpoints.
+- At a true stop boundary, finish all safe in-scope work first, then ask for one concrete decision.
+  Do not turn that decision into a chain of approvals for its subordinate implementation steps.
+- When asked what is next, recommend the next outcome. Do not prescribe a sequence of approvals for
+  normal implementation mechanics.
+
 ## Hard Boundaries
 
 - Routine build, change, and fix requests authorize work through a ready PR unless the developer
