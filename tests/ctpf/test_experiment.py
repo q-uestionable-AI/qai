@@ -400,9 +400,9 @@ class TestSessionLifecycle:
                 self.ready.set()
                 await operator_started.wait()
                 self.pipeline.session_store.finish()
-                raise OSError("fixture exited")
 
         monkeypatch.setattr(experiment, "ProxyRuntime", FailingRuntime)
+        monkeypatch.setattr(experiment, "PROCESS_TERMINATE_GRACE_SECONDS", 0.01)
         monkeypatch.setattr(experiment, "_LISTENER_RESTART_COOLDOWN", 0.0)
         options = experiment.CascadeExperimentOptions("Composer 2.5", tmp_path)
         spec = experiment._build_session_spec(
@@ -418,13 +418,54 @@ class TestSessionLifecycle:
             None,
         )
 
-        with pytest.raises(OSError, match="fixture exited"):
+        with pytest.raises(experiment.ExperimentError, match="proxy runtime stopped"):
             await asyncio.wait_for(
                 experiment._run_session(spec, options, BlockingOperator()),
                 timeout=1.0,
             )
 
         assert operator_cancelled.is_set()
+
+    async def test_run_session_accepts_operator_finishing_after_client_disconnect(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Expected client disconnect may precede final operator cleanup."""
+        client_disconnected = asyncio.Event()
+
+        class DisconnectingOperator(_FakeOperator):
+            async def wait_for_completion(self, *args: Any, **kwargs: Any) -> None:
+                await super().wait_for_completion(*args, **kwargs)
+                client_disconnected.set()
+                await asyncio.sleep(0)
+
+        class CompletingRuntime(_FakeRuntime):
+            async def run(self, _config: Any) -> None:
+                self.ready.set()
+                await client_disconnected.wait()
+                self.pipeline.session_store.finish()
+
+        monkeypatch.setattr(experiment, "ProxyRuntime", CompletingRuntime)
+        monkeypatch.setattr(experiment, "_LISTENER_RESTART_COOLDOWN", 0.0)
+        options = experiment.CascadeExperimentOptions("Composer 2.5", tmp_path)
+        spec = experiment._build_session_spec(
+            "cascade-memo",
+            experiment._Condition.BASELINE,
+            "A",
+            experiment.SESSION_A_PROMPT,
+            tmp_path / "session-A.json",
+            "test-run",
+            True,
+            None,
+            None,
+            None,
+        )
+
+        operator = DisconnectingOperator()
+        await experiment._run_session(spec, options, operator)
+
+        assert operator.calls == [("baseline", "A")]
 
 
 class TestConsoleSessionIsolation:

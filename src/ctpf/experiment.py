@@ -2195,12 +2195,17 @@ async def _wait_for_operator_completion(
             {operator_task, runtime_task},
             return_when=asyncio.FIRST_COMPLETED,
         )
-        if runtime_task in done:
-            operator_task.cancel()
-            await asyncio.gather(operator_task, return_exceptions=True)
-            await runtime_task
-            raise ExperimentError("proxy runtime stopped during operator session")
-        await operator_task
+        if operator_task in done:
+            await operator_task
+            return
+        await runtime_task
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(operator_task),
+                timeout=PROCESS_TERMINATE_GRACE_SECONDS,
+            )
+        except TimeoutError:
+            raise ExperimentError("proxy runtime stopped during operator session") from None
     finally:
         if not operator_task.done():
             operator_task.cancel()
