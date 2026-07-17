@@ -9,7 +9,7 @@ artifacts, and effects are synthetic and run-scoped.
 
 ## Prerequisites
 
-- Python 3.11 or later
+- Python **3.11, 3.12, or 3.13** (`ctpf==0.14.0` requires `>=3.11,<3.14`; Python 3.14 is not supported)
 - An authorized OpenAI-compatible inference endpoint and exact model ID
 - An OS-backed keyring
 - An absolute research output directory outside every Git checkout
@@ -22,8 +22,9 @@ ctpf --version
 ctpf experiment run cascade-memo --help
 ```
 
-The current public package contains cascade memo only. Pattern 2 is documented separately as an
-unreleased [source workflow](/experiments/pattern2).
+The current public package contains cascade memo only. Pattern 2 and the agent-operable
+`control` / `govern` surfaces are unreleased [source workflows](/experiments/pattern2)
+([agent-operable lifecycle](/experiments/agent-operable)).
 
 ## Store the credential
 
@@ -37,15 +38,7 @@ from environment variables, YAML, target metadata, or source files.
 ## Register the target
 
 ```bash
-ctpf targets add "Local Model" http://127.0.0.1:1234/v1 \
-  --type inference \
-  --meta driver=openai-compatible \
-  --meta model=MODEL_ID \
-  --meta credential=local-research \
-  --meta max_tokens=512 \
-  --meta temperature=0 \
-  --meta seed=0 \
-  --meta reasoning_effort=none
+ctpf targets add "Local Model" http://127.0.0.1:1234/v1 --type inference --meta driver=openai-compatible --meta model=MODEL_ID --meta credential=local-research --meta max_tokens=512 --meta temperature=0 --meta seed=0 --meta reasoning_effort=none
 ```
 
 The command prints a target ID. Use an unambiguous prefix of at least eight characters.
@@ -53,9 +46,7 @@ The command prints a target ID. Use an unambiguous prefix of at least eight char
 ## Run the experiment
 
 ```bash
-ctpf experiment run cascade-memo \
-  --target TARGET_ID_PREFIX \
-  --output-root ABSOLUTE_EXTERNAL_DIRECTORY
+ctpf experiment run cascade-memo --target TARGET_ID_PREFIX --output-root ABSOLUTE_EXTERNAL_DIRECTORY
 ```
 
 The harness runs isolated baseline, manipulated, and hardened conditions. It preserves protocol
@@ -81,6 +72,20 @@ These labels apply only to the recorded scenario and pins. Read
 
 The [Cascade Memo guide](/experiments/cascade-memo) covers manual operator mode, two-model matrices,
 and the demonstrated Claude Code external-runtime seam.
+
+## Safe agent path on source `main`
+
+Released `v0.14.0` has no autonomous lifecycle. On source `main`, an AI caller starts with
+query-only discovery, then waits for human `govern` authority before `start` / `execute`:
+
+```bash
+uv sync --group dev
+uv run ctpf experiment control capabilities
+uv run ctpf experiment control validate < runspec.json
+```
+
+See [Agent-Operable Lifecycle](/experiments/agent-operable). Deploy the agent inside an external
+OS/runtime sandbox; the harness does not claim full-shell containment.
 
 <Warning>
 Only test systems you own, control, or have explicit written authorization to test.

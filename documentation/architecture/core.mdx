@@ -9,8 +9,9 @@ adapters. It does not own scenario semantics or the experiment evidence director
 ## Operational SQLite state
 
 CTPF uses SQLite with WAL mode and foreign keys at `~/.ctpf/ctpf.db`. Current tables support targets,
-settings, runs, findings, evidence references, and proxy/audit records. Upgraded databases may also
-contain historical tables for removed modules.
+settings, runs, findings, evidence references, and proxy/audit records. Source `main` also stores
+automation policies, grants, governed runs, and lifecycle events in separate v15 tables. Upgraded
+databases may also contain historical tables for removed modules.
 
 | Model | Current role |
 | --- | --- |
