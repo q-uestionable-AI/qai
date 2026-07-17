@@ -28,22 +28,30 @@ These are product invariants, not preferences.
 - **API key storage:** API keys go in the OS keyring only. Never store keys in config files,
   environment variables, or source code.
 
-## Operating Rules
+## Operating Mode
 
-- Work in **plan/approve mode**
-- Before making code changes, file edits, or git actions:
-  1. read the relevant files and task materials
-  2. state the implementation plan clearly
-  3. wait for explicit approval
+- Default to **outcome-driven builder mode**.
+- A request to build, change, or fix something authorizes normal scoped work: inspect the relevant
+  files, create a feature branch when required, edit source/tests/docs, refactor, run proportionate
+  validation, commit, push, and open or update a PR.
+- Work continuously through those implementation steps. Do not require approval for each edit,
+  test, fix, commit, or other intermediate action.
+- Stop and ask only when:
+  - a missing decision would materially change requested behavior or scope
+  - an action is destructive or difficult to reverse
+  - a dependency, workflow, version, release, public API, or repository structure would change
+  - paid inference, credentials, a live target, or external side effects are involved
+  - merge, release, publication, or scientific adjudication is required
+- Assess reviewer feedback point by point. Address valid in-scope feedback autonomously; ask only
+  when it expands scope or changes an approved design.
 - Verify before claiming. Do not describe repo behavior or implementation state from memory.
-- Do not treat other AI reviewer feedback as a work order. Assess it point by point.
-- Interpret instructions literally. Do not generalize a constraint from one file to another;
-  do not silently infer requests the developer didn't make. If scope is ambiguous, ask.
+- Interpret instructions literally, but make reasonable implementation decisions within the
+  requested scope instead of escalating routine details.
 
 ## Hard Boundaries
 
-- PR creation is permitted only when it is included in an explicitly approved git/publish plan.
-  Otherwise, push the approved branch and stop.
+- Routine build, change, and fix requests authorize work through a ready PR unless the developer
+  says to keep the work local. Merge, release, and publication remain explicit approval boundaries.
 - Do not add dependencies without explicit approval.
 - Do not install extra CLI tools (`gh`, `hub`, etc.).
 - Do not write transient plan/spec/session files into the repo.
@@ -151,8 +159,8 @@ Without `--group dev`, dev dependencies get stripped.
 - Before editing code, check branch with `git branch --show-current`
 - If on `main`, create/switch to a feature or fix branch first (for code changes)
 - End of session: commit, stash, or discard; never leave uncommitted changes
-- Follow the explicitly approved publish boundary: push the branch and create a PR only when
-  authorized; otherwise stop after the push
+- A routine build, change, or fix request includes pushing the feature branch and opening or
+  updating a ready PR. Do not merge without explicit authorization.
 
 ### Shell quoting for commits
 
@@ -162,13 +170,16 @@ Without `--group dev`, dev dependencies get stripped.
 
 ## Validation
 
-Run before every commit:
+During implementation, run focused tests and checks for changed code.
+
+Before opening or updating a PR, run validation proportionate to the change. Run the complete
+standard suite for broad shared-code changes, releases, build/workflow changes, or when requested:
 
 ```bash
 uv run ruff check . && uv run ruff format --check . && uv run mypy src/ctpf/ && uv run pre-commit run --all-files
 ```
 
-Smoke test the CLI after changes:
+Smoke test the CLI when CLI behavior changes:
 
 ```bash
 ctpf --help
