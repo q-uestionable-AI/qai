@@ -554,13 +554,15 @@ def _session_prefix_and_series(control: ExecutionControl, work: SessionWork) -> 
     if work.scenario in _SINGLE_SESSION_SCENARIOS:
         return work.condition, control.run_id
     parts = PurePosixPath(work.trace_path).parts
+    matrix = control.spec.experiment.mode == ExperimentMode.MATRIX
+    if matrix:
+        if len(parts) == 4 and parts[0] == "trials" and parts[2] == work.condition:
+            series_id = _matrix_series_id(parts[1])
+            prefix = PurePosixPath(parts[0], series_id, parts[2]).as_posix()
+            return prefix, series_id
+        raise ExecutionInterruptedError("session artifacts differ from installed matrix work")
     if len(parts) == 2 and parts[0] == work.condition:
         return work.condition, control.run_id
-    matrix = control.spec.experiment.mode == ExperimentMode.MATRIX
-    if matrix and len(parts) == 4 and parts[0] == "trials" and parts[2] == work.condition:
-        series_id = _matrix_series_id(parts[1])
-        prefix = PurePosixPath(parts[0], series_id, parts[2]).as_posix()
-        return prefix, series_id
     raise ExecutionInterruptedError("session artifacts differ from installed work")
 
 
