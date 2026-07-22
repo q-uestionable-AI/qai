@@ -185,11 +185,13 @@ Without `--group dev`, dev dependencies get stripped.
   3. Inspect open pull requests targeting `main` in the Git provider. Identify any higher-priority
      change that should land first and any overlap in files, behavior, or migration sequence. An
      open pull request is not part of `origin/main`, but it may determine branch ordering.
-  4. Verify `git rev-list --left-right --count main...origin/main` reports `0 0`.
-  5. If local `main` is only behind, switch to `main`, run
-     `git merge --ff-only origin/main`, and verify `0 0` again.
-  6. If local `main` is ahead, diverged, dirty, unavailable in the current worktree, or cannot be
-     refreshed, stop and reconcile that state explicitly. Do not create a branch from a stale base.
+  4. Inspect `git rev-list --left-right --count main...origin/main`. Continue immediately only when
+     it reports `0 0`.
+  5. If it reports `0 N` with `N` greater than zero, local `main` is only behind. Switch to `main`,
+     run `git merge --ff-only origin/main`, then require the comparison to report `0 0`.
+  6. If the first count is nonzero, both counts are nonzero, local `main` is dirty or unavailable in
+     the current worktree, or the refresh fails, stop and reconcile explicitly. Do not create a
+     branch from a stale or divergent base.
 - Create the branch from the verified local `main`, then confirm it with
   `git branch --show-current` before editing.
 - End of session: commit, stash, or discard; never leave uncommitted changes
